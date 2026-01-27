@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>擠壓巡檢全功能系統 (v2.5 - 分頁版)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body { background-color: #f8f9fa; font-family: "Microsoft JhengHei"; }
+        .card { border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 20px; }
+        .table-primary { --bs-table-bg: #d1e7f5; vertical-align: middle; color: #2c3e50; }
+        .group-header { background-color: #e9ecef; font-weight: bold; width: 100px; }
+        .d-val { width: 100px !important; font-size: 14px; padding: 8px !important; }
+        .spc-alert { background-color: #fff5f5; border: 1px solid #feb2b2; color: #c53030; display: none; font-size: 0.9rem; }
+        .violation-list { font-size: 0.85rem; color: #dc3545; list-style: none; padding-left: 0; margin-top: 5px; }
+        .transfer-section { background-color: #f0fdf4; border: 1px dashed #22c55e; }
+
+        .stats-summary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 15px; }
+        .stat-item { background: rgba(255,255,255,0.15); padding: 12px; border-radius: 8px; text-align: center; }
+        .stat-label { font-size: 12px; opacity: 0.9; margin-bottom: 5px; }
+        .stat-value { font-size: 18px; font-weight: bold; }
+        .stat-value.warning { color: #ffeb3b; }
+        .stat-value.danger { color: #ff5252; }
+        .stat-value.success { color: #69f0ae; }
+
+        .analysis-panel { background: white; border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+        .analysis-item { padding: 10px 15px; margin-bottom: 10px; border-radius: 8px; display: flex; align-items: center; gap: 10px; }
+        .analysis-item.warning { background: #fff8e1; border-left: 4px solid #ffc107; }
+        .analysis-item.info { background: #e3f2fd; border-left: 4px solid #2196f3; }
+        .analysis-item.success { background: #e8f5e9; border-left: 4px solid #4caf50; }
+        .analysis-icon { font-size: 20px; }
+        .analysis-text { flex: 1; }
+        .analysis-title { font-weight: bold; margin-bottom: 2px; }
+        .analysis-desc { font-size: 12px; opacity: 0.8; }
+
+        /* DataTable 自定義樣式 */
+        .dataTables_wrapper .dataTables_paginate .paginate_button { padding: 0; }
+        div.dataTables_wrapper div.dataTables_filter { text-align: right; }
+
+        .back-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+            margin-bottom: 20px;
+            text-decoration: none;
+        }
+
+        .back-button:hover {
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+            transform: translateY(-2px) translateX(-3px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+            color: white;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body class="container py-4">
+
+    <a href="index.html" class="back-button">
+        <i class="bi bi-arrow-left"></i> 回上頁
+    </a>
+
+    <div class="card p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="text-primary m-0"><i class="bi bi-pencil-square"></i> 巡檢數據登錄</h4>
+            <div id="editModeIndicator" class="badge bg-warning text-dark d-none">編輯模式 (單號: <span id="editIdText"></span>)</div>
+        </div>
+        <input type="hidden" id="editId">
+        <div class="row g-3 mb-4">
+            <div class="col-md-2"><label>日期</label><input type="date" id="date" class="form-control"></div>
+            <div class="col-md-2"><label>機台</label><select id="machine" class="form-select"></select></div>
+            <div class="col-md-2"><label>主機手</label><select id="operator" class="form-select"></select></div>
+            <div class="col-md-2"><label>檢驗員</label><select id="inspector" class="form-select"></select></div>
+            <div class="col-md-4"><label>客戶名稱</label><select id="customer" class="form-select"></select></div>
+            <div class="col-md-3"><label>材質</label><input type="text" id="material" class="form-control"></div>
+            <div class="col-md-5"><label>原料批號</label><input type="text" id="batch" class="form-control"></div>
+            <div class="col-md-4"><label>擠壓規格</label><input type="text" id="spec" class="form-control"></div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-bordered text-center align-middle">
+                <thead class="table-primary text-white">
+                    <tr><th rowspan="3">組別</th><th colspan="6">前段</th><th colspan="6">中段</th><th colspan="6">後段</th></tr>
+                    <tr><th colspan="2">外徑</th><th colspan="2">內徑</th><th colspan="2">厚度</th><th colspan="2">外徑</th><th colspan="2">內徑</th><th colspan="2">厚度</th><th colspan="2">外徑</th><th colspan="2">內徑</th><th colspan="2">厚度</th></tr>
+                    <tr><th>Min</th><th>Max</th><th>Min</th><th>Max</th><th>Min</th><th>Max</th><th>Min</th><th>Max</th><th>Min</th><th>Max</th><th>Min</th><th>Max</th><th>Min</th><th>Max</th><th>Min</th><th>Max</th><th>Min</th><th>Max</th></tr>
+                </thead>
+                <tbody id="inputBody"></tbody>
+            </table>
+        </div>
+        <div class="d-flex justify-content-between mt-3">
+            <div>
+                <button class="btn btn-outline-primary" onclick="addNewGroup()"><i class="bi bi-plus-lg"></i> 新增組別</button>
+                <button class="btn btn-outline-danger ms-2" onclick="removeLastGroup()"><i class="bi bi-dash-lg"></i> 刪除最後一組</button>
+            </div>
+            <div>
+                <button class="btn btn-secondary me-1" onclick="location.reload()">重設</button>
+                <button class="btn btn-success px-4" onclick="handleSave()"><i class="bi bi-cloud-arrow-up"></i> 儲存送出</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="text-danger m-0">SPC 統計圖表</h4>
+            <div class="d-flex align-items-center gap-2">
+                <div id="spcAlarm" class="spc-alert rounded p-0 overflow-hidden" style="min-width: 250px;">
+                    <button class="btn btn-danger w-100 text-start rounded-0 fw-bold border-0 py-1" type="button" data-bs-toggle="collapse" data-bs-target="#collapseViolations">
+                        <i class="bi bi-exclamation-triangle-fill"></i> 檢測到異常點 (點擊)
+                    </button>
+                    <div class="collapse" id="collapseViolations">
+                        <div class="p-2 bg-white"><ul id="violationDetails" class="violation-list m-0 px-2"></ul></div>
+                    </div>
+                </div>
+                <select id="spcPos" class="form-select w-auto" onchange="loadSPC()">
+                    <option value="">全段</option><option value="前段">前段</option><option value="中段">中段</option><option value="後段">後段</option>
+                </select>
+                <select id="spcItem" class="form-select w-auto" onchange="loadSPC()">
+                    <option value="厚度">厚度</option><option value="外徑">外徑</option><option value="內徑">內徑</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="patrolStatsSummary" class="stats-summary" style="display: none;">
+            <h4 style="margin: 0 0 15px 0; font-size: 18px;">📈 統計摘要</h4>
+            <div class="stats-grid">
+                <div class="stat-item"><div class="stat-label">樣本數</div><div class="stat-value" id="patrolStatCount">0</div></div>
+                <div class="stat-item"><div class="stat-label">平均值</div><div class="stat-value" id="patrolStatMean">0</div></div>
+                <div class="stat-item"><div class="stat-label">中位數</div><div class="stat-value" id="patrolStatMedian">0</div></div>
+                <div class="stat-item"><div class="stat-label">標準差</div><div class="stat-value" id="patrolStatStd">0</div></div>
+                <div class="stat-item"><div class="stat-label">最小值</div><div class="stat-value" id="patrolStatMin">0</div></div>
+                <div class="stat-item"><div class="stat-label">最大值</div><div class="stat-value" id="patrolStatMax">0</div></div>
+                <div class="stat-item"><div class="stat-label">全距</div><div class="stat-value" id="patrolStatRange">0</div></div>
+                <div class="stat-item"><div class="stat-label">異常點數</div><div class="stat-value" id="patrolStatViolations">0</div></div>
+            </div>
+        </div>
+
+        <div id="patrolAnalysisPanel" class="analysis-panel" style="display: none;">
+            <h4 style="margin: 0 0 15px 0; font-size: 18px;">🔍 數據分析</h4>
+            <div id="patrolAnalysisContent"></div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6"><div style="height: 300px;"><canvas id="xChart"></canvas></div></div>
+            <div class="col-md-6"><div style="height: 300px;"><canvas id="rChart"></canvas></div></div>
+        </div>
+    </div>
+
+    <div class="card p-4">
+        <h4 class="text-secondary mb-3"><i class="bi bi-search"></i> 歷史紀錄與篩選</h4>
+        <div class="row g-2 mb-4 bg-light p-3 rounded border">
+            <div class="col-md-2"><label class="small">開始日期</label><input type="date" id="fSDate" class="form-control"></div>
+            <div class="col-md-2"><label class="small">結束日期</label><input type="date" id="fEDate" class="form-control"></div>
+            <div class="col-md-2"><label class="small">機台</label><select id="fMachine" class="form-select"><option value="">所有</option></select></div>
+            <div class="col-md-2"><label class="small">人員</label><select id="fOperator" class="form-select"><option value="">所有</option></select></div>
+            <div class="col-md-2"><label class="small">材質</label><input type="text" id="fMat" class="form-control"></div>
+            <div class="col-md-2"><label class="small">規格</label><input type="text" id="fSpec" class="form-control"></div>
+            <div class="col-md-12 mt-2"><button class="btn btn-primary w-100" onclick="loadHistory()">執行搜尋連動</button></div>
+        </div>
+        
+        <div class="table-responsive">
+            <table id="historyTable" class="table table-hover border w-100">
+                <thead class="table-dark">
+                    <tr><th>ID</th><th>日期</th><th>機台</th><th>主機手</th><th>材質</th><th>規格</th><th>操作</th></tr>
+                </thead>
+                <tbody id="historyBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card p-4 transfer-section">
+        <div class="row">
+            <div class="col-md-6">
+                <h6>Excel 數據匯入</h6>
+                <div class="input-group"><input type="file" id="importFile" class="form-control"><button class="btn btn-success" onclick="handleImport()">匯入</button></div>
+            </div>
+            <div class="col-md-6 text-end">
+                <h6>數據備份</h6>
+                <button class="btn btn-outline-success" onclick="handleExport()">匯出目前篩選結果 (.xlsx)</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = `${window.location.protocol}//${window.location.hostname}:${window.location.port || '5000'}/api/patrol`;
+        let groupCount = 0, xChart = null, rChart = null;
+        let authToken = localStorage.getItem('authToken') || '';
+
+        function getAuthHeaders() {
+            const headers = { 'Content-Type': 'application/json' };
+            if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+            return headers;
+        }
+
+        async function fetchWithAuth(url, options = {}) {
+            if (!options.headers) options.headers = {};
+            Object.assign(options.headers, getAuthHeaders());
+            const res = await fetch(url, options);
+            if (res.status === 401) {
+                alert('認證失效，請重新登入');
+                localStorage.removeItem('authToken');
+                location.href = 'index.html';
+            }
+            return res;
+        }
+
+        window.onload = async () => {
+            document.getElementById('date').value = new Date().toISOString().split('T')[0];
+            await loadOptions();
+            addNewGroup();
+            loadHistory();
+        };
+
+        async function loadHistory() {
+            const qs = new URLSearchParams({
+                s_date: document.getElementById('fSDate').value, e_date: document.getElementById('fEDate').value,
+                m_id: document.getElementById('fMachine').value, op_id: document.getElementById('fOperator').value,
+                mat: document.getElementById('fMat').value, spec: document.getElementById('fSpec').value
+            });
+            const res = await fetchWithAuth(`${API}/history?${qs}`);
+            const d = await res.json();
+            
+            // 銷毀舊的 DataTable
+            if ($.fn.DataTable.isDataTable('#historyTable')) $('#historyTable').DataTable().destroy();
+
+            document.getElementById('historyBody').innerHTML = d.data.map(r => `
+                <tr><td>${r.id}</td><td>${r.date}</td><td>${r.m_name}</td><td>${r.op_name}</td><td>${r.mat}</td><td>${r.spec}</td>
+                <td><button class="btn btn-sm btn-outline-primary me-1" onclick="editData(${r.id})">編輯</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="delData(${r.id})">刪除</button></td></tr>`).join('');
+
+            // 初始化 DataTable
+            $('#historyTable').DataTable({
+                "language": { "url": "https://cdn.datatables.net/plug-ins/1.13.6/i18n/zh-HANT.json" },
+                "pageLength": 10, "order": [[0, "desc"]]
+            });
+
+            loadSPC(); // 同步更新圖表
+        }
+
+        function analyzeWECO(data, cl, ucl, lcl, labels) {
+            let violations = [], statuses = new Array(data.length).fill(null);
+            const sigma = (ucl - cl) / 3;
+            const sigma1_above = cl + sigma;
+            const sigma1_below = cl - sigma;
+            const sigma2_above = cl + 2 * sigma;
+            const sigma2_below = cl - 2 * sigma;
+
+            for (let i = 0; i < data.length; i++) {
+                let val = data[i], reasons = [];
+                
+                // Rule 1: 單點超出控制限 (±3σ)
+                if (val > ucl || val < lcl) reasons.push("Rule 1: 超出控制限");
+                
+                // Rule 2: 連續9點在中心線同側
+                if (i >= 8) {
+                    let last9 = data.slice(i-8, i+1);
+                    if (last9.every(v => v > cl) || last9.every(v => v < cl)) 
+                        reasons.push("Rule 2: 連續9點同側");
+                }
+                
+                // Rule 3: 連續6點連續上升或下降
+                if (i >= 5) {
+                    let last6 = data.slice(i-5, i+1);
+                    let increasing = true, decreasing = true;
+                    for (let j = 1; j < last6.length; j++) {
+                        if (last6[j] <= last6[j-1]) increasing = false;
+                        if (last6[j] >= last6[j-1]) decreasing = false;
+                    }
+                    if (increasing || decreasing) reasons.push("Rule 3: 連續6點趨勢");
+                }
+                
+                // Rule 4: 連續14點交替上升下降
+                if (i >= 13) {
+                    let last14 = data.slice(i-13, i+1);
+                    let alternating = true;
+                    for (let j = 1; j < last14.length; j++) {
+                        if ((j % 2 === 0 && last14[j] < last14[j-1]) || 
+                            (j % 2 !== 0 && last14[j] > last14[j-1])) {
+                            alternating = false;
+                            break;
+                        }
+                    }
+                    if (alternating) reasons.push("Rule 4: 14點交替");
+                }
+                
+                // Rule 5: 連續3點中有2點落在2σ外
+                if (i >= 2) {
+                    let last3 = data.slice(i-2, i+1);
+                    let countAbove = last3.filter(v => v > sigma2_above).length;
+                    let countBelow = last3.filter(v => v < sigma2_below).length;
+                    if (countAbove >= 2 || countBelow >= 2) 
+                        reasons.push("Rule 5: 3點中2點在2σ外");
+                }
+                
+                // Rule 6: 連續5點中有4點落在1σ外
+                if (i >= 4) {
+                    let last5 = data.slice(i-4, i+1);
+                    let count = last5.filter(v => v > sigma1_above || v < sigma1_below).length;
+                    if (count >= 4) reasons.push("Rule 6: 5點中4點在1σ外");
+                }
+                
+                // Rule 7: 連續15點在1σ内
+                if (i >= 14) {
+                    let last15 = data.slice(i-14, i+1);
+                    if (last15.every(v => v >= sigma1_below && v <= sigma1_above)) 
+                        reasons.push("Rule 7: 連續15點在1σ内");
+                }
+                
+                // Rule 8: 連續8點在中心線兩側但都不在1σ内
+                if (i >= 7) {
+                    let last8 = data.slice(i-7, i+1);
+                    let above8 = last8.every((v, idx) => {
+                        const side = (v - cl) / Math.abs(v - cl);
+                        const lastSide = idx === 0 ? side : (last8[idx-1] - cl) / Math.abs(last8[idx-1] - cl);
+                        return (side > 0 && v > sigma1_above) || (side < 0 && v < sigma1_below);
+                    });
+                    if (above8) reasons.push("Rule 8: 8點在1σ外且兩側");
+                }
+                
+                if (reasons.length > 0) { 
+                    statuses[i] = "violation"; 
+                    violations.push({ label: labels[i], reasons: reasons }); 
+                }
+            }
+            return { statuses, violations };
+        }
+
+        function updatePatrolStatistics(data, statuses) {
+            const sorted = [...data].sort((a, b) => a - b);
+            const count = data.length;
+            const mean = data.reduce((a, b) => a + b, 0) / count;
+            const median = count % 2 === 0 
+                ? (sorted[count/2 - 1] + sorted[count/2]) / 2 
+                : sorted[Math.floor(count/2)];
+            const min = sorted[0];
+            const max = sorted[count - 1];
+            const range = max - min;
+            const variance = data.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / count;
+            const stdDev = Math.sqrt(variance);
+            const violations = statuses.filter(s => s === 'violation').length;
+
+            document.getElementById('patrolStatCount').textContent = count;
+            document.getElementById('patrolStatMean').textContent = mean.toFixed(3);
+            document.getElementById('patrolStatMedian').textContent = median.toFixed(3);
+            document.getElementById('patrolStatStd').textContent = stdDev.toFixed(3);
+            document.getElementById('patrolStatMin').textContent = min.toFixed(3);
+            document.getElementById('patrolStatMax').textContent = max.toFixed(3);
+            document.getElementById('patrolStatRange').textContent = range.toFixed(3);
+            document.getElementById('patrolStatViolations').textContent = violations;
+            
+            const stdEl = document.getElementById('patrolStatStd');
+            const sigmaRange = (max - min) / 6;
+            if (stdDev > sigmaRange * 1.5) {
+                stdEl.classList.add('danger');
+                stdEl.classList.remove('warning', 'success');
+            } else if (stdDev > sigmaRange) {
+                stdEl.classList.add('warning');
+                stdEl.classList.remove('danger', 'success');
+            } else {
+                stdEl.classList.add('success');
+                stdEl.classList.remove('warning', 'danger');
+            }
+
+            const violEl = document.getElementById('patrolStatViolations');
+            const violRate = violations / count;
+            if (violRate > 0.1) {
+                violEl.classList.add('danger');
+                violEl.classList.remove('warning', 'success');
+            } else if (violRate > 0.05) {
+                violEl.classList.add('warning');
+                violEl.classList.remove('danger', 'success');
+            } else {
+                violEl.classList.add('success');
+                violEl.classList.remove('warning', 'danger');
+            }
+        }
+
+        function updatePatrolAnalysis(data, cl, ucl, lcl, analysis) {
+            const content = document.getElementById('patrolAnalysisContent');
+            const items = [];
+            const sigma = (ucl - cl) / 3;
+            const mean = data.reduce((a, b) => a + b, 0) / data.length;
+
+            let increasing = 0, decreasing = 0;
+            for (let i = 1; i < data.length; i++) {
+                if (data[i] > data[i-1]) increasing++;
+                else if (data[i] < data[i-1]) decreasing++;
+            }
+            const trendRate = Math.abs(increasing - decreasing) / (data.length - 1);
+            if (trendRate > 0.6) {
+                items.push({
+                    type: 'warning',
+                    icon: '📈',
+                    title: '趨勢明顯',
+                    desc: increasing > decreasing ? `數據呈現上升趨勢 (${Math.round(trendRate * 100)}%)` : `數據呈現下降趨勢 (${Math.round(trendRate * 100)}%)`
+                });
+            } else {
+                items.push({
+                    type: 'success',
+                    icon: '📊',
+                    title: '趨勢穩定',
+                    desc: '數據變動平穩，無明顯趨勢'
+                });
+            }
+
+            const cv = (sigma / Math.abs(mean)) * 100;
+            if (cv > 10) {
+                items.push({
+                    type: 'warning',
+                    icon: '📏',
+                    title: '變異係數偏高',
+                    desc: `CV = ${cv.toFixed(1)}%，數據分散度較大`
+                });
+            } else if (cv > 5) {
+                items.push({
+                    type: 'info',
+                    icon: '📏',
+                    title: '變異係數正常',
+                    desc: `CV = ${cv.toFixed(1)}%，數據分散度正常`
+                });
+            } else {
+                items.push({
+                    type: 'success',
+                    icon: '✅',
+                    title: '變異係數優良',
+                    desc: `CV = ${cv.toFixed(1)}%，數據集中度高`
+                });
+            }
+
+            const q1 = data.sort((a, b) => a - b)[Math.floor(data.length * 0.25)];
+            const q3 = data.sort((a, b) => a - b)[Math.floor(data.length * 0.75)];
+            const iqr = q3 - q1;
+            const outliers = data.filter(v => v < q1 - 1.5 * iqr || v > q3 + 1.5 * iqr);
+            if (outliers.length > 0) {
+                items.push({
+                    type: 'warning',
+                    icon: '⚠️',
+                    title: '發現離群值',
+                    desc: `檢測到 ${outliers.length} 個潛在離群值，建議檢查`
+                });
+            } else {
+                items.push({
+                    type: 'success',
+                    icon: '✅',
+                    title: '無離群值',
+                    desc: '未檢測到明顯離群值'
+                });
+            }
+
+            const violationRate = analysis.statuses.filter(s => s === 'violation').length / data.length;
+            if (violationRate === 0) {
+                items.push({
+                    type: 'success',
+                    icon: '🎯',
+                    title: '製程穩定',
+                    desc: '所有數據點都在控制範圍內，製程穩定'
+                });
+            } else if (violationRate < 0.05) {
+                items.push({
+                    type: 'warning',
+                    icon: '⚠️',
+                    title: '製程基本穩定',
+                    desc: `有 ${Math.round(violationRate * 100)}% 的數據點超出控制範圍`
+                });
+            } else {
+                items.push({
+                    type: 'warning',
+                    icon: '🚨',
+                    title: '製程不穩定',
+                    desc: `有 ${Math.round(violationRate * 100)}% 的數據點超出控制範圍，需要改善`
+                });
+            }
+
+            content.innerHTML = items.map(item => `
+                <div class="analysis-item ${item.type}">
+                    <div class="analysis-icon">${item.icon}</div>
+                    <div class="analysis-text">
+                        <div class="analysis-title">${item.title}</div>
+                        <div class="analysis-desc">${item.desc}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function loadSPC() {
+            const item = document.getElementById('spcItem').value, pos = document.getElementById('spcPos').value;
+            const qs = new URLSearchParams({
+                item, pos, s_date: document.getElementById('fSDate').value, e_date: document.getElementById('fEDate').value,
+                m_id: document.getElementById('fMachine').value, op_id: document.getElementById('fOperator').value,
+                mat: document.getElementById('fMat').value, spec: document.getElementById('fSpec').value
+            });
+            const res = await fetchWithAuth(`${API}/spc?${qs}`);
+            const d = await res.json();
+            const alarmDiv = document.getElementById('spcAlarm');
+
+            if(!d.labels || d.labels.length === 0) {
+                alarmDiv.style.display = 'none';
+                document.getElementById('patrolStatsSummary').style.display = 'none';
+                document.getElementById('patrolAnalysisPanel').style.display = 'none';
+                if(xChart) xChart.destroy(); if(rChart) rChart.destroy();
+                return;
+            }
+
+            document.getElementById('patrolStatsSummary').style.display = 'block';
+            document.getElementById('patrolAnalysisPanel').style.display = 'block';
+
+            const analysis = analyzeWECO(d.avgs, d.x_cl, d.x_ucl, d.x_lcl, d.labels);
+            if(analysis.violations.length > 0) {
+                alarmDiv.style.display = 'block';
+                document.getElementById('violationDetails').innerHTML = analysis.violations.map(v => 
+                    `<li><strong>${v.label}</strong>: ${v.reasons.join('、')}</li>`
+                ).join('');
+            } else { alarmDiv.style.display = 'none'; }
+
+            const errIdx = [];
+            analysis.statuses.forEach((s, i) => { if(s === 'violation') errIdx.push(i); });
+
+            // 更新統計摘要
+            updatePatrolStatistics(d.avgs, analysis.statuses);
+
+            // 更新數據分析
+            updatePatrolAnalysis(d.avgs, d.x_cl, d.x_ucl, d.x_lcl, analysis);
+
+            xChart = drawChart('xChart', xChart, d.labels, [
+                { label: 'X-bar', data: d.avgs, borderColor: '#0d6efd', pointBackgroundColor: d.avgs.map((_, i) => errIdx.includes(i) ? 'red' : '#0d6efd') },
+                { label: 'UCL', data: Array(d.labels.length).fill(d.x_ucl), borderColor: 'red', borderDash: [5], pointRadius: 0 },
+                { label: 'CL', data: Array(d.labels.length).fill(d.x_cl), borderColor: 'green', pointRadius: 0 },
+                { label: 'LCL', data: Array(d.labels.length).fill(d.x_lcl), borderColor: 'red', borderDash: [5], pointRadius: 0 }
+            ], 'X-bar TREND');
+
+            rChart = drawChart('rChart', rChart, d.labels, [
+                { label: 'R', data: d.ranges, borderColor: '#6f42c1' },
+                { label: 'UCL', data: Array(d.labels.length).fill(d.r_ucl), borderColor: 'red', borderDash: [5], pointRadius: 0 }
+            ], 'R TREND');
+        }
+
+        function drawChart(id, chart, labels, datasets, title) {
+            const ctx = document.getElementById(id).getContext('2d');
+            if(chart) chart.destroy();
+            return new Chart(ctx, { type: 'line', data: { labels, datasets }, options: { maintainAspectRatio: false, plugins: { title: { display: true, text: title } } } });
+        }
+
+        async function loadOptions() {
+            const res = await fetchWithAuth(`${API}/options`);
+            const d = await res.json();
+            const fill = (id, list) => {
+                const el = document.getElementById(id);
+                el.innerHTML = (id.startsWith('f') ? '<option value="">所有</option>' : '<option value="">請選擇</option>') + list.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
+            };
+            fill('machine', d.machines); fill('operator', d.operators); fill('inspector', d.inspectors); fill('customer', d.customers);
+            fill('fMachine', d.machines); fill('fOperator', d.operators);
+        }
+
+        function addNewGroup() {
+            const tbody = document.getElementById('inputBody'); groupCount++;
+            const gName = `第${groupCount}組`;
+            let tabIndex = groupCount * 100 + 10;
+            
+            const tr = document.createElement('tr');
+            tr.innerHTML += `<td rowspan="1" class="group-header">${gName}</td>`;
+            
+            ["前段", "中段", "後段"].forEach((pos) => {
+                ["外徑", "內徑", "厚度"].forEach((item) => {
+                    tr.innerHTML += `<td><input type="number" step="0.01" class="form-control form-control-sm d-val" data-g="${gName}" data-i="${item}" data-p="${pos}" data-t="min" tabindex="${tabIndex++}"></td>`;
+                    tr.innerHTML += `<td><input type="number" step="0.01" class="form-control form-control-sm d-val" data-g="${gName}" data-i="${item}" data-p="${pos}" data-t="max" tabindex="${tabIndex++}"></td>`;
+                });
+            });
+            
+            tbody.appendChild(tr);
+        }
+
+        function removeLastGroup() {
+            if (groupCount <= 1) return;
+            const tbody = document.getElementById('inputBody');
+            tbody.removeChild(tbody.lastElementChild);
+            groupCount--;
+        }
+
+        async function handleSave() {
+            const editId = document.getElementById('editId').value;
+            const details = [];
+            document.querySelectorAll('.d-val[data-t="min"]').forEach(minI => {
+                const maxI = document.querySelector(`.d-val[data-g="${minI.dataset.g}"][data-i="${minI.dataset.i}"][data-p="${minI.dataset.p}"][data-t="max"]`);
+                const minVal = minI.value === '' ? null : parseFloat(minI.value);
+                const maxVal = maxI.value === '' ? null : parseFloat(maxI.value);
+                if (minVal !== null || maxVal !== null) {
+                    details.push({
+                        group: minI.dataset.g,
+                        item: minI.dataset.i,
+                        pos: minI.dataset.p,
+                        min: minVal,
+                        max: maxVal
+                    });
+                }
+            });
+
+            if (details.length === 0) {
+                alert('請至少輸入一組測量數值');
+                return;
+            }
+
+            const payload = {
+                id: editId, "檢驗日期": document.getElementById('date').value,
+                "機台": document.getElementById('machine').value, "主機手": document.getElementById('operator').value,
+                "客戶名稱": document.getElementById('customer').value, "材質": document.getElementById('material').value,
+                "原料批號": document.getElementById('batch').value, "擠壓規格": document.getElementById('spec').value,
+                "檢驗人員": document.getElementById('inspector').value, "details": details
+            };
+            const url = editId ? `${API}/update` : `${API}/add`;
+            const res = await fetchWithAuth(url, { method: 'POST', body: JSON.stringify(payload) });
+            if(res.ok) { alert("儲存成功"); location.reload(); } else {
+                const error = await res.json();
+                alert(error.error || "儲存失敗");
+            }
+        }
+
+        async function editData(id) {
+            const res = await fetchWithAuth(`${API}/detail/${id}`);
+            const d = await res.json();
+            document.getElementById('editId').value = id;
+            document.getElementById('editIdText').innerText = id;
+            document.getElementById('editModeIndicator').classList.remove('d-none');
+            document.getElementById('date').value = d.main.檢驗日期;
+            document.getElementById('machine').value = d.main.機台;
+            document.getElementById('operator').value = d.main.主機手;
+            document.getElementById('inspector').value = d.main.檢驗人員;
+            document.getElementById('customer').value = d.main.客戶名稱;
+            document.getElementById('material').value = d.main.材質;
+            document.getElementById('batch').value = d.main.原料批號;
+            document.getElementById('spec').value = d.main.擠壓規格;
+            document.getElementById('inputBody').innerHTML = ""; groupCount = 0;
+
+            const uniqueG = [...new Set(d.details.map(i => i.group))];
+            let tabIndex = 100 + 10;
+
+            // 根據實際組別創建表格行
+            const tbody = document.getElementById('inputBody');
+            uniqueG.forEach(gName => {
+                groupCount++;
+                const tr = document.createElement('tr');
+                tr.innerHTML += `<td rowspan="1" class="group-header">${gName}</td>`;
+                
+                ["前段", "中段", "後段"].forEach((pos) => {
+                    ["外徑", "內徑", "厚度"].forEach((item) => {
+                        tr.innerHTML += `<td><input type="number" step="0.01" class="form-control form-control-sm d-val" data-g="${gName}" data-i="${item}" data-p="${pos}" data-t="min" tabindex="${tabIndex++}"></td><td><input type="number" step="0.01" class="form-control form-control-sm d-val" data-g="${gName}" data-i="${item}" data-p="${pos}" data-t="max" tabindex="${tabIndex++}"></td>`;
+                    });
+                });
+                
+                tbody.appendChild(tr);
+            });
+
+            // 填充數據
+            d.details.forEach(i => {
+                const min = document.querySelector(`.d-val[data-g="${i.group}"][data-i="${i.item}"][data-p="${i.pos}"][data-t="min"]`);
+                const max = document.querySelector(`.d-val[data-g="${i.group}"][data-i="${i.item}"][data-p="${i.pos}"][data-t="max"]`);
+                if(min) min.value = i.min;
+                if(max) max.value = i.max;
+            });
+
+            window.scrollTo({top: 0, behavior: 'smooth'});
+        }
+
+        async function delData(id) {
+            if(confirm("確定刪除？")) {
+                const res = await fetchWithAuth(`${API}/delete`, { method: 'POST', body: JSON.stringify({ id }) });
+                if(res.ok) loadHistory(); else {
+                    const error = await res.json();
+                    alert(error.error || "刪除失敗");
+                }
+            }
+        }
+        async function handleImport() {
+            const file = document.getElementById('importFile').files[0];
+            if (!file) return alert("請先選擇檔案");
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const headers = {};
+            if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
+            try {
+                const res = await fetch(`${API}/import`, {
+                    method: 'POST',
+                    body: formData,
+                    headers: headers
+                });
+                if (res.ok) {
+                    alert("匯入成功");
+                    location.reload();
+                } else {
+                    const error = await res.json();
+                    alert(error.error || "匯入失敗");
+                }
+            } catch (err) {
+                alert("匯入失敗：" + err.message);
+            }
+        }
+        function handleExport() {
+            const qs = new URLSearchParams({ s_date: document.getElementById('fSDate').value, e_date: document.getElementById('fEDate').value, m_id: document.getElementById('fMachine').value, op_id: document.getElementById('fOperator').value, mat: document.getElementById('fMat').value, spec: document.getElementById('fSpec').value });
+            window.location.href = `${API}/export?${qs.toString()}&token=${authToken}`;
+        }
+    </script>
+</body>
+</html>

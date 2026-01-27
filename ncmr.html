@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>不合格品管理 (NCMR)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+    <style>
+        body { background-color: #f8f9fa; font-family: "Microsoft JhengHei"; }
+        .card { border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 20px; }
+        .back-button {
+            display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px;
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+            color: #fff; border: none; border-radius: 10px; cursor: pointer;
+            font-weight: 600; text-decoration: none; margin-bottom: 20px;
+            box-shadow: 0 4px 10px rgba(255, 154, 158, 0.4);
+        }
+        .back-button:hover { transform: translateY(-2px); color: #fff; box-shadow: 0 6px 15px rgba(255, 154, 158, 0.5); }
+        
+        .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; }
+        .status-pending { background-color: #ffeeba; color: #856404; }
+        .status-closed { background-color: #d4edda; color: #155724; }
+        .status-capa { background-color: #cce5ff; color: #004085; }
+    </style>
+</head>
+<body class="container py-4">
+
+    <a href="index.html" class="back-button">
+        <i class="bi bi-arrow-left"></i> 回首頁
+    </a>
+
+    <div class="card p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h3 class="text-danger"><i class="bi bi-exclamation-octagon"></i> 不合格品管理 (NCMR)</h3>
+            <button class="btn btn-primary" onclick="openAddModal()"><i class="bi bi-plus-lg"></i> 新增異常單</button>
+        </div>
+
+        <div class="table-responsive">
+            <table id="ncmrTable" class="table table-hover w-100">
+                <thead class="table-light">
+                    <tr>
+                        <th>單號</th>
+                        <th>日期</th>
+                        <th>來源</th>
+                        <th>廠商</th>
+                        <th>材質</th>
+                        <th>規格</th>
+                        <th>不良描述</th>
+                        <th>判定結果</th>
+                        <th>狀態</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="ncmrBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 新增/編輯 Modal -->
+    <div class="modal fade" id="ncmrModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">新增異常單</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="ncmrForm">
+                        <input type="hidden" id="ncmrId">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">發現日期</label>
+                                <input type="date" class="form-control" id="n_date" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">來源</label>
+                                <select class="form-select" id="n_source" onchange="toggleSourceInput()">
+                                    <option value="巡檢">巡檢</option>
+                                    <option value="出貨檢">出貨檢</option>
+                                    <option value="客訴">客訴</option>
+                                    <option value="進料">進料</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">來源單號 (輸入ID後按Enter)</label>
+                                <input type="number" class="form-control" id="n_source_id" onchange="fetchSourceInfo()">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">廠商</label>
+                                <input type="text" class="form-control" id="n_vendor">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">材質</label>
+                                <input type="text" class="form-control" id="n_material">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">規格 (產品資訊)</label>
+                                <input type="text" class="form-control" id="n_product_info">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">批號/訂單號</label>
+                                <input type="text" class="form-control" id="n_batch">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">不合格數量</label>
+                                <input type="number" class="form-control" id="n_qty">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">不良描述</label>
+                                <textarea class="form-control" id="n_desc" rows="3"></textarea>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">發現人員</label>
+                                <select class="form-select" id="n_inspector"></select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">初步判定</label>
+                                <select class="form-select" id="n_result">
+                                    <option value="">請選擇</option>
+                                    <option value="特採">特採</option>
+                                    <option value="重工">重工</option>
+                                    <option value="報廢">報廢</option>
+                                    <option value="退貨">退貨</option>
+                                </select>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="saveNCMR()">儲存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 處置 Modal -->
+    <div class="modal fade" id="dispositionModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">異常處置</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="d_id">
+                    <div class="mb-3">
+                        <label class="form-label">判定結果</label>
+                        <select class="form-select" id="d_result">
+                            <option value="特採">特採 (允收但需紀錄)</option>
+                            <option value="重工">重工 (修正後重驗)</option>
+                            <option value="報廢">報廢 (無法使用)</option>
+                            <option value="退貨">退貨 (退回廠商)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">狀態更新</label>
+                        <select class="form-select" id="d_status">
+                            <option value="待處理">待處理</option>
+                            <option value="已結案">已結案</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-warning" onclick="createCAPA()">轉開 CAPA (8D)</button>
+                    <button type="button" class="btn btn-info" onclick="createRework()">轉重工申請</button>
+                    <button type="button" class="btn btn-primary" onclick="saveDisposition()">更新處置</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = window.location.protocol === 'file:' 
+            ? 'http://localhost:5000/api' 
+            : `${window.location.protocol}//${window.location.hostname}:${window.location.port || '5000'}/api`;
+        let authToken = localStorage.getItem('authToken');
+
+        function getHeaders() {
+            return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` };
+        }
+
+        window.onload = async () => {
+            if(!authToken) location.href = 'index.html';
+            document.getElementById('n_date').value = new Date().toISOString().split('T')[0];
+            await loadInspectors();
+            loadNCMRs();
+        };
+
+        async function loadInspectors() {
+            const res = await fetch(`${API}/inspectors`, { headers: getHeaders() });
+            const list = await res.json();
+            document.getElementById('n_inspector').innerHTML = list.map(i => `<option value="${i.name}">${i.name}</option>`).join('');
+        }
+
+        async function loadNCMRs() {
+            const res = await fetch(`${API}/ncmr`, { headers: getHeaders() });
+            const data = await res.json();
+            
+            if ($.fn.DataTable.isDataTable('#ncmrTable')) $('#ncmrTable').DataTable().destroy();
+
+            const tbody = document.getElementById('ncmrBody');
+            tbody.innerHTML = data.map(r => {
+                let badgeClass = 'status-pending';
+                if(r.狀態 === '已結案') badgeClass = 'status-closed';
+                if(r.狀態 === '轉CAPA') badgeClass = 'status-capa';
+                
+                return `
+                    <tr>
+                        <td>${r.識別碼}</td>
+                        <td>${r.日期}</td>
+                        <td><span class="badge bg-secondary">${r.來源}</span> ${r.來源單號 || ''}</td>
+                        <td>${r.廠商 || '-'}</td>
+                        <td>${r.材質 || '-'}</td>
+                        <td>${r.產品資訊 || '-'}</td>
+                        <td>${r.不良描述 || '-'}</td>
+                        <td>${r.判定結果 || '-'}</td>
+                        <td><span class="status-badge ${badgeClass}">${r.狀態}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="openEditModal(${JSON.stringify(r).replace(/"/g, '&quot;')})">編輯</button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteNCMR(${r.識別碼})">刪除</button>
+                            <button class="btn btn-sm btn-outline-success" onclick="openDisposeModal(${r.識別碼}, '${r.判定結果||''}', '${r.狀態}')">處置</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            $('#ncmrTable').DataTable({ 
+                order: [[0, 'desc']],
+                language: { url: "https://cdn.datatables.net/plug-ins/1.13.6/i18n/zh-HANT.json" }
+            });
+        }
+
+        function openAddModal() {
+            document.getElementById('ncmrForm').reset();
+            document.getElementById('ncmrId').value = '';
+            document.getElementById('modalTitle').innerText = '新增異常單';
+            document.getElementById('n_date').value = new Date().toISOString().split('T')[0];
+            const modal = new bootstrap.Modal(document.getElementById('ncmrModal'));
+            modal.show();
+        }
+
+        function openEditModal(data) {
+            document.getElementById('ncmrForm').reset();
+            document.getElementById('ncmrId').value = data.識別碼;
+            document.getElementById('modalTitle').innerText = '編輯異常單 #' + data.識別碼;
+            
+            document.getElementById('n_date').value = data.日期;
+            document.getElementById('n_source').value = data.來源;
+            document.getElementById('n_source_id').value = data.來源單號;
+            document.getElementById('n_vendor').value = data.廠商 || '';
+            document.getElementById('n_material').value = data.材質 || '';
+            document.getElementById('n_product_info').value = data.產品資訊;
+            document.getElementById('n_batch').value = data.批號;
+            document.getElementById('n_desc').value = data.不良描述;
+            document.getElementById('n_qty').value = data.不合格數量;
+            document.getElementById('n_inspector').value = data.發現人員姓名;
+            document.getElementById('n_result').value = data.判定結果;
+
+            const modal = new bootstrap.Modal(document.getElementById('ncmrModal'));
+            modal.show();
+        }
+
+        async function fetchSourceInfo() {
+            const type = document.getElementById('n_source').value;
+            const id = document.getElementById('n_source_id').value;
+            if(!id) return;
+
+            const res = await fetch(`${API}/ncmr/source_info?type=${type}&id=${id}`, { headers: getHeaders() });
+            const info = await res.json();
+            
+            if(info.產品資訊) document.getElementById('n_product_info').value = info.產品資訊;
+            if(info.批號) document.getElementById('n_batch').value = info.批號;
+            if(info.廠商) document.getElementById('n_vendor').value = info.廠商;
+            if(info.材質) document.getElementById('n_material').value = info.材質;
+        }
+
+        function toggleSourceInput() {
+            const source = document.getElementById('n_source').value;
+            // 可以在這裡做一些UI連動，例如客訴就不需要來源單號
+        }
+
+        async function saveNCMR() {
+            const id = document.getElementById('ncmrId').value;
+            const payload = {
+                "日期": document.getElementById('n_date').value,
+                "來源": document.getElementById('n_source').value,
+                "來源單號": document.getElementById('n_source_id').value,
+                "產品資訊": document.getElementById('n_product_info').value,
+                "廠商": document.getElementById('n_vendor').value,
+                "材質": document.getElementById('n_material').value,
+                "批號": document.getElementById('n_batch').value,
+                "不良描述": document.getElementById('n_desc').value,
+                "不合格數量": document.getElementById('n_qty').value,
+                "發現人員姓名": document.getElementById('n_inspector').value,
+                "判定結果": document.getElementById('n_result').value
+            };
+
+            let url = `${API}/ncmr/add`;
+            if (id) {
+                url = `${API}/ncmr/update`;
+                payload["識別碼"] = id;
+            }
+
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify(payload)
+            });
+
+            if(res.ok) {
+                alert('儲存成功');
+                location.reload();
+            } else {
+                const err = await res.json();
+                alert(err.error || '失敗');
+            }
+        }
+
+        async function deleteNCMR(id) {
+            if(!confirm(`確定要刪除異常單 #${id} 嗎？此動作無法復原。`)) return;
+
+            const res = await fetch(`${API}/ncmr/delete`, {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify({ id: id })
+            });
+
+            if(res.ok) {
+                alert('刪除成功');
+                location.reload();
+            } else {
+                const err = await res.json();
+                alert(err.error || '刪除失敗');
+            }
+        }
+
+        function openDisposeModal(id, result, status) {
+            document.getElementById('d_id').value = id;
+            document.getElementById('d_result').value = result || '特採';
+            document.getElementById('d_status').value = status;
+            new bootstrap.Modal(document.getElementById('dispositionModal')).show();
+        }
+
+        async function saveDisposition() {
+            const id = document.getElementById('d_id').value;
+            const res = await fetch(`${API}/ncmr/update`, {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify({
+                    "識別碼": id,
+                    "判定結果": document.getElementById('d_result').value,
+                    "狀態": document.getElementById('d_status').value
+                })
+            });
+            if(res.ok) { alert('更新成功'); location.reload(); }
+        }
+
+        async function createCAPA() {
+            const id = document.getElementById('d_id').value;
+            if(!confirm('確定要針對此異常單開立 8D 矯正措施嗎？')) return;
+
+            const res = await fetch(`${API}/capa/create`, {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify({ "ncmr_id": id })
+            });
+            
+            if(res.ok) {
+                alert('已成功建立 CAPA 單，請前往矯正措施頁面進行分析。');
+                location.href = 'capa.html';
+            } else {
+                const err = await res.json();
+                alert(err.error || '建立失敗');
+            }
+        }
+
+        async function createRework() {
+            const id = document.getElementById('d_id').value;
+            if(!confirm('確定要針對此異常單開立重工申請嗎？')) return;
+
+            // 獲取當前NCMR的單號資訊
+            let ncmrNo = '';
+            
+            // 從表格中獲取單號
+            const allRows = document.querySelectorAll('#ncmrTable tbody tr');
+            for (let row of allRows) {
+                const rowId = row.querySelector('td')?.textContent;
+                if (rowId && rowId.includes(String(id))) {
+                    ncmrNo = rowId;
+                    break;
+                }
+            }
+            
+            console.log('轉重工申請，ID:', id, '單號:', ncmrNo);
+            
+            // 導向重工管理頁面，並傳遞NCMR ID和單號
+            const params = new URLSearchParams({
+                ncmr_id: id,
+                ncmr_no: ncmrNo.trim()
+            });
+            
+            const reworkUrl = `rework.html?${params.toString()}`;
+            console.log('開啟URL:', reworkUrl);
+            
+            window.open(reworkUrl, '_blank');
+        }
+    </script>
+</body>
+</html>
