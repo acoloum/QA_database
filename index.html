@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -31,7 +32,7 @@
             border: none;
             background: rgba(255, 255, 255, 0.9);
             backdrop-filter: blur(10px);
-            box-shadow: 0 20px 0px rgba(0,0,0,0.05);
+            box-shadow: 0 20px 0px rgba(0, 0, 0, 0.05);
             height: 100%;
             padding: 20px;
         }
@@ -39,7 +40,7 @@
         .nav-card:hover {
             transform: translateY(-20px) scale(1.05);
             background: #ffffff;
-            box-shadow: 0 30px 0px rgba(0,0,0,0.1);
+            box-shadow: 0 30px 0px rgba(0, 0, 0, 0.1);
         }
 
         /* 登入表單樣式 */
@@ -48,7 +49,7 @@
             backdrop-filter: blur(10px);
             border-radius: 20px;
             padding: 40px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
             max-width: 400px;
             margin: 0 auto;
         }
@@ -106,12 +107,30 @@
         }
 
         /* 色彩方案 */
-        .bg-shipping { background: #ff9a9e; color: white; border: 5px solid #fff; }
-        .bg-patrol { background: #a18cd1; color: white; border: 5px solid #fff; }
+        .bg-shipping {
+            background: #ff9a9e;
+            color: white;
+            border: 5px solid #fff;
+        }
+
+        .bg-patrol {
+            background: #a18cd1;
+            color: white;
+            border: 5px solid #fff;
+        }
 
         @keyframes bubble-float {
-            0%, 100% { border-radius: 50% 20% 50% 20%; transform: translateY(0); }
-            50% { border-radius: 20% 50% 20% 50%; transform: translateY(-15px); }
+
+            0%,
+            100% {
+                border-radius: 50% 20% 50% 20%;
+                transform: translateY(0);
+            }
+
+            50% {
+                border-radius: 20% 50% 20% 50%;
+                transform: translateY(-15px);
+            }
         }
 
         .card-title {
@@ -138,18 +157,21 @@
             opacity: 0;
             transition: 0.3s;
         }
+
         .nav-card:hover .card-body::after {
             opacity: 1;
             transform: scale(1.2);
         }
 
-        .hidden { display: none !important; }
+        .hidden {
+            display: none !important;
+        }
 
         .logout-btn {
             position: fixed;
             top: 20px;
             right: 20px;
-            background: rgba(255,255,255,0.9);
+            background: rgba(255, 255, 255, 0.9);
             border: none;
             border-radius: 50%;
             width: 50px;
@@ -160,7 +182,7 @@
             font-size: 1.2rem;
             color: #6a11cb;
             cursor: pointer;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
             transition: all 0.3s;
         }
 
@@ -170,6 +192,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 登入頁面 -->
     <div id="loginPage" class="container">
@@ -206,7 +229,8 @@
             <div class="col-md-5 col-lg-4" onclick="location.href='shipping.html'">
                 <div class="card nav-card">
                     <div class="icon-bubble bg-shipping">
-                        <i class="fa-solid fa-gift"></i> </div>
+                        <i class="fa-solid fa-gift"></i>
+                    </div>
                     <div class="card-body">
                         <h3 class="card-title">出貨檢驗</h3>
                         <p class="description">把最棒的產品交給客戶吧！</p>
@@ -217,7 +241,8 @@
             <div class="col-md-5 col-lg-4" onclick="location.href='patrol.html'">
                 <div class="card nav-card">
                     <div class="icon-bubble bg-patrol">
-                        <i class="fa-solid fa-wand-magic-sparkles"></i> </div>
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </div>
                     <div class="card-body">
                         <h3 class="card-title">現場巡檢</h3>
                         <p class="description">巡視現場，變出完美品質！</p>
@@ -228,7 +253,8 @@
             <div class="col-md-5 col-lg-4" onclick="location.href='ncmr.html'">
                 <div class="card nav-card">
                     <div class="icon-bubble" style="background: #ff9a9e; color: white; border: 5px solid #fff;">
-                        <i class="fa-solid fa-triangle-exclamation"></i> </div>
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
                     <div class="card-body">
                         <h3 class="card-title">不合格品</h3>
                         <p class="description">異常快走開！攔截不良品</p>
@@ -239,10 +265,23 @@
             <div class="col-md-5 col-lg-4" onclick="location.href='capa.html'">
                 <div class="card nav-card">
                     <div class="icon-bubble" style="background: #a18cd1; color: white; border: 5px solid #fff;">
-                        <i class="fa-solid fa-shield-halved"></i> </div>
+                        <i class="fa-solid fa-shield-halved"></i>
+                    </div>
                     <div class="card-body">
-                        <h3 class="card-title">矯正措施</h3>
+                        <h3 class="card-title">矯正措施與預防體系 (CAPA)</h3>
                         <p class="description">8D 報告，問題不再來</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-5 col-lg-4" onclick="location.href='cara.html'">
+                <div class="card nav-card">
+                    <div class="icon-bubble" style="background: #4facfe; color: white; border: 5px solid #fff;">
+                        <i class="fa-solid fa-clipboard-check"></i>
+                    </div>
+                    <div class="card-body">
+                        <h3 class="card-title">糾正措施報告 (CAR)</h3>
+                        <p class="description">追蹤矯正，確保有效性</p>
                     </div>
                 </div>
             </div>
@@ -250,10 +289,23 @@
             <div class="col-md-5 col-lg-4" onclick="location.href='rework.html'">
                 <div class="card nav-card">
                     <div class="icon-bubble" style="background: #ff9a9e; color: white; border: 5px solid #fff;">
-                        <i class="fa-solid fa-rotate"></i> </div>
+                        <i class="fa-solid fa-rotate"></i>
+                    </div>
                     <div class="card-body">
                         <h3 class="card-title">重工管理</h3>
                         <p class="description">重工追蹤，品質復活</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-5 col-lg-4" onclick="location.href='tolerance.html'">
+                <div class="card nav-card">
+                    <div class="icon-bubble" style="background: #43e97b; color: white; border: 5px solid #fff;">
+                        <i class="fa-solid fa-ruler-combined"></i>
+                    </div>
+                    <div class="card-body">
+                        <h3 class="card-title">廠商公差管理</h3>
+                        <p class="description">公差標準，一目了然</p>
                     </div>
                 </div>
             </div>
@@ -262,14 +314,21 @@
     </div>
 
     <script>
-        const API_BASE = window.location.protocol === 'file:' 
-            ? 'http://localhost:5000' 
-            : `${window.location.protocol}//${window.location.hostname}:${window.location.port || '5000'}`;
+        const API_BASE = window.location.protocol === 'file:'
+            ? 'http://localhost:5000'
+            : `${window.location.protocol}//${(window.location.hostname || 'localhost')}:${window.location.port || '5000'}`;
+        console.log('API_BASE:', API_BASE);
 
-        window.onload = function() {
+        window.onload = function () {
             const token = localStorage.getItem('authToken');
             if (token) {
                 showMainPage();
+            }
+            // 檢查是否有 edit_id 參數，有的話直接跳轉到出貨檢驗頁面
+            const urlParams = new URLSearchParams(window.location.search);
+            const editId = urlParams.get('edit_id');
+            if (editId) {
+                window.location.href = `shipping.html?edit_id=${editId}`;
             }
         };
 
@@ -316,4 +375,5 @@
         }
     </script>
 </body>
+
 </html>

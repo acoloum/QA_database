@@ -115,8 +115,10 @@
     </div>
 
     <script>
-        const API_BASE = `${window.location.protocol}//${window.location.hostname}:${window.location.port || '5000'}`;
- 
+        const API_BASE = window.location.protocol === 'file:'
+            ? 'http://localhost:5000'
+            : `${window.location.protocol}//${(window.location.hostname || 'localhost')}:${window.location.port || '5000'}`;
+        console.log('API_BASE:', API_BASE); 
         document.getElementById('userForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
@@ -137,12 +139,21 @@
                 });
 
                 const data = await res.json();
-                
+
                 if (res.ok) {
                     showMessage('✓ 使用者建立成功！', 'success');
                     document.getElementById('userForm').reset();
                 } else {
-                    showMessage('✗ ' + (data.error || '建立失敗'), 'danger');
+                    // PostgreSQL 錯誤處理
+                    let errorMsg = data.error || '建立失敗';
+                    if (errorMsg.includes('UNIQUE') || errorMsg.includes('已存在')) {
+                        errorMsg = '使用者名稱已存在，請使用其他名稱';
+                    } else if (errorMsg.includes('NOT NULL')) {
+                        errorMsg = '請填寫所有必填欄位';
+                    } else if (errorMsg.includes('connection') || errorMsg.includes('連線')) {
+                        errorMsg = '資料庫連線失敗，請確認 PostgreSQL 服務已啟動';
+                    }
+                    showMessage('✗ ' + errorMsg, 'danger');
                 }
             } catch (err) {
                 showMessage('✗ 連線錯誤：' + err.message, 'danger');

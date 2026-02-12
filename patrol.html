@@ -2,6 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>擠壓巡檢全功能系統 (v2.5 - 分頁版)</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
@@ -71,6 +72,76 @@
             color: white;
             text-decoration: none;
         }
+
+        /* 響應式設計 - 手機和平板適配 */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px !important;
+            }
+            
+            .card {
+                padding: 15px !important;
+            }
+            
+            .btn-group {
+                flex-direction: column;
+                gap: 5px;
+            }
+            
+            .btn-group .btn {
+                width: 100%;
+                margin: 2px 0 !important;
+            }
+            
+            .d-flex.justify-content-between {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .d-flex.justify-content-between.mt-3 {
+                flex-direction: column-reverse;
+            }
+            
+            .d-flex.justify-content-between.mt-3 > div {
+                width: 100%;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .d-flex.justify-content-between.mt-3 > div button {
+                width: 100%;
+                margin: 0 !important;
+            }
+            
+            h3, h4 {
+                font-size: 1.2rem !important;
+            }
+            
+            .modal-dialog {
+                margin: 10px;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 576px) {
+            .back-button {
+                padding: 8px 15px;
+                font-size: 14px;
+            }
+
+            .table {
+                font-size: 12px;
+            }
+
+            .status-badge {
+                font-size: 0.75rem;
+                padding: 3px 6px;
+            }
+        }
     </style>
 </head>
 <body class="container py-4">
@@ -96,19 +167,22 @@
             <div class="col-md-4"><label>擠壓規格</label><input type="text" id="spec" class="form-control"></div>
         </div>
         <div class="table-responsive">
-            <table class="table table-bordered text-center align-middle">
-                <thead class="table-primary text-white">
-                    <tr><th rowspan="3">組別</th><th colspan="6">前段</th><th colspan="6">中段</th><th colspan="6">後段</th></tr>
-                    <tr><th colspan="2">外徑</th><th colspan="2">內徑</th><th colspan="2">厚度</th><th colspan="2">外徑</th><th colspan="2">內徑</th><th colspan="2">厚度</th><th colspan="2">外徑</th><th colspan="2">內徑</th><th colspan="2">厚度</th></tr>
-                    <tr><th>Min</th><th>Max</th><th>Min</th><th>Max</th><th>Min</th><th>Max</th><th>Min</th><th>Max</th><th>Min</th><th>Max</th><th>Min</th><th>Max</th><th>Min</th><th>Max</th><th>Min</th><th>Max</th><th>Min</th><th>Max</th></tr>
+            <table class="table table-bordered text-center align-middle" id="patrolTable">
+                <thead class="table-primary text-white" id="tableHead">
+                    <!-- 表頭由 JavaScript 動態生成 -->
                 </thead>
                 <tbody id="inputBody"></tbody>
             </table>
+            <input type="hidden" id="savedData" value="">
+        </div>
         </div>
         <div class="d-flex justify-content-between mt-3">
             <div>
                 <button class="btn btn-outline-primary" onclick="addNewGroup()"><i class="bi bi-plus-lg"></i> 新增組別</button>
                 <button class="btn btn-outline-danger ms-2" onclick="removeLastGroup()"><i class="bi bi-dash-lg"></i> 刪除最後一組</button>
+                <button class="btn btn-outline-info ms-2" id="toggleInnerDiameterBtn" onclick="toggleInnerDiameter()">
+                    <i class="bi bi-arrows-expand"></i> 展開內徑
+                </button>
             </div>
             <div>
                 <button class="btn btn-secondary me-1" onclick="location.reload()">重設</button>
@@ -225,8 +299,9 @@
 
         window.onload = async () => {
             document.getElementById('date').value = new Date().toISOString().split('T')[0];
+            generateTableHeader(); // 初始化表頭
+            addNewGroup(); // 新增第一組
             await loadOptions();
-            addNewGroup();
             loadHistory();
         };
 
@@ -328,12 +403,12 @@
                 // Rule 8: 連續8點在中心線兩側但都不在1σ内
                 if (i >= 7) {
                     let last8 = data.slice(i-7, i+1);
-                    let above8 = last8.every((v, idx) => {
-                        const side = (v - cl) / Math.abs(v - cl);
-                        const lastSide = idx === 0 ? side : (last8[idx-1] - cl) / Math.abs(last8[idx-1] - cl);
-                        return (side > 0 && v > sigma1_above) || (side < 0 && v < sigma1_below);
-                    });
-                    if (above8) reasons.push("Rule 8: 8點在1σ外且兩側");
+                    let allOutside1Sigma = last8.every(v => v > sigma1_above || v < sigma1_below);
+                    let hasAbove = last8.some(v => v > sigma1_above);
+                    let hasBelow = last8.some(v => v < sigma1_below);
+                    if (allOutside1Sigma && hasAbove && hasBelow) {
+                        reasons.push("Rule 8: 8點在1σ外且兩側");
+                    }
                 }
                 
                 if (reasons.length > 0) { 
@@ -571,21 +646,10 @@
         }
 
         function addNewGroup() {
-            const tbody = document.getElementById('inputBody'); groupCount++;
+            groupCount++;
             const gName = `第${groupCount}組`;
-            let tabIndex = groupCount * 100 + 10;
-            
-            const tr = document.createElement('tr');
-            tr.innerHTML += `<td rowspan="1" class="group-header">${gName}</td>`;
-            
-            ["前段", "中段", "後段"].forEach((pos) => {
-                ["外徑", "內徑", "厚度"].forEach((item) => {
-                    tr.innerHTML += `<td><input type="number" step="0.01" class="form-control form-control-sm d-val" data-g="${gName}" data-i="${item}" data-p="${pos}" data-t="min" tabindex="${tabIndex++}"></td>`;
-                    tr.innerHTML += `<td><input type="number" step="0.01" class="form-control form-control-sm d-val" data-g="${gName}" data-i="${item}" data-p="${pos}" data-t="max" tabindex="${tabIndex++}"></td>`;
-                });
-            });
-            
-            tbody.appendChild(tr);
+            const tbody = document.getElementById('inputBody');
+            createRow(gName, groupCount * 100 + 10, tbody);
         }
 
         function removeLastGroup() {
@@ -650,30 +714,20 @@
             document.getElementById('inputBody').innerHTML = ""; groupCount = 0;
 
             const uniqueG = [...new Set(d.details.map(i => i.group))];
-            let tabIndex = 100 + 10;
 
-            // 根據實際組別創建表格行
+            // 根據實際組別創建表格行 - 使用 createRow 函數
             const tbody = document.getElementById('inputBody');
             uniqueG.forEach(gName => {
                 groupCount++;
-                const tr = document.createElement('tr');
-                tr.innerHTML += `<td rowspan="1" class="group-header">${gName}</td>`;
-                
-                ["前段", "中段", "後段"].forEach((pos) => {
-                    ["外徑", "內徑", "厚度"].forEach((item) => {
-                        tr.innerHTML += `<td><input type="number" step="0.01" class="form-control form-control-sm d-val" data-g="${gName}" data-i="${item}" data-p="${pos}" data-t="min" tabindex="${tabIndex++}"></td><td><input type="number" step="0.01" class="form-control form-control-sm d-val" data-g="${gName}" data-i="${item}" data-p="${pos}" data-t="max" tabindex="${tabIndex++}"></td>`;
-                    });
-                });
-                
-                tbody.appendChild(tr);
+                createRow(gName, groupCount * 100 + 10, tbody);
             });
 
             // 填充數據
             d.details.forEach(i => {
-                const min = document.querySelector(`.d-val[data-g="${i.group}"][data-i="${i.item}"][data-p="${i.pos}"][data-t="min"]`);
-                const max = document.querySelector(`.d-val[data-g="${i.group}"][data-i="${i.item}"][data-p="${i.pos}"][data-t="max"]`);
-                if(min) min.value = i.min;
-                if(max) max.value = i.max;
+                const input = document.querySelector(`.d-val[data-g="${i.group}"][data-i="${i.item}"][data-p="${i.pos}"][data-t="min"]`);
+                if(input) input.value = i.min;
+                const input2 = document.querySelector(`.d-val[data-g="${i.group}"][data-i="${i.item}"][data-p="${i.pos}"][data-t="max"]`);
+                if(input2) input2.value = i.max;
             });
 
             window.scrollTo({top: 0, behavior: 'smooth'});
@@ -718,6 +772,134 @@
         function handleExport() {
             const qs = new URLSearchParams({ s_date: document.getElementById('fSDate').value, e_date: document.getElementById('fEDate').value, m_id: document.getElementById('fMachine').value, op_id: document.getElementById('fOperator').value, mat: document.getElementById('fMat').value, spec: document.getElementById('fSpec').value });
             window.location.href = `${API}/export?${qs.toString()}&token=${authToken}`;
+        }
+
+        let innerDiameterVisible = false;
+
+        // 動態生成表頭
+        function generateTableHeader() {
+            const thead = document.getElementById('tableHead');
+            const itemCount = innerDiameterVisible ? 3 : 2; // 有內徑=3個項目，沒有=2個
+            const colspan = itemCount * 2;
+
+            let html = `
+                <tr><th rowspan="3" class="align-middle" style="width:80px;">組別</th>
+            `;
+
+            ['前段', '中段', '後段'].forEach(pos => {
+                html += `<th colspan="${colspan}">${pos}</th>`;
+            });
+            html += '</tr><tr>';
+
+            ['外徑', '內徑', '厚度'].forEach((item, idx) => {
+                if (item === '內徑' && !innerDiameterVisible) return;
+                html += `<th colspan="2">${item}</th>`;
+            });
+            ['中段', '後段'].forEach(pos => {
+                ['外徑', '內徑', '厚度'].forEach((item, idx) => {
+                    if (item === '內徑' && !innerDiameterVisible) return;
+                    html += `<th colspan="2">${item}</th>`;
+                });
+            });
+            html += '</tr><tr>';
+
+            ['前段', '中段', '後段'].forEach(pos => {
+                ['外徑', '內徑', '厚度'].forEach((item, idx) => {
+                    if (item === '內徑' && !innerDiameterVisible) return;
+                    html += '<th>Min</th><th>Max</th>';
+                });
+            });
+            html += '</tr>';
+
+            thead.innerHTML = html;
+        }
+
+        // 生成表格行
+        function createRow(gName, tabIndex, tbody) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td rowspan="1" class="group-header align-middle" style="width:80px;">${gName}</td>`;
+
+            ['前段', '中段', '後段'].forEach((pos) => {
+                ['外徑', '內徑', '厚度'].forEach((item) => {
+                    if (item === '內徑' && !innerDiameterVisible) return;
+                    tr.innerHTML += `<td><input type="number" step="0.01" class="form-control form-control-sm d-val" data-g="${gName}" data-i="${item}" data-p="${pos}" data-t="min" tabindex="${tabIndex++}"></td>`;
+                    tr.innerHTML += `<td><input type="number" step="0.01" class="form-control form-control-sm d-val" data-g="${gName}" data-i="${item}" data-p="${pos}" data-t="max" tabindex="${tabIndex++}"></td>`;
+                });
+            });
+
+            tbody.appendChild(tr);
+        }
+
+        // 重新渲染表格
+        function renderTable() {
+            generateTableHeader();
+
+            const tbody = document.getElementById('inputBody');
+            tbody.innerHTML = '';
+
+            // 重建所有組別
+            const existingGroups = new Set();
+            document.querySelectorAll('.d-val').forEach(input => {
+                existingGroups.add(input.dataset.g);
+            });
+
+            if (existingGroups.size > 0) {
+                // 恢復現有組別
+                const groups = Array.from(existingGroups).sort((a, b) => {
+                    const numA = parseInt(a.replace('第', '').replace('組', '')) || 0;
+                    const numB = parseInt(b.replace('第', '').replace('組', '')) || 0;
+                    return numA - numB;
+                });
+                groups.forEach((gName, idx) => {
+                    groupCount++;
+                    createRow(gName, groupCount * 100 + 10, tbody);
+                });
+            } else {
+                // 新增預設組別
+                createRow('第1組', 110, tbody);
+                groupCount = 1;
+            }
+        }
+
+        function toggleInnerDiameter() {
+            // 先儲存當前已輸入的數值
+            const savedData = [];
+            document.querySelectorAll('.d-val').forEach(input => {
+                if (input.value) {
+                    savedData.push({
+                        g: input.dataset.g,
+                        i: input.dataset.i,
+                        p: input.dataset.p,
+                        t: input.dataset.t,
+                        val: input.value
+                    });
+                }
+            });
+            document.getElementById('savedData').value = JSON.stringify(savedData);
+
+            innerDiameterVisible = !innerDiameterVisible;
+
+            const btn = document.getElementById('toggleInnerDiameterBtn');
+
+            if (innerDiameterVisible) {
+                btn.innerHTML = '<i class="bi bi-arrows-collapse"></i> 隱藏內徑';
+                btn.classList.remove('btn-outline-info');
+                btn.classList.add('btn-info');
+            } else {
+                btn.innerHTML = '<i class="bi bi-arrows-expand"></i> 展開內徑';
+                btn.classList.remove('btn-info');
+                btn.classList.add('btn-outline-info');
+            }
+
+            // 重新渲染表格
+            renderTable();
+
+            // 恢復已輸入的數值
+            const data = JSON.parse(document.getElementById('savedData').value || '[]');
+            data.forEach(d => {
+                const input = document.querySelector(`.d-val[data-g="${d.g}"][data-i="${d.i}"][data-p="${d.p}"][data-t="${d.t}"]`);
+                if (input) input.value = d.val;
+            });
         }
     </script>
 </body>

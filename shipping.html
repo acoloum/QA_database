@@ -259,6 +259,91 @@
         .history-table th { background: #7f8c8d; color: white; padding: 10px; font-size: 18px; }
         .history-table td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 14px; word-wrap: break-word; }
         .history-table tr:hover { background-color: #f1f1f1; }
+
+        /* 公差警示樣式 */
+        .out-of-tolerance {
+            border: 2px solid #ef4444 !important;
+            background-color: #fef2f2 !important;
+            animation: pulse-red 1.5s infinite;
+        }
+
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2); }
+        }
+
+        .tolerance-info {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+            border: 2px solid #3b82f6;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .tolerance-info.show {
+            display: block;
+        }
+
+        .tolerance-info h4 {
+            margin: 0 0 8px 0;
+            color: #1e40af;
+            font-size: 14px;
+        }
+
+        .tolerance-limits {
+            display: flex;
+            gap: 20px;
+            font-size: 13px;
+            color: #1e40af;
+            flex-wrap: wrap;
+        }
+
+        .tolerance-limits span {
+            font-weight: 600;
+        }
+
+        /* 公差統計面板 */
+        .tolerance-stats {
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            border: 2px solid #22c55e;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin: 15px 0;
+        }
+
+        .tolerance-stats h4 {
+            margin: 0 0 10px 0;
+            color: #166534;
+            font-size: 14px;
+        }
+
+        .tolerance-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+        }
+
+        .tolerance-stat-item {
+            background: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            text-align: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .tolerance-stat-label {
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .tolerance-stat-value {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .tolerance-stat-value.pass { color: #22c55e; }
+        .tolerance-stat-value.fail { color: #ef4444; }
     </style>
 </head>
 <body>
@@ -275,7 +360,15 @@
         <div class="info-item"><label>材質</label><input type="text" id="material" tabindex="5"></div>
         <div class="info-item"><label>訂單</label><input type="text" id="order_no" tabindex="6"></div>
     </div>
-    
+
+    <!-- 公差資訊顯示區域 -->
+    <div id="toleranceInfo" class="tolerance-info">
+        <h4>📐 公差標準資訊</h4>
+        <div class="tolerance-limits" id="toleranceLimits">
+            <span>載入中...</span>
+        </div>
+    </div>
+
     <div style="overflow-x: auto;">
         <table class="v-table">
             <thead><tr><th>項目 \ 組別</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th></tr></thead>
@@ -376,6 +469,240 @@
         }
         return res;
     }
+
+    // ==========================================
+    // 公差驗證相關函式
+    // ==========================================
+
+    let currentTolerance = null;
+    let toleranceCache = {};
+    let vendorNameToIdMap = {};
+    let vendorIdToNameMap = {};
+
+    // 查詢公差標準
+    async function checkToleranceOnChange() {
+        const vendor = document.getElementById('vendor');
+        const material = document.getElementById('material').value.trim();
+        const spec = document.getElementById('spec').value.trim();
+
+        if (!material) {
+            hideToleranceInfo();
+            return;
+        }
+
+        const vendorId = vendor.value ?
+            (vendor.options[vendor.selectedIndex].dataset.id || '') : '';
+
+        const cacheKey = `${vendorId}_${material}_${spec}`;
+
+        // 檢查快取
+        if (toleranceCache[cacheKey]) {
+            currentTolerance = toleranceCache[cacheKey];
+            showToleranceInfo(currentTolerance);
+            validateAllInputs();
+            return;
+        }
+
+        try {
+            console.log(`查詢公差: vendor_id=${vendorId}, material=${material}, spec=${spec}`);
+            const res = await fetchWithAuth(
+                `${API_BASE}/api/tolerance/check?vendor_id=${vendorId}&material=${encodeURIComponent(material)}&spec=${encodeURIComponent(spec)}`
+            );
+            const result = await res.json();
+            console.log('公差查詢結果:', result);
+
+            if (result.success && result.found) {
+                currentTolerance = result;
+                toleranceCache[cacheKey] = result;
+                showToleranceInfo(result);
+                validateAllInputs();
+            } else {
+                console.log('未找到公差標準:', result.message || '');
+                currentTolerance = null;
+                hideToleranceInfo();
+            }
+        } catch (e) {
+            console.error('查詢公差失敗:', e);
+        }
+    }
+
+    // 顯示公差資訊
+    function showToleranceInfo(tolerance) {
+        const infoDiv = document.getElementById('toleranceInfo');
+        const limitsDiv = document.getElementById('toleranceLimits');
+        const spec = document.getElementById('spec').value;
+
+        let html = '';
+        tolerance.tolerances.forEach(t => {
+            if (t.尺寸下限 !== null && t.尺寸上限 !== null) {
+                html += `<span>${t.項目}: ${t.尺寸下限} ~ ${t.尺寸上限} ${t.單位}</span>`;
+            } else if (t.公差下限 !== null && t.公差上限 !== null) {
+                let stdValue = t.標準值;
+                if (stdValue === null && spec) {
+                    stdValue = parseStandardValueFromSpec(t.項目, spec);
+                }
+
+                if (stdValue !== null) {
+                    const lsl = stdValue + t.公差下限;
+                    const usl = stdValue + t.公差上限;
+                    html += `<span>${t.項目}: ${lsl.toFixed(2)} ~ ${usl.toFixed(2)} ${t.單位} (標準值 ${stdValue})</span>`;
+                } else {
+                    if (t.公差下限 === 0) {
+                        html += `<span>${t.項目}: +${t.公差上限}/-${t.公差下限} ${t.單位} (請輸入規格以顯示完整範圍)</span>`;
+                    } else {
+                        html += `<span>${t.項目}: ±${Math.max(t.公差下限, t.公差上限)} ${t.單位} (請輸入規格以顯示完整範圍)</span>`;
+                    }
+                }
+            }
+        });
+
+        limitsDiv.innerHTML = html || '<span>無公差資料</span>';
+        infoDiv.classList.add('show');
+    }
+
+    // 隱藏公差資訊
+    function hideToleranceInfo() {
+        document.getElementById('toleranceInfo').classList.remove('show');
+    }
+
+    // 從規格欄位解析標準值
+    // 支援格式：
+    // - 外徑*厚度*長度 (如 31.9*2.2*667) - 差值大約是外徑 - 厚度
+    // - 外徑*內徑*長度 (如 31.9*26.3*267) - 差值大約是 2*厚度
+    function parseStandardValueFromSpec(measureItem, spec) {
+        if (!spec) return null;
+
+        const parts = spec.replace('×', '*').replace('x', '*').split('*');
+        if (parts.length < 3) return null;
+
+        const val1 = parseFloat(parts[0].trim()); // 第1部分
+        const val2 = parseFloat(parts[1].trim()); // 第2部分
+
+        if (isNaN(val1) || isNaN(val2)) return null;
+
+        // 計算差值
+        const diff = val1 - val2;
+
+        // 判斷格式：
+        // - 差值接近 val1 (>= val1 * 0.5) → 外徑*厚度*長度
+        // - 差值接近 2*厚度 (diff < val1 * 0.5) → 外徑*內徑*長度
+        const isOuterAndThickness = diff >= val1 * 0.5;
+
+        // 外徑
+        if (measureItem === '外徑') {
+            return val1;
+        }
+
+        // 內徑
+        if (measureItem === '內徑') {
+            if (isOuterAndThickness) {
+                // 外徑*厚度*長度格式，內徑 = 外徑 - 2*厚度
+                return val1 - 2 * val2;
+            } else {
+                // 外徑*內徑*長度格式
+                return val2;
+            }
+        }
+
+        // 厚度
+        if (measureItem === '厚度') {
+            if (isOuterAndThickness) {
+                // 外徑*厚度*長度格式
+                return val2;
+            } else {
+                // 外徑*內徑*長度格式，厚度 = (外徑 - 內徑) / 2
+                return diff / 2;
+            }
+        }
+
+        // 長度（最後一個部分）
+        if (measureItem === '長度') {
+            const lastIdx = parts.length - 1;
+            const val = parseFloat(parts[lastIdx].trim());
+            return isNaN(val) ? null : val;
+        }
+
+        return null;
+    }
+
+    // 驗證單一輸入值
+    function validateInput(input) {
+        if (!currentTolerance || !currentTolerance.tolerances) {
+            return;
+        }
+
+        const dataKey = input.getAttribute('data-key');
+        if (!dataKey) return;
+
+        let measureItem = '';
+        let groupNum = '';
+        let isMinMax = false;
+
+        for (const item of items) {
+            if (item.type === 'minmax') {
+                const match = dataKey.match(new RegExp(`^(${item.key})(\\d+)-(min|max)$`));
+                if (match) {
+                    measureItem = item.key;
+                    groupNum = match[2];
+                    isMinMax = true;
+                    break;
+                }
+            } else {
+                if (dataKey.startsWith(item.key)) {
+                    measureItem = item.key;
+                    break;
+                }
+            }
+        }
+
+        if (!measureItem) return;
+
+        const tol = currentTolerance.tolerances.find(t => t.項目 === measureItem);
+        if (!tol) return;
+
+        let lsl, usl;
+
+        if (tol.尺寸下限 !== null && tol.尺寸上限 !== null) {
+            lsl = tol.尺寸下限;
+            usl = tol.尺寸上限;
+        } else if (tol.公差下限 !== null && tol.公差上限 !== null) {
+            let stdValue = tol.標準值;
+            if (stdValue === null) {
+                const spec = document.getElementById('spec').value;
+                stdValue = parseStandardValueFromSpec(measureItem, spec);
+            }
+
+            if (stdValue !== null) {
+                lsl = stdValue + tol.公差下限;
+                usl = stdValue + tol.公差上限;
+            } else {
+                return;
+            }
+        } else {
+            return;
+        }
+
+        const val = parseFloat(input.value);
+        if (isNaN(val)) return;
+
+        if (val < lsl || val > usl) {
+            input.classList.add('out-of-tolerance');
+        } else {
+            input.classList.remove('out-of-tolerance');
+        }
+    }
+
+    // 驗證所有輸入
+    function validateAllInputs() {
+        document.querySelectorAll('.num-input').forEach(input => {
+            if (input.value) validateInput(input);
+        });
+    }
+
+    // ==========================================
+    // 公差驗證相關函式結束
+    // ==========================================
+
     const items = [
         { label: "外徑", key: "外徑", type: "minmax" },
         { label: "內徑", key: "內徑", type: "minmax" },
@@ -395,11 +722,11 @@
                 const baseTab = (g * 100) + (rowIndex * 2);
                 if (item.type === "minmax") {
                     row += `<td><div class="minmax-container">
-                        <input type="number" step="0.001" class="minmax-input num-input" data-key="${item.key}${g}-min" placeholder="Min" tabindex="${baseTab}">
-                        <input type="number" step="0.001" class="minmax-input num-input" data-key="${item.key}${g}-max" placeholder="Max" tabindex="${baseTab+1}">
+                        <input type="number" step="0.001" class="minmax-input num-input" data-key="${item.key}${g}-min" placeholder="Min" tabindex="${baseTab}" onblur="validateInput(this)">
+                        <input type="number" step="0.001" class="minmax-input num-input" data-key="${item.key}${g}-max" placeholder="Max" tabindex="${baseTab+1}" onblur="validateInput(this)">
                     </div></td>`;
                 } else {
-                    row += `<td><input type="number" step="0.001" class="num-input" data-key="${item.key}${g}" tabindex="${baseTab}"></td>`;
+                    row += `<td><input type="number" step="0.001" class="num-input" data-key="${item.key}${g}" tabindex="${baseTab}" onblur="validateInput(this)"></td>`;
                 }
             }
             vBody.innerHTML += row + "</tr>";
@@ -727,71 +1054,233 @@
 
     window.onload = async () => {
         const [ins, ven] = await Promise.all([fetchWithAuth(`${API_BASE}/api/inspectors`).then(r=>r.json()), fetchWithAuth(`${API_BASE}/api/vendors`).then(r=>r.json())]);
-        const fill = (id, list) => document.getElementById(id).innerHTML = '<option value="">--請選擇--</option>' + list.map(x=>`<option value="${x.name}">${x.name}</option>`).join('');
+
+        // 創建映射（從 API 回傳的 ven 資料）
+        vendorNameToIdMap = {};
+        vendorIdToNameMap = {};
+        ven.forEach(v => {
+            vendorNameToIdMap[v.name] = v.id;
+            vendorIdToNameMap[String(v.id)] = v.name;
+        });
+        console.log('[Init] 廠商名稱→ID:', vendorNameToIdMap);
+        console.log('[Init] 廠商ID→名稱:', vendorIdToNameMap);
+
+        const fill = (id, list) => {
+            const select = document.getElementById(id);
+            select.innerHTML = '<option value="">--請選擇--</option>' + list.map(x=>`<option value="${x.name}" data-id="${x.id}">${x.name}</option>`).join('');
+        };
         fill('inspector', ins); fill('vendor', ven); refreshAll();
+
+        // 設置公差檢查事件
+        document.getElementById('material').addEventListener('change', checkToleranceOnChange);
+        document.getElementById('spec').addEventListener('change', checkToleranceOnChange);
     };
 
     function refreshAll() { fetchHistory(1); updateCharts(); }
+
+    // 公差快取（用於歷史記錄）
+    const historyToleranceCache = {};
 
     async function fetchHistory(page) {
         const v = document.getElementById('f-vendor').value, m = document.getElementById('f-material').value;
         const s = document.getElementById('f-spec').value, sd = document.getElementById('f-start').value, ed = document.getElementById('f-end').value;
         const res = await fetchWithAuth(`${API_BASE}/api/data?page=${page}&vendor=${v}&material=${m}&spec=${s}&start_date=${sd}&end_date=${ed}`);
         const result = await res.json();
-        
+
+        // 收集所有唯一的材質+規格+廠商組合
+        const uniqueMaterialSpecs = new Set();
+        result.data.forEach(item => {
+            if (item.材質) {
+                const spec = item.檢驗規格 || '';
+                const vendor = item.廠商中文名稱 || '';
+                uniqueMaterialSpecs.add(`${item.材質}|||${spec}|||${vendor}`);
+            }
+        });
+
+        // 為每種材質+規格+廠商組合查詢公差（使用快取）
+        const materialTolerances = {};
+        for (const materialSpec of uniqueMaterialSpecs) {
+            const [material, spec, vendorName] = materialSpec.split('|||');
+            const vendorId = vendorNameToIdMap[vendorName] || '';
+            const cacheKey = `${material}|||${spec}|||${vendorId}`;
+
+            if (historyToleranceCache[cacheKey]) {
+                materialTolerances[cacheKey] = historyToleranceCache[cacheKey];
+                continue;
+            }
+
+            try {
+                const tolUrl = `${API_BASE}/api/tolerance/check?material=${encodeURIComponent(material)}&spec=${encodeURIComponent(spec)}&vendor_id=${vendorId}`;
+                const tolRes = await fetchWithAuth(tolUrl);
+                const tolResult = await tolRes.json();
+
+                if (tolResult.success && tolResult.found) {
+                    const toleranceStd = {};
+
+                    for (let idx = 0; idx < tolResult.tolerances.length; idx++) {
+                        const t = tolResult.tolerances[idx];
+                        const hasSizeLimits = t.尺寸下限 !== null && t.尺寸下限 !== undefined &&
+                                              t.尺寸上限 !== null && t.尺寸上限 !== undefined;
+                        let hasStdAndTolerance = t.標準值 !== null && t.標準值 !== undefined &&
+                                                 t.公差下限 !== null && t.公差下限 !== undefined &&
+                                                 t.公差上限 !== null && t.公差上限 !== undefined;
+
+                        let stdValue = t.標準值;
+                        if (stdValue === null && t.公差下限 !== null && t.公差上限 !== null) {
+                            stdValue = parseStandardValueFromSpec(t.項目, spec);
+                            if (stdValue !== null) {
+                                hasStdAndTolerance = true;
+                            }
+                        }
+
+                        if (hasSizeLimits) {
+                            toleranceStd[t.項目] = { lsl: t.尺寸下限, usl: t.尺寸上限 };
+                        } else if (hasStdAndTolerance) {
+                            const lsl = stdValue + t.公差下限;
+                            const usl = stdValue + t.公差上限;
+                            toleranceStd[t.項目] = { lsl, usl };
+                        }
+                    }
+
+                    materialTolerances[cacheKey] = toleranceStd;
+                    historyToleranceCache[cacheKey] = toleranceStd;
+                }
+            } catch (err) {
+                console.error('查詢公差失敗:', err);
+            }
+        }
+
         let html = `<table class="history-table">
             <thead>
                 <tr>
-                    <th style="width: 10%;">ID</th>
-                    <th style="width: 15%;">日期</th>
-                    <th style="width: 20%;">廠商</th>
-                    <th style="width: 15%;">材質</th>
-                    <th style="width: 25%;">檢驗規格</th>
-                    <th style="width: 15%;">操作</th>
+                    <th style="width: 8%;">ID</th>
+                    <th style="width: 12%;">日期</th>
+                    <th style="width: 15%;">廠商</th>
+                    <th style="width: 12%;">材質</th>
+                    <th style="width: 18%;">檢驗規格</th>
+                    <th style="width: 10%;">狀態</th>
+                    <th style="width: 25%;">操作</th>
                 </tr>
             </thead>
             <tbody>`;
-            
+
         result.data.forEach(item => {
-            html += `<tr>
+            // 獲取該筆記錄的公差標準
+            console.log(`[History] ID=${item.識別碼}, 廠商中文名稱='${item.廠商中文名稱}' (typeof: ${typeof item.廠商中文名稱})`);
+            let vendorId = '';
+
+            // 如果廠商名稱是數字（ID），從映射找到實際名稱
+            if (item.廠商中文名稱 && !isNaN(item.廠商中文名稱)) {
+                vendorId = String(item.廠商中文名稱);
+                console.log(`[History] ID=${item.識別碼}: 數字ID -> vendorId=${vendorId}`);
+            } else {
+                vendorId = vendorNameToIdMap[item.廠商中文名稱] || '';
+                console.log(`[History] ID=${item.識別碼}: 名稱='${item.廠商中文名稱}' -> vendorId=${vendorId}`);
+            }
+
+            const materialSpecKey = item.材質 ? `${item.材質}|||${item.檢驗規格 || ''}|||${vendorId}` : '';
+            const toleranceStd = materialSpecKey ? materialTolerances[materialSpecKey] : null;
+
+            // 檢查是否有超差
+            let hasViolation = false;
+            if (toleranceStd) {
+                items.forEach(it => {
+                    if (hasViolation) return;
+                    const tol = toleranceStd[it.key];
+                    if (!tol) return;
+
+                    if (it.type === 'minmax') {
+                        for (let g = 1; g <= 5; g++) {
+                            const minVal = parseFloat(item[`${it.key}${g}-min`]);
+                            const maxVal = parseFloat(item[`${it.key}${g}-max`]);
+
+                            if (!isNaN(minVal) && (minVal < tol.lsl || minVal > tol.usl)) {
+                                hasViolation = true;
+                                return;
+                            }
+                            if (!isNaN(maxVal) && (maxVal < tol.lsl || maxVal > tol.usl)) {
+                                hasViolation = true;
+                                return;
+                            }
+                        }
+                    } else {
+                        for (let g = 1; g <= 5; g++) {
+                            const val = parseFloat(item[`${it.key}${g}`]);
+                            if (!isNaN(val) && (val < tol.lsl || val > tol.usl)) {
+                                hasViolation = true;
+                                return;
+                            }
+                        }
+                    }
+                });
+            }
+
+            const statusBadge = hasViolation
+                ? '<span style="background:#ef4444;color:white;padding:3px 8px;border-radius:4px;font-size:12px;">⚠️ 超差</span>'
+                : (toleranceStd ? '<span style="background:#22c55e;color:white;padding:3px 8px;border-radius:4px;font-size:12px;">✓ 合格</span>' : '<span style="background:#6b7280;color:white;padding:3px 8px;border-radius:4px;font-size:12px;">-</span>');
+
+            html += `<tr style="${hasViolation ? 'background:#fef2f2;' : ''}">
                 <td>${item.識別碼}</td>
                 <td>${item.檢驗日期}</td>
-                <td>${item.廠商中文名稱}</td>
+                <td>${item.廠商中文名稱 || ""}</td>
                 <td>${item.材質 || ""}</td>
-                <td style="text-align: center;">${item.檢驗規格 || ""}</td> <td>
+                <td style="text-align: center;">${item.檢驗規格 || ""}</td>
+                <td style="text-align: center;">${statusBadge}</td>
+                <td>
                     <button onclick='startEdit(${JSON.stringify(item)})'>編輯</button>
                     <button onclick="deleteData(${item.識別碼})" style="background:#e74c3c; color:white; border:none; border-radius:4px;">刪除</button>
                 </td>
             </tr>`;
         });
+
         document.getElementById('data-list').innerHTML = html + '</tbody></table>';
         document.getElementById('page-nav').innerHTML = `<button onclick="fetchHistory(${page-1})" ${page==1?'disabled':''}>上頁</button> 第 ${page} / ${result.total_pages} 頁 <button onclick="fetchHistory(${page+1})" ${page==result.total_pages?'disabled':''}>下頁</button>`;
     }
 
-    async function handleSave() {
-        const payload = { 識別碼: currentEditId, 檢驗日期: document.getElementById('date').value, 檢驗人員姓名: document.getElementById('inspector').value, 廠商中文名稱: document.getElementById('vendor').value, 檢驗規格: document.getElementById('spec').value, 材質: document.getElementById('material').value, 訂單號碼: document.getElementById('order_no').value };
-        document.querySelectorAll('.num-input').forEach(i => payload[i.getAttribute('data-key')] = i.value || null);
-        const url = currentEditId ? `${API_BASE}/api/update` : `${API_BASE}/api/add`;
-        const res = await fetchWithAuth(url, { method: 'POST', body: JSON.stringify(payload) });
-        if (!res.ok) {
-            const error = await res.json();
-            alert(error.error || "儲存失敗");
-            return;
-        }
-        alert("儲存成功"); resetForm(); refreshAll();
-    }
-
     function startEdit(item) {
+        console.log(`[StartEdit] 收到 item.廠商中文名稱='${item.廠商中文名稱}' (typeof: ${typeof item.廠商中文名稱})`);
+
         currentEditId = item.識別碼;
         document.getElementById('date').value = item.檢驗日期;
-        document.getElementById('inspector').value = (item.檢驗人員姓名 || "").trim();
-        document.getElementById('vendor').value = (item.廠商中文名稱 || "").trim();
+
+        // 正確設定廠商（處理廠商名稱欄位可能是 ID 或 名稱的情況）
+        const vendorSelect = document.getElementById('vendor');
+        let vendorName = item.廠商中文名稱;
+        let vendorId = '';
+
+        // 如果是數字（看起來像 ID），從反向映射找到名稱
+        if (vendorName && !isNaN(vendorName)) {
+            vendorId = String(vendorName);
+            vendorName = vendorIdToNameMap[vendorId] || '';
+            console.log(`[StartEdit] ID=${vendorName ? vendorName : 'NOT FOUND'}`);
+        } else {
+            vendorName = (vendorName || "").trim();
+            vendorId = vendorNameToIdMap[vendorName] || '';
+            console.log(`[StartEdit] 名稱='${vendorName}' -> vendorId=${vendorId}`);
+        }
+
+        vendorSelect.value = vendorName;
+        console.log(`[StartEdit] 設定結果: select.value='${vendorSelect.value}', vendorId=${vendorId}`);
+
         document.getElementById('spec').value = item.檢驗規格;
         document.getElementById('material').value = item.材質;
         document.getElementById('order_no').value = item.訂單號碼;
+
+        // 填充檢驗人員（使用識別碼或姓名）
+        const inspectorSelect = document.getElementById('inspector');
+        if (item.檢驗人員) {
+            inspectorSelect.value = item.檢驗人員;
+        }
+
         document.querySelectorAll('.num-input').forEach(i => i.value = item[i.getAttribute('data-key')] || "");
         document.getElementById('saveBtn').innerText = `⚠️ 更新紀錄 ID: ${currentEditId}`;
         window.scrollTo(0,0);
+
+        // 載入後檢查公差（確保 vendorSelect.value 已設置）
+        setTimeout(() => {
+            checkToleranceOnChange();
+            validateAllInputs();
+        }, 100);
     }
 
     function resetForm() {
@@ -799,6 +1288,12 @@
         document.querySelectorAll('.container input:not([type="button"]), select').forEach(i => i.value = "");
         document.getElementById('date').value = new Date().toISOString().split('T')[0];
         document.getElementById('saveBtn').innerText = "確認儲存數據";
+
+        // 清除公差警示
+        document.querySelectorAll('.out-of-tolerance').forEach(el => {
+            el.classList.remove('out-of-tolerance');
+        });
+        hideToleranceInfo();
     }
 
     async function deleteData(id) {
