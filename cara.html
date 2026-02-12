@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>矯正措施要求 (CAR)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: "Microsoft JhengHei";
+        }
+
+        .card {
+            border-radius: 12px;
+            border: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            margin-bottom: 20px;
+        }
+
+        .back-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%);
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 10px rgba(161, 140, 209, 0.4);
+        }
+
+        .back-button:hover {
+            transform: translateY(-2px);
+            color: #fff;
+            box-shadow: 0 6px 15px rgba(161, 140, 209, 0.5);
+        }
+
+        .nav-tabs .nav-link {
+            color: #495057;
+            font-weight: 500;
+        }
+
+        .nav-tabs .nav-link.active {
+            color: #0d6efd;
+            font-weight: bold;
+            border-top: 3px solid #0d6efd;
+        }
+
+        .step-content {
+            min-height: 200px;
+            padding: 20px 0;
+        }
+
+        .progress-indicator {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .progress-indicator::before {
+            content: '';
+            position: absolute;
+            top: 15px;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: #e9ecef;
+            z-index: 0;
+        }
+
+        .step-dot {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #e9ecef;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            z-index: 1;
+            font-weight: bold;
+            color: #6c757d;
+        }
+
+        .step-dot.active {
+            background: #0d6efd;
+            color: white;
+            box-shadow: 0 0 0 5px rgba(13, 110, 253, 0.2);
+        }
+
+        .step-dot.completed {
+            background: #198754;
+            color: white;
+        }
+
+        /* 響應式設計 - 手機和平板適配 */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px !important;
+            }
+            
+            .card {
+                padding: 15px !important;
+            }
+            
+            .btn-group {
+                flex-direction: column;
+                gap: 5px;
+            }
+            
+            .btn-group .btn {
+                width: 100%;
+                margin: 2px 0 !important;
+            }
+            
+            .d-flex.justify-content-between {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            h3, h4 {
+                font-size: 1.2rem !important;
+            }
+            
+            .modal-dialog {
+                margin: 10px;
+            }
+
+            .nav-tabs {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            
+            .nav-tabs .nav-link {
+                white-space: nowrap;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .back-button {
+                padding: 8px 15px;
+                font-size: 14px;
+            }
+            
+            .table {
+                font-size: 12px;
+            }
+            
+            .status-badge {
+                font-size: 0.75rem;
+                padding: 3px 6px;
+            }
+        }
+    </style>
+</head>
+
+<body class="container py-4">
+
+    <a href="index.html" class="back-button">
+        <i class="bi bi-arrow-left"></i> 回首頁
+    </a>
+
+    <div class="row" id="listView">
+        <div class="col-12">
+            <div class="card p-4">
+                <h3 class="text-primary mb-3"><i class="bi bi-shield-check"></i> 矯正措施要求 (CAR)</h3>
+                <div class="table-responsive">
+                    <table id="caraTable" class="table table-hover w-100">
+                        <thead class="table-light">
+                            <tr>
+                                <th>單號</th>
+                                <th>關聯異常單</th>
+                                <th>廠商</th>
+                                <th>材質</th>
+                                <th>規格</th>
+                                <th>建立日期</th>
+                                <th>負責人</th>
+                                <th>狀態</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="caraBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row d-none" id="detailView">
+        <div class="col-12">
+            <div class="card p-4">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h4 id="caraTitle">CAR 單號: #001</h4>
+                    <button class="btn btn-outline-secondary" onclick="closeDetail()"><i class="bi bi-x-lg"></i>
+                        關閉</button>
+                </div>
+
+                <!-- NCMR 摘要 -->
+                <div class="alert alert-info mb-4">
+                    <h6 class="alert-heading fw-bold"><i class="bi bi-info-circle"></i> 異常資訊摘要</h6>
+                    <div class="row">
+                        <div class="col-md-3"><strong>日期:</strong> <span id="n_date"></span></div>
+                        <div class="col-md-3"><strong>廠商:</strong> <span id="n_vendor"></span></div>
+                        <div class="col-md-3"><strong>材質:</strong> <span id="n_material"></span></div>
+                        <div class="col-md-3"><strong>規格:</strong> <span id="n_product"></span></div>
+                        <div class="col-md-3"><strong>來源:</strong> <span id="n_source"></span></div>
+                        <div class="col-md-12 mt-2"><strong>不良描述:</strong> <span id="n_desc"></span></div>
+                    </div>
+                </div>
+
+                <ul class="nav nav-tabs" id="caraTabs" role="tablist">
+                    <!-- 隱藏 D1 標籤 -->
+                    <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#d2">D2 問題</a></li>
+                    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#d3">D3 圍堵</a></li>
+                    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#d4">D4 真因</a></li>
+                    <!-- 隱藏 D5 標籤 -->
+                    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#d6">D6 驗證</a></li>
+                    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#d7">D7 預防</a></li>
+                    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#d8">D8 結案</a></li>
+                </ul>
+
+                <div class="tab-content">
+                    <!-- 移除 d1 區塊 -->
+                    <div class="tab-pane fade show active step-content" id="d2">
+                        <label class="form-label fw-bold">D2. 問題描述 (5W1H)</label>
+                        <textarea class="form-control" rows="5" id="val_d2"></textarea>
+                    </div>
+                    <div class="tab-pane fade step-content" id="d3">
+                        <label class="form-label fw-bold">D3. 暫時圍堵對策 (止血措施)</label>
+                        <textarea class="form-control" rows="5" id="val_d3"></textarea>
+                    </div>
+                    <div class="tab-pane fade step-content" id="d4">
+                        <label class="form-label fw-bold">D4. 真因分析 (魚骨圖/5 Why)</label>
+                        <textarea class="form-control" rows="5" id="val_d4"></textarea>
+                    </div>
+                    <!-- 移除 d5 區塊 -->
+                    <div class="tab-pane fade step-content" id="d6">
+                        <label class="form-label fw-bold">D6. 對策實施與成效驗證 (數據佐證)</label>
+                        <textarea class="form-control" rows="5" id="val_d6"></textarea>
+                    </div>
+                    <div class="tab-pane fade step-content" id="d7">
+                        <label class="form-label fw-bold">D7. 預防再發 (標準化/SOP修改)</label>
+                        <textarea class="form-control" rows="5" id="val_d7"></textarea>
+                    </div>
+                    <div class="tab-pane fade step-content" id="d8">
+                        <label class="form-label fw-bold">D8. 結案確認 (管理階層核可)</label>
+                        <textarea class="form-control" rows="5" id="val_d8" placeholder="請輸入結案意見或核可說明..."></textarea>
+                    </div>
+                </div>
+
+                <hr>
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <label class="me-2">負責人員:</label>
+                        <select id="c_owner" class="form-select d-inline-block w-auto"></select>
+                    </div>
+                    <div>
+                        <button class="btn btn-outline-success px-4 me-2" onclick="saveCAR('進行中')"><i
+                                class="bi bi-save"></i> 儲存進度</button>
+                        <button class="btn btn-success px-4" onclick="saveCAR('已結案')"><i class="bi bi-check-circle"></i>
+                            結案</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = window.location.protocol === 'file:'
+            ? 'http://localhost:5000/api'
+            : `${window.location.protocol}//${(window.location.hostname || 'localhost')}:${window.location.port || '5000'}/api`;
+        let authToken = localStorage.getItem('authToken');
+        let currentId = null;
+        console.log('API:', API);
+
+        function getHeaders() {
+            return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` };
+        }
+
+        window.onload = async () => {
+            if (!authToken) location.href = 'index.html';
+            await loadInspectors();
+            loadList();
+        };
+
+        async function loadInspectors() {
+            const res = await fetch(`${API}/inspectors`, { headers: getHeaders() });
+            const list = await res.json();
+            document.getElementById('c_owner').innerHTML = '<option value="">請選擇</option>' + list.map(i => `<option value="${i.name}">${i.name}</option>`).join('');
+        }
+
+        async function loadList() {
+            const res = await fetch(`${API}/cara`, { headers: getHeaders() });
+            const data = await res.json();
+
+            if ($.fn.DataTable.isDataTable('#caraTable')) $('#caraTable').DataTable().destroy();
+
+            document.getElementById('caraBody').innerHTML = data.map(r => `
+                <tr>
+                    <td>${r.單號}</td>
+                    <td>#${r.ncmr_number || ('#' + r.ncmr_id)} (${r.ncmr_source || '-'})</td>
+                    <td>${r.ncmr_vendor || '-'}</td>
+                    <td>${r.ncmr_material || '-'}</td>
+                    <td>${r.ncmr_product || '-'}</td>
+                    <td>${(r.ncmr_date || r.建立日期 || '-').substring(0, 10)}</td>
+                    <td>${r.負責人員姓名 || '-'}</td>
+                    <td><span class="badge ${r.狀態 === '已結案' ? 'bg-success' : 'bg-primary'}">${r.狀態}</span></td>
+                    <td>
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-sm btn-outline-primary" onclick="openDetail(${r.識別碼})">處理</button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteCAR(${r.識別碼})">刪除</button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+
+            $('#caraTable').DataTable({
+                order: [[0, 'desc']],
+                language: { url: "https://cdn.datatables.net/plug-ins/1.13.6/i18n/zh-HANT.json" }
+            });
+        }
+
+        async function openDetail(id) {
+            currentId = id;
+            const res = await fetch(`${API}/cara/detail/${id}`, { headers: getHeaders() });
+            const d = await res.json();
+
+            // 填寫 NCMR 資訊
+            document.getElementById('n_date').innerText = formatDate(d.ncmr.發現日期);
+            document.getElementById('n_vendor').innerText = d.ncmr.廠商 || '-';
+            document.getElementById('n_material').innerText = d.ncmr.材質 || '-';
+            document.getElementById('n_product').innerText = d.ncmr.產品資訊 || '-';
+            document.getElementById('n_source').innerText = d.ncmr.來源 || '-';
+            document.getElementById('n_desc').innerText = d.ncmr.不良描述 || '-';
+
+            // 填寫 CAR 資訊
+            document.getElementById('caraTitle').innerText = `CAR 單號: #${d.cara.單號}`;
+            document.getElementById('c_owner').value = d.cara.負責人員姓名;
+
+            // 填寫 D2, D3, D4, D6, D7, D8 (跳過 D1, D5)
+            const fields = [2, 3, 4, 6, 7, 8]; // CAR 可編輯的欄位
+            fields.forEach(i => {
+                const fieldName = `D${i}_${getDName(i)}`;
+                const element = document.getElementById(`val_d${i}`);
+                if (element) {
+                    element.value = d.cara[fieldName] || '';
+                }
+            });
+
+            document.getElementById('listView').classList.add('d-none');
+            document.getElementById('detailView').classList.remove('d-none');
+        }
+
+        function getDName(i) {
+            const map = { 2: '問題描述', 3: '暫時對策', 4: '真因分析', 6: '成效驗證', 7: '預防再發', 8: '結案確認' };
+            return map[i];
+        }
+
+        function formatDate(dateVal) {
+            if (!dateVal) return '-';
+            if (dateVal instanceof Date) {
+                const y = dateVal.getFullYear();
+                const m = String(dateVal.getMonth() + 1).padStart(2, '0');
+                const d = String(dateVal.getDate()).padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            }
+            if (typeof dateVal === 'string' && dateVal.includes(' GMT')) {
+                const months = {'Jan':'01','Feb':'02','Mar':'03','Apr':'04','May':'05','Jun':'06','Jul':'07','Aug':'08','Sep':'09','Oct':'10','Nov':'11','Dec':'12'};
+                const parts = dateVal.split(/[\s,]+/);
+                for (let i = 0; i < parts.length; i++) {
+                    if (months[parts[i]]) {
+                        return `${parts[parts.length-1]}-${months[parts[i]]}-${parts[parts.length-2]}`;
+                    }
+                }
+            }
+            return dateVal.substring(0, 10);
+        }
+
+        function closeDetail() {
+            document.getElementById('detailView').classList.add('d-none');
+            document.getElementById('listView').classList.remove('d-none');
+        }
+
+        async function saveCAR(status = '進行中') {
+            if (status === '已結案' && !confirm('確定要結案嗎？結案後將無法修改。')) {
+                return;
+            }
+
+            const payload = {
+                "識別碼": currentId,
+                "負責人員姓名": document.getElementById('c_owner').value,
+                "狀態": status
+            };
+
+            // CAR 編輯 D2, D3, D4, D6, D7, D8 欄位
+            const fields = [2, 3, 4, 6, 7, 8];
+            fields.forEach(i => {
+                const fieldName = `D${i}_${getDName(i)}`;
+                const element = document.getElementById(`val_d${i}`);
+                if (element) {
+                    payload[fieldName] = element.value;
+                }
+            });
+
+            const res = await fetch(`${API}/cara/update`, {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+                alert(status === '已結案' ? '案件已成功結案' : '儲存成功');
+                closeDetail();
+                loadList();
+            } else {
+                alert('儲存失敗');
+            }
+        }
+
+        async function deleteCAR(id) {
+            if (!confirm(`確定要刪除 CAR #${id} 嗎？此動作無法復原。`)) return;
+
+            const res = await fetch(`${API}/cara/delete`, {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify({ id: id })
+            });
+
+            if (res.ok) {
+                alert('刪除成功');
+                loadList();
+            } else {
+                const err = await res.json();
+                alert(err.error || '刪除失敗');
+            }
+        }
+    </script>
+</body>
+
+</html>
