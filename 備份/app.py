@@ -14,7 +14,7 @@ from functools import wraps
 app = Flask(__name__)
 CORS(app)
 
-SECRET_KEY = 'your-secret-key-change-this-in-production'
+SECRET_KEY = 'qa-inspection-system-2026-secure-key-a7b9c3d5e1f2g4h6'  # 已更換為安全密鑰
 TOKEN_EXPIRATION_HOURS = 24
 
 # ==================================================
@@ -83,6 +83,67 @@ def handle_db_error(e):
     else:
         return f'資料庫錯誤：{error_msg}'
 
+# ==================================================
+# 【編碼生成】工具函數
+# ==================================================
+def generate_number(prefix, table_name=None, number_field=None):
+    """
+    統一編碼生成函數
+    格式：PREFIX-YYYYMM-XXX (例：NCMR-202601-001)
+    """
+    year_month = datetime.now().strftime('%Y%m')
+    
+    if table_name and number_field:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            # 簡化查詢 - 使用純字串處理
+            sql = f"""
+                SELECT {number_field} 
+                FROM {table_name} 
+                WHERE {number_field} IS NOT NULL 
+                AND {number_field} LIKE ?
+                ORDER BY {number_field} DESC
+            """
+            pattern = f"{prefix}-{year_month}-%"
+            cursor.execute(sql, (pattern,))
+            
+            # 取出所有匹配的記錄
+            results = cursor.fetchall()
+            max_seq = 0
+            
+            if results:
+                for row in results:
+                    if row[0]:
+                        # 從完整編號中提取流水號部分
+                        parts = row[0].split('-')
+                        if len(parts) >= 3:
+                            try:
+                                seq = int(parts[-1])
+                                max_seq = max(max_seq, seq)
+                            except (ValueError, IndexError):
+                                continue
+            
+            new_seq = str(max_seq + 1).zfill(3)
+            return f"{prefix}-{year_month}-{new_seq}"
+        finally:
+            conn.close()
+    else:
+        # 簡單格式，用於測試或預覽
+        return f"{prefix}-{year_month}-001"
+
+def generate_ncmr_number():
+    """生成NCMR編號"""
+    return generate_number('NCMR', 'dbo.不合格品單', 'NCMR單號')
+
+def generate_8d_number():
+    """生成8D編號"""
+    return generate_number('CAPA', 'dbo.異常矯正單', '[8D單號]')
+
+def generate_car_number():
+    """生成CAR編號"""
+    return generate_number('CAR', 'dbo.異常矯正單', 'CAR單號')
+
 def format_value(val):
     if isinstance(val, (decimal.Decimal, float)):
         return float(val)
@@ -134,152 +195,307 @@ def validate_patrol_data(data):
     return errors
 
 # ==================================================
-# 【共用】下拉選單 API（前端會用）
+# 【基礎資料】API
 # ==================================================
 @app.route('/api/inspectors')
 def get_inspectors():
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT 姓名 FROM dbo.品管人員")
-        return jsonify([{"name": r[0].strip()} for r in cursor.fetchall()])
+        cursor.execute("SELECT 識別碼, 姓名 FROM dbo.品管人員")
+        inspectors = [{"id": row[0], "name": row[1].strip() if row[1] else ""} for row in cursor.fetchall()]
+        return jsonify(inspectors)
     finally:
         conn.close()
-
 
 @app.route('/api/vendors')
 def get_vendors():
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT 廠商名稱 FROM dbo.廠商資料")
-        return jsonify([{"name": r[0].strip()} for r in cursor.fetchall()])
+        cursor.execute("SELECT 識別碼, 廠商名稱 FROM dbo.廠商資料")
+        vendors = [{"id": row[0], "name": row[1].strip() if row[1] else ""} for row in cursor.fetchall()]
+        return jsonify(vendors)
     finally:
         conn.close()
 
-# ==================================================
-# 【出貨檢驗】SPC
-# ==================================================
-@app.route('/api/stats')
-def get_stats():
-    field = request.args.get('field', '').strip()
-    if not field:
-        return jsonify({"labels": [], "avgs": [], "ranges": []})
-
-    params, where = [], []
-    args = request.args
-
-    if args.get('vendor'):   where.append("V.廠商名稱 LIKE ?"); params.append(f"%{args['vendor']}%")
-    if args.get('material'): where.append("T1.材質 LIKE ?");     params.append(f"%{args['material']}%")
-    if args.get('spec'):     where.append("T1.檢驗規格 LIKE ?"); params.append(f"%{args['spec']}%")
-    if args.get('start_date'): where.append("T1.檢驗日期 >= ?"); params.append(args['start_date'])
-    if args.get('end_date'):   where.append("T1.檢驗日期 <= ?"); params.append(args['end_date'])
-
-    is_minmax = field in ['外徑', '內徑', '厚度']
-    cols = []
-    for i in range(1, 6):
-        if is_minmax:
-            cols += [f"[{field}{i}-min]", f"[{field}{i}-max]"]
-        else:
-            cols.append(f"[{field}{i}]")
-
-    where_sql = " AND ".join(where)
-    if where_sql:
-        where_sql = "AND " + where_sql
-
+@app.route('/api/machines')
+def get_machines():
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        sql = f"""
-            SELECT T1.識別碼, T1.檢驗日期, {','.join(cols)}
-            FROM dbo.出貨檢驗數據 T1
-            LEFT JOIN dbo.廠商資料 V ON T1.廠商名稱 = V.識別碼
-            WHERE 1=1 {where_sql}
-            ORDER BY T1.檢驗日期
-        """
-        rows = cursor.execute(sql, params).fetchall()
+        cursor.execute("SELECT 識別碼, 擠壓機編號 FROM dbo.擠壓機台")
+        machines = [{"id": row[0], "name": row[1].strip() if row[1] else ""} for row in cursor.fetchall()]
+        return jsonify(machines)
+    finally:
+        conn.close()
 
-        labels, avgs, ranges = [], [], []
-        for r in rows:
-            vals = [float(v) for v in r[2:] if v not in (None, "")]
-            if not vals:
-                continue
-            labels.append(f"{r[1].strftime('%m/%d')}(#{r[0]})")
-            avgs.append(np.mean(vals))
-            ranges.append(np.ptp(vals))
+@app.route('/api/operators')
+def get_operators():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT 識別碼, 員工姓名 FROM dbo.擠壓人員")
+        operators = [{"id": row[0], "name": row[1].strip() if row[1] else ""} for row in cursor.fetchall()]
+        return jsonify(operators)
+    finally:
+        conn.close()
 
-        if not avgs:
-            return jsonify({"labels": [], "avgs": [], "ranges": []})
+@app.route('/api/materials')
+def get_materials():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT DISTINCT 材質 FROM dbo.出貨檢驗數據 WHERE 材質 IS NOT NULL AND 材質 != ''")
+        materials = [row[0].strip() for row in cursor.fetchall()]
+        return jsonify(materials)
+    finally:
+        conn.close()
 
-        xbar = np.mean(avgs)
-        rbar = np.mean(ranges)
-
-        return jsonify({
-            "labels": labels,
-            "avgs": avgs,
-            "ranges": ranges,
-            "x_cl": xbar,
-            "x_ucl": xbar + 0.577 * rbar,
-            "x_lcl": xbar - 0.577 * rbar,
-            "r_cl": rbar,
-            "r_ucl": 2.114 * rbar
-        })
+@app.route('/api/specs')
+def get_specs():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT DISTINCT 檢驗規格 FROM dbo.出貨檢驗數據 WHERE 檢驗規格 IS NOT NULL AND 檢驗規格 != ''")
+        specs = [row[0].strip() for row in cursor.fetchall()]
+        return jsonify(specs)
     finally:
         conn.close()
 
 # ==================================================
-# 【出貨檢驗】資料查詢
+# 【出貨檢驗】主資料
 # ==================================================
-@app.route('/api/data')
+@app.route('/api/data', methods=['GET'])
 def get_data():
-    page = int(request.args.get('page', 1))
-    page_size = 15
-
-    params, where = [], []
     args = request.args
+    params = []
+    where = []
 
-    if args.get('vendor'):   where.append("V.廠商名稱 LIKE ?"); params.append(f"%{args['vendor']}%")
-    if args.get('material'): where.append("T1.材質 LIKE ?");     params.append(f"%{args['material']}%")
-    if args.get('spec'):     where.append("T1.檢驗規格 LIKE ?"); params.append(f"%{args['spec']}%")
-    if args.get('start_date'): where.append("T1.檢驗日期 >= ?"); params.append(args['start_date'])
-    if args.get('end_date'):   where.append("T1.檢驗日期 <= ?"); params.append(args['end_date'])
+    # 支援按 ID 查詢（優先處理）
+    if args.get('id'):
+        where.append("T1.識別碼 = ?")
+        params.append(args['id'])
+    else:
+        # 一般查詢條件
+        if args.get('vendor'):   where.append("V.廠商名稱 LIKE ?"); params.append(f"%{args['vendor']}%")
+        if args.get('material'): where.append("T1.材質 LIKE ?");     params.append(f"%{args['material']}%")
+        if args.get('spec'):     where.append("T1.檢驗規格 LIKE ?"); params.append(f"%{args['spec']}%")
+        if args.get('start_date'): where.append("T1.檢驗日期 >= ?"); params.append(args['start_date'])
+        if args.get('end_date'):   where.append("T1.檢驗日期 <= ?"); params.append(args['end_date'])
 
     where_sql = " WHERE " + " AND ".join(where) if where else ""
 
     conn = get_db_connection()
     cursor = conn.cursor()
+    try:
+        sql = f"""
+            SELECT T1.識別碼, T1.檢驗日期, T1.材質, T1.檢驗規格, T1.訂單號碼,
+                   P.姓名 AS 檢驗人員, V.廠商名稱 AS 廠商中文名稱,
+                   T1.[外徑1-min], T1.[外徑1-max], T1.[外徑2-min], T1.[外徑2-max],
+                   T1.[外徑3-min], T1.[外徑3-max], T1.[外徑4-min], T1.[外徑4-max],
+                   T1.[外徑5-min], T1.[外徑5-max],
+                   T1.[內徑1-min], T1.[內徑1-max], T1.[內徑2-min], T1.[內徑2-max],
+                   T1.[內徑3-min], T1.[內徑3-max], T1.[內徑4-min], T1.[內徑4-max],
+                   T1.[內徑5-min], T1.[內徑5-max],
+                   T1.[厚度1-min], T1.[厚度1-max], T1.[厚度2-min], T1.[厚度2-max],
+                   T1.[厚度3-min], T1.[厚度3-max], T1.[厚度4-min], T1.[厚度4-max],
+                   T1.[厚度5-min], T1.[厚度5-max],
+                   T1.同心度1, T1.同心度2, T1.同心度3, T1.同心度4, T1.同心度5,
+                   T1.長度1, T1.長度2, T1.長度3, T1.長度4, T1.長度5,
+                   T1.硬度1, T1.硬度2, T1.硬度3, T1.硬度4, T1.硬度5,
+                   T1.真直度1, T1.真直度2, T1.真直度3, T1.真直度4, T1.真直度5
+              FROM dbo.出貨檢驗數據 T1
+              LEFT JOIN dbo.品管人員 P ON T1.檢驗人員 = P.識別碼
+              LEFT JOIN dbo.廠商資料 V ON T1.廠商名稱 = V.識別碼
+              {where_sql}
+              ORDER BY T1.識別碼 DESC
+        """
+        cursor.execute(sql, params)
+        cols = [c[0] for c in cursor.description]
+        all_data = []
+        for row in cursor.fetchall():
+            item = dict(zip(cols, row))
+            for key, val in item.items():
+                item[key] = format_value(val)
+            all_data.append(item)
+            
+        # 分頁處理
+        total = len(all_data)
+        page = int(request.args.get('page', 1))
+        per_page = 10
+        start = (page - 1) * per_page
+        end = start + per_page
+        
+        return jsonify({
+            "data": all_data[start:end],
+            "total": total,
+            "total_pages": (total + per_page - 1) // per_page
+        })
+    finally:
+        conn.close()
 
-    cursor.execute(
-        f"SELECT COUNT(*) FROM dbo.出貨檢驗數據 T1 LEFT JOIN dbo.廠商資料 V ON T1.廠商名稱 = V.識別碼 {where_sql}",
-        params
-    )
-    total = cursor.fetchone()[0]
+@app.route('/api/stats', methods=['GET'])
+@auth_required
+def get_shipping_stats():
+    """獲取出貨檢驗的 SPC 統計數據"""
+    field = request.args.get('field')
+    if not field:
+        field = '外徑'
+        
+    vendor = request.args.get('vendor')
+    material = request.args.get('material')
+    spec = request.args.get('spec')
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
 
-    sql = f"""
-        SELECT T1.*, P.姓名 AS 檢驗人員姓名, V.廠商名稱 AS 廠商中文名稱
-        FROM dbo.出貨檢驗數據 T1
-        LEFT JOIN dbo.品管人員 P ON T1.檢驗人員 = P.識別碼
-        LEFT JOIN dbo.廠商資料 V ON T1.廠商名稱 = V.識別碼
-        {where_sql}
-        ORDER BY T1.識別碼 DESC
-        OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-    """
+    params = []
+    where = []
+    if vendor: where.append("V.廠商名稱 LIKE ?"); params.append(f"%{vendor}%")
+    if material: where.append("T1.材質 LIKE ?"); params.append(f"%{material}%")
+    if spec: where.append("T1.檢驗規格 LIKE ?"); params.append(f"%{spec}%")
+    if start_date: where.append("T1.檢驗日期 >= ?"); params.append(start_date)
+    if end_date: where.append("T1.檢驗日期 <= ?"); params.append(end_date)
+    
+    where_sql = " WHERE " + " AND ".join(where) if where else ""
 
-    rows = cursor.execute(
-        sql,
-        params + [(page - 1) * page_size, page_size]
-    ).fetchall()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        sql = f"""
+            SELECT T1.識別碼, T1.檢驗日期, T1.訂單號碼,
+                   T1.[{field}1-min], T1.[{field}1-max],
+                   T1.[{field}2-min], T1.[{field}2-max],
+                   T1.[{field}3-min], T1.[{field}3-max],
+                   T1.[{field}4-min], T1.[{field}4-max],
+                   T1.[{field}5-min], T1.[{field}5-max]
+            FROM dbo.出貨檢驗數據 T1
+            LEFT JOIN dbo.廠商資料 V ON T1.廠商名稱 = V.識別碼
+            {where_sql}
+            ORDER BY T1.識別碼 DESC
+        """
+        # 如果欄位不是 minmax 類型，SQL 會有不同
+        is_minmax = field in ['外徑', '內徑', '厚度']
+        if not is_minmax:
+            sql = f"""
+                SELECT T1.識別碼, T1.檢驗日期, T1.訂單號碼,
+                       T1.[{field}1], T1.[{field}2], T1.[{field}3], T1.[{field}4], T1.[{field}5]
+                FROM dbo.出貨檢驗數據 T1
+                LEFT JOIN dbo.廠商資料 V ON T1.廠商名稱 = V.識別碼
+                {where_sql}
+                ORDER BY T1.識別碼 DESC
+            """
+        
+        rows = cursor.execute(sql, params).fetchall()
+        total_rows = len(rows)
+        if not rows:
+            return jsonify({"labels": [], "avgs": [], "ranges": [], "x_cl":0, "x_ucl":0, "x_lcl":0, "r_cl":0, "r_ucl":0})
 
-    cols = [c[0] for c in cursor.description]
-    conn.close()
+        labels = []
+        ids = []
+        dates = []
+        avgs = []
+        ranges = []
+        ids_valid = []  # 只存有效數據的 ID
+        dates_valid = []  # 只存有效數據的日期
+        labels_valid = []  # 只存有效數據的標籤
+        insufficient_data = []  # 標記數據不足的原始索引
+        
+        # 從後往前排（時間序）
+        for idx, r in enumerate(rows[::-1]):
+            vals = []
+            valid_groups = 0  # 有效組數
+            
+            if is_minmax:
+                # 每組取 (min + max) / 2，min 和 max 都必須有值才算有效
+                for i in range(3, 13, 2):
+                    if r[i] is not None and r[i+1] is not None and r[i] != '' and r[i+1] != '':
+                        try:
+                            val = (float(r[i]) + float(r[i+1])) / 2
+                            vals.append(val)
+                            valid_groups += 1
+                        except (ValueError, TypeError):
+                            pass
+            else:
+                for i in range(3, 8):
+                    if r[i] is not None and r[i] != '':
+                        try:
+                            vals.append(float(r[i]))
+                            valid_groups += 1
+                        except (ValueError, TypeError):
+                            pass
+            
+            # 原始索引（用於標記數據不足的項目）
+            original_idx = len(rows) - 1 - idx
+            
+            # 如果有效組數 >= 3，才計入統計
+            if valid_groups >= 3 and vals:
+                vals_np = np.array(vals, dtype=float)
+                avg_val = float(np.mean(vals_np))
+                range_val = float(np.ptp(vals_np))
+                avgs.append(avg_val)
+                ranges.append(range_val)
+                ids_valid.append(str(r[0]))
+                dates_valid.append(str(r[1]) if r[1] else '')
+                labels_valid.append(str(r[2]) if r[2] else str(r[0]))
+            else:
+                # 數據不足，記錄原始索引
+                insufficient_data.append({
+                    "id": str(r[0]),
+                    "date": str(r[1]) if r[1] else '',
+                    "valid_groups": valid_groups,
+                    "original_idx": original_idx
+                })
 
-    return jsonify({
-        "data": [{cols[i]: format_value(r[i]) for i in range(len(cols))} for r in rows],
-        "total_pages": (total + page_size - 1) // page_size
-    })
+        # 計算管制界限 (n=5)
+        # 使用固定管制界限方法：前20-25筆數據建立基準，超過25筆則只用前25筆
+        # A2=0.577, D4=2.114, D3=0
+        BASELINE_COUNT = 25  # 基準數據點數量
+        
+        if len(avgs) >= 5:  # 至少需要5筆數據才能計算管制界限
+            # 取前N筆數據建立管制界限
+            baseline_count = min(BASELINE_COUNT, len(avgs))
+            baseline_avgs = avgs[:baseline_count]
+            baseline_ranges = ranges[:baseline_count]
+            
+            x_cl = np.mean(baseline_avgs)
+            r_cl = np.mean(baseline_ranges)
+            x_ucl = x_cl + 0.577 * r_cl
+            x_lcl = x_cl - 0.577 * r_cl
+            r_ucl = 2.114 * r_cl
+            
+            # 確保LCL不為負值（對於正值測量）
+            x_lcl = max(x_lcl, 0)
+        else:
+            x_cl = x_ucl = x_lcl = r_cl = r_ucl = 0
+            baseline_count = 0
+
+        return jsonify({
+            "labels": labels_valid,
+            "ids": ids_valid,
+            "dates": dates_valid,
+            "avgs": [float(x) for x in avgs],
+            "ranges": [float(x) for x in ranges],
+            "x_cl": float(x_cl),
+            "x_ucl": float(x_ucl),
+            "x_lcl": float(x_lcl),
+            "r_cl": float(r_cl),
+            "r_ucl": float(r_ucl),
+            "baseline_count": baseline_count,
+            "insufficient_data": insufficient_data,  # 數據不足的項目列表
+            "total_rows": len(rows),
+            "valid_count": len(avgs)
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc() # 將錯誤印到底層主控台，方便使用者查看
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
 # ==================================================
-# 【出貨檢驗】新增 / 更新
-# ==================================================
+# 【出貨檢驗】儲存與更新
+# ================================================== 
 @app.route('/api/add', methods=['POST'])
 @app.route('/api/update', methods=['POST'])
 def save_data():
@@ -608,7 +824,7 @@ def patrol_spc():
             key = f"{r[0].strftime('%m/%d')}-#{r[1]}-G{r[2]}"
             groups.setdefault(key, []).extend([float(r[3]), float(r[4])])
 
-        labels = list(groups.keys())[::-1]
+        labels = list(groups.keys())
         avgs = [np.mean(groups[k]) for k in labels]
         ranges = [np.ptp(groups[k]) for k in labels]
 
@@ -783,6 +999,7 @@ def patrol_update():
 
         cursor.execute("DELETE FROM dbo.巡檢子檔 WHERE 主檔ID = ?", (record_id,))
 
+
         for d in data.get('details', []):
             # 將 "第1組" 轉換為數字 "1"
             group_raw = str(d.get('group', '')).strip()
@@ -895,7 +1112,7 @@ def patrol_history():
 @app.route('/api/patrol/export')
 def patrol_export():
     args = request.args
-    params, where = []
+    params, where = [], []
 
     if args.get('s_date'): where.append("T.檢驗日期 >= ?"); params.append(args['s_date'])
     if args.get('e_date'): where.append("T.檢驗日期 <= ?"); params.append(args['e_date'])
@@ -1198,6 +1415,831 @@ def login():
         conn.close()
 
 # ==================================================
+# 【重工品管】API
+# ==================================================
+
+@app.route('/api/rework/applications', methods=['GET'])
+@auth_required
+def get_rework_applications():
+    """獲取重工申請列表"""
+    status = request.args.get('status')
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    rework_id = request.args.get('rework_id')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        sql = """
+            SELECT r.*, 
+                   p1.姓名 AS 申請人員姓名,
+                   p2.姓名 AS 審核人員姓名,
+                   n.不良描述 AS NCMR不良描述,
+                   n.NCMR單號 AS 原始NCMR單號
+            FROM dbo.重工申請單 r
+            LEFT JOIN dbo.品管人員 p1 ON r.申請人員 = p1.識別碼
+            LEFT JOIN dbo.品管人員 p2 ON r.審核人員 = p2.識別碼
+            LEFT JOIN dbo.不合格品單 n ON r.NCMR_ID = n.識別碼
+        """
+        params = []
+        conditions = []
+        
+        if rework_id:
+            conditions.append("r.識別碼 = ?")
+            params.append(rework_id)
+        if status:
+            conditions.append("r.狀態 = ?")
+            params.append(status)
+        if start_date:
+            conditions.append("r.申請日期 >= ?")
+            params.append(start_date)
+        if end_date:
+            conditions.append("r.申請日期 <= ?")
+            params.append(end_date)
+            
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+            
+        sql += " ORDER BY r.申請日期 DESC"
+        
+        cursor.execute(sql, params)
+        cols = [c[0] for c in cursor.description]
+        data = []
+        
+        for row in cursor.fetchall():
+            item = dict(zip(cols, row))
+            # 格式化日期
+            if item.get('申請日期'):
+                item['申請日期'] = item['申請日期'].strftime('%Y-%m-%d %H:%M:%S')
+            if item.get('預計完成日期'):
+                item['預計完成日期'] = item['預計完成日期'].strftime('%Y-%m-%d')
+            if item.get('審核時間'):
+                item['審核時間'] = item['審核時間'].strftime('%Y-%m-%d %H:%M:%S')
+            if item.get('實際完成日期'):
+                item['實際完成日期'] = item['實際完成日期'].strftime('%Y-%m-%d %H:%M:%S')
+            if item.get('建立時間'):
+                item['建立時間'] = item['建立時間'].strftime('%Y-%m-%d %H:%M:%S')
+            data.append(item)
+            
+        return jsonify(data)
+    finally:
+        conn.close()
+
+def generate_rework_number():
+    """生成重工單號"""
+    return generate_number('RW', 'dbo.重工申請單', '申請單號')
+
+@app.route('/api/rework/apply', methods=['POST'])
+@auth_required
+def apply_rework():
+    """提交重工申請"""
+    data = request.json
+    
+    # 清理數據 - 移除可能的文件上傳字段
+    if isinstance(data, dict):
+        data_copy = {}
+        for key, value in data.items():
+            # 移除任何可能的文件字段或非標準字段
+            if key not in ['不合格品管理.png', 'file', 'upload'] and not key.endswith('[]'):
+                data_copy[key] = value
+        data = data_copy
+    
+    # 驗證必填欄位
+    errors = []
+    if not data.get('NCMR_ID'):
+        errors.append("NCMR_ID為必填欄位")
+    if not data.get('申請人員姓名'):
+        errors.append("申請人員為必填欄位")
+    if not data.get('重工數量'):
+        errors.append("重工數量為必填欄位")
+    if not data.get('申請原因'):
+        errors.append("申請原因為必填欄位")
+        
+    # 數值驗證
+    try:
+        if data.get('重工數量'):
+            float(data.get('重工數量'))
+    except (ValueError, TypeError):
+        errors.append("重工數量必須是數字")
+        
+    if errors:
+        print(f"重工申請驗證錯誤: {errors}")
+        print(f"收到的數據: {data}")
+        return jsonify({"error": ", ".join(errors)}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 獲取申請人員ID
+        cursor.execute(
+            "SELECT 識別碼 FROM dbo.品管人員 WHERE 姓名 = ?",
+            (data.get('申請人員姓名'),)
+        )
+        applicant = cursor.fetchone()
+        if not applicant:
+            return jsonify({"error": "找不到申請人員"}), 400
+        applicant_id = applicant[0]
+        
+        # 獲取完整NCMR資訊（包含新編號）
+        cursor.execute(
+            """
+            SELECT 識別碼, NCMR單號, 判定結果, 狀態, 不良描述, 產品資訊, 材質, 廠商
+            FROM dbo.不合格品單 
+            WHERE 識別碼 = ?
+            """,
+            (data.get('NCMR_ID'),)
+        )
+        ncmr = cursor.fetchone()
+        if not ncmr:
+            return jsonify({"error": "找不到對應的NCMR記錄"}), 400
+            
+        ncmr_id, ncmr_number, determination, ncmr_status, bad_desc, product_info, material, vendor = ncmr
+        if determination != '重工':
+            return jsonify({"error": "此NCMR的判定結果不是重工，無法申請重工"}), 400
+            
+        rework_number = generate_rework_number()
+            
+        sql = """
+            SET NOCOUNT ON;
+            INSERT INTO dbo.重工申請單 
+            (NCMR_ID, 申請單號, 申請人員, 部門, 緊急程度, 產品資訊, 批號, 
+             重工數量, 申請原因, 預計完成日期, 狀態)
+            OUTPUT INSERTED.識別碼
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '申請中');
+        """
+        cursor.execute(sql, (
+            data.get('NCMR_ID'),
+            rework_number,
+            applicant_id,
+            data.get('部門', ''),
+            data.get('緊急程度', '普通'),
+            product_info,
+            data.get('批號', ''),
+            data.get('重工數量'),
+            data.get('申請原因'),
+            data.get('預計完成日期')
+        ))
+        
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({"error": "無法取得產生的重工單 ID"}), 500
+        rework_id = row[0]
+        
+        # 自動更新NCMR狀態為轉重工
+        cursor.execute(
+            "UPDATE dbo.不合格品單 SET 狀態 = '轉重工' WHERE 識別碼 = ?",
+            (data.get('NCMR_ID'),)
+        )
+        
+        conn.commit()
+        return jsonify({"success": True, "rework_id": rework_id, "ncmr_number": ncmr_number})
+        
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"重工申請失敗: {str(e)}")
+        return jsonify({"error": f"資料庫執行錯誤: {str(e)}"}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/rework/approve', methods=['POST'])
+@auth_required
+def approve_rework():
+    """審核重工申請"""
+    data = request.json
+    rework_id = data.get('rework_id')
+    action = data.get('action')  # 'approve' 或 'reject'
+    opinion = data.get('opinion', '')
+    reviewer_name = data.get('審核人員姓名')
+    
+    if not rework_id or not action or not reviewer_name:
+        return jsonify({"error": "缺少必要參數"}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 獲取審核人員ID
+        cursor.execute(
+            "SELECT 識別碼 FROM dbo.品管人員 WHERE 姓名 = ?",
+            (reviewer_name,)
+        )
+        reviewer = cursor.fetchone()
+        if not reviewer:
+            return jsonify({"error": "找不到審核人員"}), 400
+        reviewer_id = reviewer[0]
+        
+        # 更新審核狀態
+        if action == 'approve':
+            new_status = '已核准'
+        elif action == 'reject':
+            new_status = '已拒絕'
+        else:
+            return jsonify({"error": "無效的審核動作"}), 400
+            
+        sql = """
+            UPDATE dbo.重工申請單 
+            SET 審核狀態 = ?, 審核人員 = ?, 審核時間 = GETDATE(), 
+                審核意見 = ?, 狀態 = ?
+            WHERE 識別碼 = ?
+        """
+        cursor.execute(sql, (new_status, reviewer_id, opinion, new_status, rework_id))
+        
+        conn.commit()
+        return jsonify({"success": True})
+        
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/rework/executions', methods=['GET'])
+@auth_required
+def get_rework_executions():
+    """獲取重工執行記錄"""
+    rework_id = request.args.get('rework_id')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        sql = """
+            SELECT e.識別碼, e.重工單號, e.執行部門, e.負責人員, e.協同人員,
+                   e.開始時間, e.預計完成時間, e.實際完成時間, e.使用設備,
+                   e.重工方式, e.SOP編號, e.耗材記錄, e.完成數量, e.不良數量,
+                   e.良率, e.執行狀況, e.異常狀況, e.執行人員,
+                   p1.姓名 AS 負責人員姓名,
+                   p2.姓名 AS 執行人員姓名
+            FROM dbo.重工執行記錄 e
+            LEFT JOIN dbo.品管人員 p1 ON e.負責人員 = p1.識別碼
+            LEFT JOIN dbo.品管人員 p2 ON e.執行人員 = p2.識別碼
+        """
+        params = []
+        if rework_id:
+            sql += " WHERE e.重工單號 = ?"
+            params.append(rework_id)
+            
+        sql += " ORDER BY e.識別碼 DESC"  # 改為按識別碼降序，確保最新記錄在前
+        
+        cursor.execute(sql, params or [])
+        cols = [c[0] for c in cursor.description]
+        print(f"查詢欄位: {cols}")  # 除錯
+        data = []
+        
+        for row in cursor.fetchall():
+            item = dict(zip(cols, row))
+            print(f"資料項: {item}")  # 除錯
+            print(f"良率值: {item.get('良率')}, 實際完成時間值: {item.get('實際完成時間')}")  # 除錯
+            # 格式化日期
+            for date_field in ['開始時間', '預計完成時間', '實際完成時間']:
+                if item.get(date_field):
+                    item[date_field] = item[date_field].strftime('%Y-%m-%d %H:%M:%S')
+            data.append(item)
+            
+        print(f"返回資料: {data}")  # 除錯
+        return jsonify(data)
+    finally:
+        conn.close()
+
+
+
+@app.route('/api/rework/execute', methods=['POST'])
+@auth_required
+def execute_rework():
+    """記錄重工執行"""
+    data = request.json
+    
+    # 驗證必填欄位
+    errors = []
+    if not data.get('重工單號'):
+        errors.append("重工單號為必填欄位")
+    if not data.get('負責人員姓名'):
+        errors.append("負責人員為必填欄位")
+        
+    if errors:
+        return jsonify({"error": ", ".join(errors)}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 獲取負責人員ID
+        cursor.execute(
+            "SELECT 識別碼 FROM dbo.品管人員 WHERE 姓名 = ?",
+            (data.get('負責人員姓名'),)
+        )
+        executor = cursor.fetchone()
+        if not executor:
+            return jsonify({"error": "找不到負責人員"}), 400
+        executor_id = executor[0]
+        
+        sql = """
+            INSERT INTO dbo.重工執行記錄 
+            (重工單號, 執行部門, 負責人員, 協同人員, 開始時間, 
+             預計完成時間, 實際完成時間, 使用設備, 重工方式, SOP編號, 耗材記錄, 
+             完成數量, 不良數量, 良率, 執行狀況, 異常狀況, 執行人員)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        start_time = data.get('開始時間')
+        if start_time:
+            start_time = start_time.replace('T', ' ')
+            
+        end_time = data.get('預計完成時間')
+        if end_time:
+            end_time = end_time.replace('T', ' ')
+            
+        actual_end_time = data.get('實際完成時間')
+        if actual_end_time:
+            actual_end_time = actual_end_time.replace('T', ' ')
+        
+        # 計算良率
+        complete_qty = float(data.get('完成數量', 0) or 0)
+        defect_qty = float(data.get('不良數量', 0) or 0)
+        yield_rate = None
+        if complete_qty > 0:
+            yield_rate = ((complete_qty - defect_qty) / complete_qty) * 100
+
+        # 確保重工單號為整數
+        rework_id = int(data.get('重工單號'))
+
+        cursor.execute(sql, (
+            rework_id,
+            data.get('執行部門', ''),
+            executor_id,
+            data.get('協同人員', ''),
+            start_time or None,
+            end_time or None,
+            actual_end_time or None,
+            data.get('使用設備', ''),
+            data.get('重工方式', ''),
+            data.get('SOP編號', ''),
+            data.get('耗材記錄', ''),
+            complete_qty,
+            defect_qty,
+            yield_rate,
+            data.get('執行狀況', ''),
+            data.get('異常狀況', ''),
+            executor_id
+        ))
+        
+        # 更新重工申請單狀態為執行中
+        cursor.execute(
+            "UPDATE dbo.重工申請單 SET 狀態 = '執行中' WHERE 識別碼 = ?",
+            (rework_id,)
+        )
+        
+        conn.commit()
+        return jsonify({"success": True})
+        
+    except Exception as e:
+        conn.rollback()
+        print(f"Error in execute_rework: {str(e)}")
+        print(f"Data received: {data}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close() 
+
+@app.route('/api/rework/inspections', methods=['GET'])
+@auth_required
+def get_rework_inspections():
+    """獲取重工品檢記錄"""
+    rework_id = request.args.get('rework_id')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        sql = """
+            SELECT i.*, p.姓名 AS 檢驗人員姓名
+            FROM dbo.重工品檢記錄 i
+            LEFT JOIN dbo.品管人員 p ON i.檢驗人員 = p.識別碼
+        """
+        params = []
+        if rework_id:
+            sql += " WHERE i.重工單號 = ?"
+            params.append(rework_id)
+            
+        sql += " ORDER BY i.檢驗日期 DESC"
+        
+        cursor.execute(sql, params)
+        cols = [c[0] for c in cursor.description]
+        data = []
+        
+        for row in cursor.fetchall():
+            item = dict(zip(cols, row))
+            # 格式化日期
+            if item.get('檢驗日期'):
+                item['檢驗日期'] = item['檢驗日期'].strftime('%Y-%m-%d %H:%M:%S')
+            if item.get('建立時間'):
+                item['建立時間'] = item['建立時間'].strftime('%Y-%m-%d %H:%M:%S')
+            data.append(item)
+            
+        return jsonify(data)
+    finally:
+        conn.close()
+
+@app.route('/api/rework/inspect', methods=['POST'])
+@auth_required
+def inspect_rework():
+    """記錄重工品檢"""
+    data = request.json
+    
+    # 驗證必填欄位
+    errors = []
+    if not data.get('重工單號'):
+        errors.append("重工單號為必填欄位")
+    if not data.get('檢驗人員姓名'):
+        errors.append("檢驗人員為必填欄位")
+        
+    if errors:
+        return jsonify({"error": ", ".join(errors)}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 獲取檢驗人員ID
+        cursor.execute(
+            "SELECT 識別碼 FROM dbo.品管人員 WHERE 姓名 = ?",
+            (data.get('檢驗人員姓名'),)
+        )
+        inspector = cursor.fetchone()
+        if not inspector:
+            return jsonify({"error": "找不到檢驗人員"}), 400
+        inspector_id = inspector[0]
+        
+        sql = """
+            INSERT INTO dbo.重工品檢記錄 
+            (重工單號, 執行記錄ID, 檢驗人員, 檢驗階段, 檢驗項目, 
+             檢驗標準, 檢驗方法, 檢驗數據, 判定結果, 不良現象, 
+             改善建議, 通過數量, 不合格數量, 重檢數量, 檢驗結論)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        cursor.execute(sql, (
+            data.get('重工單號'),
+            data.get('執行記錄ID'),
+            inspector_id,
+            data.get('檢驗階段', '重工後'),
+            data.get('檢驗項目', ''),
+            data.get('檢驗標準', ''),
+            data.get('檢驗方法', ''),
+            data.get('檢驗數據', ''),
+            data.get('判定結果', '合格'),
+            data.get('不良現象', ''),
+            data.get('改善建議', ''),
+            data.get('通過數量', 0),
+            data.get('不合格數量', 0),
+            data.get('重檢數量', 0),
+            data.get('檢驗結論', '')
+        ))
+        
+        conn.commit()
+        return jsonify({"success": True})
+        
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+
+@app.route('/api/rework/close', methods=['POST'])
+@auth_required
+def close_rework():
+    """結案重工申請"""
+    data = request.json
+    rework_id = data.get('rework_id')
+    
+    if not rework_id:
+        return jsonify({"error": "缺少重工單號參數"}), 400
+        
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 檢查當前狀態
+        cursor.execute("SELECT 狀態 FROM dbo.重工申請單 WHERE 識別碼 = ?", (rework_id,))
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({"error": "找不到該重工單"}), 404
+            
+        current_status = row[0]
+        if current_status == '已完成':
+            return jsonify({"error": "該重工單已結案"}), 400
+            
+        # 更新狀態
+        cursor.execute(
+            """
+            UPDATE dbo.重工申請單 
+            SET 狀態 = '已完成', 實際完成日期 = GETDATE()
+            WHERE 識別碼 = ?
+            """,
+            (rework_id,)
+        )
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/rework/delete', methods=['POST'])
+@auth_required
+def delete_rework():
+    """刪除重工申請"""
+    data = request.json
+    rework_id = data.get('rework_id')
+    
+    if not rework_id:
+        return jsonify({"error": "缺少重工單號參數"}), 400
+        
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 刪除相關的執行記錄
+        cursor.execute("DELETE FROM dbo.重工執行記錄 WHERE 重工單號 = ?", (rework_id,))
+        # 刪除相關的品檢記錄
+        cursor.execute("DELETE FROM dbo.重工品檢記錄 WHERE 重工單號 = ?", (rework_id,))
+        # 刪除相關的成本記錄
+        cursor.execute("DELETE FROM dbo.重工成本分析 WHERE 重工單號 = ?", (rework_id,))
+        # 刪除重工申請單
+        cursor.execute("DELETE FROM dbo.重工申請單 WHERE 識別碼 = ?", (rework_id,))
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/rework/costs', methods=['GET'])
+@auth_required
+def get_rework_costs():
+    """獲取重工成本記錄"""
+    rework_id = request.args.get('rework_id')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        sql = """
+            SELECT c.*, p.姓名 AS 記錄人員姓名
+            FROM dbo.重工成本分析 c
+            LEFT JOIN dbo.品管人員 p ON c.記錄人員 = p.識別碼
+        """
+        params = []
+        if rework_id:
+            sql += " WHERE c.重工單號 = ?"
+            params.append(rework_id)
+            
+        sql += " ORDER BY c.記錄日期 DESC"
+        
+        cursor.execute(sql, params)
+        cols = [c[0] for c in cursor.description]
+        data = []
+        
+        for row in cursor.fetchall():
+            item = dict(zip(cols, row))
+            # 格式化日期
+            if item.get('記錄日期'):
+                item['記錄日期'] = item['記錄日期'].strftime('%Y-%m-%d %H:%M:%S')
+            data.append(item)
+            
+        return jsonify(data)
+    finally:
+        conn.close()
+
+@app.route('/api/rework/cost', methods=['POST'])
+@auth_required
+def add_rework_cost():
+    """新增重工成本記錄"""
+    data = request.json
+    
+    # 驗證必填欄位
+    errors = []
+    if not data.get('重工單號'):
+        errors.append("重工單號為必填欄位")
+    if not data.get('成本類型'):
+        errors.append("成本類型為必填欄位")
+    if not data.get('成本項目'):
+        errors.append("成本項目為必填欄位")
+        
+    if errors:
+        return jsonify({"error": ", ".join(errors)}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        sql = """
+            INSERT INTO dbo.重工成本分析 
+            (重工單號, 成本類型, 成本項目, 單位成本, 數量, 總成本, 
+             成本幣別, 記錄人員, 備註)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        
+        # 獲取記錄人員 ID
+        cursor.execute(
+            "SELECT 識別碼 FROM dbo.品管人員 WHERE 姓名 = ?",
+            (data.get('記錄人員姓名'),)
+        )
+        record_person = cursor.fetchone()
+        record_person_id = record_person[0] if record_person else None
+
+        cursor.execute(sql, (
+            data.get('重工單號'),
+            data.get('成本類型'),
+            data.get('成本項目'),
+            data.get('單位成本', 0),
+            data.get('數量', 0),
+            data.get('總成本', 0),
+            data.get('成本幣別', 'TWD'),
+            record_person_id,
+            data.get('備註', '')
+        ))
+        
+        conn.commit()
+        return jsonify({"success": True})
+        
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/ncmr/<int:ncmr_id>', methods=['GET'])
+@auth_required
+def get_ncmr_info(ncmr_id):
+    """獲取NCMR詳細資訊用於轉重工"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        sql = """
+            SELECT n.*, 
+                   p.姓名 AS 發現人員姓名,
+                   v.廠商名稱 AS 廠商中文名稱
+            FROM dbo.不合格品單 n
+            LEFT JOIN dbo.品管人員 p ON n.發現人員 = p.識別碼
+            LEFT JOIN dbo.廠商資料 v ON n.廠商 = v.廠商名稱
+            WHERE n.識別碼 = ?
+        """
+        cursor.execute(sql, (ncmr_id,))
+        row = cursor.fetchone()
+        
+        if not row:
+            return jsonify({"error": "找不到NCMR記錄"}), 404
+            
+        cols = [c[0] for c in cursor.description]
+        item = {}
+        for i, col in enumerate(cols):
+            value = row[i]
+            # 調試輸出每個欄位的值和類型
+            print(f"欄位: {col}, 值: {value}, 類型: {type(value)}")
+            try:
+                if value is None:
+                    item[col] = ""
+                elif isinstance(value, datetime):
+                    if '時間' in col:
+                        item[col] = value.strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        item[col] = value.strftime('%Y-%m-%d')
+                else:
+                    # 如果是字串，先嘗試轉換為日期
+                    if isinstance(value, str) and col == '日期':
+                        try:
+                            # 嘗試解析日期
+                            dt = datetime.strptime(value.strip(), '%Y-%m-%d')
+                            item[col] = dt.strftime('%Y-%m-%d')
+                        except ValueError:
+                            # 如果解析失敗，可能是其他格式，直接使用
+                            item[col] = value.strip()
+                    else:
+                        item[col] = str(value) if hasattr(value, 'strip') else value
+            except Exception as e:
+                print(f"處理欄位 {col} 時出錯: {e}")
+                item[col] = ""
+        
+        # 調試輸出最終結果
+        print(f"最終返回數據: {item}")
+        print(f"日期欄位值: {item.get('日期')}")
+            
+        return jsonify(item)
+        
+    except Exception as e:
+        print(f"NCMR API Error: {str(e)}")
+        print(f"Error type: {type(e)}")
+        return jsonify({"error": f"獲取NCMR資訊失敗: {str(e)}"}), 500
+    finally:
+        if conn:
+            conn.close()
+
+@app.route('/api/rework/statistics', methods=['GET'])
+@auth_required
+def get_rework_statistics():
+    """獲取重工統計數據"""
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        params = []
+        where_clause = ""
+        
+        if start_date:
+            where_clause += " AND 申請日期 >= ?"
+            params.append(start_date)
+        if end_date:
+            where_clause += " AND 申請日期 <= ?"
+            params.append(end_date)
+            
+        # 基本統計
+        stats = {}
+        
+        # 申請數量統計
+        sql = """
+            SELECT 
+                COUNT(*) as 總申請數,
+                SUM(CASE WHEN 狀態 = '已完成' THEN 1 ELSE 0 END) as 完成數,
+                SUM(CASE WHEN 狀態 = '執行中' THEN 1 ELSE 0 END) as 執行中數,
+                SUM(CASE WHEN 狀態 = '已核准' THEN 1 ELSE 0 END) as 已核准數,
+                SUM(CASE WHEN 審核狀態 = '已拒絕' THEN 1 ELSE 0 END) as 拒絕數,
+                SUM(ISNULL(重工數量, 0)) as 總重工數量
+            FROM dbo.重工申請單 
+            WHERE 1=1 {where_clause}
+        """
+        cursor.execute(sql.format(where_clause=where_clause), params)
+        
+        result = cursor.fetchone()
+        if result:
+            stats['application_stats'] = {
+                'total_applications': result[0],
+                'completed': result[1],
+                'in_progress': result[2],
+                'approved': result[3],
+                'rejected': result[4],
+                'total_rework_quantity': float(result[5]) if result[5] else 0
+            }
+        
+        # 移除成本統計功能
+        # sql = """
+        #     SELECT 
+        #             COUNT(*) as 記錄數,
+        #             SUM(ISNULL(總成本, 0)) as 總成本,
+        #             SUM(CASE WHEN 成本類型 = '人工' THEN ISNULL(總成本, 0) ELSE 0 END) as 人工成本,
+        #             SUM(CASE WHEN 成本類型 = '材料' THEN ISNULL(總成本, 0) ELSE 0 END) as 材料成本,
+        #             SUM(CASE WHEN 成本類型 = '設備' THEN ISNULL(總成本, 0) ELSE 0 END) as 設備成本
+        #     FROM dbo.重工成本分析 c
+        #     INNER JOIN dbo.重工申請單 r ON c.重工單號 = r.識別碼
+        #     WHERE 1=1 {where_clause}
+        # """
+        # cursor.execute(sql.format(where_clause=where_clause), params)
+        # 
+        # result = cursor.fetchone()
+        # if result:
+        #     stats['cost_stats'] = {
+        #         'total_records': result[0],
+        #         'total_cost': float(result[1]) if result[1] else 0,
+        #         'labor_cost': float(result[2]) if result[2] else 0,
+        #         'material_cost': float(result[3]) if result[3] else 0,
+        #         'equipment_cost': float(result[4]) if result[4] else 0
+        #     }
+        stats['cost_stats'] = {
+            'total_records': 0,
+            'total_cost': 0,
+            'labor_cost': 0,
+            'material_cost': 0,
+            'equipment_cost': 0
+        }
+        
+        # 部門統計
+        sql = """
+            SELECT 
+                部門,
+                COUNT(*) as 申請數,
+                SUM(ISNULL(重工數量, 0)) as 重工數量
+            FROM dbo.重工申請單 
+            WHERE 1=1 {where_clause}
+            GROUP BY 部門
+            ORDER BY 申請數 DESC
+        """
+        cursor.execute(sql.format(where_clause=where_clause), params)
+        
+        dept_stats = []
+        for row in cursor.fetchall():
+            dept_stats.append({
+                'department': row[0],
+                'count': row[1],
+                'quantity': float(row[2]) if row[2] else 0
+            })
+        stats['department_stats'] = dept_stats
+        
+        return jsonify(stats)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+# ==================================================
 # 【使用者管理】新增使用者
 # ==================================================
 @app.route('/api/users', methods=['POST'])
@@ -1240,7 +2282,1024 @@ def verify():
     return jsonify({"valid": True, "user": request.user})
 
 # ==================================================
-# if __name__ == '__main__':
+# 【不合格品管理】NCMR API
+# ==================================================
+@app.route('/api/ncmr', methods=['GET'])
+def get_ncmr_list():
+    status = request.args.get('status')
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        sql = """
+            SELECT T1.*, T1.NCMR單號 AS 單號, P.姓名 AS 發現人員姓名,
+                   (SELECT TOP 1 狀態 FROM dbo.異常矯正單 WHERE NCMR_ID = T1.識別碼 AND CAR單號 IS NOT NULL ORDER BY 識別碼 DESC) AS CAR狀態,
+                   (SELECT TOP 1 狀態 FROM dbo.異常矯正單 WHERE NCMR_ID = T1.識別碼 AND [8D單號] IS NOT NULL ORDER BY 識別碼 DESC) AS CAPA狀態,
+                   (SELECT COUNT(*) FROM dbo.重工執行記錄 WHERE 重工單號 IN (SELECT 識別碼 FROM dbo.重工申請單 WHERE NCMR_ID = T1.識別碼)) AS 重工執行次數,
+                   (SELECT TOP 1 狀態 FROM dbo.重工申請單 WHERE NCMR_ID = T1.識別碼 ORDER BY 識別碼 DESC) AS 重工狀態
+            FROM dbo.不合格品單 T1
+            LEFT JOIN dbo.品管人員 P ON T1.發現人員 = P.識別碼
+        """
+        params = []
+        if status:
+            sql += " WHERE T1.狀態 = ?"
+            params.append(status)
+        
+        sql += " ORDER BY T1.識別碼 DESC"
+        
+        cursor.execute(sql, params)
+        cols = [c[0] for c in cursor.description]
+        data = []
+        for row in cursor.fetchall():
+            item = dict(zip(cols, row))
+            # 格式化日期
+            if item.get('日期'):
+                item['日期'] = item['日期'].strftime('%Y-%m-%d')
+            data.append(item)
+            
+        return jsonify(data)
+    finally:
+        conn.close()
+
+@app.route('/api/ncmr/add', methods=['POST'])
+def add_ncmr():
+    data = request.json
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 轉換發現人員 ID
+        inspector_id = None
+        if data.get('發現人員姓名'):
+            cursor.execute("SELECT 識別碼 FROM dbo.品管人員 WHERE 姓名 = ?", (data.get('發現人員姓名'),))
+            row = cursor.fetchone()
+            if row:
+                inspector_id = row[0]
+        
+        # 生成NCMR編號
+        ncmr_number = generate_ncmr_number()
+        
+        sql = """
+            INSERT INTO dbo.不合格品單 
+            (NCMR單號, 日期, 來源, 來源單號, 產品資訊, 材質, 廠商, 批號, 不良描述, 不合格數量, 發現人員, 判定結果, 狀態, 不良原因大類, 不良原因細項)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        cursor.execute(sql, (
+            ncmr_number,  # 新增編號欄位
+            data.get('日期'),
+            data.get('來源'),
+            data.get('來源單號'),
+            data.get('產品資訊'), 
+            data.get('材質'),
+            data.get('廠商'),
+            data.get('批號'),
+            data.get('不良描述'),
+            data.get('不合格數量'),
+            inspector_id,
+            data.get('判定結果'),
+            data.get('狀態', '待處理'),
+            data.get('不良原因大類'),
+            data.get('不良原因細項')
+        ))
+        conn.commit()
+        return jsonify({"success": True, "ncmr_number": ncmr_number})  # 返回新編號
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/ncmr/update', methods=['POST'])
+@auth_required
+def update_ncmr():
+    """更新 NCMR 記錄"""
+    data = request.json
+    ncmr_id = data.get('識別碼')
+    
+    if not ncmr_id:
+        return jsonify({"error": "缺少識別碼"}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 轉換發現人員 ID
+        inspector_id = None
+        if data.get('發現人員姓名'):
+            cursor.execute("SELECT 識別碼 FROM dbo.品管人員 WHERE 姓名 = ?", (data.get('發現人員姓名'),))
+            row = cursor.fetchone()
+            if row:
+                inspector_id = row[0]
+        
+        fields = []
+        params = []
+        
+        # 可更新的欄位
+        updateable_fields = {
+            '日期': data.get('日期'),
+            '來源': data.get('來源'),
+            '產品資訊': data.get('產品資訊'),
+            '材質': data.get('材質'),
+            '廠商': data.get('廠商'),
+            '批號': data.get('批號'),
+            '不良描述': data.get('不良描述'),
+            '不合格數量': data.get('不合格數量'),
+            '判定結果': data.get('判定結果'),
+            '狀態': data.get('狀態'),
+            '不良原因大類': data.get('不良原因大類'),
+            '不良原因細項': data.get('不良原因細項')
+        }
+        
+        for field, value in updateable_fields.items():
+            if value is not None:
+                fields.append(f"{field} = ?")
+                params.append(value)
+        
+        if inspector_id is not None:
+            fields.append("發現人員 = ?")
+            params.append(inspector_id)
+        
+        if not fields:
+            return jsonify({"success": True})
+        
+        params.append(ncmr_id)
+        sql = f"UPDATE dbo.不合格品單 SET {', '.join(fields)} WHERE 識別碼 = ?"
+        cursor.execute(sql, params)
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/capa/update', methods=['POST'])
+def update_capa():
+    data = request.json
+    capa_id = data.get('識別碼')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 處理負責人員
+        if data.get('負責人員姓名'):
+            cursor.execute("SELECT 識別碼 FROM dbo.品管人員 WHERE 姓名 = ?", (data.get('負責人員姓名'),))
+            row = cursor.fetchone()
+            if row:
+                data['負責人員'] = row[0]
+
+        fields = []
+        params = []
+        
+        # CAPA 編輯所有 D 欄位
+        d_fields = ['D1_小組成員', 'D2_問題描述', 'D3_暫時對策', 'D4_真因分析', 
+                   'D5_永久對策', 'D6_成效驗證', 'D7_預防再發', 'D8_結案確認', '狀態']
+        
+        for f in d_fields:
+            if f in data:
+                fields.append(f"{f} = ?")
+                params.append(data[f])
+                
+        # 如果狀態改為已結案，更新結案日期
+        if data.get('狀態') == '已結案':
+            fields.append("結案日期 = GETDATE()")
+            
+        if not fields:
+            return jsonify({"success": True})
+            
+        params.append(capa_id)
+        sql = f"UPDATE dbo.異常矯正單 SET {', '.join(fields)} WHERE 識別碼 = ?"
+        cursor.execute(sql, params)
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/cara/delete', methods=['POST'])
+@auth_required
+def delete_cara():
+    """刪除 CAR 記錄"""
+    data = request.json
+    cara_id = data.get('id')
+    if not cara_id:
+        return jsonify({"error": "缺少識別碼"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 刪除 CAR 記錄
+        cursor.execute("DELETE FROM dbo.異常矯正單 WHERE 識別碼 = ? AND CAR單號 IS NOT NULL", (cara_id,))
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/capa/delete', methods=['POST'])
+@auth_required
+def delete_capa():
+    """刪除 CAPA 記錄"""
+    data = request.json
+    capa_id = data.get('id')
+    if not capa_id:
+        return jsonify({"error": "缺少識別碼"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 刪除 CAPA 記錄
+        cursor.execute("DELETE FROM dbo.異常矯正單 WHERE 識別碼 = ? AND [8D單號] IS NOT NULL", (capa_id,))
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/ncmr/source_info', methods=['GET'])
+def get_source_info():
+    source_type = request.args.get('type')
+    source_id = request.args.get('id')
+    
+    if not source_type or not source_id:
+        return jsonify({})
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        info = {}
+        if source_type == '巡檢':
+            cursor.execute("""
+                SELECT T.材質, T.擠壓規格, T.原料批號, C.廠商名稱 
+                FROM dbo.巡檢主檔 T
+                LEFT JOIN dbo.廠商資料 C ON T.客戶名稱 = C.識別碼
+                WHERE T.識別碼 = ?
+            """, (source_id,))
+            row = cursor.fetchone()
+            if row:
+                info = {
+                    "材質": row[0],
+                    "產品資訊": row[1], # 規格
+                    "批號": row[2],
+                    "廠商": row[3]
+                }
+        elif source_type == '出貨檢':
+            cursor.execute("""
+                SELECT T.材質, T.檢驗規格, T.訂單號碼, V.廠商名稱 
+                FROM dbo.出貨檢驗數據 T
+                LEFT JOIN dbo.廠商資料 V ON T.廠商名稱 = V.識別碼
+                WHERE T.識別碼 = ?
+            """, (source_id,))
+            row = cursor.fetchone()
+            if row:
+                info = {
+                    "材質": row[0],
+                    "產品資訊": row[1], # 規格
+                    "批號": row[2], # 訂單號碼
+                    "廠商": row[3]
+                }
+        return jsonify(info)
+    finally:
+        conn.close()
+
+
+
+@app.route('/api/ncmr/delete', methods=['POST'])
+def delete_ncmr():
+    data = request.json
+    ncmr_id = data.get('id')
+    if not ncmr_id:
+        return jsonify({"error": "缺少識別碼"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 先刪除關聯的異常矯正單 (CAR/CAPA)
+        cursor.execute("DELETE FROM dbo.異常矯正單 WHERE NCMR_ID = ?", (ncmr_id,))
+        
+        # 再刪除 NCMR 主檔
+        cursor.execute("DELETE FROM dbo.不合格品單 WHERE 識別碼 = ?", (ncmr_id,))
+
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": handle_db_error(e)}), 500
+    finally:
+        conn.close()
+
+
+
+# ==================================================
+# 【異常矯正】CAPA API
+# ==================================================
+
+# ==================================================
+# 【CAR矯正】API
+# ==================================================
+@app.route('/api/cara', methods=['GET'])
+def get_cara_list():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        sql = """
+            SELECT T1.*, T1.CAR單號 AS 單號, P.姓名 AS 負責人員姓名, N.NCMR單號, N.來源, N.不良描述, 
+                   N.廠商, N.材質, N.產品資訊 AS 規格
+            FROM dbo.異常矯正單 T1
+            LEFT JOIN dbo.品管人員 P ON T1.負責人員 = P.識別碼
+            LEFT JOIN dbo.不合格品單 N ON T1.NCMR_ID = N.識別碼
+            WHERE T1.CAR單號 IS NOT NULL
+            ORDER BY T1.識別碼 DESC
+        """
+        cursor.execute(sql)
+        cols = [c[0] for c in cursor.description]
+        data = []
+        for row in cursor.fetchall():
+            item = dict(zip(cols, row))
+            if item.get('建立日期'): item['建立日期'] = item['建立日期'].strftime('%Y-%m-%d')
+            if item.get('結案日期'): item['結案日期'] = item['結案日期'].strftime('%Y-%m-%d')
+            data.append(item)
+        return jsonify(data)
+    finally:
+        conn.close()
+
+@app.route('/api/cara/create', methods=['POST'])
+def create_cara():
+    data = request.json
+    ncmr_id = data.get('ncmr_id')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 檢查是否已存在CAR
+        cursor.execute("SELECT 識別碼 FROM dbo.異常矯正單 WHERE NCMR_ID = ? AND CAR單號 IS NOT NULL", (ncmr_id,))
+        if cursor.fetchone():
+            return jsonify({"error": "此異常單已開立過CAR"}), 400
+            
+        # 獲取NCMR完整資訊
+        cursor.execute(
+            "SELECT NCMR單號 FROM dbo.不合格品單 WHERE 識別碼 = ?",
+            (ncmr_id,)
+        )
+        ncmr = cursor.fetchone()
+        ncmr_number = ncmr[0] if ncmr else ""
+        
+        # 生成CAR編號
+        car_number = generate_car_number()
+        
+        # 建立CAR單
+        cursor.execute("""
+            INSERT INTO dbo.異常矯正單 (CAR單號, NCMR_ID, 狀態)
+            VALUES (?, ?, '進行中')
+        """, (car_number, ncmr_id))
+        
+        # 更新 NCMR 狀態
+        cursor.execute("UPDATE dbo.不合格品單 SET 狀態 = 'CAR處理中' WHERE 識別碼 = ?", (ncmr_id,))
+        
+        conn.commit()
+        return jsonify({"success": True, "car_number": car_number, "ncmr_number": ncmr_number})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/cara/detail/<int:id>')
+def get_cara_detail(id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 取得 CAR 詳細
+        sql = """
+            SELECT T1.*, T1.CAR單號 AS 單號, P.姓名 AS 負責人員姓名
+            FROM dbo.異常矯正單 T1
+            LEFT JOIN dbo.品管人員 P ON T1.負責人員 = P.識別碼
+            WHERE T1.識別碼 = ? AND T1.CAR單號 IS NOT NULL
+        """
+        cursor.execute(sql, (id,))
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({"error": "找不到資料"}), 404
+            
+        cols = [c[0] for c in cursor.description]
+        cara_data = dict(zip(cols, row))
+        
+        # 處理日期
+        for date_col in ['建立日期', '結案日期']:
+            if cara_data.get(date_col):
+                cara_data[date_col] = cara_data[date_col].strftime('%Y-%m-%d')
+
+        # 取得關聯的 NCMR 詳細
+        cursor.execute("""
+            SELECT n.*, p.姓名 AS 發現人員姓名, v.廠商名稱 AS 廠商中文名稱
+            FROM dbo.不合格品單 n
+            LEFT JOIN dbo.品管人員 p ON n.發現人員 = p.識別碼
+            LEFT JOIN dbo.廠商資料 v ON n.廠商 = v.廠商名稱
+            WHERE n.識別碼 = ?
+        """, (cara_data.get('NCMR_ID'),))
+        ncmr_row = cursor.fetchone()
+        ncmr_cols = [c[0] for c in cursor.description]
+        ncmr_data = dict(zip(ncmr_cols, ncmr_row))
+        if ncmr_data.get('日期'): ncmr_data['日期'] = ncmr_data['日期'].strftime('%Y-%m-%d')
+
+        return jsonify({"cara": cara_data, "ncmr": ncmr_data})
+    finally:
+        conn.close()
+
+@app.route('/api/cara/update', methods=['POST'])
+def update_cara():
+    data = request.json
+    cara_id = data.get('識別碼')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        fields = []
+        params = []
+        
+        # 處理負責人員
+        if data.get('負責人員姓名'):
+            cursor.execute("SELECT 識別碼 FROM dbo.品管人員 WHERE 姓名 = ?", (data.get('負責人員姓名'),))
+            row = cursor.fetchone()
+            if row:
+                fields.append("負責人員 = ?")
+                params.append(row[0])
+
+        # 處理 CAR 欄位 (隱藏 D1, D5, D8)
+        d_fields = ['D2_問題描述', 'D3_暫時對策', 'D4_真因分析', 
+                   'D6_成效驗證', 'D7_預防再發', '狀態']
+        
+        for f in d_fields:
+            if f in data:
+                fields.append(f"{f} = ?")
+                params.append(data[f])
+                
+        # 如果狀態改為已結案，更新結案日期
+        if data.get('狀態') == '已結案':
+            fields.append("結案日期 = GETDATE()")
+            
+        if not fields:
+            return jsonify({"success": True})
+            
+        params.append(cara_id)
+        sql = f"UPDATE dbo.異常矯正單 SET {', '.join(fields)} WHERE 識別碼 = ?"
+        cursor.execute(sql, params)
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+@app.route('/api/capa', methods=['GET'])
+def get_capa_list():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        sql = """
+            SELECT T1.*, P.姓名 AS 負責人員姓名, N.來源, N.不良描述, 
+                   N.廠商, N.材質, N.產品資訊 AS 規格, N.NCMR單號
+            FROM dbo.異常矯正單 T1
+            LEFT JOIN dbo.品管人員 P ON T1.負責人員 = P.識別碼
+            LEFT JOIN dbo.不合格品單 N ON T1.NCMR_ID = N.識別碼
+            WHERE T1.[8D單號] IS NOT NULL
+            ORDER BY T1.識別碼 DESC
+        """
+        cursor.execute(sql)
+        cols = [c[0] for c in cursor.description]
+        data = []
+        for row in cursor.fetchall():
+            item = dict(zip(cols, row))
+            if item.get('建立日期'): item['建立日期'] = item['建立日期'].strftime('%Y-%m-%d')
+            if item.get('結案日期'): item['結案日期'] = item['結案日期'].strftime('%Y-%m-%d')
+            data.append(item)
+        return jsonify(data)
+    finally:
+        conn.close()
+
+@app.route('/api/capa/create', methods=['POST'])
+def create_capa():
+    data = request.json
+    ncmr_id = data.get('ncmr_id')
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 檢查是否已存在
+        cursor.execute("SELECT 識別碼 FROM dbo.異常矯正單 WHERE NCMR_ID = ?", (ncmr_id,))
+        if cursor.fetchone():
+            return jsonify({"error": "此異常單已開立過矯正單"}), 400
+            
+        # 獲取NCMR完整資訊
+        cursor.execute(
+            "SELECT NCMR單號 FROM dbo.不合格品單 WHERE 識別碼 = ?",
+            (ncmr_id,)
+        )
+        ncmr = cursor.fetchone()
+        ncmr_number = ncmr[0] if ncmr else ""
+        
+        # 生成8D編號
+        capa_number = generate_8d_number()
+        
+        # 建立矯正單
+        cursor.execute("""
+            INSERT INTO dbo.異常矯正單 ([8D單號], NCMR_ID, 狀態)
+            VALUES (?, ?, '進行中')
+        """, (capa_number, ncmr_id))
+        
+        # 更新 NCMR 狀態
+        cursor.execute("UPDATE dbo.不合格品單 SET 狀態 = '矯正中' WHERE 識別碼 = ?", (ncmr_id,))
+        
+        conn.commit()
+        return jsonify({"success": True, "capa_number": capa_number, "ncmr_number": ncmr_number})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/capa/detail/<int:id>')
+def get_capa_detail(id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 取得 CAPA 詳細
+        sql = """
+            SELECT T1.*, P.姓名 AS 負責人員姓名
+            FROM dbo.異常矯正單 T1
+            LEFT JOIN dbo.品管人員 P ON T1.負責人員 = P.識別碼
+            WHERE T1.識別碼 = ?
+        """
+        cursor.execute(sql, (id,))
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({"error": "找不到資料"}), 404
+            
+        cols = [c[0] for c in cursor.description]
+        capa_data = dict(zip(cols, row))
+        
+        # 處理日期
+        for date_col in ['建立日期', '結案日期']:
+            if capa_data.get(date_col):
+                capa_data[date_col] = capa_data[date_col].strftime('%Y-%m-%d')
+
+        # 取得關聯的 NCMR 詳細
+        cursor.execute("""
+            SELECT n.*, p.姓名 AS 發現人員姓名, v.廠商名稱 AS 廠商中文名稱
+            FROM dbo.不合格品單 n
+            LEFT JOIN dbo.品管人員 p ON n.發現人員 = p.識別碼
+            LEFT JOIN dbo.廠商資料 v ON n.廠商 = v.廠商名稱
+            WHERE n.識別碼 = ?
+        """, (capa_data.get('NCMR_ID'),))
+        ncmr_row = cursor.fetchone()
+        ncmr_cols = [c[0] for c in cursor.description]
+        ncmr_data = dict(zip(ncmr_cols, ncmr_row))
+        if ncmr_data.get('日期'): ncmr_data['日期'] = ncmr_data['日期'].strftime('%Y-%m-%d')
+
+        return jsonify({"capa": capa_data, "ncmr": ncmr_data})
+    finally:
+        conn.close()
+
+# ==================================================
+# 【廠商公差管理】API
+# ==================================================
+@app.route('/api/tolerance/search', methods=['GET'])
+@auth_required
+def search_tolerance():
+    """查詢公差資料"""
+    args = request.args
+    params = []
+    where = []
+    
+    if args.get('material'):
+        where.append("T1.材質 LIKE ?")
+        params.append(f"%{args['material']}%")
+    if args.get('vendor_id'):
+        where.append("T1.廠商ID = ?")
+        params.append(args['vendor_id'])
+    if args.get('spec'):
+        where.append("T1.規格 LIKE ?")
+        params.append(f"%{args['spec']}%")
+    
+    where_sql = " WHERE " + " AND ".join(where) if where else ""
+    
+    # 分頁參數
+    page = int(args.get('page', 1))
+    page_size = int(args.get('page_size', 20))
+    offset = (page - 1) * page_size
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 查詢總筆數
+        count_sql = f"""
+            SELECT COUNT(*) 
+            FROM dbo.廠商公差主檔 T1
+            LEFT JOIN dbo.廠商資料 V ON T1.廠商ID = V.識別碼
+            {where_sql}
+        """
+        cursor.execute(count_sql, params)
+        total = cursor.fetchone()[0]
+        
+        # 查詢分頁資料
+        sql = f"""
+            SELECT T1.識別碼, T1.材質, T1.規格, T1.廠商ID, V.廠商名稱,
+                   T1.備註, T1.建立日期
+            FROM dbo.廠商公差主檔 T1
+            LEFT JOIN dbo.廠商資料 V ON T1.廠商ID = V.識別碼
+            {where_sql}
+            ORDER BY T1.識別碼 DESC
+            OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+        """
+        cursor.execute(sql, params + [offset, page_size])
+        cols = [c[0] for c in cursor.description]
+        results = []
+        
+        for row in cursor.fetchall():
+            item = dict(zip(cols, row))
+            for key, val in item.items():
+                item[key] = format_value(val)
+            results.append(item)
+        
+        return jsonify({
+            "success": True, 
+            "data": results, 
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total + page_size - 1) // page_size
+        })
+    except Exception as e:
+        return jsonify({"error": handle_db_error(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/tolerance/<int:id>', methods=['GET'])
+@auth_required
+def get_tolerance_detail(id):
+    """獲取單筆公差詳細資料"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 查詢主檔
+        cursor.execute("""
+            SELECT T1.識別碼, T1.材質, T1.規格, T1.廠商ID, V.廠商名稱,
+                   T1.備註, T1.建立日期
+            FROM dbo.廠商公差主檔 T1
+            LEFT JOIN dbo.廠商資料 V ON T1.廠商ID = V.識別碼
+            WHERE T1.識別碼 = ?
+        """, (id,))
+        
+        main_row = cursor.fetchone()
+        if not main_row:
+            return jsonify({"error": "找不到該筆公差資料"}), 404
+        
+        cols = [c[0] for c in cursor.description]
+        main_data = dict(zip(cols, main_row))
+        for key, val in main_data.items():
+            main_data[key] = format_value(val)
+        
+        # 查詢明細
+        cursor.execute("""
+            SELECT 識別碼, 測量項目, 測量位置, 尺寸下限, 尺寸上限,
+                   公差下限, 公差上限, 標準值, 單位, 備註
+            FROM dbo.廠商公差明細檔
+            WHERE 主檔ID = ?
+            ORDER BY 識別碼
+        """, (id,))
+        
+        details = []
+        cols = [c[0] for c in cursor.description]
+        for row in cursor.fetchall():
+            detail = dict(zip(cols, row))
+            for key, val in detail.items():
+                detail[key] = format_value(val)
+            details.append(detail)
+        
+        return jsonify({"success": True, "main": main_data, "details": details})
+    except Exception as e:
+        return jsonify({"error": handle_db_error(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/tolerance/add', methods=['POST'])
+@auth_required
+def add_tolerance():
+    """新增公差資料"""
+    data = request.json
+    
+    if not data.get('材質'):
+        return jsonify({"error": "材質為必填欄位"}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 插入主檔（不記錄建立人員）
+        cursor.execute("""
+            INSERT INTO dbo.廠商公差主檔 (材質, 規格, 廠商ID, 備註)
+            VALUES (?, ?, ?, ?)
+        """, (
+            data.get('材質'),
+            data.get('規格'),
+            data.get('廠商ID'),
+            data.get('備註')
+        ))
+        
+        # 獲取新插入的主檔ID
+        cursor.execute("SELECT @@IDENTITY")
+        main_id = cursor.fetchone()[0]
+        
+        # 插入明細
+        details = data.get('details', [])
+        for detail in details:
+            cursor.execute("""
+                INSERT INTO dbo.廠商公差明細檔 
+                (主檔ID, 測量項目, 測量位置, 尺寸下限, 尺寸上限, 公差下限, 公差上限, 標準值, 單位, 備註)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                main_id,
+                detail.get('測量項目'),
+                detail.get('測量位置'),
+                detail.get('尺寸下限'),
+                detail.get('尺寸上限'),
+                detail.get('公差下限'),
+                detail.get('公差上限'),
+                detail.get('標準值'),
+                detail.get('單位', 'mm'),
+                detail.get('備註')
+            ))
+        
+        conn.commit()
+        return jsonify({"success": True, "id": int(main_id)})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": handle_db_error(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/tolerance/update/<int:id>', methods=['POST'])
+@auth_required
+def update_tolerance(id):
+    """更新公差資料"""
+    data = request.json
+    
+    if not data.get('材質'):
+        return jsonify({"error": "材質為必填欄位"}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 更新主檔（不記錄更新人員）
+        cursor.execute("""
+            UPDATE dbo.廠商公差主檔
+            SET 材質 = ?, 規格 = ?, 廠商ID = ?, 備註 = ?
+            WHERE 識別碼 = ?
+        """, (
+            data.get('材質'),
+            data.get('規格'),
+            data.get('廠商ID'),
+            data.get('備註'),
+            id
+        ))
+        
+        # 刪除舊明細
+        cursor.execute("DELETE FROM dbo.廠商公差明細檔 WHERE 主檔ID = ?", (id,))
+        
+        # 插入新明細
+        details = data.get('details', [])
+        for detail in details:
+            cursor.execute("""
+                INSERT INTO dbo.廠商公差明細檔 
+                (主檔ID, 測量項目, 測量位置, 尺寸下限, 尺寸上限, 公差下限, 公差上限, 標準值, 單位, 備註)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                id,
+                detail.get('測量項目'),
+                detail.get('測量位置'),
+                detail.get('尺寸下限'),
+                detail.get('尺寸上限'),
+                detail.get('公差下限'),
+                detail.get('公差上限'),
+                detail.get('標準值'),
+                detail.get('單位', 'mm'),
+                detail.get('備註')
+            ))
+        
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": handle_db_error(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/tolerance/delete/<int:id>', methods=['POST'])
+@auth_required
+def delete_tolerance(id):
+    """刪除公差資料"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM dbo.廠商公差主檔 WHERE 識別碼 = ?", (id,))
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": handle_db_error(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/tolerance/options', methods=['GET'])
+def get_tolerance_options():
+    """獲取公差選項資料"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 獲取材質列表
+        cursor.execute("SELECT DISTINCT 材質 FROM dbo.廠商公差主檔 WHERE 材質 IS NOT NULL ORDER BY 材質")
+        materials = [row[0] for row in cursor.fetchall()]
+        
+        # 獲取規格列表
+        cursor.execute("SELECT DISTINCT 規格 FROM dbo.廠商公差主檔 WHERE 規格 IS NOT NULL AND 規格 != '' ORDER BY 規格")
+        specs = [row[0] for row in cursor.fetchall()]
+        
+        # 獲取廠商列表
+        cursor.execute("SELECT 識別碼, 廠商名稱 FROM dbo.廠商資料 ORDER BY 廠商名稱")
+        vendors = [{"id": row[0], "name": row[1].strip() if row[1] else ""} for row in cursor.fetchall()]
+        
+        # 獲取測量項目列表
+        cursor.execute("SELECT DISTINCT 測量項目 FROM dbo.廠商公差明細檔 WHERE 測量項目 IS NOT NULL ORDER BY 測量項目")
+        measure_items = [row[0] for row in cursor.fetchall()]
+        
+        return jsonify({
+            "materials": materials,
+            "specs": specs,
+            "vendors": vendors,
+            "measureItems": measure_items
+        })
+    except Exception as e:
+        return jsonify({"error": handle_db_error(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/tolerance/export', methods=['GET'])
+@auth_required
+def export_tolerance_excel():
+    """匯出公差資料為 Excel"""
+    args = request.args
+    params = []
+    where = []
+    
+    if args.get('material'):
+        where.append("T1.材質 LIKE ?")
+        params.append(f"%{args['material']}%")
+    if args.get('vendor_id'):
+        where.append("T1.廠商ID = ?")
+        params.append(args['vendor_id'])
+    if args.get('spec'):
+        where.append("T1.規格 LIKE ?")
+        params.append(f"%{args['spec']}%")
+    
+    where_sql = " WHERE " + " AND ".join(where) if where else ""
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 查詢主檔和明細
+        sql = f"""
+            SELECT T1.識別碼, T1.材質, T1.規格, V.廠商名稱,
+                   T2.測量項目, T2.測量位置, T2.尺寸下限, T2.尺寸上限,
+                   T2.公差下限, T2.公差上限, T2.標準值, T2.單位, T2.備註
+            FROM dbo.廠商公差主檔 T1
+            LEFT JOIN dbo.廠商資料 V ON T1.廠商ID = V.識別碼
+            LEFT JOIN dbo.廠商公差明細檔 T2 ON T1.識別碼 = T2.主檔ID
+            {where_sql}
+            ORDER BY T1.識別碼, T2.識別碼
+        """
+        cursor.execute(sql, params)
+        
+        rows = cursor.fetchall()
+        if not rows:
+            df = pd.DataFrame(columns=['識別碼', '材質', '規格', '廠商名稱', '測量項目', '測量位置', 
+                                       '尺寸下限', '尺寸上限', '公差下限', '公差上限', '標準值', '單位', '備註'])
+        else:
+            cols = [c[0] for c in cursor.description]
+            df = pd.DataFrame([list(r) for r in rows], columns=cols)
+        
+        output = BytesIO()
+        df.to_excel(output, index=False, engine='openpyxl')
+        output.seek(0)
+        
+        return send_file(output, as_attachment=True, download_name='廠商公差資料.xlsx',
+                        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    except Exception as e:
+        return jsonify({"error": handle_db_error(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/tolerance/import', methods=['POST'])
+@auth_required
+def import_tolerance_excel():
+    """從 Excel 匯入公差資料"""
+    if 'file' not in request.files:
+        return jsonify({"error": "沒有上傳檔案"}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "沒有選擇檔案"}), 400
+    
+    try:
+        df = pd.read_excel(file, engine='openpyxl')
+    except Exception as e:
+        return jsonify({"error": f"檔案讀取失敗: {str(e)}"}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        user_id = request.user.get('user_id')
+        success_count = 0
+        current_main_id = None
+        current_material = None
+        current_spec = None
+        
+        for idx, row in df.iterrows():
+            row_data = row.to_dict()
+            
+            # 將 NaN 轉為 None
+            for key in row_data:
+                if pd.isna(row_data[key]):
+                    row_data[key] = None
+            
+            material = row_data.get('材質')
+            spec = row_data.get('規格')
+            vendor_name = row_data.get('廠商名稱')
+            
+            # 如果材質或規格改變，創建新的主檔
+            if material and (material != current_material or spec != current_spec):
+                # 查找廠商ID
+                vendor_id = None
+                if vendor_name:
+                    cursor.execute("SELECT 識別碼 FROM dbo.廠商資料 WHERE 廠商名稱 = ?", (vendor_name,))
+                    v = cursor.fetchone()
+                    vendor_id = v[0] if v else None
+                
+                # 插入主檔
+                cursor.execute("""
+                    INSERT INTO dbo.廠商公差主檔 (材質, 規格, 廠商ID, 建立人員)
+                    VALUES (?, ?, ?, ?)
+                """, (material, spec, vendor_id, user_id))
+                
+                cursor.execute("SELECT @@IDENTITY")
+                current_main_id = cursor.fetchone()[0]
+                current_material = material
+                current_spec = spec
+            
+            # 插入明細
+            if current_main_id:
+                cursor.execute("""
+                    INSERT INTO dbo.廠商公差明細檔 
+                    (主檔ID, 測量項目, 測量位置, 尺寸下限, 尺寸上限, 公差下限, 公差上限, 標準值, 單位, 備註)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    current_main_id,
+                    row_data.get('測量項目'),
+                    row_data.get('測量位置'),
+                    row_data.get('尺寸下限'),
+                    row_data.get('尺寸上限'),
+                    row_data.get('公差下限'),
+                    row_data.get('公差上限'),
+                    row_data.get('標準值'),
+                    row_data.get('單位', 'mm'),
+                    row_data.get('備註')
+                ))
+                success_count += 1
+        
+        conn.commit()
+        return jsonify({"success": True, "message": f"成功匯入 {success_count} 筆明細資料"})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": handle_db_error(e)}), 500
+    finally:
+        conn.close()
+
+# ==================================================
+# 啟動伺服器 (生產環境使用 Waitress)
 # ==================================================
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    try:
+        from waitress import serve
+        print("=" * 60)
+        print(">>> 品保資料庫系統啟動中...")
+        print(">>> 伺服器地址: http://0.0.0.0:5000")
+        print(">>> 支援並發: 8 個執行緒")
+        print(">>> 認證機制: JWT Token (24小時有效)")
+        print("=" * 60)
+        serve(app, host='0.0.0.0', port=5000, threads=8)
+    except ImportError:
+        print("警告: 未安裝 waitress，使用開發伺服器")
+        print("請執行: pip install waitress")
+        print("=" * 60)
+        app.run(debug=False, host='0.0.0.0', port=5000)

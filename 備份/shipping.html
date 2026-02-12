@@ -2,6 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>品保檢驗數據系統 - SPC 完整版</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -259,6 +260,79 @@
         .history-table th { background: #7f8c8d; color: white; padding: 10px; font-size: 18px; }
         .history-table td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 14px; word-wrap: break-word; }
         .history-table tr:hover { background-color: #f1f1f1; }
+
+        /* 響應式設計 - 手機和平板適配 */
+        @media (max-width: 992px) {
+            .info-grid, .filter-section, .stats-grid, .charts-wrapper {
+                grid-template-columns: 1fr;
+            }
+            
+            .import-export-section {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            
+            .export-group {
+                text-align: left;
+            }
+            
+            .container {
+                padding: 15px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px !important;
+            }
+            
+            .card {
+                padding: 15px !important;
+            }
+            
+            .btn-group {
+                flex-direction: column;
+                gap: 5px;
+            }
+            
+            .btn-group .btn {
+                width: 100%;
+                margin: 2px 0 !important;
+            }
+            
+            .d-flex.justify-content-between {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            h3, h4 {
+                font-size: 1.2rem !important;
+            }
+            
+            .modal-dialog {
+                margin: 10px;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .back-button {
+                padding: 8px 15px;
+                font-size: 14px;
+            }
+            
+            .table {
+                font-size: 12px;
+            }
+            
+            .status-badge {
+                font-size: 0.75rem;
+                padding: 3px 6px;
+            }
+            
+            .num-input, .minmax-input {
+                font-size: 16px; /* 防止 iOS 縮放 */
+            }
+        }
     </style>
 </head>
 <body>
@@ -269,7 +343,7 @@
     <h2>📝 出貨檢驗數據登錄</h2>
     <div class="info-grid">
         <div class="info-item"><label>日期</label><input type="text" id="date" tabindex="1"></div>
-        <div class="info-item"><label>人員</label><select id="inspector" tabindex="2"></select></div>
+        <div class="info-item"><label>檢驗人員</label><select id="inspector" tabindex="2"></select></div>
         <div class="info-item"><label>廠商</label><select id="vendor" tabindex="3"></select></div>
         <div class="info-item"><label>規格</label><input type="text" id="spec" tabindex="4"></div>
         <div class="info-item"><label>材質</label><input type="text" id="material" tabindex="5"></div>
@@ -353,7 +427,9 @@
 
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script>
-        const API_BASE = `${window.location.protocol}//${window.location.hostname}:${window.location.port || '5000'}`;
+        const API_BASE = window.location.protocol === 'file:' 
+            ? 'http://localhost:5000' 
+            : `${window.location.protocol}//${window.location.hostname}:${window.location.port || '5000'}`;
         let chartX = null, chartR = null, currentEditId = null;
         let authToken = localStorage.getItem('authToken') || '';
 
@@ -478,12 +554,12 @@
             // Rule 8: 連續8點在中心線兩側但都不在1σ内
             if (i >= 7) {
                 let last8 = data.slice(i-7, i+1);
-                let above8 = last8.every((v, idx) => {
-                    const side = (v - cl) / Math.abs(v - cl);
-                    const lastSide = idx === 0 ? side : (last8[idx-1] - cl) / Math.abs(last8[idx-1] - cl);
-                    return (side > 0 && v > sigma1_above) || (side < 0 && v < sigma1_below);
-                });
-                if (above8) reasons.push("Rule 8: 8點在1σ外且兩側");
+                let allOutside1Sigma = last8.every(v => v > sigma1_above || v < sigma1_below);
+                let hasAbove = last8.some(v => v > sigma1_above);
+                let hasBelow = last8.some(v => v < sigma1_below);
+                if (allOutside1Sigma && hasAbove && hasBelow) {
+                    reasons.push("Rule 8: 8點在1σ外且兩側");
+                }
             }
             
             if (reasons.length > 0) { 
@@ -670,6 +746,11 @@
 
         document.getElementById('statsSummary').style.display = 'block';
         document.getElementById('analysisPanel').style.display = 'block';
+        
+        // 顯示數據不足的項目數量
+        if (d.insufficient_data && d.insufficient_data.length > 0) {
+            console.log(`⚠️ 有 ${d.insufficient_data.length} 筆數據不足 3 組，已排除`);
+        }
 
         const analysis = analyzeWECO(d.avgs, d.x_cl, d.x_ucl, d.x_lcl, d.labels);
         const panel = document.getElementById('alarm-panel');
@@ -692,28 +773,267 @@
         const pointRadius = analysis.statuses.map(s => s === "violation" ? 8 : 4);
 
         if (chartX) chartX.destroy();
+        if (chartR) chartR.destroy();
+
+        // 獲取當前索引的異常原因
+        const getViolationReasons = (idx) => {
+            // 確保 idx 在有效範圍內
+            if (idx < 0 || idx >= d.labels.length) {
+                return [];
+            }
+            const matching = analysis.violations.filter(v => v.label === d.labels[idx]);
+            if (matching.length > 0) {
+                return matching.map(v => v.reasons).flat();
+            }
+            return [];
+        };
+
+        // 自定義工具提示函數
+        const getTooltipTitle = (context) => {
+            // 檢查 context 是否有效
+            if (!context || !context[0]) {
+                return '';
+            }
+            
+            const idx = context[0].dataIndex;
+            const id = d.ids && d.ids[idx] ? d.ids[idx] : 'N/A';
+            const date = d.dates && d.dates[idx] ? d.dates[idx].split(' ')[0] : '';
+            const avg = d.avgs && d.avgs[idx] ? d.avgs[idx].toFixed(3) : 'N/A';
+            
+            return `ID: ${id} ${date ? '(' + date + ')' : ''} [X̄: ${avg}]`;
+        };
+
+        // 獲取完整的標籤內容（包含異常資訊）
+        const getFullLabel = (context) => {
+            if (!context || !context.dataset) {
+                return '';
+            }
+            let label = context.dataset.label || '';
+            if (label) label += ': ';
+            
+            // 優先使用 d.avgs 來顯示（確保數值正確）
+            if (context.dataIndex !== undefined && d.avgs && d.avgs[context.dataIndex] !== undefined) {
+                label += d.avgs[context.dataIndex].toFixed(3);
+            } else if (context.parsed?.y !== null && context.parsed?.y !== undefined) {
+                label += context.parsed.y.toFixed(3);
+            } else if (context.raw !== undefined) {
+                label += context.raw.toFixed(3);
+            }
+            return label;
+        };
+
+        // 獲取異常原因標籤
+        const getViolationLabel = (idx) => {
+            // 確保 idx 有效
+            if (idx === undefined || idx < 0 || idx >= d.avgs.length) {
+                return [];
+            }
+            const reasons = getViolationReasons(idx);
+            if (reasons.length > 0) {
+                return [{ indicator: '⚠️', text: '異常: ' + reasons.join('、') }];
+            }
+            return [];
+        };
+
+        // 共同的 hover 處理器 - 同步兩張圖
+        const syncHover = (chart, index) => {
+            // 確保 index 有效
+            if (index < 0 || index >= d.avgs.length) {
+                return;
+            }
+            if (chart === chartX && chartR) {
+                chartR.tooltip.setActiveElements([
+                    { datasetIndex: 0, index: index }
+                ]);
+                chartR.update('none');
+            } else if (chart === chartR && chartX) {
+                chartX.tooltip.setActiveElements([
+                    { datasetIndex: 0, index: index }
+                ]);
+                chartX.update('none');
+            }
+        };
+
+        // 共同的點擊處理器 - 跳轉到編輯頁面
+        const handlePointClick = (event, elements, chart) => {
+            if (elements.length > 0) {
+                const idx = elements[0].index;
+                // 確保 idx 有效
+                if (idx < 0 || idx >= d.ids.length) {
+                    return;
+                }
+                const id = d.ids[idx];
+                if (id) {
+                    // 跳轉到編輯頁面並載入該筆資料
+                    window.location.href = `index.html?edit_id=${id}`;
+                }
+            }
+        };
+
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            onClick: (e, elements, chart) => handlePointClick(e, elements, chart),
+            plugins: {
+                    tooltip: {
+                        filter: function(tooltipItem) {
+                            // 只顯示主要數據集的 tooltip
+                            return tooltipItem.datasetIndex === 0;
+                        },
+                        callbacks: {
+                            title: getTooltipTitle,
+                            label: function(context) {
+                                const lines = [getFullLabel(context)];
+                                // 添加異常原因
+                                const violationLines = getViolationLabel(context.dataIndex);
+                                return lines.concat(violationLines.map(v => `${v.indicator} ${v.text}`));
+                            }
+                        }
+                    }
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: '日期'
+                    },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 0,
+                        autoSkip: true,
+                        maxTicksLimit: 20
+                    }
+                }
+            }
+        };
+
         chartX = new Chart(document.getElementById('xBarChart'), {
             type: 'line',
-            data: { 
-                labels: d.labels, 
+            data: {
+                labels: d.dates && d.dates.some(d => d) ? d.dates : d.labels,
                 datasets: [
-                    { label: '平均值', data: d.avgs, borderColor: '#3498db', backgroundColor: pointColors, pointRadius: pointRadius, tension: 0.1, fill: false },
-                    { label: 'UCL', data: Array(d.labels.length).fill(d.x_ucl), borderColor: 'red', borderDash: [5,5], pointRadius:0 },
-                    { label: 'CL', data: Array(d.labels.length).fill(d.x_cl), borderColor: 'green', pointRadius:0 },
-                    { label: 'LCL', data: Array(d.labels.length).fill(d.x_lcl), borderColor: 'red', borderDash: [5,5], pointRadius:0 }
+                    {
+                        label: '平均值',
+                        data: d.avgs,
+                        borderColor: '#3498db',
+                        backgroundColor: pointColors,
+                        pointRadius: pointRadius,
+                        tension: 0.1,
+                        fill: false,
+                        pointHoverRadius: 8,
+                        pointHoverBackgroundColor: pointColors,
+                        order: 1
+                    },
+                    { label: 'UCL', data: Array(d.labels.length).fill(d.x_ucl), borderColor: 'red', borderDash: [5,5], pointRadius:0, order: 2 },
+                    { label: 'CL', data: Array(d.labels.length).fill(d.x_cl), borderColor: 'green', pointRadius:0, order: 3 },
+                    { label: 'LCL', data: Array(d.labels.length).fill(d.x_lcl), borderColor: 'red', borderDash: [5,5], pointRadius:0, order: 4 }
                 ]
             },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'X-bar 管制圖' } } }
+            options: {
+                ...commonOptions,
+                plugins: {
+                    ...commonOptions.plugins,
+                    title: { display: true, text: 'X-bar 管制圖 (點擊資料點可編輯)' },
+                    legend: {
+                        labels: {
+                            filter: function(item, chart) {
+                                return item.text !== 'UCL' && item.text !== 'LCL';
+                            }
+                        }
+                    }
+                },
+                onHover: (event, elements) => {
+                    if (elements.length > 0) {
+                        syncHover(chartX, elements[0].index);
+                    }
+                }
+            }
         });
 
-        if (chartR) chartR.destroy();
+        // R圖表專用的tooltip回調函數
+        const getRTooltipTitle = (context) => {
+            if (!context || !context[0]) {
+                return '';
+            }
+            const idx = context[0].dataIndex;
+            const id = d.ids && d.ids[idx] ? d.ids[idx] : 'N/A';
+            const date = d.dates && d.dates[idx] ? d.dates[idx].split(' ')[0] : '';
+            const range = d.ranges && d.ranges[idx] ? d.ranges[idx].toFixed(3) : 'N/A';
+            return `ID: ${id} ${date ? '(' + date + ')' : ''} [R: ${range}]`;
+        };
+
+        // R圖表專用的label回調函數
+        const getRFullLabel = (context) => {
+            if (!context || !context.dataset) {
+                return '';
+            }
+            let label = context.dataset.label || '';
+            if (label) label += ': ';
+            
+            // 使用 d.ranges 來顯示R值
+            if (context.dataIndex !== undefined && d.ranges && d.ranges[context.dataIndex] !== undefined) {
+                label += d.ranges[context.dataIndex].toFixed(3);
+            } else if (context.parsed?.y !== null && context.parsed?.y !== undefined) {
+                label += context.parsed.y.toFixed(3);
+            } else if (context.raw !== undefined) {
+                label += context.raw.toFixed(3);
+            }
+            return label;
+        };
+
         chartR = new Chart(document.getElementById('rChart'), {
             type: 'line',
-            data: { labels: d.labels, datasets: [
-                { label: '全距 R', data: d.ranges, borderColor: '#f39c12', backgroundColor: '#f39c12', tension: 0.1, fill: false },
-                { label: 'UCL', data: Array(d.labels.length).fill(d.r_ucl), borderColor: 'red', borderDash: [5,5], pointRadius:0 }
-            ]},
-            options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'R 管制圖' } } }
+            data: {
+                labels: d.dates && d.dates.some(d => d) ? d.dates : d.labels,
+                datasets: [
+                    {
+                        label: '全距 R',
+                        data: d.ranges,
+                        borderColor: '#f39c12',
+                        backgroundColor: '#f39c12',
+                        tension: 0.1,
+                        fill: false,
+                        pointHoverRadius: 8,
+                        pointHoverBackgroundColor: analysis.statuses.map(s => s === "violation" ? '#ff0000' : '#f39c12'),
+                        order: 1
+                    },
+                    { label: 'UCL', data: Array(d.labels.length).fill(d.r_ucl), borderColor: 'red', borderDash: [5,5], pointRadius:0, order: 2 }
+                ]
+            },
+            options: {
+                ...commonOptions,
+                plugins: {
+                    ...commonOptions.plugins,
+                    title: { display: true, text: 'R 管制圖 (點擊資料點可編輯)' },
+                    tooltip: {
+                        filter: function(tooltipItem) {
+                            // 只顯示主要數據集的 tooltip
+                            return tooltipItem.datasetIndex === 0;
+                        },
+                        callbacks: {
+                            title: getRTooltipTitle,
+                            label: function(context) {
+                                const lines = [getRFullLabel(context)];
+                                // 添加異常原因
+                                const violationLines = getViolationLabel(context.dataIndex);
+                                return lines.concat(violationLines.map(v => `${v.indicator} ${v.text}`));
+                            }
+                        }
+                    },
+                    legend: {
+                        labels: {
+                            filter: function(item, chart) {
+                                return item.text !== 'UCL';
+                            }
+                        }
+                    }
+                },
+                onHover: (event, elements) => {
+                    if (elements.length > 0) {
+                        syncHover(chartR, elements[0].index);
+                    }
+                }
+            }
         });
     }
 
@@ -727,6 +1047,22 @@
         const [ins, ven] = await Promise.all([fetchWithAuth(`${API_BASE}/api/inspectors`).then(r=>r.json()), fetchWithAuth(`${API_BASE}/api/vendors`).then(r=>r.json())]);
         const fill = (id, list) => document.getElementById(id).innerHTML = '<option value="">--請選擇--</option>' + list.map(x=>`<option value="${x.name}">${x.name}</option>`).join('');
         fill('inspector', ins); fill('vendor', ven); refreshAll();
+
+        // 檢查是否有 edit_id 參數
+        const urlParams = new URLSearchParams(window.location.search);
+        const editId = urlParams.get('edit_id');
+        if (editId) {
+            // 獲取該筆資料並載入表單
+            try {
+                const res = await fetchWithAuth(`${API_BASE}/api/data?page=1&id=${editId}`);
+                const result = await res.json();
+                if (result.data && result.data.length > 0) {
+                    startEdit(result.data[0]);
+                }
+            } catch (err) {
+                console.error('載入編輯資料失敗:', err);
+            }
+        }
     };
 
     function refreshAll() { fetchHistory(1); updateCharts(); }
@@ -782,7 +1118,7 @@
     function startEdit(item) {
         currentEditId = item.識別碼;
         document.getElementById('date').value = item.檢驗日期;
-        document.getElementById('inspector').value = (item.檢驗人員姓名 || "").trim();
+        document.getElementById('inspector').value = (item.檢驗人員 || "").trim();
         document.getElementById('vendor').value = (item.廠商中文名稱 || "").trim();
         document.getElementById('spec').value = item.檢驗規格;
         document.getElementById('material').value = item.材質;
