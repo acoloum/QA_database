@@ -1308,6 +1308,91 @@
         }
     }
 
+    async function handleSave() {
+        // 收集基本資料
+        const date = document.getElementById('date').value;
+        const inspector = document.getElementById('inspector').value;
+        const vendorSelect = document.getElementById('vendor');
+        const vendor = vendorSelect.value;
+        const vendorId = vendor ? (vendorSelect.options[vendorSelect.selectedIndex]?.dataset?.id || '') : '';
+        const spec = document.getElementById('spec').value.trim();
+        const material = document.getElementById('material').value.trim();
+        const order_no = document.getElementById('order_no').value.trim();
+
+        // 驗證必填欄位
+        if (!date) { alert('請輸入日期'); return; }
+        if (!inspector) { alert('請選擇檢驗人員'); return; }
+
+        // 收集測量數據
+        const details = [];
+        let hasData = false;
+
+        items.forEach(item => {
+            for (let g = 1; g <= 5; g++) {
+                if (item.type === "minmax") {
+                    const minInput = document.querySelector(`input[data-key="${item.key}${g}-min"]`);
+                    const maxInput = document.querySelector(`input[data-key="${item.key}${g}-max"]`);
+                    const minVal = minInput?.value === '' ? null : parseFloat(minInput.value);
+                    const maxVal = maxInput?.value === '' ? null : parseFloat(maxInput.value);
+                    if (minVal !== null || maxVal !== null) {
+                        hasData = true;
+                        details.push({
+                            "組別": g,
+                            "項目": item.key,
+                            "最小值": minVal,
+                            "最大值": maxVal
+                        });
+                    }
+                } else {
+                    const input = document.querySelector(`input[data-key="${item.key}${g}"]`);
+                    const val = input?.value === '' ? null : parseFloat(input.value);
+                    if (val !== null) {
+                        hasData = true;
+                        details.push({
+                            "組別": g,
+                            "項目": item.key,
+                            "最小值": val,
+                            "最大值": val
+                        });
+                    }
+                }
+            }
+        });
+
+        if (!hasData) { alert('請至少輸入一組測量數值'); return; }
+
+        // 構建 payload
+        const payload = {
+            id: currentEditId || null,
+            "檢驗日期": date,
+            "檢驗人員": inspector,
+            "廠商": vendor,
+            "廠商ID": vendorId,
+            "規格": spec,
+            "材質": material,
+            "訂單號碼": order_no,
+            "details": details
+        };
+
+        const url = currentEditId ? `${API_BASE}/api/update` : `${API_BASE}/api/add`;
+        try {
+            const res = await fetchWithAuth(url, {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                alert("儲存成功");
+                resetForm();
+                refreshAll();
+            } else {
+                const error = await res.json();
+                alert(error.error || "儲存失敗");
+            }
+        } catch (err) {
+            alert("儲存失敗：" + err.message);
+        }
+    }
+
     async function handleImport() {
         const file = document.getElementById('importFile').files[0];
         if (!file) return alert("請先選擇檔案");
