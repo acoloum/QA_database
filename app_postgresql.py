@@ -3652,7 +3652,6 @@ def check_tolerance():
         return ''
 
     input_spec = normalize_spec(spec)
-    print(f"[DEBUG] 查詢條件: vendor_id={vendor_id} (type={type(vendor_id).__name__}), material={material}, spec={spec} -> normalize={input_spec}")
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -3667,7 +3666,6 @@ def check_tolerance():
         params = [material]
         cursor.execute(sql, params)
         candidates = cursor.fetchall()
-        print(f"[DEBUG] 公差候選數量: {len(candidates)}")
 
         # 分類候選記錄
         priority1_exact = []    # 有廠商 + 完全匹配
@@ -3688,8 +3686,6 @@ def check_tolerance():
             has_vendor = tol_vendor_id is not None
             has_spec = normalized_spec != ''
 
-            print(f"[DEBUG] 候選: ID={tol_id}, 規格='{tol_spec}', 廠商ID={tol_vendor_id}, has_vendor={has_vendor}, has_spec={has_spec}")
-
             # 判斷匹配類型
             # 檢查廠商ID是否匹配（P1-P3需要廠商ID完全相同）
             vendor_match = (tol_vendor_id == vendor_id) if (tol_vendor_id is not None and vendor_id is not None) else False
@@ -3699,45 +3695,36 @@ def check_tolerance():
                 if has_spec and normalized_spec == input_spec:
                     # 完全匹配
                     priority1_exact.append(row)
-                    print(f"[DEBUG] -> P1 (廠商匹配+完全匹配)")
                 elif has_spec and input_spec.startswith(normalized_spec + '*'):
                     # 規格部分匹配
                     priority2_partial.append(row)
-                    print(f"[DEBUG] -> P2 (廠商匹配+部分匹配)")
                 elif not has_spec:
                     # 無規格（通用）
                     priority3_generic.append(row)
-                    print(f"[DEBUG] -> P3 (廠商匹配+無規格)")
             elif not has_vendor:
                 # 無廠商的記錄 (Priority 4-6)
                 if has_spec and normalized_spec == input_spec:
                     priority4_exact.append(row)
-                    print(f"[DEBUG] -> P4 (無廠商+完全匹配)")
                 elif has_spec and input_spec.startswith(normalized_spec + '*'):
                     priority5_partial.append(row)
-                    print(f"[DEBUG] -> P5 (無廠商+部分匹配)")
                 elif not has_spec:
                     priority6_generic.append(row)
-                    print(f"[DEBUG] -> P6 (無廠商+無規格)")
             else:
                 # 有廠商但不匹配的記錄（跳過）
-                print(f"[DEBUG] -> 跳過 (廠商ID不匹配: tol_vendor={tol_vendor_id}, input_vendor={vendor_id})")
+                pass
 
         # 按優先順序選擇
         matched_row = None
-        priority_names = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6']
         for idx, priority_list in enumerate([priority1_exact, priority2_partial, priority3_generic,
                                              priority4_exact, priority5_partial, priority6_generic]):
             if priority_list:
                 matched_row = priority_list[0]
-                print(f"[DEBUG] 選擇 {priority_names[idx]}")
                 break
 
         if not matched_row:
             return jsonify({"success": True, "found": False, "message": "找不到對應的公差標準"})
 
         main_row = matched_row
-        print(f"[DEBUG] 最終匹配: ID={main_row[0]}, 規格='{main_row[2]}', 廠商ID={main_row[3]}")
         
         if not main_row:
             return jsonify({"success": True, "found": False, "message": "找不到對應的公差標準"})
