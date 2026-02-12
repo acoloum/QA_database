@@ -1238,8 +1238,6 @@
     }
 
     function startEdit(item) {
-        console.log(`[StartEdit] 收到 item.廠商中文名稱='${item.廠商中文名稱}' (typeof: ${typeof item.廠商中文名稱})`);
-
         currentEditId = item.識別碼;
         document.getElementById('date').value = item.檢驗日期;
 
@@ -1252,31 +1250,33 @@
         if (vendorName && !isNaN(vendorName)) {
             vendorId = String(vendorName);
             vendorName = vendorIdToNameMap[vendorId] || '';
-            console.log(`[StartEdit] ID=${vendorName ? vendorName : 'NOT FOUND'}`);
         } else {
             vendorName = (vendorName || "").trim();
             vendorId = vendorNameToIdMap[vendorName] || '';
-            console.log(`[StartEdit] 名稱='${vendorName}' -> vendorId=${vendorId}`);
         }
 
         vendorSelect.value = vendorName;
-        console.log(`[StartEdit] 設定結果: select.value='${vendorSelect.value}', vendorId=${vendorId}`);
 
         document.getElementById('spec').value = item.檢驗規格;
         document.getElementById('material').value = item.材質;
         document.getElementById('order_no').value = item.訂單號碼;
 
-        // 填充檢驗人員（使用識別碼或姓名）
+        // 填充檢驗人員
         const inspectorSelect = document.getElementById('inspector');
         if (item.檢驗人員) {
             inspectorSelect.value = item.檢驗人員;
         }
 
-        document.querySelectorAll('.num-input').forEach(i => i.value = item[i.getAttribute('data-key')] || "");
+        // 填充測量數值
+        document.querySelectorAll('.num-input').forEach(i => {
+            const key = i.getAttribute('data-key');
+            i.value = item[key] || "";
+        });
+
         document.getElementById('saveBtn').innerText = `⚠️ 更新紀錄 ID: ${currentEditId}`;
         window.scrollTo(0,0);
 
-        // 載入後檢查公差（確保 vendorSelect.value 已設置）
+        // 載入後檢查公差
         setTimeout(() => {
             checkToleranceOnChange();
             validateAllInputs();
@@ -1311,21 +1311,24 @@
     async function handleSave() {
         // 收集基本資料
         const date = document.getElementById('date').value;
-        const inspector = document.getElementById('inspector').value;
+        const inspectorSelect = document.getElementById('inspector');
+        const inspectorName = inspectorSelect.value;
         const vendorSelect = document.getElementById('vendor');
-        const vendor = vendorSelect.value;
-        const vendorId = vendor ? (vendorSelect.options[vendorSelect.selectedIndex]?.dataset?.id || '') : '';
+        const vendorName = vendorSelect.value;
         const spec = document.getElementById('spec').value.trim();
         const material = document.getElementById('material').value.trim();
         const order_no = document.getElementById('order_no').value.trim();
 
         // 驗證必填欄位
         if (!date) { alert('請輸入日期'); return; }
-        if (!inspector) { alert('請選擇檢驗人員'); return; }
+        if (!inspectorName) { alert('請選擇檢驗人員'); return; }
+        if (!vendorName) { alert('請選擇廠商'); return; }
+        if (!spec) { alert('請輸入檢驗規格'); return; }
+        if (!material) { alert('請輸入材質'); return; }
 
-        // 收集測量數據
-        const details = [];
+        // 收集測量數據 - 直接收集各欄位值
         let hasData = false;
+        const details = [];
 
         items.forEach(item => {
             for (let g = 1; g <= 5; g++) {
@@ -1361,20 +1364,34 @@
 
         if (!hasData) { alert('請至少輸入一組測量數值'); return; }
 
-        // 構建 payload
+        // 構建 payload - 直接包含各測量欄位（後端 save_data 需要這些）
         const payload = {
-            id: currentEditId || null,
             "檢驗日期": date,
-            "檢驗人員": inspector,
-            "廠商": vendor,
-            "廠商ID": vendorId,
-            "規格": spec,
+            "檢驗人員姓名": inspectorName,
+            "廠商中文名稱": vendorName,
+            "檢驗規格": spec,
             "材質": material,
             "訂單號碼": order_no,
-            "details": details
+            "details": details  // 保留 details，未來擴充用
         };
 
+        // 直接將各測量值加入 payload 頂層（後端 save_data 會讀取這些）
+        items.forEach(item => {
+            for (let g = 1; g <= 5; g++) {
+                if (item.type === "minmax") {
+                    const minInput = document.querySelector(`input[data-key="${item.key}${g}-min"]`);
+                    const maxInput = document.querySelector(`input[data-key="${item.key}${g}-max"]`);
+                    payload[`${item.key}${g}-min`] = minInput?.value || null;
+                    payload[`${item.key}${g}-max`] = maxInput?.value || null;
+                } else {
+                    const input = document.querySelector(`input[data-key="${item.key}${g}"]`);
+                    payload[`${item.key}${g}`] = input?.value || null;
+                }
+            }
+        });
+
         const url = currentEditId ? `${API_BASE}/api/update` : `${API_BASE}/api/add`;
+        if (currentEditId) payload['識別碼'] = currentEditId;
         try {
             const res = await fetchWithAuth(url, {
                 method: 'POST',
