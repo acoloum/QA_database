@@ -471,6 +471,62 @@ def get_csrf_token():
     token = generate_csrf_token()
     return jsonify({'csrf_token': token})
 
+# ==================================================
+# 出貨檢驗資料 API
+# ==================================================
+@app.route('/api/data/<int:data_id>', methods=['GET'])
+@auth_required
+def get_shipping_data(data_id):
+    """根據 ID 獲取單筆出貨檢驗資料"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        sql = """
+            SELECT T1.識別碼, T1.檢驗日期, T1.材質, T1.檢驗規格, T1.訂單號碼,
+                   T1.檢驗人員,
+                   T1.廠商名稱,
+                   T1."外徑1-min", T1."外徑1-max", T1."外徑2-min", T1."外徑2-max",
+                   T1."外徑3-min", T1."外徑3-max", T1."外徑4-min", T1."外徑4-max",
+                   T1."外徑5-min", T1."外徑5-max",
+                   T1."內徑1-min", T1."內徑1-max", T1."內徑2-min", T1."內徑2-max",
+                   T1."內徑3-min", T1."內徑3-max", T1."內徑4-min", T1."內徑4-max",
+                   T1."內徑5-min", T1."內徑5-max",
+                   T1."厚度1-min", T1."厚度1-max", T1."厚度2-min", T1."厚度2-max",
+                   T1."厚度3-min", T1."厚度3-max", T1."厚度4-min", T1."厚度4-max",
+                   T1."厚度5-min", T1."厚度5-max",
+                   T1.同心度1, T1.同心度2, T1.同心度3, T1.同心度4, T1.同心度5,
+                   T1.長度1, T1.長度2, T1.長度3, T1.長度4, T1.長度5,
+                   T1.硬度1, T1.硬度2, T1.硬度3, T1.硬度4, T1.硬度5,
+                   T1.真直度1, T1.真直度2, T1.真直度3, T1.真直度4, T1.真直度5
+            FROM "出貨檢驗數據" T1
+            WHERE T1.識別碼 = %s
+        """
+        cursor.execute(sql, (data_id,))
+        cols = [c[0] for c in cursor.description]
+        row = cursor.fetchone()
+        
+        if row is None:
+            return jsonify({'error': '資料不存在'}), 404
+        
+        item = dict(zip(cols, row))
+        
+        # 格式化每個值
+        for key, val in item.items():
+            item[key] = format_value(val)
+        
+        # 確保檢驗日期是 YYYY-MM-DD 格式
+        if item.get('檢驗日期'):
+            date_val = item['檢驗日期']
+            if isinstance(date_val, str) and 'T' in date_val:
+                item['檢驗日期'] = date_val.split('T')[0]
+        
+        return jsonify(item)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
 @app.route('/api/stats', methods=['GET'])
 @auth_required
 def get_shipping_stats():
