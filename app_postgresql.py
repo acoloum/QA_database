@@ -483,8 +483,7 @@ def get_shipping_data(data_id):
     try:
         sql = """
             SELECT T1.識別碼, T1.檢驗日期, T1.材質, T1.檢驗規格, T1.訂單號碼,
-                   T1.檢驗人員,
-                   T1.廠商名稱,
+                   P.姓名 AS 檢驗人員, V.廠商名稱 AS 廠商中文名稱,
                    T1."外徑1-min", T1."外徑1-max", T1."外徑2-min", T1."外徑2-max",
                    T1."外徑3-min", T1."外徑3-max", T1."外徑4-min", T1."外徑4-max",
                    T1."外徑5-min", T1."外徑5-max",
@@ -499,6 +498,8 @@ def get_shipping_data(data_id):
                    T1.硬度1, T1.硬度2, T1.硬度3, T1.硬度4, T1.硬度5,
                    T1.真直度1, T1.真直度2, T1.真直度3, T1.真直度4, T1.真直度5
             FROM "出貨檢驗數據" T1
+            LEFT JOIN "品管人員" P ON T1.檢驗人員 = P.識別碼
+            LEFT JOIN "廠商資料" V ON T1.廠商名稱 = V.識別碼
             WHERE T1.識別碼 = %s
         """
         cursor.execute(sql, (data_id,))
