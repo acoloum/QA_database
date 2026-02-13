@@ -8,3 +8,4 @@ ENV/
 *.current
 *.tmp
 nul
+database_backup/
