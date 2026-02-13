@@ -319,10 +319,31 @@
             : `${window.location.protocol}//${(window.location.hostname || 'localhost')}:${window.location.port || '5000'}`;
         console.log('API_BASE:', API_BASE);
 
-        window.onload = function () {
+        // 驗證 Token 是否有效
+        async function verifyToken(token) {
+            try {
+                const res = await fetch(`${API_BASE}/api/verify-token`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                return res.ok && (await res.json()).valid;
+            } catch {
+                return false;
+            }
+        }
+
+        window.onload = async function () {
             const token = localStorage.getItem('authToken');
             if (token) {
-                showMainPage();
+                // 驗證 token 是否有效
+                const isValid = await verifyToken(token);
+                if (isValid) {
+                    showMainPage();
+                } else {
+                    // Token 無效，清除並停留在登入頁面
+                    localStorage.removeItem('authToken');
+                    localStorage.removeItem('username');
+                    console.log('Token 已過期，請重新登入');
+                }
             }
             // 檢查是否有 edit_id 參數，有的話直接跳轉到出貨檢驗頁面
             const urlParams = new URLSearchParams(window.location.search);
