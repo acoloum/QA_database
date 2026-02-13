@@ -1,6 +1,7 @@
 import os
+import secrets
 
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, jsonify, request, send_file, session
 from flask_cors import CORS
 import psycopg2
 import decimal
@@ -13,10 +14,94 @@ import jwt
 import hashlib
 from functools import wraps
 from config import POSTGRESQL_CONFIG
+import re
+
+# ==================================================
+# XSS Protection Module
+# ==================================================
+try:
+    from markupsafe import escape as _escape
+    def escape(s):
+        if s is None:
+            return ''
+        return _escape(str(s))
+except ImportError:
+    # Fallback if markupsafe not available
+    import html
+    def escape(s):
+        """Escape HTML characters"""
+        if s is None:
+            return ''
+        return str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#x27;')
+
+def sanitize_html(text):
+    """Remove dangerous HTML tags while preserving safe formatting"""
+    if text is None:
+        return ''
+    text = str(text)
+    
+    # Escape all HTML first
+    escaped = escape(text)
+    
+    # Allow specific safe tags
+    safe_patterns = [
+        (r'&lt;br&gt;', '<br>'),
+        (r'&lt;br/&gt;', '<br/>'),
+        (r'&lt;strong&gt;', '<strong>'),
+        (r'&lt;/strong&gt;', '</strong>'),
+        (r'&lt;em&gt;', '<em>'),
+        (r'&lt;/em&gt;', '</em>'),
+    ]
+    
+    for pattern, replacement in safe_patterns:
+        escaped = re.sub(pattern, replacement, escaped, flags=re.IGNORECASE)
+    
+    return escaped
+
+def sanitize_input(data):
+    """Recursively sanitize all string values in a dictionary/list"""
+    if isinstance(data, dict):
+        return {key: sanitize_input(value) for key, value in data.items()}
+    elif isinstance(data, list):
+        return [sanitize_input(item) for item in data]
+    elif isinstance(data, str):
+        return sanitize_html(data)
+    else:
+        return data
 
 app = Flask(__name__)
-CORS(app)
+app.secret_key = secrets.token_hex(32)  # Session 密鑰
+CORS(app, supports_credentials=True)  # 啟用 credentials 支援
 
+# ==================================================
+# XSS Protection Helper
+# ==================================================
+def get_sanitized_json():
+    """Get and sanitize JSON data from request"""
+    json_data = request.get_json(silent=True)
+    if json_data:
+        return sanitize_input(json_data)
+    return json_data
+
+
+# ==================================================
+# CSRF Protection
+# ==================================================
+import secrets
+
+# 簡單的 CSRF token 產生器 (生產環境可使用 flask-wtf)
+def generate_csrf_token():
+    """Generate a CSRF token for the session"""
+    if 'csrf_token' not in session:
+        session['csrf_token'] = secrets.token_hex(32)
+    return session['csrf_token']
+
+def validate_csrf_token(token):
+    """Validate CSRF token"""
+    session_token = session.get('csrf_token')
+    if not session_token or not token:
+        return False
+    return secrets.compare_digest(session_token, token)
 
 
 SECRET_KEY = 'qa-inspection-system-2026-secure-key-a7b9c3d5e1f2g4h6'  # 已更換為安全密鑰
@@ -353,6 +438,38 @@ def get_data():
         })
     finally:
         conn.close()
+
+# ==================================================
+# Token 驗證 API (用於前端驗證 token 有效性)
+# ==================================================
+@app.route('/api/verify-token', methods=['GET'])
+def verify_token_api():
+    """驗證 Token 是否有效"""
+    token = request.headers.get('Authorization')
+    if not token:
+        return jsonify({'valid': False, 'error': '缺少 Token'}), 401
+    
+    if token.startswith('Bearer '):
+        token = token[7:]
+    
+    payload = verify_token(token)
+    if payload:
+        return jsonify({
+            'valid': True,
+            'username': payload.get('username'),
+            'user_id': payload.get('user_id')
+        })
+    else:
+        return jsonify({'valid': False, 'error': 'Token 無效或已過期'}), 401
+
+# ==================================================
+# CSRF Token API
+# ==================================================
+@app.route('/api/csrf-token', methods=['GET'])
+def get_csrf_token():
+    """取得 CSRF Token"""
+    token = generate_csrf_token()
+    return jsonify({'csrf_token': token})
 
 @app.route('/api/stats', methods=['GET'])
 @auth_required
