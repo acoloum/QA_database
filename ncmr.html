@@ -300,6 +300,14 @@
         let authToken = localStorage.getItem('authToken');
         console.log('API:', API);
 
+        // XSS 防護函數
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
         // 不良原因細項資料
         const defectReasons = {
             'M': [
@@ -406,6 +414,19 @@
             return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` };
         }
 
+        // 統一 API 請求處理 (含 401 錯誤處理)
+        async function fetchWithAuth(url, options = {}) {
+            if (!options.headers) options.headers = {};
+            Object.assign(options.headers, getHeaders());
+            const res = await fetch(url, options);
+            if (res.status === 401) {
+                alert('認證失效，請重新登入');
+                localStorage.removeItem('authToken');
+                location.href = 'index.html';
+            }
+            return res;
+        }
+
         window.onload = async () => {
             if (!authToken) location.href = 'index.html';
             document.getElementById('n_date').value = new Date().toISOString().split('T')[0];
@@ -416,7 +437,14 @@
         async function loadInspectors() {
             const res = await fetch(`${API}/inspectors`, { headers: getHeaders() });
             const list = await res.json();
-            document.getElementById('n_inspector').innerHTML = list.map(i => `<option value="${i.name}">${i.name}</option>`).join('');
+            const select = document.getElementById('n_inspector');
+            select.innerHTML = '';
+            list.forEach(i => {
+                const option = document.createElement('option');
+                option.value = i.name;
+                option.textContent = i.name;
+                select.appendChild(option);
+            });
         }
 
         async function loadNCMRs() {
@@ -426,7 +454,9 @@
             if ($.fn.DataTable.isDataTable('#ncmrTable')) $('#ncmrTable').DataTable().destroy();
 
             const tbody = document.getElementById('ncmrBody');
-            tbody.innerHTML = data.map(r => {
+            tbody.innerHTML = '';
+
+            data.forEach(r => {
                 let badgeClass = 'status-pending';
                 if (r.狀態 === '已結案') badgeClass = 'status-closed';
                 if (r.狀態 === '轉CAPA') badgeClass = 'status-capa';
@@ -435,19 +465,19 @@
                 if (r.狀態 === 'CAR處理中' || r.CAR狀態) {
                     const carStatus = r.CAR狀態 || '進行中';
                     const carClass = carStatus === '已結案' ? 'bg-success' : 'bg-info';
-                    progressHtml.push(`<span class="badge ${carClass} mb-1 d-block">CAR: ${carStatus}</span>`);
+                    progressHtml.push(`<span class="badge ${carClass} mb-1 d-block">CAR: ${escapeHtml(carStatus)}</span>`);
                 }
 
                 if (r.狀態 === '矯正中' || r.CAPA狀態) {
                     const capaStatus = r.CAPA狀態 || '進行中';
                     const capaClass = capaStatus === '已結案' ? 'bg-success' : 'bg-warning text-dark';
-                    progressHtml.push(`<span class="badge ${capaClass} mb-1 d-block">8D: ${capaStatus}</span>`);
+                    progressHtml.push(`<span class="badge ${capaClass} mb-1 d-block">8D: ${escapeHtml(capaStatus)}</span>`);
                 }
 
                 if (r.狀態 === '轉重工' || r.重工執行次數 > 0) {
                     const reworkStatus = r.重工狀態 === '已完成' ? '已完成' : `執行: ${r.重工執行次數 || 0} 次`;
                     const reworkClass = r.重工狀態 === '已完成' ? 'bg-success' : 'bg-primary';
-                    progressHtml.push(`<span class="badge ${reworkClass} mb-1 d-block">重工: ${reworkStatus}</span>`);
+                    progressHtml.push(`<span class="badge ${reworkClass} mb-1 d-block">重工: ${escapeHtml(reworkStatus)}</span>`);
                 }
 
                 progressHtml = progressHtml.length > 0 ? progressHtml.join('') : '-';
@@ -458,40 +488,40 @@
                     const category = r.不良原因大類 || '';
                     const reason = r.不良原因細項 || '';
                     if (category && reason) {
-                        // 只顯示編碼部分 (例: E-01)
                         const code = reason.split(':')[0];
-                        defectReasonHtml = `<span class="badge bg-info">${code}</span>`;
+                        defectReasonHtml = `<span class="badge bg-info">${escapeHtml(code)}</span>`;
                     } else if (category) {
-                        defectReasonHtml = `<span class="badge bg-secondary">${category}</span>`;
+                        defectReasonHtml = `<span class="badge bg-secondary">${escapeHtml(category)}</span>`;
                     }
                 }
 
-                return `
-                    <tr>
-                        <td>${r.單號 || r.識別碼}</td>
-                        <td>${r.日期 || r.發現日期}</td>
-                        <td><span class="badge bg-secondary">${r.來源 || '-'}</span></td>
-                        <td>${r.廠商 || '-'}</td>
-                        <td>${r.材質 || '-'}</td>
-                        <td>${r.產品資訊 || '-'}</td>
-                        <td>${r.產品數量 ? Math.round(r.產品數量) : '-'}</td>
-                        <td>${r.不良描述 || '-'}</td>
-                        <td>${defectReasonHtml}</td>
-                        <td>${r.判定結果 || '-'}</td>
-                        <td><span class="status-badge ${badgeClass}">${r.狀態}</span></td>
-                        <td>${progressHtml}</td>
-                            <td>
-                                <div class="btn-group" role="group">
-                                    <button class="btn btn-sm btn-outline-primary" onclick="editNCMR(${r.識別碼})">編輯</button>
-                                    <button class="btn btn-sm btn-outline-warning" onclick="convertToRework(${r.識別碼})">轉重工</button>
-                                    <button class="btn btn-sm btn-outline-info" onclick="convertToCAR(${r.識別碼})">轉CAR</button>
-                                    <button class="btn btn-sm btn-outline-success" onclick="convertTo8D(${r.識別碼})">轉8D</button>
-                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteNCMR(${r.識別碼})">刪除</button>
-                                </div>
-                            </td>
-                    </tr>
+                // 使用 escapeHtml 保護所有動態資料
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${escapeHtml(r.單號 || r.識別碼)}</td>
+                    <td>${escapeHtml(r.日期 || r.發現日期)}</td>
+                    <td><span class="badge bg-secondary">${escapeHtml(r.來源 || '-')}</span></td>
+                    <td>${escapeHtml(r.廠商 || '-')}</td>
+                    <td>${escapeHtml(r.材質 || '-')}</td>
+                    <td>${escapeHtml(r.產品資訊 || '-')}</td>
+                    <td>${r.產品數量 ? Math.round(r.產品數量) : '-'}</td>
+                    <td>${escapeHtml(r.不良描述 || '-')}</td>
+                    <td>${defectReasonHtml}</td>
+                    <td>${escapeHtml(r.判定結果 || '-')}</td>
+                    <td><span class="status-badge ${badgeClass}">${escapeHtml(r.狀態)}</span></td>
+                    <td>${progressHtml}</td>
+                    <td>
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-sm btn-outline-primary" onclick="editNCMR(${r.識別碼})">編輯</button>
+                            <button class="btn btn-sm btn-outline-warning" onclick="convertToRework(${r.識別碼})">轉重工</button>
+                            <button class="btn btn-sm btn-outline-info" onclick="convertToCAR(${r.識別碼})">轉CAR</button>
+                            <button class="btn btn-sm btn-outline-success" onclick="convertTo8D(${r.識別碼})">轉8D</button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteNCMR(${r.識別碼})">刪除</button>
+                        </div>
+                    </td>
                 `;
-            }).join('');
+                tbody.appendChild(tr);
+            });
 
             $('#ncmrTable').DataTable({
                 order: [[0, 'desc']],

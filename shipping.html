@@ -470,6 +470,14 @@
         return res;
     }
 
+    // XSS 防護函數
+    function escapeHtml(text) {
+        if (text === null || text === undefined) return '';
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
+    }
+
     // ==========================================
     // 公差驗證相關函式
     // ==========================================
@@ -1220,14 +1228,14 @@
                 : (toleranceStd ? '<span style="background:#22c55e;color:white;padding:3px 8px;border-radius:4px;font-size:12px;">✓ 合格</span>' : '<span style="background:#6b7280;color:white;padding:3px 8px;border-radius:4px;font-size:12px;">-</span>');
 
             html += `<tr style="${hasViolation ? 'background:#fef2f2;' : ''}">
-                <td>${item.識別碼}</td>
-                <td>${item.檢驗日期}</td>
-                <td>${item.廠商中文名稱 || ""}</td>
-                <td>${item.材質 || ""}</td>
-                <td style="text-align: center;">${item.檢驗規格 || ""}</td>
+                <td>${escapeHtml(String(item.識別碼))}</td>
+                <td>${escapeHtml(item.檢驗日期 || '')}</td>
+                <td>${escapeHtml(item.廠商中文名稱 || '')}</td>
+                <td>${escapeHtml(item.材質 || '')}</td>
+                <td style="text-align: center;">${escapeHtml(item.檢驗規格 || '')}</td>
                 <td style="text-align: center;">${statusBadge}</td>
                 <td>
-                    <button onclick='startEdit(${JSON.stringify(item)})'>編輯</button>
+                    <button onclick='startEditById(${item.識別碼})'>編輯</button>
                     <button onclick="deleteData(${item.識別碼})" style="background:#e74c3c; color:white; border:none; border-radius:4px;">刪除</button>
                 </td>
             </tr>`;
@@ -1235,6 +1243,22 @@
 
         document.getElementById('data-list').innerHTML = html + '</tbody></table>';
         document.getElementById('page-nav').innerHTML = `<button onclick="fetchHistory(${page-1})" ${page==1?'disabled':''}>上頁</button> 第 ${page} / ${result.total_pages} 頁 <button onclick="fetchHistory(${page+1})" ${page==result.total_pages?'disabled':''}>下頁</button>`;
+    }
+
+    // 透過 ID 獲取資料並編輯（避免 XSS）
+    async function startEditById(id) {
+        try {
+            const res = await fetchWithAuth(`${API_BASE}/api/data/${id}`);
+            if (res.ok) {
+                const item = await res.json();
+                startEdit(item);
+            } else {
+                alert('無法獲取資料');
+            }
+        } catch (err) {
+            console.error('Error fetching data:', err);
+            alert('獲取資料失敗');
+        }
     }
 
     function startEdit(item) {

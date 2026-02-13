@@ -137,7 +137,7 @@
 
         <div class="table-responsive">
             <table id="ncmrTable" class="table table-hover w-100">
-                <thead class="table-light">
+                 <thead class="table-light">
                     <tr>
                         <th>單號</th>
                         <th>日期</th>
@@ -145,7 +145,9 @@
                         <th>廠商</th>
                         <th>材質</th>
                         <th>規格</th>
+                        <th>數量</th>
                         <th>不良描述</th>
+                        <th>不良原因</th>
                         <th>判定結果</th>
                         <th>狀態</th>
                         <th>處理進度</th>
@@ -176,10 +178,10 @@
                             <div class="col-md-6">
                                 <label class="form-label">來源</label>
                                 <select class="form-select" id="n_source">
+                                    <option value="進料">進料</option>
                                     <option value="巡檢">巡檢</option>
                                     <option value="出貨檢">出貨檢</option>
                                     <option value="客訴">客訴</option>
-                                    <option value="進料">進料</option>
                                 </select>
                             </div>
                             <div class="col-md-4">
@@ -190,9 +192,13 @@
                                 <label class="form-label">材質</label>
                                 <input type="text" class="form-control" id="n_material">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label class="form-label">規格 (產品資訊)</label>
                                 <input type="text" class="form-control" id="n_product_info">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">產品數量</label>
+                                <input type="number" class="form-control" id="n_product_qty">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">批號/訂單號</label>
@@ -205,6 +211,26 @@
                             <div class="col-12">
                                 <label class="form-label">不良描述</label>
                                 <textarea class="form-control" id="n_desc" rows="3"></textarea>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">不良原因大類</label>
+                                <select class="form-select" id="n_defect_category" onchange="updateDefectReasons()">
+                                    <option value="">請選擇</option>
+                                    <option value="M">M - 鋁材原料</option>
+                                    <option value="E">E - 擠型製程</option>
+                                    <option value="D">D - 抽管製程</option>
+                                    <option value="H">H - 熱處理</option>
+                                    <option value="T">T - 模具治具</option>
+                                    <option value="P">P - 人員操作</option>
+                                    <option value="Q">Q - 品管檢驗</option>
+                                    <option value="O">O - 其他</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">不良原因細項</label>
+                                <select class="form-select" id="n_defect_reason">
+                                    <option value="">請先選擇大類</option>
+                                </select>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">發現人員</label>
@@ -274,6 +300,108 @@
         let authToken = localStorage.getItem('authToken');
         console.log('API:', API);
 
+        // 不良原因細項資料
+        const defectReasons = {
+            'M': [
+                'M-01: 鋁錠成分不符',
+                'M-02: 鋁棒尺寸超差',
+                'M-03: 鋁材夾雜物/氣孔',
+                'M-04: 材質混料',
+                'M-05: 鋁棒表面缺陷',
+                'M-06: 鋁材硬度異常'
+            ],
+            'E': [
+                'E-01: 擠型溫度不當',
+                'E-02: 擠壓速度異常',
+                'E-03: 擠壓比不當',
+                'E-04: 表面波紋/料紋',
+                'E-05: 表面氣泡/砂眼/針孔',
+                'E-06: 表面刮傷/擦傷',
+                'E-07: 尺寸公差超差',
+                'E-08: 彎曲/扭曲/翹曲',
+                'E-09: 橘皮/粗晶',
+                'E-10: 亮帶/暗帶/色差',
+                'E-11: 料頭料尾不良',
+                'E-12: 擠型裂紋/撕裂',
+                'E-13: 機台參數設定錯誤'
+            ],
+            'D': [
+                'D-01: 內徑尺寸超差',
+                'D-02: 外徑尺寸超差',
+                'D-03: 壁厚不均',
+                'D-04: 橢圓度超差',
+                'D-05: 抽管表面刮傷',
+                'D-06: 抽管速度過快導致變形',
+                'D-07: 潤滑不良',
+                'D-08: 抽管裂紋'
+            ],
+            'H': [
+                'H-01: 硬度不足',
+                'H-02: 硬度過高',
+                'H-03: 淬火裂紋',
+                'H-04: 熱處理變形/彎曲',
+                'H-05: 淬火溫度不當',
+                'H-06: 時效溫度/時間不當',
+                'H-07: 冷卻速度不當',
+                'H-08: 爐溫不均',
+                'H-09: 硬度分布不均'
+            ],
+            'T': [
+                'T-01: 擠型模磨損/損傷',
+                'T-02: 擠型模設計不良',
+                'T-03: 擠型模溫度控制不當',
+                'T-04: 抽管模磨損',
+                'T-05: 模具清潔不良',
+                'T-06: 治具定位不準',
+                'T-07: 模具維護保養不足'
+            ],
+            'P': [
+                'P-01: 操作錯誤',
+                'P-02: 參數設定錯誤',
+                'P-03: 未依SOP作業',
+                'P-04: 訓練不足',
+                'P-05: 換線/換模錯誤',
+                'P-06: 標示錯誤/混料',
+                'P-07: 疲勞失誤'
+            ],
+            'Q': [
+                'Q-01: 量具未校驗/不準',
+                'Q-02: 檢驗方法錯誤',
+                'Q-03: 漏檢',
+                'Q-04: 誤判',
+                'Q-05: 取樣方式不當',
+                'Q-06: 檢驗標準理解錯誤'
+            ],
+            'O': [
+                'O-01: 包裝不良',
+                'O-02: 搬運碰撞/刮傷',
+                'O-03: 儲存環境不當',
+                'O-04: 圖面/規格錯誤',
+                'O-05: 客戶使用不當',
+                'O-06: 運輸損傷',
+                'O-07: 待分析/複合原因'
+            ]
+        };
+
+        function updateDefectReasons() {
+            const category = document.getElementById('n_defect_category').value;
+            const reasonSelect = document.getElementById('n_defect_reason');
+            
+            // 清空細項選單
+            reasonSelect.innerHTML = '<option value="">請選擇</option>';
+            
+            if (category && defectReasons[category]) {
+                defectReasons[category].forEach(reason => {
+                    const option = document.createElement('option');
+                    option.value = reason;
+                    option.textContent = reason;
+                    reasonSelect.appendChild(option);
+                });
+            } else {
+                reasonSelect.innerHTML = '<option value="">請先選擇大類</option>';
+            }
+        }
+
         function getHeaders() {
             return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` };
         }
@@ -324,15 +452,31 @@
 
                 progressHtml = progressHtml.length > 0 ? progressHtml.join('') : '-';
 
+                // 格式化不良原因顯示
+                let defectReasonHtml = '-';
+                if (r.不良原因大類 || r.不良原因細項) {
+                    const category = r.不良原因大類 || '';
+                    const reason = r.不良原因細項 || '';
+                    if (category && reason) {
+                        // 只顯示編碼部分 (例: E-01)
+                        const code = reason.split(':')[0];
+                        defectReasonHtml = `<span class="badge bg-info">${code}</span>`;
+                    } else if (category) {
+                        defectReasonHtml = `<span class="badge bg-secondary">${category}</span>`;
+                    }
+                }
+
                 return `
                     <tr>
                         <td>${r.單號 || r.識別碼}</td>
-                        <td>${r.日期}</td>
-                        <td><span class="badge bg-secondary">${r.來源}</span> ${r.來源單號 || ''}</td>
+                        <td>${r.日期 || r.發現日期}</td>
+                        <td><span class="badge bg-secondary">${r.來源 || '-'}</span></td>
                         <td>${r.廠商 || '-'}</td>
                         <td>${r.材質 || '-'}</td>
                         <td>${r.產品資訊 || '-'}</td>
+                        <td>${r.產品數量 ? Math.round(r.產品數量) : '-'}</td>
                         <td>${r.不良描述 || '-'}</td>
+                        <td>${defectReasonHtml}</td>
                         <td>${r.判定結果 || '-'}</td>
                         <td><span class="status-badge ${badgeClass}">${r.狀態}</span></td>
                         <td>${progressHtml}</td>
@@ -371,7 +515,7 @@
             document.getElementById('ncmrId').value = data.識別碼;
             document.getElementById('modalTitle').innerText = '編輯異常單 #' + data.識別碼;
 
-            // 格式化日期為 YYYY-MM-DD 格式（相容各種日期格式）
+            // 格式化日期為 YYYY-MM-DD 格式(相容各種日期格式)
             let dateValue = data.日期 || '';
             console.log('原始日期值:', dateValue, '類型:', typeof dateValue);
             if (dateValue) {
@@ -399,11 +543,19 @@
             document.getElementById('n_vendor').value = data.廠商 || '';
             document.getElementById('n_material').value = data.材質 || '';
             document.getElementById('n_product_info').value = data.產品資訊 || '';
+            document.getElementById('n_product_qty').value = data.產品數量 ? Math.round(data.產品數量) : '';
             document.getElementById('n_batch').value = data.批號 || '';
             document.getElementById('n_desc').value = data.不良描述 || '';
-            document.getElementById('n_qty').value = data.不合格數量 || '';
+            document.getElementById('n_qty').value = data.不合格數量 ? Math.round(data.不合格數量) : '';
             document.getElementById('n_inspector').value = data.發現人員姓名 || '';
             document.getElementById('n_result').value = data.判定結果 || '';
+            
+            // 載入不良原因欄位
+            document.getElementById('n_defect_category').value = data.不良原因大類 || '';
+            // 先更新細項選單
+            updateDefectReasons();
+            // 再設定細項值
+            document.getElementById('n_defect_reason').value = data.不良原因細項 || '';
 
             const modal = new bootstrap.Modal(document.getElementById('ncmrModal'));
             modal.show();
@@ -417,13 +569,16 @@
                 "日期": document.getElementById('n_date').value,
                 "來源": document.getElementById('n_source').value,
                 "產品資訊": document.getElementById('n_product_info').value,
+                "產品數量": document.getElementById('n_product_qty').value,
                 "廠商": document.getElementById('n_vendor').value,
                 "材質": document.getElementById('n_material').value,
                 "批號": document.getElementById('n_batch').value,
                 "不良描述": document.getElementById('n_desc').value,
                 "不合格數量": document.getElementById('n_qty').value,
                 "發現人員姓名": document.getElementById('n_inspector').value,
-                "判定結果": document.getElementById('n_result').value
+                "判定結果": document.getElementById('n_result').value,
+                "不良原因大類": document.getElementById('n_defect_category').value,
+                "不良原因細項": document.getElementById('n_defect_reason').value
             };
 
             let url = `${API}/ncmr/add`;
