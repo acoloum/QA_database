@@ -675,10 +675,31 @@
             return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` };
         }
 
+        // 統一 API 請求處理 (含 401 錯誤處理)
+        async function fetchWithAuth(url, options = {}) {
+            if (!options.headers) options.headers = {};
+            Object.assign(options.headers, getHeaders());
+            const res = await fetch(url, options);
+            if (res.status === 401) {
+                alert('認證失效，請重新登入');
+                localStorage.removeItem('authToken');
+                location.href = 'index.html';
+            }
+            return res;
+        }
+
+        // XSS 防護函數
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
         async function loadNCMRInfo(ncmrId) {
             try {
                 console.log('正在載入NCMR資訊，ID:', ncmrId);
-                const res = await fetch(`${API}/ncmr/${ncmrId}`, { headers: getHeaders() });
+                const res = await fetchWithAuth(`${API}/ncmr/${ncmrId}`);
 
                 if (res.ok) {
                     const ncmrInfo = await res.json();

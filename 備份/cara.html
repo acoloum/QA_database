@@ -314,11 +314,11 @@
             document.getElementById('caraBody').innerHTML = data.map(r => `
                 <tr>
                     <td>${r.單號}</td>
-                    <td>#${r.NCMR單號} (${r.來源})</td>
-                    <td>${r.廠商 || '-'}</td>
-                    <td>${r.材質 || '-'}</td>
-                    <td>${r.規格 || '-'}</td>
-                    <td>${r.建立日期}</td>
+                    <td>#${r.ncmr_number || ('#' + r.ncmr_id)} (${r.ncmr_source || '-'})</td>
+                    <td>${r.ncmr_vendor || '-'}</td>
+                    <td>${r.ncmr_material || '-'}</td>
+                    <td>${r.ncmr_product || '-'}</td>
+                    <td>${(r.ncmr_date || r.建立日期 || '-').substring(0, 10)}</td>
                     <td>${r.負責人員姓名 || '-'}</td>
                     <td><span class="badge ${r.狀態 === '已結案' ? 'bg-success' : 'bg-primary'}">${r.狀態}</span></td>
                     <td>
@@ -342,12 +342,12 @@
             const d = await res.json();
 
             // 填寫 NCMR 資訊
-            document.getElementById('n_date').innerText = d.ncmr.日期;
+            document.getElementById('n_date').innerText = formatDate(d.ncmr.發現日期);
             document.getElementById('n_vendor').innerText = d.ncmr.廠商 || '-';
             document.getElementById('n_material').innerText = d.ncmr.材質 || '-';
-            document.getElementById('n_product').innerText = d.ncmr.產品資訊;
-            document.getElementById('n_source').innerText = d.ncmr.來源;
-            document.getElementById('n_desc').innerText = d.ncmr.不良描述;
+            document.getElementById('n_product').innerText = d.ncmr.產品資訊 || '-';
+            document.getElementById('n_source').innerText = d.ncmr.來源 || '-';
+            document.getElementById('n_desc').innerText = d.ncmr.不良描述 || '-';
 
             // 填寫 CAR 資訊
             document.getElementById('caraTitle').innerText = `CAR 單號: #${d.cara.單號}`;
@@ -370,6 +370,26 @@
         function getDName(i) {
             const map = { 2: '問題描述', 3: '暫時對策', 4: '真因分析', 6: '成效驗證', 7: '預防再發', 8: '結案確認' };
             return map[i];
+        }
+
+        function formatDate(dateVal) {
+            if (!dateVal) return '-';
+            if (dateVal instanceof Date) {
+                const y = dateVal.getFullYear();
+                const m = String(dateVal.getMonth() + 1).padStart(2, '0');
+                const d = String(dateVal.getDate()).padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            }
+            if (typeof dateVal === 'string' && dateVal.includes(' GMT')) {
+                const months = {'Jan':'01','Feb':'02','Mar':'03','Apr':'04','May':'05','Jun':'06','Jul':'07','Aug':'08','Sep':'09','Oct':'10','Nov':'11','Dec':'12'};
+                const parts = dateVal.split(/[\s,]+/);
+                for (let i = 0; i < parts.length; i++) {
+                    if (months[parts[i]]) {
+                        return `${parts[parts.length-1]}-${months[parts[i]]}-${parts[parts.length-2]}`;
+                    }
+                }
+            }
+            return dateVal.substring(0, 10);
         }
 
         function closeDetail() {

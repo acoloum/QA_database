@@ -559,27 +559,27 @@
                         <input type="hidden" id="inspReworkId">
                         <div class="row g-3">
                             <div class="col-md-6">
+                                <label class="form-label">檢驗日期 *</label>
+                                <input type="date" class="form-control" id="inspDate" required>
+                            </div>
+                            <div class="col-md-6">
                                 <label class="form-label">檢驗人員 *</label>
                                 <select class="form-select staff-select" id="inspInspector" required></select>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label">檢驗階段</label>
-                                <select class="form-select" id="inspPhase">
-                                    <option value="重工後">重工後</option>
-                                    <option value="重工中">重工中</option>
-                                    <option value="重工前">重工前</option>
-                                </select>
+                            <div class="col-12">
+                                <label class="form-label">檢驗項目</label>
+                                <input type="text" class="form-control" id="inspItem" placeholder="請輸入檢驗項目">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">檢驗標準</label>
+                                <input type="text" class="form-control" id="inspStandard" placeholder="請輸入檢驗標準">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">通過數量 *</label>
-                                <input type="number" class="form-control" id="inspPassQty" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">不合格數量</label>
+                                <label class="form-label">不良數量</label>
                                 <input type="number" class="form-control" id="inspFailQty" value="0">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">判定結果</label>
+                                <label class="form-label">檢驗結果</label>
                                 <select class="form-select" id="inspResult">
                                     <option value="合格">合格</option>
                                     <option value="不合格">不合格</option>
@@ -587,8 +587,8 @@
                                 </select>
                             </div>
                             <div class="col-12">
-                                <label class="form-label">檢驗結論</label>
-                                <textarea class="form-control" id="inspConclusion" rows="2"></textarea>
+                                <label class="form-label">檢驗備註</label>
+                                <textarea class="form-control" id="inspRemark" rows="2"></textarea>
                             </div>
                         </div>
                     </form>
@@ -858,7 +858,23 @@
             if (endDate) url += `end_date=${endDate}&`;
 
             const res = await fetch(url, { headers: getHeaders() });
+
+            if (!res.ok) {
+                if (res.status === 401) {
+                    alert('登入已過期，請重新登入');
+                    location.href = 'index.html';
+                    return;
+                }
+                throw new Error(`載入失敗: ${res.status}`);
+            }
+
             const data = await res.json();
+
+            if (!Array.isArray(data)) {
+                console.error('API 返回非陣列資料:', data);
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">載入資料格式錯誤</td></tr>';
+                return;
+            }
 
             if ($.fn.DataTable.isDataTable('#reworkTable')) $('#reworkTable').DataTable().destroy();
 
@@ -878,7 +894,7 @@
                     <tr>
                         <td><strong>${r.申請單號 || '-'}</strong></td>
                         <td>${r.申請日期 ? new Date(r.申請日期).toLocaleDateString() : '-'}</td>
-                        <td><span class="badge bg-secondary">${r.原始NCMR單號 || ('#' + r.NCMR_ID)}</span></td>
+                        <td><span class="badge bg-secondary">${r.ncmr_number || ('#' + r.NCMR_ID)}</span></td>
                         <td>${r.申請人員姓名 || '-'}</td>
                         <td>${r.產品資訊 || '-'}</td>
                         <td>${r.重工數量 || '-'}</td>
@@ -903,6 +919,16 @@
 
         async function loadStatistics() {
             const res = await fetch(`${API}/rework/statistics`, { headers: getHeaders() });
+
+            if (!res.ok) {
+                if (res.status === 401) {
+                    console.log('統計資料載入: 登入已過期');
+                    return;
+                }
+                console.error(`統計資料載入失敗: ${res.status}`);
+                return;
+            }
+
             const stats = await res.json();
 
             // 更新儀表板
@@ -1116,11 +1142,15 @@
             document.getElementById('detailSection').classList.remove('d-none');
             document.getElementById('detailSection').scrollIntoView({ behavior: 'smooth' });
 
-            // 載入各個標籤的資料
-            await loadBasicInfo(reworkId);
-            await loadExecutionInfo(reworkId);
-            await loadInspectionInfo(reworkId);
-            await loadCostInfo(reworkId);
+            // 先載入基本資訊，獲取重工單號
+            const basicInfo = await loadBasicInfo(reworkId);
+            if (basicInfo && basicInfo.申請單號) {
+                const reworkNumber = basicInfo.申請單號;
+                // 使用重工單號載入其他資料
+                await loadExecutionInfo(reworkNumber);
+                await loadInspectionInfo(reworkNumber);
+                await loadCostInfo(reworkNumber);
+            }
         }
 
         async function deleteRework(reworkId) {
@@ -1152,7 +1182,7 @@
                     <div class="row">
                         <div class="col-md-6"><strong>申請單號:</strong> ${info.申請單號 || '-'}</div>
                         <div class="col-md-6"><strong>申請日期:</strong> ${info.申請日期 || '-'}</div>
-                        <div class="col-md-6"><strong>NCMR單號:</strong> ${info.原始NCMR單號 || ('#' + info.NCMR_ID)}</div>
+                        <div class="col-md-6"><strong>NCMR單號:</strong> ${info.ncmr_number || ('#' + info.NCMR_ID)}</div>
                         <div class="col-md-6"><strong>申請人員:</strong> ${info.申請人員姓名 || '-'}</div>
                         <div class="col-md-6"><strong>部門:</strong> ${info.部門 || '-'}</div>
                         <div class="col-md-6"><strong>緊急程度:</strong> ${info.緊急程度 || '-'}</div>
@@ -1174,7 +1204,11 @@
                 } else {
                     closeBtn.style.display = 'block';
                 }
+                
+                // 返回基本資訊供其他函數使用
+                return info;
             }
+            return null;
         }
 
         async function loadExecutionInfo(reworkId) {
@@ -1186,7 +1220,7 @@
                 currentExecutionData = info; // 儲存當前資料
                 document.getElementById('executionInfo').innerHTML = `
                     <div class="mb-3 text-end">
-                        <button class="btn btn-primary btn-sm" onclick="openExecutionModal(${reworkId})">
+                        <button class="btn btn-primary btn-sm" onclick="openExecutionModal('${reworkId}')">
                             <i class="bi bi-plus-lg"></i> 新增/更新執行記錄
                         </button>
                     </div>
@@ -1199,9 +1233,9 @@
                         <div class="col-md-6"><strong>實際完成時間:</strong> ${info.實際完成時間 || '-'}</div>
                         <div class="col-md-6"><strong>使用設備:</strong> ${info.使用設備 || '-'}</div>
                         <div class="col-md-6"><strong>SOP編號:</strong> ${info.SOP編號 || '-'}</div>
-                        <div class="col-md-6"><strong>完成數量:</strong> ${info.完成數量 != null ? info.完成數量 : '-'}</div>
-                        <div class="col-md-6"><strong>不良數量:</strong> ${info.不良數量 != null ? info.不良數量 : '-'}</div>
-                        <div class="col-md-6"><strong>良率:</strong> ${info.良率 != null ? info.良率.toFixed(2) + '%' : '-'}</div>
+                        <div class="col-md-6"><strong>完成數量:</strong> ${info.完成數量 != null ? parseInt(info.完成數量) : '-'}</div>
+                        <div class="col-md-6"><strong>不良數量:</strong> ${info.不良數量 != null ? parseInt(info.不良數量) : '-'}</div>
+                        <div class="col-md-6"><strong>良率:</strong> ${info.良率 != null ? parseFloat(info.良率).toFixed(2) + '%' : '-'}</div>
                         <div class="col-12 mt-3"><strong>重工方式:</strong><br>${info.重工方式 || '-'}</div>
                         <div class="col-12 mt-3"><strong>耗材記錄:</strong><br>${info.耗材記錄 || '-'}</div>
                         <div class="col-12 mt-3"><strong>執行狀況:</strong><br>${info.執行狀況 || '-'}</div>
@@ -1212,7 +1246,7 @@
                 currentExecutionData = null; // 清除資料
                 document.getElementById('executionInfo').innerHTML = `
                     <div class="mb-3 text-end">
-                        <button class="btn btn-primary btn-sm" onclick="openExecutionModal(${reworkId})">
+                        <button class="btn btn-primary btn-sm" onclick="openExecutionModal('${reworkId}')">
                             <i class="bi bi-plus-lg"></i> 新增執行記錄
                         </button>
                     </div>
@@ -1228,21 +1262,25 @@
             if (data.length > 0) {
                 currentInspectionData = data[0]; // 儲存第一筆資料
                 let html = '<div class="mb-3 text-end">';
-                html += `<button class="btn btn-primary btn-sm" onclick="openInspectionModal(${reworkId})">`;
+                html += `<button class="btn btn-primary btn-sm" onclick="openInspectionModal('${reworkId}')">`;
                 html += '<i class="bi bi-plus-lg"></i> 新增/更新品檢記錄</button></div>';
                 html += '<div class="table-responsive"><table class="table table-bordered"><thead class="table-light"><tr>';
-                html += '<th>檢驗日期</th><th>檢驗人員</th><th>檢驗階段</th><th>檢驗項目</th><th>判定結果</th><th>通過數量</th><th>不合格數量</th>';
+                html += '<th>檢驗日期</th><th>檢驗人員</th><th>檢驗項目</th><th>檢驗標準</th><th>檢驗結果</th><th>不良數量</th><th>檢驗備註</th><th>操作</th>';
                 html += '</tr></thead><tbody>';
 
                 data.forEach(item => {
                     html += `<tr>
-                        <td>${item.檢驗日期 || '-'}</td>
+                        <td>${item.檢驗日期 ? item.檢驗日期.substring(0, 10) : '-'}</td>
                         <td>${item.檢驗人員姓名 || '-'}</td>
-                        <td>${item.檢驗階段 || '-'}</td>
                         <td>${item.檢驗項目 || '-'}</td>
-                        <td>${item.判定結果 || '-'}</td>
-                        <td>${item.通過數量 || '-'}</td>
-                        <td>${item.不合格數量 || '-'}</td>
+                        <td>${item.檢驗標準 || '-'}</td>
+                        <td>${item.檢驗結果 || '-'}</td>
+                        <td>${item.不良數量 != null ? parseInt(item.不良數量) : '-'}</td>
+                        <td>${item.檢驗備註 || '-'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="editInspection(${item.識別碼})"><i class="bi bi-pencil"></i></button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteInspection(${item.識別碼}, '${reworkId}')"><i class="bi bi-trash"></i></button>
+                        </td>
                     </tr>`;
                 });
 
@@ -1252,7 +1290,7 @@
                 currentInspectionData = null; // 清除資料
                 document.getElementById('inspectionInfo').innerHTML = `
                     <div class="mb-3 text-end">
-                        <button class="btn btn-primary btn-sm" onclick="openInspectionModal(${reworkId})">
+                        <button class="btn btn-primary btn-sm" onclick="openInspectionModal('${reworkId}')">
                             <i class="bi bi-plus-lg"></i> 新增品檢記錄
                         </button>
                     </div>
@@ -1268,28 +1306,34 @@
             if (data.length > 0) {
                 currentCostData = data; // 儲存所有成本資料
                 let html = '<div class="mb-3 text-end">';
-                html += `<button class="btn btn-primary btn-sm" onclick="openCostModal(${reworkId})">`;
+                html += `<button class="btn btn-primary btn-sm" onclick="openCostModal('${reworkId}')">`;
                 html += '<i class="bi bi-plus-lg"></i> 新增成本記錄</button></div>';
                 html += '<div class="table-responsive"><table class="table table-bordered"><thead class="table-light"><tr>';
-                html += '<th>成本類型</th><th>成本項目</th><th>單位成本</th><th>數量</th><th>總成本</th><th>記錄日期</th>';
+                html += '<th>成本類型</th><th>成本項目</th><th>單位成本</th><th>數量</th><th>總成本</th><th>記錄日期</th><th>操作</th>';
                 html += '</tr></thead><tbody>';
 
                 let totalCost = 0;
                 data.forEach(item => {
+                    const itemTotal = parseFloat(item.單位成本 || 0) * parseFloat(item.數量 || 0);
                     html += `<tr>
                         <td>${item.成本類型 || '-'}</td>
                         <td>${item.成本項目 || '-'}</td>
-                        <td>$${item.單位成本 || 0}</td>
-                        <td>${item.數量 || 0}</td>
-                        <td>$${item.總成本 || 0}</td>
+                        <td>$${parseFloat(item.單位成本 || 0).toFixed(2)}</td>
+                        <td>${parseFloat(item.數量 || 0)}</td>
+                        <td>$${itemTotal.toFixed(2)}</td>
                         <td>${item.記錄日期 || '-'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="editCost(${item.識別碼})"><i class="bi bi-pencil"></i></button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteCost(${item.識別碼}, '${reworkId}')"><i class="bi bi-trash"></i></button>
+                        </td>
                     </tr>`;
-                    totalCost += (item.總成本 || 0);
+                    totalCost += itemTotal;
                 });
 
-                html += `<tr class="table-info">
+                    html += `<tr class="table-info">
                     <td colspan="4"><strong>總成本</strong></td>
                     <td><strong>$${totalCost.toFixed(2)}</strong></td>
+                    <td></td>
                     <td></td>
                 </tr>`;
                 html += '</tbody></table></div>';
@@ -1298,7 +1342,7 @@
                 currentCostData = null; // 清除資料
                 document.getElementById('costInfo').innerHTML = `
                     <div class="mb-3 text-end">
-                        <button class="btn btn-primary btn-sm" onclick="openCostModal(${reworkId})">
+                        <button class="btn btn-primary btn-sm" onclick="openCostModal('${reworkId}')">
                             <i class="bi bi-plus-lg"></i> 新增成本記錄
                         </button>
                     </div>
@@ -1501,41 +1545,92 @@
             // 如果有現有資料，預填表單
             if (currentInspectionData) {
                 const data = currentInspectionData;
+                if (data.檢驗日期) document.getElementById('inspDate').value = data.檢驗日期.substring(0, 10);
                 if (data.檢驗人員姓名) document.getElementById('inspInspector').value = data.檢驗人員姓名;
-                if (data.檢驗階段) document.getElementById('inspPhase').value = data.檢驗階段;
-                if (data.通過數量) document.getElementById('inspPassQty').value = data.通過數量;
-                if (data.不合格數量) document.getElementById('inspFailQty').value = data.不合格數量;
-                if (data.判定結果) document.getElementById('inspResult').value = data.判定結果;
-                if (data.檢驗結論) document.getElementById('inspConclusion').value = data.檢驗結論;
+                if (data.檢驗項目) document.getElementById('inspItem').value = data.檢驗項目;
+                if (data.檢驗標準) document.getElementById('inspStandard').value = data.檢驗標準;
+                if (data.不良數量) document.getElementById('inspFailQty').value = data.不良數量;
+                if (data.檢驗結果) document.getElementById('inspResult').value = data.檢驗結果;
+                if (data.檢驗備註) document.getElementById('inspRemark').value = data.檢驗備註;
             }
 
             new bootstrap.Modal(document.getElementById('inspectionModal')).show();
         }
 
         async function submitInspection() {
+            const inspectionId = document.getElementById('inspReworkId').dataset.inspectionId;
             const payload = {
                 "重工單號": document.getElementById('inspReworkId').value,
+                "檢驗日期": document.getElementById('inspDate').value,
                 "檢驗人員姓名": document.getElementById('inspInspector').value,
-                "檢驗階段": document.getElementById('inspPhase').value,
-                "通過數量": document.getElementById('inspPassQty').value,
-                "不合格數量": document.getElementById('inspFailQty').value,
-                "判定結果": document.getElementById('inspResult').value,
-                "檢驗結論": document.getElementById('inspConclusion').value
+                "檢驗項目": document.getElementById('inspItem').value,
+                "檢驗標準": document.getElementById('inspStandard').value,
+                "不良數量": document.getElementById('inspFailQty').value,
+                "檢驗結果": document.getElementById('inspResult').value,
+                "檢驗備註": document.getElementById('inspRemark').value
             };
 
-            const res = await fetch(`${API}/rework/inspect`, {
-                method: 'POST',
+            const url = inspectionId ? `${API}/rework/inspection/${inspectionId}` : `${API}/rework/inspect`;
+            const method = inspectionId ? 'PUT' : 'POST';
+            
+            const res = await fetch(url, {
+                method: method,
                 headers: getHeaders(),
                 body: JSON.stringify(payload)
             });
 
             if (res.ok) {
-                alert('儲存成功');
+                alert(inspectionId ? '更新成功' : '儲存成功');
                 bootstrap.Modal.getInstance(document.getElementById('inspectionModal')).hide();
+                // 清除編輯ID
+                delete document.getElementById('inspReworkId').dataset.inspectionId;
                 loadInspectionInfo(payload.重工單號);
             } else {
                 const err = await res.json();
                 alert(err.error || '儲存失敗');
+            }
+        }
+
+        // 編輯品檢記錄
+        async function editInspection(inspectionId) {
+            const res = await fetch(`${API}/rework/inspection/${inspectionId}`, { headers: getHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                // 填充表單
+                document.getElementById('inspReworkId').value = data.重工單號;
+                document.getElementById('inspDate').value = data.檢驗日期 ? data.檢驗日期.substring(0, 10) : '';
+                await populateStaffSelects();
+                if (data.檢驗人員姓名) document.getElementById('inspInspector').value = data.檢驗人員姓名;
+                if (data.檢驗項目) document.getElementById('inspItem').value = data.檢驗項目;
+                if (data.檢驗標準) document.getElementById('inspStandard').value = data.檢驗標準;
+                if (data.不良數量) document.getElementById('inspFailQty').value = data.不良數量;
+                if (data.檢驗結果) document.getElementById('inspResult').value = data.檢驗結果;
+                if (data.檢驗備註) document.getElementById('inspRemark').value = data.檢驗備註;
+                
+                // 存儲當前編輯的ID
+                document.getElementById('inspReworkId').dataset.inspectionId = inspectionId;
+                
+                new bootstrap.Modal(document.getElementById('inspectionModal')).show();
+            } else {
+                alert('載入資料失敗');
+            }
+        }
+
+        // 刪除品檢記錄
+        async function deleteInspection(inspectionId, reworkId) {
+            if (!confirm('確定要刪除此品檢記錄嗎？此動作無法復原。')) return;
+            
+            const res = await fetch(`${API}/rework/inspection/${inspectionId}`, {
+                method: 'DELETE',
+                headers: getHeaders()
+            });
+            
+            if (res.ok) {
+                alert('刪除成功');
+                loadInspectionInfo(reworkId);
+            } else {
+                const err = await res.json();
+                alert(err.error || '刪除失敗');
             }
         }
 
@@ -1562,35 +1657,85 @@
         function calcTotalCost() {
             const unit = parseFloat(document.getElementById('costUnit').value) || 0;
             const qty = parseFloat(document.getElementById('costQty').value) || 0;
-            document.getElementById('costTotal').value = unit * qty;
+            const total = unit * qty;
+            document.getElementById('costTotal').value = total.toFixed(2);
         }
 
         async function submitCost() {
+            const costId = document.getElementById('costReworkId').dataset.costId;
             const payload = {
                 "重工單號": document.getElementById('costReworkId').value,
                 "記錄人員姓名": document.getElementById('costRecorder').value,
                 "成本類型": document.getElementById('costType').value,
                 "成本項目": document.getElementById('costItem').value,
-                "單位成本": document.getElementById('costUnit').value,
-                "數量": document.getElementById('costQty').value,
-                "總成本": document.getElementById('costTotal').value,
+                "單位成本": parseFloat(document.getElementById('costUnit').value) || 0,
+                "數量": parseFloat(document.getElementById('costQty').value) || 0,
+                "總成本": parseFloat(document.getElementById('costTotal').value) || 0,
                 "備註": document.getElementById('costRemark').value
             };
 
-            const res = await fetch(`${API}/rework/cost`, {
-                method: 'POST',
+            const url = costId ? `${API}/rework/cost/${costId}` : `${API}/rework/cost`;
+            const method = costId ? 'PUT' : 'POST';
+            
+            const res = await fetch(url, {
+                method: method,
                 headers: getHeaders(),
                 body: JSON.stringify(payload)
             });
 
             if (res.ok) {
-                alert('儲存成功');
+                alert(costId ? '更新成功' : '儲存成功');
                 bootstrap.Modal.getInstance(document.getElementById('costModal')).hide();
+                // 清除編輯ID
+                delete document.getElementById('costReworkId').dataset.costId;
                 loadCostInfo(payload.重工單號);
                 loadStatistics();
             } else {
                 const err = await res.json();
                 alert(err.error || '儲存失敗');
+            }
+        }
+
+        // 編輯成本記錄
+        async function editCost(costId) {
+            const res = await fetch(`${API}/rework/cost/${costId}`, { headers: getHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                // 填充表單
+                document.getElementById('costReworkId').value = data.重工單號;
+                await populateStaffSelects();
+                if (data.記錄人員姓名) document.getElementById('costRecorder').value = data.記錄人員姓名;
+                if (data.成本類型) document.getElementById('costType').value = data.成本類型;
+                if (data.成本項目) document.getElementById('costItem').value = data.成本項目;
+                if (data.單位成本) document.getElementById('costUnit').value = data.單位成本;
+                if (data.數量) document.getElementById('costQty').value = data.數量;
+                if (data.總成本) document.getElementById('costTotal').value = data.總成本;
+                if (data.備註) document.getElementById('costRemark').value = data.備註;
+                
+                // 存儲當前編輯的ID
+                document.getElementById('costReworkId').dataset.costId = costId;
+                
+                new bootstrap.Modal(document.getElementById('costModal')).show();
+            } else {
+                alert('載入資料失敗');
+            }
+        }
+
+        // 刪除成本記錄
+        async function deleteCost(costId, reworkId) {
+            if (!confirm('確定要刪除此成本記錄嗎？此動作無法復原。')) return;
+            
+            const res = await fetch(`${API}/rework/cost/${costId}`, {
+                method: 'DELETE',
+                headers: getHeaders()
+            });
+            
+            if (res.ok) {
+                alert('刪除成功');
+                loadCostInfo(reworkId);
+            } else {
+                const err = await res.json();
+                alert(err.error || '刪除失敗');
             }
         }
 

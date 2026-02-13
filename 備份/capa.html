@@ -324,7 +324,44 @@
                     <td>${r.廠商 || '-'}</td>
                     <td>${r.材質 || '-'}</td>
                     <td>${r.規格 || '-'}</td>
-                    <td>${r.建立日期}</td>
+                    <td>${(() => {
+                        const d = r.ncmr_date || r.建立日期;
+                        if (!d) return '-';
+                        // 處理 Date 物件
+                        if (d instanceof Date) return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                        // 處理 "Fri Feb 06 2026" 格式
+                        if (typeof d === 'string') {
+                            const months = {'Jan':'01','Feb':'02','Mar':'03','Apr':'04','May':'05','Jun':'06','Jul':'07','Aug':'08','Sep':'09','Oct':'10','Nov':'11','Dec':'12','Janvier':'01','Février':'02','Febvier':'02'};
+                            const months2 = {'jan':'01','feb':'02','mar':'03','apr':'04','may':'05','jun':'06','jul':'07','aug':'08','sep':'09','oct':'10','nov':'11','dec':'12'};
+                            // 處理 "06 Feb 2026" 或 "Feb 06 2026" 格式
+                            let parts = d.split(/[\s,]+/);
+                            if (parts.length >= 3) {
+                                // 找月份
+                                let monthIdx = -1;
+                                for (let i = 0; i < parts.length; i++) {
+                                    if (months[parts[i]] || months2[parts[i].toLowerCase()]) {
+                                        monthIdx = i;
+                                        break;
+                                    }
+                                }
+                                if (monthIdx >= 0) {
+                                    const m = months[parts[monthIdx]] || months2[parts[monthIdx].toLowerCase()];
+                                    // 找年份
+                                    let year = '';
+                                    let day = '';
+                                    for (let i = 0; i < parts.length; i++) {
+                                        if (i === monthIdx) continue;
+                                        if (/^\d{4}$/.test(parts[i])) year = parts[i];
+                                        else if (/^\d{1,2}$/.test(parts[i])) day = parts[i];
+                                    }
+                                    if (year && day && m) return year + '-' + m + '-' + day.padStart(2, '0');
+                                }
+                            }
+                            // 標準 YYYY-MM-DD
+                            if (d.match(/^\d{4}-\d{2}-\d{2}/)) return d.substring(0, 10);
+                        }
+                        return d.substring(0, 10);
+                    })()}</td>
                     <td>${r.負責人員姓名 || '-'}</td>
                     <td><span class="badge ${r.狀態 === '已結案' ? 'bg-success' : 'bg-primary'}">${r.狀態}</span></td>
                     <td>
@@ -348,7 +385,43 @@
             const d = await res.json();
 
             // 填寫 NCMR 資訊
-            document.getElementById('n_date').innerText = d.ncmr.日期;
+            (() => {
+                const dateVal = d.ncmr.發現日期;
+                if (!dateVal) {
+                    document.getElementById('n_date').innerText = '-';
+                    return;
+                }
+                let result = '-';
+                if (dateVal instanceof Date) {
+                    result = dateVal.getFullYear() + '-' + String(dateVal.getMonth() + 1).padStart(2, '0') + '-' + String(dateVal.getDate()).padStart(2, '0');
+                } else if (typeof dateVal === 'string') {
+                    const months = {'Jan':'01','Feb':'02','Mar':'03','Apr':'04','May':'05','Jun':'06','Jul':'07','Aug':'08','Sep':'09','Oct':'10','Nov':'11','Dec':'12'};
+                    const months2 = {'jan':'01','feb':'02','mar':'03','apr':'04','may':'05','jun':'06','jul':'07','aug':'08','sep':'09','oct':'10','nov':'11','dec':'12'};
+                    let parts = dateVal.split(/[\s,]+/);
+                    if (parts.length >= 3) {
+                        let monthIdx = -1;
+                        for (let i = 0; i < parts.length; i++) {
+                            if (months[parts[i]] || months2[parts[i].toLowerCase()]) {
+                                monthIdx = i;
+                                break;
+                            }
+                        }
+                        if (monthIdx >= 0) {
+                            const m = months[parts[monthIdx]] || months2[parts[monthIdx].toLowerCase()];
+                            let year = '', day = '';
+                            for (let i = 0; i < parts.length; i++) {
+                                if (i === monthIdx) continue;
+                                if (/^\d{4}$/.test(parts[i])) year = parts[i];
+                                else if (/^\d{1,2}$/.test(parts[i])) day = parts[i];
+                            }
+                            if (year && day && m) result = year + '-' + m + '-' + day.padStart(2, '0');
+                        }
+                    }
+                    if (result === '-' && dateVal.match(/^\d{4}-\d{2}-\d{2}/)) result = dateVal.substring(0, 10);
+                }
+                document.getElementById('n_date').innerText = result;
+            })();
+            
             document.getElementById('n_vendor').innerText = d.ncmr.廠商 || '-';
             document.getElementById('n_material').innerText = d.ncmr.材質 || '-';
             document.getElementById('n_product').innerText = d.ncmr.產品資訊;

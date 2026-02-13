@@ -293,6 +293,27 @@
             return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` };
         }
 
+        // 統一 API 請求處理 (含 401 錯誤處理)
+        async function fetchWithAuth(url, options = {}) {
+            if (!options.headers) options.headers = {};
+            Object.assign(options.headers, getHeaders());
+            const res = await fetch(url, options);
+            if (res.status === 401) {
+                alert('認證失效，請重新登入');
+                localStorage.removeItem('authToken');
+                location.href = 'index.html';
+            }
+            return res;
+        }
+
+        // XSS 防護函數
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(text);
+            return div.innerHTML;
+        }
+
         window.onload = async () => {
             if (!authToken) location.href = 'index.html';
             await loadInspectors();
@@ -300,9 +321,16 @@
         };
 
         async function loadInspectors() {
-            const res = await fetch(`${API}/inspectors`, { headers: getHeaders() });
+            const res = await fetchWithAuth(`${API}/inspectors`);
             const list = await res.json();
-            document.getElementById('c_owner').innerHTML = '<option value="">請選擇</option>' + list.map(i => `<option value="${i.name}">${i.name}</option>`).join('');
+            const select = document.getElementById('c_owner');
+            select.innerHTML = '<option value="">請選擇</option>';
+            list.forEach(i => {
+                const option = document.createElement('option');
+                option.value = i.name;
+                option.textContent = i.name;
+                select.appendChild(option);
+            });
         }
 
         async function loadList() {
@@ -311,24 +339,28 @@
 
             if ($.fn.DataTable.isDataTable('#caraTable')) $('#caraTable').DataTable().destroy();
 
-            document.getElementById('caraBody').innerHTML = data.map(r => `
-                <tr>
-                    <td>${r.單號}</td>
-                    <td>#${r.ncmr_number || ('#' + r.ncmr_id)} (${r.ncmr_source || '-'})</td>
-                    <td>${r.ncmr_vendor || '-'}</td>
-                    <td>${r.ncmr_material || '-'}</td>
-                    <td>${r.ncmr_product || '-'}</td>
-                    <td>${(r.ncmr_date || r.建立日期 || '-').substring(0, 10)}</td>
-                    <td>${r.負責人員姓名 || '-'}</td>
-                    <td><span class="badge ${r.狀態 === '已結案' ? 'bg-success' : 'bg-primary'}">${r.狀態}</span></td>
+            const tbody = document.getElementById('caraBody');
+            tbody.innerHTML = '';
+            data.forEach(r => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${escapeHtml(r.單號)}</td>
+                    <td>${escapeHtml('#' + (r.ncmr_number || r.ncmr_id || ''))} (${escapeHtml(r.ncmr_source || '-')})</td>
+                    <td>${escapeHtml(r.ncmr_vendor || '-')}</td>
+                    <td>${escapeHtml(r.ncmr_material || '-')}</td>
+                    <td>${escapeHtml(r.ncmr_product || '-')}</td>
+                    <td>${escapeHtml(String(r.ncmr_date || r.建立日期 || '-').substring(0, 10))}</td>
+                    <td>${escapeHtml(r.負責人員姓名 || '-')}</td>
+                    <td><span class="badge ${r.狀態 === '已結案' ? 'bg-success' : 'bg-primary'}">${escapeHtml(r.狀態)}</span></td>
                     <td>
                         <div class="btn-group" role="group">
                             <button class="btn btn-sm btn-outline-primary" onclick="openDetail(${r.識別碼})">處理</button>
                             <button class="btn btn-sm btn-outline-danger" onclick="deleteCAR(${r.識別碼})">刪除</button>
                         </div>
                     </td>
-                </tr>
-            `).join('');
+                `;
+                tbody.appendChild(tr);
+            });
 
             $('#caraTable').DataTable({
                 order: [[0, 'desc']],
