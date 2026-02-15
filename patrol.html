@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,7 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    
+
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
@@ -15,37 +16,160 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-        body { background-color: #f8f9fa; font-family: "Microsoft JhengHei"; }
-        .card { border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 20px; }
-        .table-primary { --bs-table-bg: #d1e7f5; vertical-align: middle; color: #2c3e50; }
-        .group-header { background-color: #e9ecef; font-weight: bold; width: 100px; }
-        .d-val { width: 100px !important; font-size: 14px; padding: 8px !important; }
-        .spc-alert { background-color: #fff5f5; border: 1px solid #feb2b2; color: #c53030; display: none; font-size: 0.9rem; }
-        .violation-list { font-size: 0.85rem; color: #dc3545; list-style: none; padding-left: 0; margin-top: 5px; }
-        .transfer-section { background-color: #f0fdf4; border: 1px dashed #22c55e; }
+        body {
+            background-color: #f8f9fa;
+            font-family: "Microsoft JhengHei";
+        }
 
-        .stats-summary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
-        .stats-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 15px; }
-        .stat-item { background: rgba(255,255,255,0.15); padding: 12px; border-radius: 8px; text-align: center; }
-        .stat-label { font-size: 12px; opacity: 0.9; margin-bottom: 5px; }
-        .stat-value { font-size: 18px; font-weight: bold; }
-        .stat-value.warning { color: #ffeb3b; }
-        .stat-value.danger { color: #ff5252; }
-        .stat-value.success { color: #69f0ae; }
+        .card {
+            border-radius: 12px;
+            border: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            margin-bottom: 20px;
+        }
 
-        .analysis-panel { background: white; border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
-        .analysis-item { padding: 10px 15px; margin-bottom: 10px; border-radius: 8px; display: flex; align-items: center; gap: 10px; }
-        .analysis-item.warning { background: #fff8e1; border-left: 4px solid #ffc107; }
-        .analysis-item.info { background: #e3f2fd; border-left: 4px solid #2196f3; }
-        .analysis-item.success { background: #e8f5e9; border-left: 4px solid #4caf50; }
-        .analysis-icon { font-size: 20px; }
-        .analysis-text { flex: 1; }
-        .analysis-title { font-weight: bold; margin-bottom: 2px; }
-        .analysis-desc { font-size: 12px; opacity: 0.8; }
+        .table-primary {
+            --bs-table-bg: #d1e7f5;
+            vertical-align: middle;
+            color: #2c3e50;
+        }
+
+        .group-header {
+            background-color: #e9ecef;
+            font-weight: bold;
+            width: 100px;
+        }
+
+        .d-val {
+            min-width: 120px;
+            width: 100%;
+            font-size: 16px;
+            padding: 2px 4px !important;
+        }
+
+        .spc-alert {
+            background-color: #fff5f5;
+            border: 1px solid #feb2b2;
+            color: #c53030;
+            display: none;
+            font-size: 0.9rem;
+        }
+
+        .violation-list {
+            font-size: 0.85rem;
+            color: #dc3545;
+            list-style: none;
+            padding-left: 0;
+            margin-top: 5px;
+        }
+
+        .transfer-section {
+            background-color: #f0fdf4;
+            border: 1px dashed #22c55e;
+        }
+
+        .stats-summary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 15px;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .stat-value.warning {
+            color: #ffeb3b;
+        }
+
+        .stat-value.danger {
+            color: #ff5252;
+        }
+
+        .stat-value.success {
+            color: #69f0ae;
+        }
+
+        .analysis-panel {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .analysis-item {
+            padding: 10px 15px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .analysis-item.warning {
+            background: #fff8e1;
+            border-left: 4px solid #ffc107;
+        }
+
+        .analysis-item.info {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+
+        .analysis-item.success {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+        }
+
+        .analysis-icon {
+            font-size: 20px;
+        }
+
+        .analysis-text {
+            flex: 1;
+        }
+
+        .analysis-title {
+            font-weight: bold;
+            margin-bottom: 2px;
+        }
+
+        .analysis-desc {
+            font-size: 12px;
+            opacity: 0.8;
+        }
 
         /* DataTable 自定義樣式 */
-        .dataTables_wrapper .dataTables_paginate .paginate_button { padding: 0; }
-        div.dataTables_wrapper div.dataTables_filter { text-align: right; }
+        .dataTables_wrapper .dataTables_paginate .paginate_button {
+            padding: 0;
+        }
+
+        div.dataTables_wrapper div.dataTables_filter {
+            text-align: right;
+        }
 
         .back-button {
             display: inline-flex;
@@ -78,46 +202,47 @@
             body {
                 padding: 10px !important;
             }
-            
+
             .card {
                 padding: 15px !important;
             }
-            
+
             .btn-group {
                 flex-direction: column;
                 gap: 5px;
             }
-            
+
             .btn-group .btn {
                 width: 100%;
                 margin: 2px 0 !important;
             }
-            
+
             .d-flex.justify-content-between {
                 flex-direction: column;
                 gap: 10px;
             }
-            
+
             .d-flex.justify-content-between.mt-3 {
                 flex-direction: column-reverse;
             }
-            
-            .d-flex.justify-content-between.mt-3 > div {
+
+            .d-flex.justify-content-between.mt-3>div {
                 width: 100%;
                 display: flex;
                 flex-direction: column;
                 gap: 10px;
             }
 
-            .d-flex.justify-content-between.mt-3 > div button {
+            .d-flex.justify-content-between.mt-3>div button {
                 width: 100%;
                 margin: 0 !important;
             }
-            
-            h3, h4 {
+
+            h3,
+            h4 {
                 font-size: 1.2rem !important;
             }
-            
+
             .modal-dialog {
                 margin: 10px;
             }
@@ -144,6 +269,7 @@
         }
     </style>
 </head>
+
 <body class="container py-4">
 
     <a href="index.html" class="back-button">
@@ -153,7 +279,8 @@
     <div class="card p-4">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h4 class="text-primary m-0"><i class="bi bi-pencil-square"></i> 巡檢數據登錄</h4>
-            <div id="editModeIndicator" class="badge bg-warning text-dark d-none">編輯模式 (單號: <span id="editIdText"></span>)</div>
+            <div id="editModeIndicator" class="badge bg-warning text-dark d-none">編輯模式 (單號: <span
+                    id="editIdText"></span>)</div>
         </div>
         <input type="hidden" id="editId">
         <div class="row g-3 mb-4">
@@ -175,20 +302,22 @@
             </table>
             <input type="hidden" id="savedData" value="">
         </div>
+    </div>
+    <div class="d-flex justify-content-between mt-3">
+        <div>
+            <button class="btn btn-outline-primary" onclick="addNewGroup()"><i class="bi bi-plus-lg"></i> 新增組別</button>
+            <button class="btn btn-outline-danger ms-2" onclick="removeLastGroup()"><i class="bi bi-dash-lg"></i>
+                刪除最後一組</button>
+            <button class="btn btn-outline-info ms-2" id="toggleInnerDiameterBtn" onclick="toggleInnerDiameter()">
+                <i class="bi bi-arrows-expand"></i> 展開內徑
+            </button>
         </div>
-        <div class="d-flex justify-content-between mt-3">
-            <div>
-                <button class="btn btn-outline-primary" onclick="addNewGroup()"><i class="bi bi-plus-lg"></i> 新增組別</button>
-                <button class="btn btn-outline-danger ms-2" onclick="removeLastGroup()"><i class="bi bi-dash-lg"></i> 刪除最後一組</button>
-                <button class="btn btn-outline-info ms-2" id="toggleInnerDiameterBtn" onclick="toggleInnerDiameter()">
-                    <i class="bi bi-arrows-expand"></i> 展開內徑
-                </button>
-            </div>
-            <div>
-                <button class="btn btn-secondary me-1" onclick="location.reload()">重設</button>
-                <button class="btn btn-success px-4" onclick="handleSave()"><i class="bi bi-cloud-arrow-up"></i> 儲存送出</button>
-            </div>
+        <div>
+            <button class="btn btn-secondary me-1" onclick="location.reload()">重設</button>
+            <button class="btn btn-success px-4" onclick="handleSave()"><i class="bi bi-cloud-arrow-up"></i>
+                儲存送出</button>
         </div>
+    </div>
     </div>
 
     <div class="card p-4">
@@ -196,18 +325,26 @@
             <h4 class="text-danger m-0">SPC 統計圖表</h4>
             <div class="d-flex align-items-center gap-2">
                 <div id="spcAlarm" class="spc-alert rounded p-0 overflow-hidden" style="min-width: 250px;">
-                    <button class="btn btn-danger w-100 text-start rounded-0 fw-bold border-0 py-1" type="button" data-bs-toggle="collapse" data-bs-target="#collapseViolations">
+                    <button class="btn btn-danger w-100 text-start rounded-0 fw-bold border-0 py-1" type="button"
+                        data-bs-toggle="collapse" data-bs-target="#collapseViolations">
                         <i class="bi bi-exclamation-triangle-fill"></i> 檢測到異常點 (點擊)
                     </button>
                     <div class="collapse" id="collapseViolations">
-                        <div class="p-2 bg-white"><ul id="violationDetails" class="violation-list m-0 px-2"></ul></div>
+                        <div class="p-2 bg-white">
+                            <ul id="violationDetails" class="violation-list m-0 px-2"></ul>
+                        </div>
                     </div>
                 </div>
                 <select id="spcPos" class="form-select w-auto" onchange="loadSPC()">
-                    <option value="">全段</option><option value="前段">前段</option><option value="中段">中段</option><option value="後段">後段</option>
+                    <option value="">全段</option>
+                    <option value="前段">前段</option>
+                    <option value="中段">中段</option>
+                    <option value="後段">後段</option>
                 </select>
                 <select id="spcItem" class="form-select w-auto" onchange="loadSPC()">
-                    <option value="厚度">厚度</option><option value="外徑">外徑</option><option value="內徑">內徑</option>
+                    <option value="厚度">厚度</option>
+                    <option value="外徑">外徑</option>
+                    <option value="內徑">內徑</option>
                 </select>
             </div>
         </div>
@@ -215,14 +352,38 @@
         <div id="patrolStatsSummary" class="stats-summary" style="display: none;">
             <h4 style="margin: 0 0 15px 0; font-size: 18px;">📈 統計摘要</h4>
             <div class="stats-grid">
-                <div class="stat-item"><div class="stat-label">樣本數</div><div class="stat-value" id="patrolStatCount">0</div></div>
-                <div class="stat-item"><div class="stat-label">平均值</div><div class="stat-value" id="patrolStatMean">0</div></div>
-                <div class="stat-item"><div class="stat-label">中位數</div><div class="stat-value" id="patrolStatMedian">0</div></div>
-                <div class="stat-item"><div class="stat-label">標準差</div><div class="stat-value" id="patrolStatStd">0</div></div>
-                <div class="stat-item"><div class="stat-label">最小值</div><div class="stat-value" id="patrolStatMin">0</div></div>
-                <div class="stat-item"><div class="stat-label">最大值</div><div class="stat-value" id="patrolStatMax">0</div></div>
-                <div class="stat-item"><div class="stat-label">全距</div><div class="stat-value" id="patrolStatRange">0</div></div>
-                <div class="stat-item"><div class="stat-label">異常點數</div><div class="stat-value" id="patrolStatViolations">0</div></div>
+                <div class="stat-item">
+                    <div class="stat-label">樣本數</div>
+                    <div class="stat-value" id="patrolStatCount">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">平均值</div>
+                    <div class="stat-value" id="patrolStatMean">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">中位數</div>
+                    <div class="stat-value" id="patrolStatMedian">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">標準差</div>
+                    <div class="stat-value" id="patrolStatStd">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">最小值</div>
+                    <div class="stat-value" id="patrolStatMin">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">最大值</div>
+                    <div class="stat-value" id="patrolStatMax">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">全距</div>
+                    <div class="stat-value" id="patrolStatRange">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">異常點數</div>
+                    <div class="stat-value" id="patrolStatViolations">0</div>
+                </div>
             </div>
         </div>
 
@@ -232,27 +393,48 @@
         </div>
 
         <div class="row">
-            <div class="col-md-6"><div style="height: 300px;"><canvas id="xChart"></canvas></div></div>
-            <div class="col-md-6"><div style="height: 300px;"><canvas id="rChart"></canvas></div></div>
+            <div class="col-md-6">
+                <div style="height: 300px;"><canvas id="xChart"></canvas></div>
+            </div>
+            <div class="col-md-6">
+                <div style="height: 300px;"><canvas id="rChart"></canvas></div>
+            </div>
         </div>
     </div>
 
     <div class="card p-4">
         <h4 class="text-secondary mb-3"><i class="bi bi-search"></i> 歷史紀錄與篩選</h4>
         <div class="row g-2 mb-4 bg-light p-3 rounded border">
-            <div class="col-md-2"><label class="small">開始日期</label><input type="date" id="fSDate" class="form-control"></div>
-            <div class="col-md-2"><label class="small">結束日期</label><input type="date" id="fEDate" class="form-control"></div>
-            <div class="col-md-2"><label class="small">機台</label><select id="fMachine" class="form-select"><option value="">所有</option></select></div>
-            <div class="col-md-2"><label class="small">人員</label><select id="fOperator" class="form-select"><option value="">所有</option></select></div>
-            <div class="col-md-2"><label class="small">材質</label><input type="text" id="fMat" class="form-control"></div>
-            <div class="col-md-2"><label class="small">規格</label><input type="text" id="fSpec" class="form-control"></div>
-            <div class="col-md-12 mt-2"><button class="btn btn-primary w-100" onclick="loadHistory()">執行搜尋連動</button></div>
+            <div class="col-md-2"><label class="small">開始日期</label><input type="date" id="fSDate" class="form-control">
+            </div>
+            <div class="col-md-2"><label class="small">結束日期</label><input type="date" id="fEDate" class="form-control">
+            </div>
+            <div class="col-md-2"><label class="small">機台</label><select id="fMachine" class="form-select">
+                    <option value="">所有</option>
+                </select></div>
+            <div class="col-md-2"><label class="small">人員</label><select id="fOperator" class="form-select">
+                    <option value="">所有</option>
+                </select></div>
+            <div class="col-md-2"><label class="small">材質</label><input type="text" id="fMat" class="form-control">
+            </div>
+            <div class="col-md-2"><label class="small">規格</label><input type="text" id="fSpec" class="form-control">
+            </div>
+            <div class="col-md-12 mt-2"><button class="btn btn-primary w-100" onclick="loadHistory()">執行搜尋連動</button>
+            </div>
         </div>
-        
+
         <div class="table-responsive">
             <table id="historyTable" class="table table-hover border w-100">
                 <thead class="table-dark">
-                    <tr><th>ID</th><th>日期</th><th>機台</th><th>主機手</th><th>材質</th><th>規格</th><th>操作</th></tr>
+                    <tr>
+                        <th>ID</th>
+                        <th>日期</th>
+                        <th>機台</th>
+                        <th>主機手</th>
+                        <th>材質</th>
+                        <th>規格</th>
+                        <th>操作</th>
+                    </tr>
                 </thead>
                 <tbody id="historyBody"></tbody>
             </table>
@@ -263,7 +445,8 @@
         <div class="row">
             <div class="col-md-6">
                 <h6>Excel 數據匯入</h6>
-                <div class="input-group"><input type="file" id="importFile" class="form-control"><button class="btn btn-success" onclick="handleImport()">匯入</button></div>
+                <div class="input-group"><input type="file" id="importFile" class="form-control"><button
+                        class="btn btn-success" onclick="handleImport()">匯入</button></div>
             </div>
             <div class="col-md-6 text-end">
                 <h6>數據備份</h6>
@@ -273,8 +456,8 @@
     </div>
 
     <script>
-        const API = window.location.protocol === 'file:' 
-            ? 'http://localhost:5000/api/patrol' 
+        const API = window.location.protocol === 'file:'
+            ? 'http://localhost:5000/api/patrol'
             : `${window.location.protocol}//${window.location.hostname}:${window.location.port || '5000'}/api/patrol`;
         let groupCount = 0, xChart = null, rChart = null;
         let authToken = localStorage.getItem('authToken') || '';
@@ -304,7 +487,7 @@
             div.textContent = String(text);
             return div.innerHTML;
         }
- 
+
         window.onload = async () => {
             document.getElementById('date').value = new Date().toISOString().split('T')[0];
             generateTableHeader(); // 初始化表頭
@@ -321,7 +504,7 @@
             });
             const res = await fetchWithAuth(`${API}/history?${qs}`);
             const d = await res.json();
-            
+
             // 銷毀舊的 DataTable
             if ($.fn.DataTable.isDataTable('#historyTable')) $('#historyTable').DataTable().destroy();
 
@@ -349,68 +532,68 @@
 
             for (let i = 0; i < data.length; i++) {
                 let val = data[i], reasons = [];
-                
+
                 // Rule 1: 單點超出控制限 (±3σ)
                 if (val > ucl || val < lcl) reasons.push("Rule 1: 超出控制限");
-                
+
                 // Rule 2: 連續9點在中心線同側
                 if (i >= 8) {
-                    let last9 = data.slice(i-8, i+1);
-                    if (last9.every(v => v > cl) || last9.every(v => v < cl)) 
+                    let last9 = data.slice(i - 8, i + 1);
+                    if (last9.every(v => v > cl) || last9.every(v => v < cl))
                         reasons.push("Rule 2: 連續9點同側");
                 }
-                
+
                 // Rule 3: 連續6點連續上升或下降
                 if (i >= 5) {
-                    let last6 = data.slice(i-5, i+1);
+                    let last6 = data.slice(i - 5, i + 1);
                     let increasing = true, decreasing = true;
                     for (let j = 1; j < last6.length; j++) {
-                        if (last6[j] <= last6[j-1]) increasing = false;
-                        if (last6[j] >= last6[j-1]) decreasing = false;
+                        if (last6[j] <= last6[j - 1]) increasing = false;
+                        if (last6[j] >= last6[j - 1]) decreasing = false;
                     }
                     if (increasing || decreasing) reasons.push("Rule 3: 連續6點趨勢");
                 }
-                
+
                 // Rule 4: 連續14點交替上升下降
                 if (i >= 13) {
-                    let last14 = data.slice(i-13, i+1);
+                    let last14 = data.slice(i - 13, i + 1);
                     let alternating = true;
                     for (let j = 1; j < last14.length; j++) {
-                        if ((j % 2 === 0 && last14[j] < last14[j-1]) || 
-                            (j % 2 !== 0 && last14[j] > last14[j-1])) {
+                        if ((j % 2 === 0 && last14[j] < last14[j - 1]) ||
+                            (j % 2 !== 0 && last14[j] > last14[j - 1])) {
                             alternating = false;
                             break;
                         }
                     }
                     if (alternating) reasons.push("Rule 4: 14點交替");
                 }
-                
+
                 // Rule 5: 連續3點中有2點落在2σ外
                 if (i >= 2) {
-                    let last3 = data.slice(i-2, i+1);
+                    let last3 = data.slice(i - 2, i + 1);
                     let countAbove = last3.filter(v => v > sigma2_above).length;
                     let countBelow = last3.filter(v => v < sigma2_below).length;
-                    if (countAbove >= 2 || countBelow >= 2) 
+                    if (countAbove >= 2 || countBelow >= 2)
                         reasons.push("Rule 5: 3點中2點在2σ外");
                 }
-                
+
                 // Rule 6: 連續5點中有4點落在1σ外
                 if (i >= 4) {
-                    let last5 = data.slice(i-4, i+1);
+                    let last5 = data.slice(i - 4, i + 1);
                     let count = last5.filter(v => v > sigma1_above || v < sigma1_below).length;
                     if (count >= 4) reasons.push("Rule 6: 5點中4點在1σ外");
                 }
-                
+
                 // Rule 7: 連續15點在1σ内
                 if (i >= 14) {
-                    let last15 = data.slice(i-14, i+1);
-                    if (last15.every(v => v >= sigma1_below && v <= sigma1_above)) 
+                    let last15 = data.slice(i - 14, i + 1);
+                    if (last15.every(v => v >= sigma1_below && v <= sigma1_above))
                         reasons.push("Rule 7: 連續15點在1σ内");
                 }
-                
+
                 // Rule 8: 連續8點在中心線兩側但都不在1σ内
                 if (i >= 7) {
-                    let last8 = data.slice(i-7, i+1);
+                    let last8 = data.slice(i - 7, i + 1);
                     let allOutside1Sigma = last8.every(v => v > sigma1_above || v < sigma1_below);
                     let hasAbove = last8.some(v => v > sigma1_above);
                     let hasBelow = last8.some(v => v < sigma1_below);
@@ -418,10 +601,10 @@
                         reasons.push("Rule 8: 8點在1σ外且兩側");
                     }
                 }
-                
-                if (reasons.length > 0) { 
-                    statuses[i] = "violation"; 
-                    violations.push({ label: labels[i], reasons: reasons }); 
+
+                if (reasons.length > 0) {
+                    statuses[i] = "violation";
+                    violations.push({ label: labels[i], reasons: reasons });
                 }
             }
             return { statuses, violations };
@@ -431,9 +614,9 @@
             const sorted = [...data].sort((a, b) => a - b);
             const count = data.length;
             const mean = data.reduce((a, b) => a + b, 0) / count;
-            const median = count % 2 === 0 
-                ? (sorted[count/2 - 1] + sorted[count/2]) / 2 
-                : sorted[Math.floor(count/2)];
+            const median = count % 2 === 0
+                ? (sorted[count / 2 - 1] + sorted[count / 2]) / 2
+                : sorted[Math.floor(count / 2)];
             const min = sorted[0];
             const max = sorted[count - 1];
             const range = max - min;
@@ -449,7 +632,7 @@
             document.getElementById('patrolStatMax').textContent = max.toFixed(3);
             document.getElementById('patrolStatRange').textContent = range.toFixed(3);
             document.getElementById('patrolStatViolations').textContent = violations;
-            
+
             const stdEl = document.getElementById('patrolStatStd');
             const sigmaRange = (max - min) / 6;
             if (stdDev > sigmaRange * 1.5) {
@@ -485,8 +668,8 @@
 
             let increasing = 0, decreasing = 0;
             for (let i = 1; i < data.length; i++) {
-                if (data[i] > data[i-1]) increasing++;
-                else if (data[i] < data[i-1]) decreasing++;
+                if (data[i] > data[i - 1]) increasing++;
+                else if (data[i] < data[i - 1]) decreasing++;
             }
             const trendRate = Math.abs(increasing - decreasing) / (data.length - 1);
             if (trendRate > 0.6) {
@@ -599,11 +782,11 @@
             const d = await res.json();
             const alarmDiv = document.getElementById('spcAlarm');
 
-            if(!d.labels || d.labels.length === 0) {
+            if (!d.labels || d.labels.length === 0) {
                 alarmDiv.style.display = 'none';
                 document.getElementById('patrolStatsSummary').style.display = 'none';
                 document.getElementById('patrolAnalysisPanel').style.display = 'none';
-                if(xChart) xChart.destroy(); if(rChart) rChart.destroy();
+                if (xChart) xChart.destroy(); if (rChart) rChart.destroy();
                 return;
             }
 
@@ -611,15 +794,15 @@
             document.getElementById('patrolAnalysisPanel').style.display = 'block';
 
             const analysis = analyzeWECO(d.avgs, d.x_cl, d.x_ucl, d.x_lcl, d.labels);
-            if(analysis.violations.length > 0) {
+            if (analysis.violations.length > 0) {
                 alarmDiv.style.display = 'block';
-                document.getElementById('violationDetails').innerHTML = analysis.violations.map(v => 
+                document.getElementById('violationDetails').innerHTML = analysis.violations.map(v =>
                     `<li><strong>${v.label}</strong>: ${v.reasons.join('、')}</li>`
                 ).join('');
             } else { alarmDiv.style.display = 'none'; }
 
             const errIdx = [];
-            analysis.statuses.forEach((s, i) => { if(s === 'violation') errIdx.push(i); });
+            analysis.statuses.forEach((s, i) => { if (s === 'violation') errIdx.push(i); });
 
             // 更新統計摘要
             updatePatrolStatistics(d.avgs, analysis.statuses);
@@ -642,7 +825,7 @@
 
         function drawChart(id, chart, labels, datasets, title) {
             const ctx = document.getElementById(id).getContext('2d');
-            if(chart) chart.destroy();
+            if (chart) chart.destroy();
             return new Chart(ctx, { type: 'line', data: { labels, datasets }, options: { maintainAspectRatio: false, plugins: { title: { display: true, text: title } } } });
         }
 
@@ -703,7 +886,7 @@
             };
             const url = editId ? `${API}/update` : `${API}/add`;
             const res = await fetchWithAuth(url, { method: 'POST', body: JSON.stringify(payload) });
-            if(res.ok) { alert("儲存成功"); location.reload(); } else {
+            if (res.ok) { alert("儲存成功"); location.reload(); } else {
                 const error = await res.json();
                 alert(error.error || "儲存失敗");
             }
@@ -737,18 +920,18 @@
             // 填充數據
             d.details.forEach(i => {
                 const input = document.querySelector(`.d-val[data-g="${i.group}"][data-i="${i.item}"][data-p="${i.pos}"][data-t="min"]`);
-                if(input) input.value = i.min;
+                if (input) input.value = i.min;
                 const input2 = document.querySelector(`.d-val[data-g="${i.group}"][data-i="${i.item}"][data-p="${i.pos}"][data-t="max"]`);
-                if(input2) input2.value = i.max;
+                if (input2) input2.value = i.max;
             });
 
-            window.scrollTo({top: 0, behavior: 'smooth'});
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         async function delData(id) {
-            if(confirm("確定刪除？")) {
+            if (confirm("確定刪除？")) {
                 const res = await fetchWithAuth(`${API}/delete`, { method: 'POST', body: JSON.stringify({ id }) });
-                if(res.ok) loadHistory(); else {
+                if (res.ok) loadHistory(); else {
                     const error = await res.json();
                     alert(error.error || "刪除失敗");
                 }
@@ -915,4 +1098,5 @@
         }
     </script>
 </body>
+
 </html>

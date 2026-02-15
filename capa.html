@@ -113,30 +113,31 @@
             body {
                 padding: 10px !important;
             }
-            
+
             .card {
                 padding: 15px !important;
             }
-            
+
             .btn-group {
                 flex-direction: column;
                 gap: 5px;
             }
-            
+
             .btn-group .btn {
                 width: 100%;
                 margin: 2px 0 !important;
             }
-            
+
             .d-flex.justify-content-between {
                 flex-direction: column;
                 gap: 10px;
             }
-            
-            h3, h4 {
+
+            h3,
+            h4 {
                 font-size: 1.2rem !important;
             }
-            
+
             .modal-dialog {
                 margin: 10px;
             }
@@ -146,7 +147,7 @@
                 overflow-x: auto;
                 -webkit-overflow-scrolling: touch;
             }
-            
+
             .nav-tabs .nav-link {
                 white-space: nowrap;
             }
@@ -157,11 +158,11 @@
                 padding: 8px 15px;
                 font-size: 14px;
             }
-            
+
             .table {
                 font-size: 12px;
             }
-            
+
             .status-badge {
                 font-size: 0.75rem;
                 padding: 3px 6px;
@@ -364,46 +365,32 @@
                 `;
                 tbody.appendChild(tr);
             });
-                    <td>${r.材質 || '-'}</td>
-                    <td>${r.規格 || '-'}</td>
-                    <td>${(() => {
-                        const d = r.ncmr_date || r.建立日期;
-                        if (!d) return '-';
-                        // 處理 Date 物件
-                        if (d instanceof Date) return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-                        // 處理 "Fri Feb 06 2026" 格式
-                        if (typeof d === 'string') {
-                            const months = {'Jan':'01','Feb':'02','Mar':'03','Apr':'04','May':'05','Jun':'06','Jul':'07','Aug':'08','Sep':'09','Oct':'10','Nov':'11','Dec':'12','Janvier':'01','Février':'02','Febvier':'02'};
-                            const months2 = {'jan':'01','feb':'02','mar':'03','apr':'04','may':'05','jun':'06','jul':'07','aug':'08','sep':'09','oct':'10','nov':'11','dec':'12'};
-                            // 處理 "06 Feb 2026" 或 "Feb 06 2026" 格式
-                            let parts = d.split(/[\s,]+/);
-                            if (parts.length >= 3) {
-                                // 找月份
-                                let monthIdx = -1;
-                                for (let i = 0; i < parts.length; i++) {
-                                    if (months[parts[i]] || months2[parts[i].toLowerCase()]) {
-                                        monthIdx = i;
-                                        break;
-                                    }
-                                }
-                                if (monthIdx >= 0) {
-                                    const m = months[parts[monthIdx]] || months2[parts[monthIdx].toLowerCase()];
-                                    // 找年份
-                                    let year = '';
-                                    let day = '';
-                                    for (let i = 0; i < parts.length; i++) {
-                                        if (i === monthIdx) continue;
-                                        if (/^\d{4}$/.test(parts[i])) year = parts[i];
-                                        else if (/^\d{1,2}$/.test(parts[i])) day = parts[i];
-                                    }
-                                    if (year && day && m) return year + '-' + m + '-' + day.padStart(2, '0');
-                                }
-                            }
-                            // 標準 YYYY-MM-DD
-                            if (d.match(/^\d{4}-\d{2}-\d{2}/)) return d.substring(0, 10);
+            // 找月份
+            let monthIdx = -1;
+            for (let i = 0; i < parts.length; i++) {
+                if (months[parts[i]] || months2[parts[i].toLowerCase()]) {
+                    monthIdx = i;
+                    break;
+                }
+            }
+            if (monthIdx >= 0) {
+                const m = months[parts[monthIdx]] || months2[parts[monthIdx].toLowerCase()];
+                // 找年份
+                let year = '';
+                let day = '';
+                for (let i = 0; i < parts.length; i++) {
+                    if (i === monthIdx) continue;
+                    if (/^\d{4}$/.test(parts[i])) year = parts[i];
+                    else if (/^\d{1,2}$/.test(parts[i])) day = parts[i];
+                }
+                if (year && day && m) return year + '-' + m + '-' + day.padStart(2, '0');
+            }
+        }
+        // 標準 YYYY-MM-DD
+        if (d.match(/^\d{4}-\d{2}-\d{2}/)) return d.substring(0, 10);
                         }
-                        return d.substring(0, 10);
-                    })()}</td>
+        return d.substring(0, 10);
+                    }) ()}</td >
                     <td>${r.負責人員姓名 || '-'}</td>
                     <td><span class="badge ${r.狀態 === '已結案' ? 'bg-success' : 'bg-primary'}">${r.狀態}</span></td>
                     <td>
@@ -412,7 +399,7 @@
                             <button class="btn btn-sm btn-outline-danger" onclick="deleteCAPA(${r.識別碼})">刪除</button>
                         </div>
                     </td>
-                </tr>
+                </tr >
             `).join('');
 
             $('#capaTable').DataTable({
@@ -423,7 +410,7 @@
 
         async function openDetail(id) {
             currentId = id;
-            const res = await fetch(`${API}/capa/detail/${id}`, { headers: getHeaders() });
+            const res = await fetch(`${ API } /capa/detail / ${ id } `, { headers: getHeaders() });
             const d = await res.json();
 
             // 填寫 NCMR 資訊
@@ -471,12 +458,12 @@
             document.getElementById('n_desc').innerText = d.ncmr.不良描述;
 
             // 填寫 CAPA 資訊
-            document.getElementById('capaTitle').innerText = `CAPA 單號: ${d.capa['8D單號'] || d.capa.識別碼}`;
+            document.getElementById('capaTitle').innerText = `CAPA 單號: ${ d.capa['8D單號'] || d.capa.識別碼 } `;
             document.getElementById('c_owner').value = d.capa.負責人員姓名;
 
             // 填寫 D1-D8
             for (let i = 1; i <= 8; i++) {
-                document.getElementById(`val_d${i}`).value = d.capa[`D${i}_${getDName(i)}`] || '';
+                document.getElementById(`val_d${ i } `).value = d.capa[`D${ i }_${ getDName(i) } `] || '';
             }
 
             document.getElementById('closeCase').checked = (d.capa.狀態 === '已結案');
@@ -504,10 +491,10 @@
             };
 
             for (let i = 1; i <= 8; i++) {
-                payload[`D${i}_${getDName(i)}`] = document.getElementById(`val_d${i}`).value;
+                payload[`D${ i }_${ getDName(i) } `] = document.getElementById(`val_d${ i } `).value;
             }
 
-            const res = await fetch(`${API}/capa/update`, {
+            const res = await fetch(`${ API } /capa/update`, {
                 method: 'POST',
                 headers: getHeaders(),
                 body: JSON.stringify(payload)
@@ -523,9 +510,9 @@
         }
 
         async function deleteCAPA(id) {
-            if (!confirm(`確定要刪除 CAPA #${id} 嗎？此動作無法復原。`)) return;
+            if (!confirm(`確定要刪除 CAPA #${ id } 嗎？此動作無法復原。`)) return;
 
-            const res = await fetch(`${API}/capa/delete`, {
+            const res = await fetch(`${ API } /capa/delete`, {
                 method: 'POST',
                 headers: getHeaders(),
                 body: JSON.stringify({ id: id })

@@ -1,0 +1,77 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
+import api from '../services/api';
+import type { AuthState, User, VerifyTokenResponse } from '../types';
+
+interface AuthContextType extends AuthState {
+    login: (token: string, username: string, userId: string) => void;
+    logout: () => void;
+    checkAuth: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    const [user, setUser] = useState<User | null>(null);
+    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+    const [isLoading, setIsLoading] = useState<boolean>(true);
+
+    const login = (token: string, username: string, userId: string) => {
+        localStorage.setItem('authToken', token);
+        localStorage.setItem('username', username);
+        setUser({ username, user_id: userId });
+        setIsAuthenticated(true);
+    };
+
+    const logout = () => {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('username');
+        setUser(null);
+        setIsAuthenticated(false);
+    };
+
+    const checkAuth = async () => {
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            setIsLoading(false);
+            return;
+        }
+
+        try {
+            // 呼叫後端驗證 API
+            const response = await api.get<VerifyTokenResponse>('/verify-token');
+            if (response.data.valid) {
+                setUser({
+                    username: response.data.username,
+                    user_id: response.data.user_id
+                });
+                setIsAuthenticated(true);
+            } else {
+                logout();
+            }
+        } catch (error) {
+            console.error('Token verification failed:', error);
+            logout();
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        checkAuth();
+    }, []);
+
+    return (
+        <AuthContext.Provider value={{ user, isAuthenticated, isLoading, login, logout, checkAuth }}>
+            {children}
+        </AuthContext.Provider>
+    );
+};
+
+export const useAuth = () => {
+    const context = useContext(AuthContext);
+    if (context === undefined) {
+        throw new Error('useAuth must be used within an AuthProvider');
+    }
+    return context;
+};

@@ -179,7 +179,6 @@ def generate_number(prefix, table_name=None, number_field=None):
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
-            # 簡化查詢 - 使用純字串處理，欄位名稱加雙引號
             sql = f"""
                 SELECT "{number_field}" 
                 FROM "{table_name}" 
@@ -190,14 +189,12 @@ def generate_number(prefix, table_name=None, number_field=None):
             pattern = f"{prefix}-{year_month}-%"
             cursor.execute(sql, (pattern,))
             
-            # 取出所有匹配的記錄
             results = cursor.fetchall()
             max_seq = 0
             
             if results:
                 for row in results:
                     if row[0]:
-                        # 從完整編號中提取流水號部分
                         parts = row[0].split('-')
                         if len(parts) >= 3:
                             try:
@@ -211,7 +208,6 @@ def generate_number(prefix, table_name=None, number_field=None):
         finally:
             conn.close()
     else:
-        # 簡單格式，用於測試或預覽
         return f"{prefix}-{year_month}-001"
 
 def generate_ncmr_number():
@@ -755,6 +751,8 @@ def save_data():
         )
         p = cursor.fetchone()
         p_id = p[0] if p else None
+        if not p_id:
+            return jsonify({"error": f"找不到檢驗人員: {data.get('檢驗人員姓名')}"}), 400
 
         # 廠商 ID
         cursor.execute(
@@ -763,8 +761,11 @@ def save_data():
         )
         v = cursor.fetchone()
         v_id = v[0] if v else None
+        if not v_id:
+            return jsonify({"error": f"找不到廠商: {data.get('廠商中文名稱')}"}), 400
 
-        fields = ["檢驗日期", "檢驗人員", "廠商名稱", "檢驗規格", "材質", "訂單號碼"]
+        # Add quotes to column names to prevent syntax errors
+        fields = ['"檢驗日期"', '"檢驗人員"', '"廠商名稱"', '"檢驗規格"', '"材質"', '"訂單號碼"']
         params = [
             data.get('檢驗日期'),
             p_id,
@@ -774,14 +775,19 @@ def save_data():
             data.get('訂單號碼')
         ]
 
+        # Helper to convert empty strings to None
+        def get_val(k):
+            val = data.get(k)
+            return None if val == "" else val
+
         for i in range(1, 6):
             for col in ['外徑', '內徑', '厚度']:
                 fields += [f'"{col}{i}-min"', f'"{col}{i}-max"']
-                params += [data.get(f'{col}{i}-min'), data.get(f'{col}{i}-max')]
+                params += [get_val(f'{col}{i}-min'), get_val(f'{col}{i}-max')]
 
             for col in ['同心度', '長度', '硬度', '真直度']:
                 fields.append(f'"{col}{i}"')
-                params.append(data.get(f'{col}{i}'))
+                params.append(get_val(f'{col}{i}'))
 
         if is_update:
             set_sql = ", ".join([f'{f}=%s' for f in fields])
@@ -804,6 +810,8 @@ def save_data():
         return jsonify({"success": True})
     except Exception as e:
         conn.rollback()
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": handle_db_error(e)}), 500
     finally:
         conn.close()
@@ -1336,6 +1344,17 @@ def patrol_history():
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
+        page = int(args.get('page', 1))
+        per_page = int(args.get('per_page', 20))
+        
+        # Get total count
+        count_sql = f'SELECT COUNT(*) FROM "巡檢主檔" T {where_sql}'
+        cursor.execute(count_sql, params)
+        total = cursor.fetchone()[0]
+        total_pages = (total + per_page - 1) // per_page
+        
+        # Get paginated data
+        offset = (page - 1) * per_page
         sql = f"""
             SELECT T.識別碼, T.檢驗日期, M.擠壓機編號, OP.員工姓名, T.材質, T.擠壓規格
             FROM "巡檢主檔" T
@@ -1343,8 +1362,9 @@ def patrol_history():
             LEFT JOIN "擠壓人員" OP ON T.主機手 = OP.識別碼
             {where_sql}
             ORDER BY T.識別碼 DESC
+            LIMIT %s OFFSET %s
         """
-        cursor.execute(sql, params)
+        cursor.execute(sql, params + [per_page, offset])
         data = []
         for row in cursor.fetchall():
             date_value = row[1]
@@ -1363,7 +1383,7 @@ def patrol_history():
                 'mat': row[4],
                 'spec': row[5]
             })
-        return jsonify({"data": data})
+        return jsonify({"data": data, "pages": total_pages, "total": total})
     finally:
         conn.close()
 
@@ -1697,7 +1717,10 @@ def get_rework_applications():
                    p1."姓名" AS "申請人員姓名",
                    p2."姓名" AS "審核人員姓名",
                    n."不良描述" AS "ncmr_description",
-                   n."NCMR單號" AS "ncmr_number"
+                   n."NCMR單號" AS "ncmr_number",
+                   n."廠商" AS "廠商",
+                   n."材質" AS "材質",
+                   n."產品資訊" AS "產品資訊"
             FROM "重工申請單" r
             LEFT JOIN "品管人員" p1 ON r."申請人員" = p1."識別碼"
             LEFT JOIN "品管人員" p2 ON r."審核人員" = p2."識別碼"
@@ -1781,6 +1804,14 @@ def apply_rework():
         print(f"收到的數據: {data}")
         return jsonify({"error": ", ".join(errors)}), 400
     
+    ncmr_id = data.get('NCMR_ID')
+    if not ncmr_id:
+        return jsonify({"error": "NCMR_ID 為必填"}), 400
+    try:
+        ncmr_id = int(ncmr_id)
+    except (ValueError, TypeError):
+        return jsonify({"error": "NCMR_ID 必須是數字"}), 400
+    
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -1801,16 +1832,16 @@ def apply_rework():
             FROM "不合格品單" 
             WHERE "識別碼" = %s
             """,
-            (data.get('NCMR_ID'),)
+            (ncmr_id,)
         )
         ncmr = cursor.fetchone()
         if not ncmr:
             return jsonify({"error": "找不到對應的NCMR記錄"}), 400
             
-        ncmr_id, ncmr_number, determination, ncmr_status, bad_desc, product_info, material, vendor = ncmr
-        if determination != '重工':
-            return jsonify({"error": "此NCMR的判定結果不是重工，無法申請重工"}), 400
-            
+        ncmr_db_id, ncmr_number, determination, ncmr_status, bad_desc, product_info, material, vendor = ncmr
+        if product_info is None:
+            product_info = ''
+        
         rework_number = generate_rework_number()
             
         sql = """
@@ -1820,8 +1851,12 @@ def apply_rework():
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, '申請中')
             RETURNING "識別碼";
         """
+        expected_date = data.get('預計完成日期')
+        if expected_date == '':
+            expected_date = None
+            
         cursor.execute(sql, (
-            data.get('NCMR_ID'),
+            ncmr_id,
             rework_number,
             applicant_id,
             data.get('部門', ''),
@@ -1830,7 +1865,7 @@ def apply_rework():
             data.get('批號', ''),
             data.get('重工數量'),
             data.get('申請原因'),
-            data.get('預計完成日期')
+            expected_date
         ))
         
         row = cursor.fetchone()
@@ -1841,7 +1876,7 @@ def apply_rework():
         # 自動更新NCMR狀態為轉重工
         cursor.execute(
             '''UPDATE "不合格品單" SET "狀態" = '轉重工' WHERE "識別碼" = %s''',
-            (data.get('NCMR_ID'),)
+            (ncmr_id,)
         )
         
         conn.commit()
@@ -1854,6 +1889,64 @@ def apply_rework():
         return jsonify({"error": f"資料庫執行錯誤: {str(e)}"}), 500
     finally:
         conn.close()
+
+
+@app.route('/api/rework/application/<int:rework_id>', methods=['PUT'])
+@auth_required
+def update_rework_application(rework_id):
+    """更新重工申請單"""
+    data = request.json
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 檢查申請單是否存在
+        cursor.execute(
+            '''SELECT "識別碼" FROM "重工申請單" WHERE "識別碼" = %s''',
+            (rework_id,)
+        )
+        if not cursor.fetchone():
+            return jsonify({"error": "找不到重工申請單"}), 404
+        
+        fields = []
+        values = []
+        
+        field_mapping = {
+            '部門': '部門',
+            '緊急程度': '緊急程度',
+            '廠商': '廠商',
+            '材質': '材質',
+            '產品資訊': '產品資訊',
+            '批號': '批號',
+            '重工數量': '重工數量',
+            '申請原因': '申請原因',
+            '預計完成日期': '預計完成日期'
+        }
+        
+        for key, db_field in field_mapping.items():
+            if key in data:
+                fields.append(f'"{db_field}" = %s')
+                # 處理空日期
+                if key == '預計完成日期' and data[key] == '':
+                    values.append(None)
+                else:
+                    values.append(data[key])
+        
+        if not fields:
+            return jsonify({"error": "沒有要更新的欄位"}), 400
+        
+        sql = f'UPDATE "重工申請單" SET {", ".join(fields)} WHERE "識別碼" = %s'
+        values.append(rework_id)
+        
+        cursor.execute(sql, values)
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
 
 @app.route('/api/rework/approve', methods=['POST'])
 @auth_required
@@ -1871,20 +1964,21 @@ def approve_rework():
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        # 獲取審核人員ID
-        cursor.execute(
-            '''SELECT "識別碼" FROM "品管人員" WHERE "姓名" = %s''',
-            (reviewer_name,)
-        )
-        reviewer = cursor.fetchone()
-        if not reviewer:
-            return jsonify({"error": "找不到審核人員"}), 400
-        reviewer_id = reviewer[0]
+        reviewer_id = None
+        if reviewer_name:
+            # 嘗試獲取審核人員ID，如果不存在則設為 NULL
+            cursor.execute(
+                '''SELECT "識別碼" FROM "品管人員" WHERE "姓名" = %s''',
+                (reviewer_name,)
+            )
+            reviewer = cursor.fetchone()
+            if reviewer:
+                reviewer_id = reviewer[0]
         
         # 更新審核狀態
-        if action == 'approve':
+        if action == '核准':
             new_status = '已核准'
-        elif action == 'reject':
+        elif action == '拒絕':
             new_status = '已拒絕'
         else:
             return jsonify({"error": "無效的審核動作"}), 400
@@ -1910,21 +2004,23 @@ def approve_rework():
 @auth_required
 def get_rework_executions():
     """獲取重工執行記錄"""
-    rework_number = request.args.get('rework_id')  # 這是重工單號，如 "RW-202602-001"
+    rework_id = request.args.get('rework_id')
     
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        # 如果提供了重工單號，先查詢對應的識別碼
         rework_db_id = None
-        if rework_number:
-            cursor.execute(
-                '''SELECT "識別碼" FROM "重工申請單" WHERE "申請單號" = %s''',
-                (rework_number,)
-            )
-            result = cursor.fetchone()
-            if result:
-                rework_db_id = result[0]
+        if rework_id:
+            try:
+                rework_db_id = int(rework_id)
+            except ValueError:
+                cursor.execute(
+                    '''SELECT "識別碼" FROM "重工申請單" WHERE "申請單號" = %s''',
+                    (rework_id,)
+                )
+                result = cursor.fetchone()
+                if result:
+                    rework_db_id = result[0]
         
         sql = """
             SELECT e."識別碼", e."重工單號", e."執行部門", e."負責人員", e."協同人員",
@@ -2073,27 +2169,126 @@ def execute_rework():
         return jsonify({"error": str(e)}), 500
     finally:
         if conn:
-            conn.close() 
+            conn.close()
+
+
+@app.route('/api/rework/execution/<int:execution_id>', methods=['GET'])
+@auth_required
+def get_execution(execution_id):
+    """獲取單筆執行記錄"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        sql = """
+            SELECT e.*, p1."姓名" AS "負責人員姓名", p2."姓名" AS "執行人員姓名"
+            FROM "重工執行記錄" e
+            LEFT JOIN "品管人員" p1 ON e."負責人員" = p1."識別碼"
+            LEFT JOIN "品管人員" p2 ON e."執行人員" = p2."識別碼"
+            WHERE e."識別碼" = %s
+        """
+        cursor.execute(sql, (execution_id,))
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({"error": "找不到執行記錄"}), 404
+        cols = [c[0] for c in cursor.description]
+        item = dict(zip(cols, row))
+        return jsonify(item)
+    finally:
+        conn.close()
+
+
+@app.route('/api/rework/execution/<int:execution_id>', methods=['PUT'])
+@auth_required
+def update_execution(execution_id):
+    """更新執行記錄"""
+    data = request.json
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        fields = []
+        values = []
+        
+        if '負責人員姓名' in data:
+            cursor.execute('SELECT "識別碼" FROM "品管人員" WHERE "姓名" = %s', (data['負責人員姓名'],))
+            result = cursor.fetchone()
+            if result:
+                fields.append('"負責人員" = %s')
+                values.append(result[0])
+        
+        field_mapping = {
+            '執行部門': '執行部門',
+            '協同人員': '協同人員',
+            '開始時間': '開始時間',
+            '預計完成時間': '預計完成時間',
+            '實際完成時間': '實際完成時間',
+            '使用設備': '使用設備',
+            '重工方式': '重工方式',
+            'SOP編號': 'SOP編號',
+            '耗材記錄': '耗材記錄',
+            '完成數量': '完成數量',
+            '不良數量': '不良數量',
+            '執行狀況': '執行狀況',
+            '異常狀況': '異常狀況'
+        }
+        
+        for key, db_field in field_mapping.items():
+            if key in data:
+                fields.append(f'"{db_field}" = %s')
+                values.append(data[key])
+        
+        if not fields:
+            return jsonify({"error": "沒有要更新的欄位"}), 400
+        
+        sql = f'UPDATE "重工執行記錄" SET {", ".join(fields)} WHERE "識別碼" = %s'
+        values.append(execution_id)
+        cursor.execute(sql, values)
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/rework/execution/<int:execution_id>', methods=['DELETE'])
+@auth_required
+def delete_execution(execution_id):
+    """刪除執行記錄"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute('DELETE FROM "重工執行記錄" WHERE "識別碼" = %s', (execution_id,))
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
 
 @app.route('/api/rework/inspections', methods=['GET'])
 @auth_required
 def get_rework_inspections():
     """獲取重工品檢記錄"""
-    rework_number = request.args.get('rework_id')  # 這是重工單號，如 "RW-202602-001"
+    rework_id = request.args.get('rework_id')
     
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        # 如果提供了重工單號，先查詢對應的識別碼
         rework_db_id = None
-        if rework_number:
-            cursor.execute(
-                '''SELECT "識別碼" FROM "重工申請單" WHERE "申請單號" = %s''',
-                (rework_number,)
-            )
-            result = cursor.fetchone()
-            if result:
-                rework_db_id = result[0]
+        if rework_id:
+            try:
+                rework_db_id = int(rework_id)
+            except ValueError:
+                cursor.execute(
+                    '''SELECT "識別碼" FROM "重工申請單" WHERE "申請單號" = %s''',
+                    (rework_id,)
+                )
+                result = cursor.fetchone()
+                if result:
+                    rework_db_id = result[0]
         
         sql = """
             SELECT i.*, p."姓名" AS "檢驗人員姓名"
@@ -2292,6 +2487,73 @@ def delete_inspection(inspection_id):
         conn.close()
 
 
+@app.route('/api/rework/inspection', methods=['POST'])
+@auth_required
+def add_rework_inspection():
+    """新增重工品檢記錄"""
+    data = request.json
+    
+    errors = []
+    if not data.get('重工單號'):
+        errors.append("重工單號為必填欄位")
+    if not data.get('檢驗項目'):
+        errors.append("檢驗項目為必填欄位")
+    if not data.get('檢驗人員姓名'):
+        errors.append("檢驗人員為必填欄位")
+        
+    if errors:
+        return jsonify({"error": ", ".join(errors)}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            '''SELECT "識別碼" FROM "品管人員" WHERE "姓名" = %s''',
+            (data.get('檢驗人員姓名'),)
+        )
+        inspector = cursor.fetchone()
+        if not inspector:
+            return jsonify({"error": "找不到檢驗人員"}), 400
+        inspector_id = inspector[0]
+        
+        cursor.execute(
+            '''SELECT "識別碼" FROM "重工申請單" WHERE "申請單號" = %s''',
+            (data.get('重工單號'),)
+        )
+        rework = cursor.fetchone()
+        if not rework:
+            return jsonify({"error": "找不到重工申請單"}), 400
+        rework_db_id = rework[0]
+        
+        sql = """
+            INSERT INTO "重工品檢記錄" 
+            ("重工單號", "檢驗日期", "檢驗人員", "檢驗項目", "檢驗標準", "檢驗結果", "不良數量", "檢驗備註")
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING "識別碼"
+        """
+        inspection_date = data.get('檢驗日期') or datetime.now().strftime('%Y-%m-%d')
+        
+        cursor.execute(sql, (
+            rework_db_id,
+            inspection_date,
+            inspector_id,
+            data.get('檢驗項目'),
+            data.get('檢驗標準', ''),
+            data.get('檢驗結果', '合格'),
+            data.get('不良數量', 0) or 0,
+            data.get('檢驗備註', '')
+        ))
+        
+        row = cursor.fetchone()
+        conn.commit()
+        return jsonify({"success": True, "inspection_id": row[0] if row else None})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+
 
 @app.route('/api/rework/close', methods=['POST'])
 @auth_required
@@ -2374,21 +2636,23 @@ def delete_rework():
 @auth_required
 def get_rework_costs():
     """獲取重工成本記錄"""
-    rework_number = request.args.get('rework_id')  # 這是重工單號，如 "RW-202602-001"
+    rework_id = request.args.get('rework_id')
     
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        # 如果提供了重工單號，先查詢對應的識別碼
         rework_db_id = None
-        if rework_number:
-            cursor.execute(
-                '''SELECT "識別碼" FROM "重工申請單" WHERE "申請單號" = %s''',
-                (rework_number,)
-            )
-            result = cursor.fetchone()
-            if result:
-                rework_db_id = result[0]
+        if rework_id:
+            try:
+                rework_db_id = int(rework_id)
+            except ValueError:
+                cursor.execute(
+                    '''SELECT "識別碼" FROM "重工申請單" WHERE "申請單號" = %s''',
+                    (rework_id,)
+                )
+                result = cursor.fetchone()
+                if result:
+                    rework_db_id = result[0]
         
         sql = """
             SELECT c.*, p."姓名" AS "記錄人員姓名"
@@ -2709,36 +2973,28 @@ def get_rework_statistics():
                 'total_rework_quantity': float(result[5]) if result[5] else 0
             }
         
-        # 移除成本統計功能
-        # sql = """
-        #     SELECT 
-        #             COUNT(*) as 記錄數,
-        #             SUM(COALESCE(總成本, 0)) as 總成本,
-        #             SUM(CASE WHEN 成本類型 = '人工' THEN COALESCE(總成本, 0) ELSE 0 END) as 人工成本,
-        #             SUM(CASE WHEN 成本類型 = '材料' THEN COALESCE(總成本, 0) ELSE 0 END) as 材料成本,
-        #             SUM(CASE WHEN 成本類型 = '設備' THEN COALESCE(總成本, 0) ELSE 0 END) as 設備成本
-        #     FROM "重工成本分析" c
-        #     INNER JOIN "重工申請單" r ON c.重工單號 = r.識別碼
-        #     WHERE 1=1 {where_clause}
-        # """
-        # cursor.execute(sql.format(where_clause=where_clause), params)
-        # 
-        # result = cursor.fetchone()
-        # if result:
-        #     stats['cost_stats'] = {
-        #         'total_records': result[0],
-        #         'total_cost': float(result[1]) if result[1] else 0,
-        #         'labor_cost': float(result[2]) if result[2] else 0,
-        #         'material_cost': float(result[3]) if result[3] else 0,
-        #         'equipment_cost': float(result[4]) if result[4] else 0
-        #     }
-        stats['cost_stats'] = {
-            'total_records': 0,
-            'total_cost': 0,
-            'labor_cost': 0,
-            'material_cost': 0,
-            'equipment_cost': 0
-        }
+        sql = """
+            SELECT 
+                    COUNT(*) as 記錄數,
+                    SUM(COALESCE(總成本, 0)) as 總成本,
+                    SUM(CASE WHEN 成本類型 = '人工成本' THEN COALESCE(總成本, 0) ELSE 0 END) as 人工成本,
+                    SUM(CASE WHEN 成本類型 = '材料成本' THEN COALESCE(總成本, 0) ELSE 0 END) as 材料成本,
+                    SUM(CASE WHEN 成本類型 = '設備成本' THEN COALESCE(總成本, 0) ELSE 0 END) as 設備成本
+            FROM "重工成本分析" c
+            INNER JOIN "重工申請單" r ON c.重工單號 = r.識別碼
+            WHERE 1=1 {where_clause}
+        """
+        cursor.execute(sql.format(where_clause=where_clause), params)
+
+        result = cursor.fetchone()
+        if result:
+            stats['cost_stats'] = {
+                'total_records': result[0],
+                'total_cost': float(result[1]) if result[1] else 0,
+                'labor_cost': float(result[2]) if result[2] else 0,
+                'material_cost': float(result[3]) if result[3] else 0,
+                'equipment_cost': float(result[4]) if result[4] else 0
+            }
         
         # 部門統計
         sql = """
@@ -2885,12 +3141,12 @@ def add_ncmr():
             data.get('日期'),
             data.get('來源'),
             data.get('產品資訊'), 
-            data.get('產品數量'),
+            data.get('產品數量') if data.get('產品數量') != '' else None,
             data.get('材質'),
             data.get('廠商'),
             data.get('批號'),
             data.get('不良描述'),
-            data.get('不合格數量'),
+            data.get('不合格數量') if data.get('不合格數量') != '' else None,
             inspector_id,
             data.get('判定結果'),
             data.get('狀態', '待處理'),
@@ -3326,7 +3582,12 @@ def get_capa_list():
     cursor = conn.cursor()
     try:
         sql = """
-            SELECT T1.*, P."姓名" AS "負責人員姓名", N."來源", N."不良描述", 
+            SELECT T1."識別碼", T1."NCMR_ID", T1."8D單號", T1."CAR單號", 
+                   T1."負責人員", T1."問題描述", T1."根本原因", T1."矯正措施", 
+                   T1."預防措施", T1."狀態", 
+                   T1."建立時間" AS "建立日期", 
+                   T1."完成時間" AS "結案日期",
+                   P."姓名" AS "負責人員姓名", N."來源", N."不良描述", 
                    N."廠商", N."材質", N."產品資訊" AS "規格", N."NCMR單號", 
                    N."發現日期" AS "ncmr_date"
             FROM "異常矯正單" T1
@@ -3340,8 +3601,9 @@ def get_capa_list():
         data = []
         for row in cursor.fetchall():
             item = dict(zip(cols, row))
-            if item.get('建立日期'): item['建立日期'] = item['建立日期'].strftime('%Y-%m-%d')
-            if item.get('結案日期'): item['結案日期'] = item['結案日期'].strftime('%Y-%m-%d')
+            # 使用 format_value() 統一格式化所有值
+            for key, val in item.items():
+                item[key] = format_value(val)
             data.append(item)
         return jsonify(data)
     finally:
@@ -3375,13 +3637,15 @@ def create_capa():
         cursor.execute("""
             INSERT INTO "異常矯正單" ("8D單號", "NCMR_ID", "狀態")
             VALUES (%s, %s, '進行中')
+            RETURNING "識別碼"
         """, (capa_number, ncmr_id))
+        new_id = cursor.fetchone()[0]
         
         # 更新 NCMR 狀態
         cursor.execute('''UPDATE "不合格品單" SET "狀態" = '矯正中' WHERE "識別碼" = %s''', (ncmr_id,))
         
         conn.commit()
-        return jsonify({"success": True, "capa_number": capa_number, "ncmr_number": ncmr_number})
+        return jsonify({"success": True, "capa_number": capa_number, "ncmr_number": ncmr_number, "id": new_id})
     except Exception as e:
         conn.rollback()
         return jsonify({"error": str(e)}), 500
@@ -3844,10 +4108,12 @@ def check_tolerance():
         # 分類候選記錄
         priority1_exact = []    # 有廠商 + 完全匹配
         priority2_partial = []  # 有廠商 + 規格部分匹配（開頭匹配）
-        priority3_generic = []  # 有廠商 + 無規格
-        priority4_exact = []    # 無廠商 + 完全匹配
-        priority5_partial = []  # 無廠商 + 規格部分匹配
-        priority6_generic = []  # 無廠商 + 無規格
+        priority3_similar = []  # 有廠商 + 規格相近（前兩個部分相同）
+        priority4_generic = []  # 有廠商 + 無規格
+        priority5_exact = []    # 無廠商 + 完全匹配
+        priority6_partial = []  # 無廠商 + 規格部分匹配
+        priority7_similar = []  # 無廠商 + 規格相近
+        priority8_generic = []  # 無廠商 + 無規格
 
         for row in candidates:
             tol_id = row[0]
@@ -3864,35 +4130,55 @@ def check_tolerance():
             # 檢查廠商ID是否匹配（P1-P3需要廠商ID完全相同）
             vendor_match = (tol_vendor_id == vendor_id) if (tol_vendor_id is not None and vendor_id is not None) else False
             
+            # 解析規格，判斷是否相近（前綴相同，但長度部分不同）
+            def specs_similar(spec1, spec2):
+                """判斷兩個規格是否相近（前綴匹配）"""
+                if not spec1 or not spec2:
+                    return False
+                parts1 = spec1.split('*')
+                parts2 = spec2.split('*')
+                # 前兩個部分相同（外徑和厚度/內徑相同）
+                if len(parts1) >= 2 and len(parts2) >= 2:
+                    if parts1[0] == parts2[0] and parts1[1] == parts2[1]:
+                        return True
+                return False
+            
             if vendor_match:
-                # 廠商匹配的記錄 (Priority 1-3)
+                # 廠商匹配的記錄 (Priority 1-4)
                 if has_spec and normalized_spec == input_spec:
                     # 完全匹配
                     priority1_exact.append(row)
                 elif has_spec and input_spec.startswith(normalized_spec + '*'):
-                    # 規格部分匹配
+                    # 規格部分匹配（前綴完全匹配）
                     priority2_partial.append(row)
+                elif has_spec and specs_similar(normalized_spec, input_spec):
+                    # 規格相近（前兩個部分相同）
+                    priority3_similar.append(row)
                 elif not has_spec:
                     # 無規格（通用）
-                    priority3_generic.append(row)
+                    priority4_generic.append(row)
             elif not has_vendor:
-                # 無廠商的記錄 (Priority 4-6)
+                # 無廠商的記錄 (Priority 5-8)
                 if has_spec and normalized_spec == input_spec:
-                    priority4_exact.append(row)
+                    priority5_exact.append(row)
                 elif has_spec and input_spec.startswith(normalized_spec + '*'):
-                    priority5_partial.append(row)
+                    priority6_partial.append(row)
+                elif has_spec and specs_similar(normalized_spec, input_spec):
+                    priority7_similar.append(row)
                 elif not has_spec:
-                    priority6_generic.append(row)
+                    priority8_generic.append(row)
             else:
                 # 有廠商但不匹配的記錄（跳過）
                 pass
 
         # 按優先順序選擇
         matched_row = None
-        for idx, priority_list in enumerate([priority1_exact, priority2_partial, priority3_generic,
-                                             priority4_exact, priority5_partial, priority6_generic]):
+        final_priority = None
+        for idx, priority_list in enumerate([priority1_exact, priority2_partial, priority3_similar, priority4_generic,
+                                             priority5_exact, priority6_partial, priority7_similar, priority8_generic], 1):
             if priority_list:
                 matched_row = priority_list[0]
+                final_priority = idx
                 break
 
         if not matched_row:
@@ -3927,6 +4213,17 @@ def check_tolerance():
                 "單位": row[7] or 'mm'
             })
         
+        priority_names = {
+            1: "相同廠商+相同材質+相同規格(完全匹配)",
+            2: "相同廠商+相同材質+規格部分匹配(開頭匹配)",
+            3: "相同廠商+相同材質+規格相近(前兩個部分相同)",
+            4: "相同廠商+相同材質+無規格(通用)",
+            5: "無廠商+相同材質+相同規格(完全匹配)",
+            6: "無廠商+相同材質+規格部分匹配",
+            7: "無廠商+相同材質+規格相近",
+            8: "無廠商+相同材質+無規格"
+        }
+        
         return jsonify({
             "success": True, 
             "found": True,
@@ -3935,7 +4232,9 @@ def check_tolerance():
             "spec": main_row[2],
             "vendor_id": main_row[3],
             "vendor_name": main_row[4].strip() if main_row[4] else '',
-            "tolerances": details
+            "tolerances": details,
+            "matched_priority": final_priority,
+            "priority_name": priority_names.get(final_priority, "未知")
         })
     except Exception as e:
         return jsonify({"error": handle_db_error(e)}), 500
@@ -4029,6 +4328,478 @@ def import_tolerance_excel():
         conn.close()
 # ==================================================
 # 啟動伺服器 (生產環境使用 Waitress)
+@app.route('/debug/capa_raw')
+def debug_capa_raw():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute('SELECT * FROM "異常矯正單"')
+        cols = [c[0] for c in cursor.description]
+        data = []
+        for row in cursor.fetchall():
+            item = {}
+            for i, col in enumerate(cols):
+                val = row[i]
+                if isinstance(val, (datetime, date)):
+                    val = str(val)
+                if isinstance(val, decimal.Decimal):
+                    val = float(val)
+                item[col] = val
+            data.append(item)
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)})
+    finally:
+        conn.close()
+
+@app.route('/debug/capa_test')
+def debug_capa_test():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # Copy of the query from get_capa_list with aliased columns
+        sql = """
+            SELECT T1."識別碼", T1."NCMR_ID", T1."8D單號", T1."CAR單號", 
+                   T1."負責人員", T1."問題描述", T1."根本原因", T1."矯正措施", 
+                   T1."預防措施", T1."狀態", 
+                   T1."建立時間" AS "建立日期", 
+                   T1."完成時間" AS "結案日期",
+                   P."姓名" AS "負責人員姓名", N."來源", N."不良描述", 
+                   N."廠商", N."材質", N."產品資訊" AS "規格", N."NCMR單號", 
+                   N."發現日期" AS "ncmr_date"
+            FROM "異常矯正單" T1
+            LEFT JOIN "品管人員" P ON T1."負責人員" = P."識別碼"
+            LEFT JOIN "不合格品單" N ON T1."NCMR_ID" = N."識別碼"
+            WHERE T1."8D單號" IS NOT NULL
+            ORDER BY T1."識別碼" DESC
+        """
+        cursor.execute(sql)
+        cols = [c[0] for c in cursor.description]
+        data = []
+        for row in cursor.fetchall():
+            try:
+                item = dict(zip(cols, row))
+                # 使用 format_value() 統一格式化所有值
+                for key, val in item.items():
+                    item[key] = format_value(val)
+                data.append(item)
+            except Exception as inner_e:
+                 # Return specific error for row
+                return jsonify({"error": f"Row processing error: {str(inner_e)}", "row_data": str(row)})
+        
+        return jsonify(data)
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()})
+    finally:
+        conn.close()
+
+# ==================================================
+# Debug: 列出所有公差主檔記錄
+# ==================================================
+@app.route('/api/debug/all-tolerances', methods=['GET'])
+def debug_all_tolerances():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT T1."識別碼", T1."材質", T1."規格", T1."廠商ID", V."廠商名稱"
+            FROM "廠商公差主檔" T1
+            LEFT JOIN "廠商資料" V ON T1."廠商ID" = V."識別碼"
+            ORDER BY T1."識別碼"
+            LIMIT 100
+        """)
+        records = []
+        for row in cursor.fetchall():
+            records.append({
+                "id": row[0],
+                "material": row[1],
+                "spec": row[2],
+                "vendor_id": row[3],
+                "vendor_name": row[4].strip() if row[4] else None
+            })
+        
+        # Get details for each record
+        for record in records:
+            cursor.execute("""
+                SELECT "測量項目", "尺寸下限", "尺寸上限", "公差下限", "公差上限", "標準值"
+                FROM "廠商公差明細檔"
+                WHERE "主檔ID" = %s
+            """, (record['id'],))
+            details = []
+            for row in cursor.fetchall():
+                details.append({
+                    "項目": row[0],
+                    "尺寸下限": float(row[1]) if row[1] else None,
+                    "尺寸上限": float(row[2]) if row[2] else None,
+                    "公差下限": float(row[3]) if row[3] else None,
+                    "公差上限": float(row[4]) if row[4] else None,
+                    "標準值": float(row[5]) if row[5] else None
+                })
+            record['details'] = details
+        
+        return jsonify(records)
+    except Exception as e:
+        return jsonify({"error": str(e)})
+    finally:
+        conn.close()
+
+# ==================================================
+# Debug: 查詢 NCMR 關聯的 CAPA 資料
+# ==================================================
+@app.route('/api/debug/ncmr-capa/<ncmr_no>', methods=['GET'])
+def debug_ncmr_capa(ncmr_no):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute('SELECT "識別碼", "NCMR單號" FROM "不合格品單" WHERE "NCMR單號" = %s', (ncmr_no,))
+        ncmr_row = cursor.fetchone()
+        
+        if not ncmr_row:
+            try:
+                ncmr_id = int(ncmr_no)
+                cursor.execute('SELECT "識別碼", "NCMR單號" FROM "不合格品單" WHERE "識別碼" = %s', (ncmr_id,))
+                ncmr_row = cursor.fetchone()
+            except:
+                return jsonify({"error": f"NCMR not found: {ncmr_no}"}), 404
+        
+        ncmr_id = ncmr_row[0]
+        ncmr_no_db = ncmr_row[1]
+        
+        cursor.execute("""
+            SELECT "識別碼", "8D單號", "CAR單號", "狀態", "NCMR_ID"
+            FROM "異常矯正單"
+            WHERE "NCMR_ID" = %s
+            ORDER BY "識別碼"
+        """, (ncmr_id,))
+        records = []
+        for row in cursor.fetchall():
+            records.append({
+                "id": row[0],
+                "8D單號": row[1],
+                "CAR單號": row[2],
+                "狀態": row[3],
+                "NCMR_ID": row[4]
+            })
+        
+        cursor.execute('SELECT "狀態" FROM "不合格品單" WHERE "識別碼" = %s', (ncmr_id,))
+        ncmr_status = cursor.fetchone()
+        
+        return jsonify({
+            "ncmr": {"識別碼": ncmr_id, "NCMR單號": ncmr_no_db, "狀態": ncmr_status[0] if ncmr_status else None},
+            "capa_records": records
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+# ==================================================
+# Debug: 簡單測試公差套用
+# ==================================================
+@app.route('/api/debug/tol/<vendor_id>/<material>/<spec>', methods=['GET'])
+def debug_tol_simple(vendor_id, material, spec):
+    """Debug: 直接測試公差套用"""
+    # 借用 check_tolerance 的邏輯，但直接傳遞參數
+    from urllib.parse import unquote
+    vendor_id = int(vendor_id) if vendor_id != 'null' else None
+    material = unquote(material)
+    spec = unquote(spec)
+    
+    def normalize_spec(spec_str):
+        if spec_str is None:
+            return ''
+        if isinstance(spec_str, str):
+            spec_str = spec_str.strip().replace('×', '*').replace('x', '*')
+            while '**' in spec_str:
+                spec_str = spec_str.replace('**', '*')
+            if spec_str.upper() in ('NONE', 'NULL', ''):
+                return ''
+            return spec_str.strip()
+        return ''
+    
+    def specs_similar(spec1, spec2):
+        if not spec1 or not spec2:
+            return False
+        parts1 = spec1.split('*')
+        parts2 = spec2.split('*')
+        if len(parts1) >= 2 and len(parts2) >= 2:
+            if parts1[0] == parts2[0] and parts1[1] == parts2[1]:
+                return True
+        return False
+    
+    input_spec = normalize_spec(spec)
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT T1."識別碼", T1."材質", T1."規格", T1."廠商ID", V."廠商名稱"
+            FROM "廠商公差主檔" T1
+            LEFT JOIN "廠商資料" V ON T1."廠商ID" = V."識別碼"
+            WHERE T1."材質" = %s
+        """, (material,))
+        candidates = cursor.fetchall()
+        
+        priority1_exact = []
+        priority2_partial = []
+        priority3_similar = []
+        priority4_generic = []
+        priority5_exact = []
+        priority6_partial = []
+        priority7_similar = []
+        priority8_generic = []
+        
+        for row in candidates:
+            tol_id = row[0]
+            tol_material = row[1]
+            tol_spec = row[2]
+            tol_vendor_id = row[3]
+            tol_vendor_name = row[4]
+            
+            normalized_spec = normalize_spec(tol_spec)
+            has_vendor = tol_vendor_id is not None
+            has_spec = normalized_spec != ''
+            
+            vendor_match = (tol_vendor_id == vendor_id) if (tol_vendor_id is not None and vendor_id is not None) else False
+            
+            cursor.execute("""
+                SELECT "測量項目", "尺寸下限", "尺寸上限", "公差下限", "公差上限"
+                FROM "廠商公差明細檔"
+                WHERE "主檔ID" = %s
+            """, (tol_id,))
+            details = cursor.fetchall()
+            detail_list = []
+            for d in details:
+                detail_list.append({
+                    "項目": d[0],
+                    "尺寸下限": float(d[1]) if d[1] is not None else None,
+                    "尺寸上限": float(d[2]) if d[2] is not None else None,
+                    "公差下限": float(d[3]) if d[3] is not None else None,
+                    "公差上限": float(d[4]) if d[4] is not None else None
+                })
+            
+            record = {
+                "id": tol_id,
+                "spec": tol_spec,
+                "normalized_spec": normalized_spec,
+                "vendor_id": tol_vendor_id,
+                "vendor_name": tol_vendor_name.strip() if tol_vendor_name else None,
+                "details": detail_list
+            }
+            
+            if vendor_match:
+                if has_spec and normalized_spec == input_spec:
+                    priority1_exact.append(record)
+                elif has_spec and input_spec.startswith(normalized_spec + '*'):
+                    priority2_partial.append(record)
+                elif has_spec and specs_similar(normalized_spec, input_spec):
+                    priority3_similar.append(record)
+                elif not has_spec:
+                    priority4_generic.append(record)
+            elif not has_vendor:
+                if has_spec and normalized_spec == input_spec:
+                    priority5_exact.append(record)
+                elif has_spec and input_spec.startswith(normalized_spec + '*'):
+                    priority6_partial.append(record)
+                elif has_spec and specs_similar(normalized_spec, input_spec):
+                    priority7_similar.append(record)
+                elif not has_spec:
+                    priority8_generic.append(record)
+        
+        priority_names = {
+            1: "相同廠商+相同材質+相同規格(完全匹配)",
+            2: "相同廠商+相同材質+規格部分匹配(開頭匹配)",
+            3: "相同廠商+相同材質+規格相近(前兩個部分相同)",
+            4: "相同廠商+相同材質+無規格(通用)",
+            5: "無廠商+相同材質+相同規格(完全匹配)",
+            6: "無廠商+相同材質+規格部分匹配",
+            7: "無廠商+相同材質+規格相近",
+            8: "無廠商+相同材質+無規格"
+        }
+        
+        final_tolerance = None
+        final_priority = None
+        for idx, key in enumerate(["priority1_exact", "priority2_partial", "priority3_similar", "priority4_generic",
+                                   "priority5_exact", "priority6_partial", "priority7_similar", "priority8_generic"], 1):
+            if eval(key):
+                final_tolerance = eval(key)[0]
+                final_priority = idx
+                break
+        
+        return jsonify({
+            "input": {"vendor_id": vendor_id, "material": material, "spec": spec, "normalized_spec": input_spec},
+            "priorities": {
+                "priority1_exact": priority1_exact,
+                "priority2_partial": priority2_partial,
+                "priority3_similar": priority3_similar,
+                "priority4_generic": priority4_generic,
+                "priority5_exact": priority5_exact,
+                "priority6_partial": priority6_partial,
+                "priority7_similar": priority7_similar,
+                "priority8_generic": priority8_generic
+            },
+            "final_applied": final_tolerance,
+            "matched_priority": final_priority,
+            "priority_name": priority_names.get(final_priority, "未知")
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()})
+    finally:
+        conn.close()
+
+# ==================================================
+# Debug: 查詢出貨檢驗記錄的公差套用情況
+# ==================================================
+@app.route('/api/debug/tolerance-check/<int:shipping_id>', methods=['GET'])
+def debug_tolerance_check(shipping_id):
+    """Debug: 檢查出貨檢驗記錄的公差套用情況"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 查詢出貨檢驗記錄
+        cursor.execute("""
+            SELECT "識別碼", "材質", "檢驗規格", "廠商名稱"
+            FROM "出貨檢驗數據"
+            WHERE "識別碼" = %s
+        """, (shipping_id,))
+        row = cursor.fetchone()
+        
+        if not row:
+            return jsonify({"error": f"找不到識別碼 {shipping_id} 的記錄"}), 404
+        
+        shipping_record = {
+            "id": row[0],
+            "material": row[1],
+            "spec": row[2],
+            "vendor_id": row[3]
+        }
+        
+        # 查詢廠商名稱
+        if shipping_record["vendor_id"]:
+            cursor.execute('SELECT "廠商名稱" FROM "廠商資料" WHERE "識別碼" = %s', (shipping_record["vendor_id"],))
+            vrow = cursor.fetchone()
+            vendor_name = vrow[0] if vrow else None
+        else:
+            vendor_name = None
+        
+        shipping_record["vendor_name"] = vendor_name
+        
+        # 查詢所有符合條件的公差記錄
+        material = shipping_record["material"]
+        input_spec = shipping_record["spec"]
+        vendor_id = shipping_record["vendor_id"]
+        
+        # 正規化規格
+        def normalize_spec(spec_str):
+            if spec_str is None:
+                return ''
+            if isinstance(spec_str, str):
+                spec_str = spec_str.strip().replace('×', '*').replace('x', '*')
+                while '**' in spec_str:
+                    spec_str = spec_str.replace('**', '*')
+                if spec_str.upper() in ('NONE', 'NULL', ''):
+                    return ''
+                return spec_str.strip()
+            return ''
+        
+        normalized_input_spec = normalize_spec(input_spec)
+        
+        # 查詢所有相關公差
+        cursor.execute("""
+            SELECT T1."識別碼", T1."材質", T1."規格", T1."廠商ID", V."廠商名稱"
+            FROM "廠商公差主檔" T1
+            LEFT JOIN "廠商資料" V ON T1."廠商ID" = V."識別碼"
+            WHERE T1."材質" = %s
+        """, (material,))
+        candidates = cursor.fetchall()
+        
+        priority_results = {
+            "priority1_exact": [],
+            "priority2_partial": [],
+            "priority3_generic": [],
+            "priority4_exact": [],
+            "priority5_partial": [],
+            "priority6_generic": []
+        }
+        
+        for row in candidates:
+            tol_id = row[0]
+            tol_material = row[1]
+            tol_spec = row[2]
+            tol_vendor_id = row[3]
+            tol_vendor_name = row[4]
+            
+            normalized_spec = normalize_spec(tol_spec)
+            has_vendor = tol_vendor_id is not None
+            has_spec = normalized_spec != ''
+            
+            vendor_match = (tol_vendor_id == vendor_id) if (tol_vendor_id is not None and vendor_id is not None) else False
+            
+            # 查詢明細
+            cursor.execute("""
+                SELECT "測量項目", "尺寸下限", "尺寸上限", "公差下限", "公差上限"
+                FROM "廠商公差明細檔"
+                WHERE "主檔ID" = %s
+            """, (tol_id,))
+            details = cursor.fetchall()
+            detail_list = []
+            for d in details:
+                detail_list.append({
+                    "項目": d[0],
+                    "尺寸下限": float(d[1]) if d[1] is not None else None,
+                    "尺寸上限": float(d[2]) if d[2] is not None else None,
+                    "公差下限": float(d[3]) if d[3] is not None else None,
+                    "公差上限": float(d[4]) if d[4] is not None else None
+                })
+            
+            record = {
+                "id": tol_id,
+                "spec": tol_spec,
+                "vendor_id": tol_vendor_id,
+                "vendor_name": tol_vendor_name.strip() if tol_vendor_name else None,
+                "details": detail_list
+            }
+            
+            if vendor_match:
+                if has_spec and normalized_spec == normalized_input_spec:
+                    priority_results["priority1_exact"].append(record)
+                elif has_spec and normalized_input_spec.startswith(normalized_spec + '*'):
+                    priority_results["priority2_partial"].append(record)
+                elif not has_spec:
+                    priority_results["priority3_generic"].append(record)
+            elif not has_vendor:
+                if has_spec and normalized_spec == normalized_input_spec:
+                    priority_results["priority4_exact"].append(record)
+                elif has_spec and normalized_input_spec.startswith(normalized_spec + '*'):
+                    priority_results["priority5_partial"].append(record)
+                elif not has_spec:
+                    priority_results["priority6_generic"].append(record)
+        
+        # 判斷最終會套用哪個
+        final_tolerance = None
+        final_priority = None
+        for idx, key in enumerate(["priority1_exact", "priority2_partial", "priority3_generic",
+                                   "priority4_exact", "priority5_partial", "priority6_generic"], 1):
+            if priority_results[key]:
+                final_tolerance = priority_results[key][0]
+                final_priority = idx
+                break
+        
+        return jsonify({
+            "shipping_record": shipping_record,
+            "input_spec_normalized": normalized_input_spec,
+            "tolerance_candidates": priority_results,
+            "final_applied": final_tolerance,
+            "priority": final_priority
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()})
+    finally:
+        conn.close()
+
 # ==================================================
 if __name__ == '__main__':
     try:
