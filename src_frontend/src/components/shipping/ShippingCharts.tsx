@@ -185,7 +185,6 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                             <div style={{ height: '300px' }}>
                                 <Line
                                     data={chartData.xBar}
-                                    data={chartData.xBar}
                                     options={{
                                         maintainAspectRatio: false,
                                         plugins: { legend: { display: false } },
@@ -208,7 +207,6 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                             <h5 className="card-title text-center">R 全距管制圖</h5>
                             <div style={{ height: '300px' }}>
                                 <Line
-                                    data={chartData.rChart}
                                     data={chartData.rChart}
                                     options={{
                                         maintainAspectRatio: false,

@@ -7,7 +7,7 @@ import requests
 import json
 from datetime import datetime
 
-BASE_URL = 'http://localhost:5000'
+BASE_URL = 'http://localhost:5001'
 
 class Colors:
     """終端機顏色（如果支援）"""

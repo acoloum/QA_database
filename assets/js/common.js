@@ -8,7 +8,7 @@
 // ========================================
 const CONFIG = {
     API_BASE: window.location.protocol === 'file:' 
-        ? 'http://localhost:5000' 
+        ? 'http://localhost:5001' 
         : `${window.location.protocol}//${window.location.hostname}:${window.location.port || '5000'}`,
     TOKEN_KEY: 'authToken',
     USER_KEY: 'username'

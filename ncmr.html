@@ -297,7 +297,7 @@
 
     <script>
         const API = window.location.protocol === 'file:'
-            ? 'http://localhost:5000/api'
+            ? 'http://localhost:5001/api'
             : `${window.location.protocol}//${(window.location.hostname || 'localhost')}:${window.location.port || '5000'}/api`;
         let authToken = localStorage.getItem('authToken');
         console.log('API:', API);
