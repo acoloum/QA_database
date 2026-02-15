@@ -26,6 +26,17 @@ const ITEMS: ItemConfig[] = [
     { label: "真直度", key: "真直度", type: "single" }
 ];
 
+// Pre-calculate offsets for tab index (Vertical Traversal)
+// Group 1: Item 1 -> Item 2 -> ... -> Item N
+// Group 2: ...
+const ITEM_OFFSETS = ITEMS.reduce((acc, _, index) => {
+    const prevOffset = index > 0 ? acc[index - 1] : 0;
+    const prevCount = index > 0 ? (ITEMS[index - 1].type === 'minmax' ? 2 : 1) : 0;
+    acc.push(prevOffset + prevCount);
+    return acc;
+}, [] as number[]);
+const TOTAL_INPUTS_PER_GROUP = ITEM_OFFSETS[ITEMS.length - 1] + (ITEMS[ITEMS.length - 1].type === 'minmax' ? 2 : 1);
+
 // 解析檢驗規格，取得各項目標準值
 // 支援格式: 外徑*厚度*長度 (如 31.9*2.2*667) 或 外徑*內徑*長度 (如 25.4*19*5500)
 const parseSpec = (spec: string): Record<string, number> => {
@@ -209,7 +220,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                 usl = tolItem.尺寸上限;
             } else if (tolItem.尺寸下限 !== null) {
                 // 只有尺寸下限
-                lsl = tolItem.尺寸下限;
+                lsl = tolItem.尺寸下限 ?? -Infinity;
                 usl = Infinity;
             } else {
                 return;
@@ -359,7 +370,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                                 </tr>
                             </thead>
                             <tbody>
-                                {ITEMS.map((item) => (
+                                {ITEMS.map((item, idx) => (
                                     <tr key={item.key}>
                                         <th className="bg-light text-nowrap">{item.label}</th>
                                         {[1, 2, 3, 4, 5].map(g => (
@@ -372,6 +383,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                                                             className={`text-center shipping-input ${violations[`${item.key}${g}-min`] ? 'is-invalid-breathing' : ''}`}
                                                             value={measurements[`${item.key}${g}-min`] || ''}
                                                             onChange={e => handleMeasurementChange(`${item.key}${g}-min`, e.target.value)}
+                                                            tabIndex={100 + (g - 1) * TOTAL_INPUTS_PER_GROUP + ITEM_OFFSETS[idx]}
                                                         />
                                                         <Form.Control
                                                             size="sm"
@@ -379,6 +391,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                                                             className={`text-center shipping-input ${violations[`${item.key}${g}-max`] ? 'is-invalid-breathing' : ''}`}
                                                             value={measurements[`${item.key}${g}-max`] || ''}
                                                             onChange={e => handleMeasurementChange(`${item.key}${g}-max`, e.target.value)}
+                                                            tabIndex={100 + (g - 1) * TOTAL_INPUTS_PER_GROUP + ITEM_OFFSETS[idx] + 1}
                                                         />
                                                     </div>
                                                 ) : (
@@ -387,6 +400,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                                                         className={`text-center mx-auto shipping-input ${violations[`${item.key}${g}`] ? 'is-invalid-breathing' : ''}`}
                                                         value={measurements[`${item.key}${g}`] || ''}
                                                         onChange={e => handleMeasurementChange(`${item.key}${g}`, e.target.value)}
+                                                        tabIndex={100 + (g - 1) * TOTAL_INPUTS_PER_GROUP + ITEM_OFFSETS[idx]}
                                                     />
                                                 )}
                                             </td>

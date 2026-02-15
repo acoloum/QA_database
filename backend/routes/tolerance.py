@@ -144,13 +144,14 @@ def add_tolerance():
     try:
         # 插入主檔（不記錄建立人員）
         cursor.execute("""
-            INSERT INTO "廠商公差主檔" ("材質", "規格", "廠商ID", "備註")
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO "廠商公差主檔" ("材質", "規格", "廠商ID", "備註", "建立日期")
+            VALUES (%s, %s, %s, %s, %s)
         """, (
             data.get('材質'),
             data.get('規格'),
             data.get('廠商ID'),
-            data.get('備註')
+            data.get('備註'),
+            data.get('建立日期')
         ))
         
         # 獲取新插入的主檔ID
@@ -200,13 +201,14 @@ def update_tolerance(id):
         # 更新主檔（不記錄更新人員）
         cursor.execute("""
             UPDATE "廠商公差主檔"
-            SET "材質" = %s, "規格" = %s, "廠商ID" = %s, "備註" = %s
+            SET "材質" = %s, "規格" = %s, "廠商ID" = %s, "備註" = %s, "建立日期" = %s
             WHERE "識別碼" = %s
         """, (
             data.get('材質'),
             data.get('規格'),
             data.get('廠商ID'),
             data.get('備註'),
+            data.get('建立日期'),
             id
         ))
         

@@ -23,6 +23,7 @@ interface DetailRow {
 }
 
 const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: ToleranceModalProps) => {
+    const [date, setDate] = useState('');
     const [material, setMaterial] = useState('');
     const [spec, setSpec] = useState('');
     const [vendorId, setVendorId] = useState('');
@@ -41,6 +42,7 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
     }, [show, editId]);
 
     const resetForm = () => {
+        setDate(new Date().toISOString().split('T')[0]);
         setMaterial('');
         setSpec('');
         setVendorId('');
@@ -58,6 +60,7 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
             const res = await api.get(`/tolerance/${id}`);
             if (res.data.success) {
                 const { main, details: dList } = res.data;
+                setDate(main.建立日期 ? main.建立日期.split('T')[0] : '');
                 setMaterial(main.材質 || '');
                 setSpec(main.規格 || '');
                 setVendorId(main.廠商ID || '');
@@ -123,6 +126,7 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
             }));
 
         const payload = {
+            建立日期: date,
             材質: material,
             規格: spec,
             廠商ID: vendorId ? parseInt(vendorId) : null,
@@ -147,18 +151,26 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
     };
 
     return (
-        <Modal show={show} onHide={handleClose} size="xl" backdrop="static">
+        <Modal show={show} onHide={handleClose} size="xl" backdrop="static" dialogClassName="modal-90w">
             <Modal.Header closeButton>
                 <Modal.Title>{editId ? '編輯公差資料' : '新增公差資料'}</Modal.Title>
             </Modal.Header>
             <Modal.Body style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+                <style type="text/css">
+                    {`
+                        .modal-90w {
+                            max-width: 90% !important;
+                        }
+                    `}
+                </style>
                 {loading ? <div className="text-center">載入中...</div> : (
                     <>
                         <div className="bg-light p-3 rounded mb-3">
                             <Row className="g-3">
-                                <Col md={4}><Form.Label>材質 <span className="text-danger">*</span></Form.Label><Form.Control value={material} onChange={e => setMaterial(e.target.value)} required /></Col>
-                                <Col md={4}><Form.Label>規格</Form.Label><Form.Control value={spec} onChange={e => setSpec(e.target.value)} /></Col>
-                                <Col md={4}>
+                                <Col md={3}><Form.Label>日期</Form.Label><Form.Control type="date" value={date} onChange={e => setDate(e.target.value)} /></Col>
+                                <Col md={3}><Form.Label>材質 <span className="text-danger">*</span></Form.Label><Form.Control value={material} onChange={e => setMaterial(e.target.value)} required /></Col>
+                                <Col md={3}><Form.Label>規格</Form.Label><Form.Control value={spec} onChange={e => setSpec(e.target.value)} /></Col>
+                                <Col md={3}>
                                     <Form.Label>廠商</Form.Label>
                                     <Form.Select value={vendorId} onChange={e => setVendorId(e.target.value)}>
                                         <option value="">-- 請選擇 --</option>
