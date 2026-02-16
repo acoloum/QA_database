@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+debug_error.log
+error.log
+flask.log
+
+# Database
+*.db
+*.sqlite
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Backup files
+*.bak
+*.backup
+備份/
+backup_html/
+
+# Documentation
+*.md
+
+# Test files
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Misc
+.env.local
+.env.*.local
