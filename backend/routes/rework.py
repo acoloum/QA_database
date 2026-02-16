@@ -91,9 +91,7 @@ def get_rework_inspections():
     """獲取重工品檢記錄"""
     try:
         rework_id = request.args.get('rework_id')
-        print(f"DEBUG: get_inspections called with rework_id={rework_id}")
         data = ReworkService.get_inspection_list(rework_id)
-        print(f"DEBUG: get_inspections returned {len(data)} items")
         return jsonify(data)
     except Exception as e:
         import traceback

@@ -66,7 +66,6 @@ const ReworkPage = () => {
 
             // Load Stats
             const statsRes = await api.get<ReworkStatistics>('/rework/statistics');
-            console.log('Stats response:', statsRes.data);
             setStats(statsRes.data);
 
         } catch (error) {

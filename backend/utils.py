@@ -3,38 +3,35 @@ import hashlib
 import jwt
 import re
 import decimal
-import psycopg2
 from datetime import datetime, timedelta, timezone, date
 from functools import wraps
 from flask import request, jsonify, session
-from .config import SECRET_KEY, TOKEN_EXPIRATION_HOURS, POSTGRESQL_CONFIG
+from typing import List, Dict, Any, Optional, Union
+from .config import SECRET_KEY, TOKEN_EXPIRATION_HOURS
 
 # ==================================================
 # Databse Connection (for ID generation)
 # ==================================================
-def get_db_connection():
-    # Avoid circular import if possible, or duplicate/import from database.py
-    # Since utils might be imported by database.py (unlikely), but let's just import here
-    from .database import get_db_connection as get_conn
-    return get_conn()
+from sqlalchemy import text
+from .extensions import db
 
 # ==================================================
 # XSS Protection & Sanitization
 # ==================================================
 try:
     from markupsafe import escape as _escape
-    def escape(s):
+    def escape(s: Optional[Union[str, int, float]]) -> str:
         if s is None:
             return ''
         return _escape(str(s))
 except ImportError:
     import html
-    def escape(s):
+    def escape(s: Optional[Union[str, int, float]]) -> str:
         if s is None:
             return ''
         return str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#x27;')
 
-def sanitize_html(text):
+def sanitize_html(text: Optional[Union[str, int, float]]) -> str:
     """Remove dangerous HTML tags while preserving safe formatting"""
     if text is None:
         return ''
@@ -58,7 +55,7 @@ def sanitize_html(text):
     
     return escaped
 
-def sanitize_input(data):
+def sanitize_input(data: Any) -> Any:
     """Recursively sanitize all string values in a dictionary/list"""
     if isinstance(data, dict):
         return {key: sanitize_input(value) for key, value in data.items()}
@@ -69,7 +66,7 @@ def sanitize_input(data):
     else:
         return data
 
-def get_sanitized_json():
+def get_sanitized_json() -> Any:
     """Get and sanitize JSON data from request"""
     json_data = request.get_json(silent=True)
     if json_data:
@@ -79,13 +76,13 @@ def get_sanitized_json():
 # ==================================================
 # CSRF Protection
 # ==================================================
-def generate_csrf_token():
+def generate_csrf_token() -> str:
     """Generate a CSRF token for the session"""
     if 'csrf_token' not in session:
         session['csrf_token'] = secrets.token_hex(32)
     return session['csrf_token']
 
-def validate_csrf_token(token):
+def validate_csrf_token(token: Optional[str]) -> bool:
     """Validate CSRF token"""
     session_token = session.get('csrf_token')
     if not session_token or not token:
@@ -96,10 +93,10 @@ def validate_csrf_token(token):
 # ==================================================
 # Authentication
 # ==================================================
-def hash_password(password):
+def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
-def generate_token(user_id, username):
+def generate_token(user_id: int, username: str) -> str:
     payload = {
         'user_id': user_id,
         'username': username,
@@ -107,7 +104,7 @@ def generate_token(user_id, username):
     }
     return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
 
-def verify_token(token):
+def verify_token(token: str) -> Optional[Dict[str, Any]]:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
         return payload
@@ -116,7 +113,7 @@ def verify_token(token):
     except jwt.InvalidTokenError:
         return None
 
-def auth_required(f):
+def auth_required(f: Any) -> Any:
     @wraps(f)
     def decorated(*args, **kwargs):
         token = request.headers.get('Authorization')
@@ -135,7 +132,7 @@ def auth_required(f):
 # ==================================================
 # ID Generation
 # ==================================================
-def generate_number(prefix, table_name=None, number_field=None):
+def generate_number(prefix: str, table_name: Optional[str] = None, number_field: Optional[str] = None) -> str:
     """
     統一編碼生成函數
     格式：PREFIX-YYYYMM-XXX (例：NCMR-202601-001)
@@ -143,24 +140,24 @@ def generate_number(prefix, table_name=None, number_field=None):
     year_month = datetime.now().strftime('%Y%m')
     
     if table_name and number_field:
-        conn = get_db_connection()
-        cursor = conn.cursor()
         try:
             sql = f"""
                 SELECT "{number_field}" 
                 FROM "{table_name}" 
                 WHERE "{number_field}" IS NOT NULL 
-                AND "{number_field}" LIKE %s
+                AND "{number_field}" LIKE :pattern
                 ORDER BY "{number_field}" DESC
             """
             pattern = f"{prefix}-{year_month}-%"
-            cursor.execute(sql, (pattern,))
+            # Use db.session.execute with text()
+            result = db.session.execute(text(sql), {"pattern": pattern})
+            results = result.fetchall()
             
-            results = cursor.fetchall()
             max_seq = 0
             
             if results:
                 for row in results:
+                    # row is a Row object/tuple, access by index 0
                     if row[0]:
                         parts = row[0].split('-')
                         if len(parts) >= 3:
@@ -172,20 +169,20 @@ def generate_number(prefix, table_name=None, number_field=None):
             
             new_seq = str(max_seq + 1).zfill(3)
             return f"{prefix}-{year_month}-{new_seq}"
-        finally:
-            conn.close()
+        except Exception as e:
+            raise e
     else:
         return f"{prefix}-{year_month}-001"
 
-def generate_ncmr_number():
+def generate_ncmr_number() -> str:
     """生成NCMR編號"""
     return generate_number('NCMR', "不合格品單", 'NCMR單號')
 
-def generate_8d_number():
+def generate_8d_number() -> str:
     """生成8D編號"""
     return generate_number('CAPA', "異常矯正單", "8D單號")
 
-def generate_car_number():
+def generate_car_number() -> str:
     """生成CAR編號"""
     return generate_number('CAR', "異常矯正單", 'CAR單號')
 
@@ -193,7 +190,7 @@ def generate_car_number():
 # ==================================================
 # Formatting & Validation
 # ==================================================
-def format_value(val):
+def format_value(val: Any) -> Any:
     if isinstance(val, (decimal.Decimal, float)):
         return float(val)
     if isinstance(val, datetime):
@@ -206,7 +203,7 @@ def format_value(val):
         return val.strip()
     return val if val is not None else ""
 
-def validate_date_format(date_str):
+def validate_date_format(date_str: Optional[str]) -> bool:
     if not date_str:
         return True
     try:
@@ -215,7 +212,7 @@ def validate_date_format(date_str):
     except ValueError:
         return False
 
-def validate_inspection_data(data):
+def validate_inspection_data(data: Dict[str, Any]) -> List[str]:
     errors = []
     if not data.get('檢驗日期'):
         errors.append("檢驗日期為必填欄位")
@@ -231,7 +228,7 @@ def validate_inspection_data(data):
         errors.append("檢驗人員為必填欄位")
     return errors
 
-def validate_patrol_data(data):
+def validate_patrol_data(data: Dict[str, Any]) -> List[str]:
     errors = []
     if not data.get('檢驗日期'):
         errors.append("檢驗日期為必填欄位")
@@ -239,13 +236,15 @@ def validate_patrol_data(data):
         errors.append("檢驗日期格式錯誤，應為 YYYY-MM-DD")
     if not data.get('機台'):
         errors.append("機台為必填欄位")
+    if not data.get('主機手'):
+        errors.append("主機手為必填欄位")
     if not data.get('檢驗人員'):
         errors.append("檢驗人員為必填欄位")
     if not data.get('details') or len(data.get('details', [])) == 0:
         errors.append("明細資料為必填欄位")
     return errors
 
-def handle_db_error(e):
+def handle_db_error(e: Exception) -> str:
     error_msg = str(e)
     if 'FOREIGN KEY' in error_msg:
         return '關聯資料錯誤：請檢查相關資料是否存在'
