@@ -66,10 +66,10 @@ const InspectionModal = ({ show, handleClose, onSuccess, reworkId, reworkNumber 
                 "檢驗結果": inspectionResult,
                 "不良數量": parseInt(defectQty) || 0,
                 "檢驗日期": inspectionDate,
-                "備註": remark
+                "檢驗備註": remark
             };
 
-            await api.post('/rework/inspection', payload);
+            await api.post('/rework/inspect', payload);
             alert('品檢記錄已新增！');
             onSuccess();
             handleClose();

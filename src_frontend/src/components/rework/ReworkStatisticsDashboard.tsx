@@ -29,9 +29,9 @@ const ReworkStatisticsDashboard = ({ stats }: Props) => {
         datasets: [
             {
                 data: [
-                    cost_stats.labor_cost || 0,
-                    cost_stats.material_cost || 0,
-                    cost_stats.equipment_cost || 0,
+                    Number(cost_stats?.labor_cost) || 0,
+                    Number(cost_stats?.material_cost) || 0,
+                    Number(cost_stats?.equipment_cost) || 0,
                 ],
                 backgroundColor: [
                     'rgba(255, 99, 132, 0.6)',
@@ -47,6 +47,8 @@ const ReworkStatisticsDashboard = ({ stats }: Props) => {
             },
         ],
     };
+
+    const hasCostData = (cost_stats?.labor_cost || cost_stats?.material_cost || cost_stats?.equipment_cost) > 0;
 
     return (
         <div className="mb-4">
@@ -108,13 +110,19 @@ const ReworkStatisticsDashboard = ({ stats }: Props) => {
                     <div className="card shadow-sm h-100">
                         <div className="card-header bg-white fw-bold">成本分佈</div>
                         <div className="card-body">
-                            <Doughnut
-                                data={costChartData}
-                                options={{
-                                    responsive: true,
-                                    plugins: { legend: { position: 'bottom' as const } }
-                                }}
-                            />
+                            {hasCostData ? (
+                                <Doughnut
+                                    data={costChartData}
+                                    options={{
+                                        responsive: true,
+                                        plugins: { legend: { position: 'bottom' as const } }
+                                    }}
+                                />
+                            ) : (
+                                <div className="d-flex align-items-center justify-content-center h-100 text-muted">
+                                    <p className="mb-0">尚無成本資料</p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

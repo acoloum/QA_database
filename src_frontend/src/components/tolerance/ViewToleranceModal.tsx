@@ -25,6 +25,7 @@ const ViewToleranceModal = ({ show, handleClose, viewId }: ViewToleranceModalPro
     const [spec, setSpec] = useState('');
     const [vendorName, setVendorName] = useState('');
     const [remark, setRemark] = useState('');
+    const [createdDate, setCreatedDate] = useState('');
     const [details, setDetails] = useState<DetailRow[]>([]);
     const [loading, setLoading] = useState(false);
 
@@ -44,6 +45,7 @@ const ViewToleranceModal = ({ show, handleClose, viewId }: ViewToleranceModalPro
                 setSpec(main.規格 || '');
                 setVendorName(main.廠商名稱 || main.廠商 || '');
                 setRemark(main.備註 || '');
+                setCreatedDate(main.建立日期 || '');
 
                 if (dList && dList.length > 0) {
                     setDetails(dList.map((d: any) => ({
@@ -88,7 +90,7 @@ const ViewToleranceModal = ({ show, handleClose, viewId }: ViewToleranceModalPro
                                     <div className="mb-2"><strong>廠商：</strong>{vendorName || '-'}</div>
                                 </Col>
                                 <Col md={3}>
-                                    <div className="mb-2"><strong>建立日期：</strong>{''}</div>
+                                    <div className="mb-2"><strong>建立日期：</strong>{createdDate || '-'}</div>
                                 </Col>
                                 <Col md={12}>
                                     <div><strong>備註：</strong>{remark || '-'}</div>

@@ -66,6 +66,7 @@ const ReworkPage = () => {
 
             // Load Stats
             const statsRes = await api.get<ReworkStatistics>('/rework/statistics');
+            console.log('Stats response:', statsRes.data);
             setStats(statsRes.data);
 
         } catch (error) {
@@ -189,6 +190,7 @@ const ReworkPage = () => {
             await api.delete(`/rework/cost/${costId}`);
             alert('刪除成功');
             reloadDetailData();
+            loadData();
         } catch (error: any) {
             alert(error.response?.data?.error || '刪除失敗');
         }
@@ -670,7 +672,7 @@ const ReworkPage = () => {
             <CostModal
                 show={showCostModal}
                 handleClose={() => setShowCostModal(false)}
-                onSuccess={() => reloadDetailData()}
+                onSuccess={() => { reloadDetailData(); loadData(); }}
                 reworkId={selectedReworkDetail?.識別碼 || 0}
                 reworkNumber={selectedReworkDetail?.申請單號 || ''}
             />
@@ -692,7 +694,7 @@ const ReworkPage = () => {
             <EditCostModal
                 show={showEditCostModal}
                 handleClose={() => setShowEditCostModal(false)}
-                onSuccess={() => reloadDetailData()}
+                onSuccess={() => { reloadDetailData(); loadData(); }}
                 cost={selectedCost}
             />
 
