@@ -670,6 +670,20 @@ h6 {
     height: 100%;
 }
 
+.modal-body {
+    overflow-y: auto;
+    max-height: 100vh;
+    padding-bottom: 80px;
+}
+
+@media (max-width: 768px) {
+    .modal-body {
+        max-height: calc(100vh - 120px);
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+}
+
 .modal-95w {
     min-width: 95% !important;
     max-width: 95% !important;

@@ -225,7 +225,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     const isSaving = createMutation.isPending || updateMutation.isPending;
 
     return (
-        <Modal show={show} onHide={handleClose} dialogClassName="modal-95w" backdrop="static">
+        <Modal show={show} onHide={handleClose} dialogClassName="modal-95w" backdrop="static" fullscreen="sm-down">
             <Modal.Header closeButton>
                 <Modal.Title>{editId ? '編輯巡檢紀錄' : '新增巡檢紀錄'}</Modal.Title>
             </Modal.Header>
