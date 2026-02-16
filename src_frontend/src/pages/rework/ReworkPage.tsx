@@ -241,9 +241,6 @@ const ReworkPage = () => {
             <div className="d-flex justify-content-between align-items-center mb-4">
                 <h2 className="text-primary"><i className="bi bi-rotate"></i> 重工管理系統</h2>
                 <div>
-                    <button className="btn btn-primary me-2" onClick={() => { setInitialNcmrId(''); setInitialNcmrNo(''); setShowApplyModal(true); }}>
-                        <i className="bi bi-plus-lg"></i> 新增申請
-                    </button>
                     <button className="btn btn-back-home" onClick={() => navigate('/')}>
                         <i className="bi bi-arrow-left"></i> 回首頁
                     </button>
@@ -654,7 +651,6 @@ const ReworkPage = () => {
                 show={showExecutionModal}
                 handleClose={() => setShowExecutionModal(false)}
                 onSuccess={() => reloadDetailData()}
-                reworkId={selectedReworkDetail?.識別碼 || 0}
                 reworkNumber={selectedReworkDetail?.申請單號 || ''}
             />
 
@@ -663,7 +659,6 @@ const ReworkPage = () => {
                 show={showInspectionModal}
                 handleClose={() => setShowInspectionModal(false)}
                 onSuccess={() => reloadDetailData()}
-                reworkId={selectedReworkDetail?.識別碼 || 0}
                 reworkNumber={selectedReworkDetail?.申請單號 || ''}
             />
 
@@ -672,7 +667,6 @@ const ReworkPage = () => {
                 show={showCostModal}
                 handleClose={() => setShowCostModal(false)}
                 onSuccess={() => { reloadDetailData(); loadData(); }}
-                reworkId={selectedReworkDetail?.識別碼 || 0}
                 reworkNumber={selectedReworkDetail?.申請單號 || ''}
             />
 

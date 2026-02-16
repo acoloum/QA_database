@@ -1,70 +1,292 @@
-from flask import Blueprint, jsonify
-from ..utils import get_db_connection
+from flask import Blueprint, jsonify, request
+from sqlalchemy import text, func
+from datetime import datetime, timedelta, date
+from ..extensions import db
+from ..models import Inspector, Vendor, Machine, Operator, ShippingData, PatrolMain, NCMR, CorrectiveAction, ReworkRequest
 
 admin_bp = Blueprint('admin', __name__)
 
+def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=None):
+    """取得指定期間的統計數據"""
+    
+    prev_period_days = (end_date - start_date).days + 1
+    
+    if compare_start and compare_end:
+        compare_prev = True
+    else:
+        compare_prev = False
+        compare_start = start_date - timedelta(days=prev_period_days)
+        compare_end = start_date - timedelta(days=1)
+    
+    def count_for_model(model, date_field, start, end, extra_filter=None):
+        query = model.query.filter(date_field >= start, date_field <= end)
+        if extra_filter is not None:
+            query = query.filter(extra_filter)
+        return query.count()
+    
+    def count_pending_ncmr():
+        return NCMR.query.filter(NCMR.status == '待處理').count()
+    
+    def count_pending_capa():
+        return CorrectiveAction.query.filter(
+            CorrectiveAction.status.in_(['待處理', '進行中'])
+        ).count()
+    
+    def count_pending_cara():
+        return CorrectiveAction.query.filter(
+            CorrectiveAction.car_number != None,
+            CorrectiveAction.status.in_(['待處理', '進行中'])
+        ).count()
+    
+    def count_pending_rework():
+        return ReworkRequest.query.filter(
+            ReworkRequest.status.in_(['待審核', '已通過', '進行中'])
+        ).count()
+    
+    stats = {
+        "shipping": {
+            "current": count_for_model(ShippingData, ShippingData.date, start_date, end_date),
+            "previous": count_for_model(ShippingData, ShippingData.date, compare_start, compare_end),
+            "pending": 0
+        },
+        "patrol": {
+            "current": count_for_model(PatrolMain, PatrolMain.date, start_date, end_date),
+            "previous": count_for_model(PatrolMain, PatrolMain.date, compare_start, compare_end),
+            "pending": 0
+        },
+        "ncmr": {
+            "current": count_for_model(NCMR, NCMR.date, start_date, end_date),
+            "previous": count_for_model(NCMR, NCMR.date, compare_start, compare_end),
+            "pending": count_pending_ncmr()
+        },
+        "capa": {
+            "current": count_for_model(CorrectiveAction, CorrectiveAction.created_at, start_date, end_date),
+            "previous": count_for_model(CorrectiveAction, CorrectiveAction.created_at, compare_start, compare_end),
+            "pending": count_pending_capa()
+        },
+        "rework": {
+            "current": count_for_model(ReworkRequest, ReworkRequest.created_at, start_date, end_date),
+            "previous": count_for_model(ReworkRequest, ReworkRequest.created_at, compare_start, compare_end),
+            "pending": count_pending_rework()
+        },
+        "cara": {
+            "current": count_for_model(
+                CorrectiveAction, CorrectiveAction.created_at, start_date, end_date,
+                CorrectiveAction.car_number != None
+            ),
+            "previous": count_for_model(
+                CorrectiveAction, CorrectiveAction.created_at, compare_start, compare_end,
+                CorrectiveAction.car_number != None
+            ),
+            "pending": count_pending_cara()
+        }
+    }
+    
+    # 計算趨勢
+    for key in stats:
+        curr = stats[key]['current']
+        prev = stats[key]['previous']
+        if prev == 0:
+            stats[key]['trend'] = 'up' if curr > 0 else 'stable'
+            stats[key]['change_pct'] = 0
+        else:
+            change = ((curr - prev) / prev) * 100
+            stats[key]['change_pct'] = round(change, 1)
+            if change > 10:
+                stats[key]['trend'] = 'up'
+            elif change < -10:
+                stats[key]['trend'] = 'down'
+            else:
+                stats[key]['trend'] = 'stable'
+    
+    return stats
+
+@admin_bp.route('/api/dashboard/stats')
+def get_dashboard_stats():
+    period = request.args.get('period', 'this_month')
+    start_date = request.args.get('start')
+    end_date = request.args.get('end')
+    
+    today = date.today()
+    
+    try:
+        if start_date and end_date:
+            # 自訂日期範圍
+            start = datetime.strptime(start_date, '%Y-%m-%d').date()
+            end = datetime.strptime(end_date, '%Y-%m-%d').date()
+        elif period == 'this_week':
+            # 本週 (週一至週日)
+            start = today - timedelta(days=today.weekday())
+            end = start + timedelta(days=6)
+        elif period == 'last_week':
+            start = today - timedelta(days=today.weekday() + 7)
+            end = start + timedelta(days=6)
+        elif period == 'last_month':
+            # 上個月
+            first_day = today.replace(day=1)
+            last_day = first_day - timedelta(days=1)
+            start = last_day.replace(day=1)
+            end = last_day
+        else:
+            # 預設：本月
+            start = today.replace(day=1)
+            end = today
+        
+        stats = get_stats_for_period(start, end)
+        
+        return jsonify({
+            "period": period,
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "stats": stats
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@admin_bp.route('/api/dashboard/todos')
+def get_dashboard_todos():
+    from datetime import date, timedelta
+    
+    today = date.today()
+    week_ago = today - timedelta(days=7)
+    
+    try:
+        todos = []
+        
+        pending_ncmrs = NCMR.query.filter(NCMR.status == '待處理').order_by(NCMR.date.desc()).limit(5).all()
+        for n in pending_ncmrs:
+            todos.append({
+                "type": "ncmr",
+                "id": n.ncmr_number,
+                "title": f"NCMR {n.ncmr_number} 待處理",
+                "description": n.description[:50] + "..." if n.description and len(n.description or "") > 50 else n.description,
+                "date": n.date.isoformat() if n.date else None,
+                "priority": "high",
+                "path": "/ncmr"
+            })
+        
+        pending_capas = CorrectiveAction.query.filter(
+            CorrectiveAction.status.in_(['待處理', '進行中'])
+        ).order_by(CorrectiveAction.created_at.desc()).limit(5).all()
+        for c in pending_capas:
+            todos.append({
+                "type": "capa",
+                "id": c.car_number,
+                "title": f"CAR {c.car_number} {c.status}",
+                "description": c.d2[:50] + "..." if c.d2 and len(c.d2) > 50 else c.d2,
+                "date": c.created_at.isoformat() if c.created_at else None,
+                "priority": "medium",
+                "path": "/capa"
+            })
+        
+        pending_reworks = ReworkRequest.query.filter(
+            ReworkRequest.status.in_(['待審核', '已通過', '進行中'])
+        ).order_by(ReworkRequest.created_at.desc()).limit(5).all()
+        for r in pending_reworks:
+            todos.append({
+                "type": "rework",
+                "id": r.rework_number,
+                "title": f"重工 {r.rework_number} {r.status}",
+                "description": r.reason[:50] + "..." if r.reason and len(r.reason) > 50 else r.reason,
+                "date": r.created_at.isoformat() if r.created_at else None,
+                "priority": "medium",
+                "path": "/rework"
+            })
+        
+        todos.sort(key=lambda x: x['date'] if x['date'] else '', reverse=True)
+        
+        return jsonify(todos[:10])
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@admin_bp.route('/api/dashboard/trends')
+def get_dashboard_trends():
+    from datetime import date, timedelta
+    
+    try:
+        trends = {
+            "ncmr_by_month": [],
+            "shipping_by_month": [],
+            "rework_by_month": []
+        }
+        
+        for i in range(5, -1, -1):
+            month_date = date.today().replace(day=1) - timedelta(days=i * 30)
+            month_start = month_date.replace(day=1)
+            if month_date.month == 12:
+                month_end = month_date.replace(year=month_date.year + 1, month=1, day=1) - timedelta(days=1)
+            else:
+                month_end = month_date.replace(month=month_date.month + 1, day=1) - timedelta(days=1)
+            
+            ncmr_count = NCMR.query.filter(
+                NCMR.date >= month_start,
+                NCMR.date <= month_end
+            ).count()
+            
+            shipping_count = ShippingData.query.filter(
+                ShippingData.date >= month_start,
+                ShippingData.date <= month_end
+            ).count()
+            
+            rework_count = ReworkRequest.query.filter(
+                ReworkRequest.created_at >= month_start,
+                ReworkRequest.created_at <= month_end
+            ).count()
+            
+            trends["ncmr_by_month"].append({
+                "month": month_date.strftime("%Y-%m"),
+                "count": ncmr_count
+            })
+            trends["shipping_by_month"].append({
+                "month": month_date.strftime("%Y-%m"),
+                "count": shipping_count
+            })
+            trends["rework_by_month"].append({
+                "month": month_date.strftime("%Y-%m"),
+                "count": rework_count
+            })
+        
+        return jsonify(trends)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
 @admin_bp.route('/api/inspectors')
 def get_inspectors():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute('''SELECT 識別碼, 姓名 FROM "品管人員"''')
-        inspectors = [{"id": row[0], "name": row[1].strip() if row[1] else ""} for row in cursor.fetchall()]
-        return jsonify(inspectors)
-    finally:
-        conn.close()
+    inspectors = Inspector.query.all()
+    # ORM objects needs to be serialized manually or use marshmallows later
+    return jsonify([{"id": i.id, "name": i.name.strip() if i.name else ""} for i in inspectors])
 
 @admin_bp.route('/api/vendors')
 def get_vendors():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute('''SELECT 識別碼, 廠商名稱 FROM "廠商資料"''')
-        vendors = [{"id": row[0], "name": row[1].strip() if row[1] else ""} for row in cursor.fetchall()]
-        return jsonify(vendors)
-    finally:
-        conn.close()
+    vendors = Vendor.query.all()
+    return jsonify([{"id": v.id, "name": v.name.strip() if v.name else ""} for v in vendors])
 
 @admin_bp.route('/api/machines')
 def get_machines():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute('''SELECT 識別碼, 擠壓機編號 FROM "擠壓機台"''')
-        machines = [{"id": row[0], "name": row[1].strip() if row[1] else ""} for row in cursor.fetchall()]
-        return jsonify(machines)
-    finally:
-        conn.close()
+    machines = Machine.query.all()
+    return jsonify([{"id": m.id, "name": m.name.strip() if m.name else ""} for m in machines])
 
 @admin_bp.route('/api/operators')
 def get_operators():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute('''SELECT 識別碼, 員工姓名 FROM "擠壓人員"''')
-        operators = [{"id": row[0], "name": row[1].strip() if row[1] else ""} for row in cursor.fetchall()]
-        return jsonify(operators)
-    finally:
-        conn.close()
+    operators = Operator.query.all()
+    return jsonify([{"id": o.id, "name": o.name.strip() if o.name else ""} for o in operators])
 
 @admin_bp.route('/api/materials')
 def get_materials():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute('''SELECT DISTINCT "材質" FROM "出貨檢驗數據" WHERE "材質" IS NOT NULL''')
-        materials = [row[0].strip() for row in cursor.fetchall()]
-        return jsonify(materials)
-    finally:
-        conn.close()
+    # Temporary raw SQL until ShippingData model is created
+    result = db.session.execute(text('SELECT DISTINCT "材質" FROM "出貨檢驗數據" WHERE "材質" IS NOT NULL'))
+    materials = [row[0].strip() for row in result]
+    return jsonify(materials)
 
 @admin_bp.route('/api/specs')
 def get_specs():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute('''SELECT DISTINCT "檢驗規格" FROM "出貨檢驗數據" WHERE "檢驗規格" IS NOT NULL''')
-        specs = [row[0].strip() for row in cursor.fetchall()]
-        return jsonify(specs)
-    finally:
-        conn.close()
+    # Temporary raw SQL until ShippingData model is created
+    result = db.session.execute(text('SELECT DISTINCT "檢驗規格" FROM "出貨檢驗數據" WHERE "檢驗規格" IS NOT NULL'))
+    specs = [row[0].strip() for row in result]
+    return jsonify(specs)
