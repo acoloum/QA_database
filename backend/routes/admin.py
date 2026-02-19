@@ -25,7 +25,10 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
         return query.count()
     
     def count_pending_ncmr():
-        return NCMR.query.filter(NCMR.status == '待處理').count()
+        # Count all NCMR not yet fully resolved
+        return NCMR.query.filter(
+            NCMR.status.notin_(['已結案', 'CAR已完成'])
+        ).count()
     
     def count_pending_capa():
         return CorrectiveAction.query.filter(
@@ -39,8 +42,9 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
         ).count()
     
     def count_pending_rework():
+        # Count all rework not yet completed (includes 申請中, 待審核, 已核准, 執行中, etc.)
         return ReworkRequest.query.filter(
-            ReworkRequest.status.in_(['待審核', '已通過', '進行中'])
+            ReworkRequest.status.notin_(['已完成', '已拒絕'])
         ).count()
     
     stats = {

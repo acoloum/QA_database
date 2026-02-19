@@ -133,6 +133,18 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     const handleSubmit = async () => {
         console.log('Current details state:', details);
 
+        // Client-side required field validation
+        const missingFields: string[] = [];
+        if (!date) missingFields.push('日期');
+        if (!machine) missingFields.push('機台');
+        if (!operator) missingFields.push('主機手');
+        if (!inspector) missingFields.push('檢驗員');
+
+        if (missingFields.length > 0) {
+            alert(`請填寫以下必填欄位：\n${missingFields.join('、')}`);
+            return;
+        }
+
         // Collect valid details
         const validDetails = details.filter(d => d.min !== '' || d.max !== '').map(d => ({
             group: d.group,
@@ -171,7 +183,6 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
             onSuccess();
             handleClose();
         } catch (error) {
-            // Global error handler handles toast, but we might want to stop specific actions here if needed
             console.error(error);
         }
     };
@@ -192,7 +203,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                             if (item === '內徑' && !showInner) return null;
                             return (
                                 <Fragment key={`${pos}-${item}`}>
-                                    <td>
+                                    <td style={{ padding: '2px' }}>
                                         <Form.Control
                                             size="sm"
                                             type="number"
@@ -202,7 +213,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                                             className="patrol-input"
                                         />
                                     </td>
-                                    <td>
+                                    <td style={{ padding: '2px' }}>
                                         <Form.Control
                                             size="sm"
                                             type="number"
@@ -225,108 +236,113 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     const isSaving = createMutation.isPending || updateMutation.isPending;
 
     return (
-        <Modal show={show} onHide={handleClose} dialogClassName="modal-95w" backdrop="static" fullscreen="sm-down">
-            <Modal.Header closeButton>
-                <Modal.Title>{editId ? '編輯巡檢紀錄' : '新增巡檢紀錄'}</Modal.Title>
-            </Modal.Header>
-            <Modal.Body>
-                {editId && isLoadingDetail ? (
-                    <div className="text-center py-5">
-                        <div className="spinner-border text-primary" role="status">
-                            <span className="visually-hidden">Loading...</span>
-                        </div>
-                    </div>
-                ) : (
-                    <Form>
-                        <Row className="g-3 mb-4">
-                            <Col md={3}><Form.Label>日期</Form.Label><Form.Control type="date" value={date} onChange={e => setDate(e.target.value)} /></Col>
-                            <Col md={3}>
-                                <Form.Label>機台</Form.Label>
-                                <Form.Select value={machine} onChange={e => setMachine(e.target.value)}>
-                                    <option value="">請選擇</option>
-                                    {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                                </Form.Select>
-                            </Col>
-                            <Col md={3}>
-                                <Form.Label>主機手</Form.Label>
-                                <Form.Select value={operator} onChange={e => setOperator(e.target.value)}>
-                                    <option value="">請選擇</option>
-                                    {operators.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                                </Form.Select>
-                            </Col>
-                            <Col md={3}>
-                                <Form.Label>檢驗員</Form.Label>
-                                <Form.Select value={inspector} onChange={e => setInspector(e.target.value)}>
-                                    <option value="">請選擇</option>
-                                    {inspectors.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-                                </Form.Select>
-                            </Col>
-                            <Col md={4}>
-                                <Form.Label>客戶名稱</Form.Label>
-                                <Form.Select value={customer} onChange={e => setCustomer(e.target.value)} style={{ minWidth: '100%' }}>
-                                    <option value="">請選擇</option>
-                                    {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                </Form.Select>
-                            </Col>
-                            <Col md={4}><Form.Label>材質</Form.Label><Form.Control value={material} onChange={e => setMaterial(e.target.value)} style={{ width: '100%' }} /></Col>
-                            <Col md={4}><Form.Label>原料批號</Form.Label><Form.Control value={batch} onChange={e => setBatch(e.target.value)} style={{ width: '100%' }} /></Col>
-                            <Col md={12}><Form.Label>擠壓規格</Form.Label><Form.Control value={spec} onChange={e => setSpec(e.target.value)} style={{ width: '100%' }} /></Col>
-                        </Row>
+        <Modal show={show} onHide={handleClose} dialogClassName="modal-patrol-wide" backdrop="static">
+            <div className="modal-dialog" style={{ maxWidth: '1600px', width: '99%', overflowX: 'auto' }}>
+                <div className="modal-content" style={{ overflowX: 'auto' }}>
+                    <Modal.Header closeButton>
+                        <Modal.Title>{editId ? '編輯巡檢紀錄' : '新增巡檢紀錄'}</Modal.Title>
+                    </Modal.Header>
+                    <Modal.Body>
+                        {editId && isLoadingDetail ? (
+                            <div className="text-center py-5">
+                                <div className="spinner-border text-primary" role="status">
+                                    <span className="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        ) : (
+                            <div>
+                                <Form>
+                                    <Row className="g-3 mb-4">
+                                        <Col md={3}><Form.Label>日期</Form.Label><Form.Control type="date" value={date} onChange={e => setDate(e.target.value)} /></Col>
+                                        <Col md={3}>
+                                            <Form.Label>機台</Form.Label>
+                                            <Form.Select value={machine} onChange={e => setMachine(e.target.value)}>
+                                                <option value="">請選擇</option>
+                                                {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                            </Form.Select>
+                                        </Col>
+                                        <Col md={3}>
+                                            <Form.Label>主機手</Form.Label>
+                                            <Form.Select value={operator} onChange={e => setOperator(e.target.value)}>
+                                                <option value="">請選擇</option>
+                                                {operators.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                                            </Form.Select>
+                                        </Col>
+                                        <Col md={3}>
+                                            <Form.Label>檢驗員</Form.Label>
+                                            <Form.Select value={inspector} onChange={e => setInspector(e.target.value)}>
+                                                <option value="">請選擇</option>
+                                                {inspectors.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                                            </Form.Select>
+                                        </Col>
+                                        <Col md={4}>
+                                            <Form.Label>客戶名稱</Form.Label>
+                                            <Form.Select value={customer} onChange={e => setCustomer(e.target.value)} style={{ minWidth: '100%' }}>
+                                                <option value="">請選擇</option>
+                                                {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                            </Form.Select>
+                                        </Col>
+                                        <Col md={4}><Form.Label>材質</Form.Label><Form.Control value={material} onChange={e => setMaterial(e.target.value)} style={{ width: '100%' }} /></Col>
+                                        <Col md={4}><Form.Label>原料批號</Form.Label><Form.Control value={batch} onChange={e => setBatch(e.target.value)} style={{ width: '100%' }} /></Col>
+                                        <Col md={12}><Form.Label>擠壓規格</Form.Label><Form.Control value={spec} onChange={e => setSpec(e.target.value)} style={{ width: '100%' }} /></Col>
+                                    </Row>
 
-                        <div className="table-responsive">
-                            <Table bordered size="sm" className="text-center align-middle">
-                                <thead className="table-light">
-                                    <tr>
-                                        <th rowSpan={3}>組別</th>
-                                        <th colSpan={showInner ? 6 : 4}>前段</th>
-                                        <th colSpan={showInner ? 6 : 4}>中段</th>
-                                        <th colSpan={showInner ? 6 : 4}>後段</th>
-                                    </tr>
-                                    <tr>
-                                        {['前段', '中段', '後段'].map(pos => (
-                                            <Fragment key={pos}>
-                                                <th colSpan={2}>外徑</th>
-                                                {showInner && <th colSpan={2}>內徑</th>}
-                                                <th colSpan={2}>厚度</th>
-                                            </Fragment>
-                                        ))}
-                                    </tr>
-                                    <tr>
-                                        {['前段', '中段', '後段'].map(_ =>
-                                            ['外徑', '內徑', '厚度'].map(item => {
-                                                if (item === '內徑' && !showInner) return null;
-                                                return <Fragment key={item}><th>Min</th><th>Max</th></Fragment>;
-                                            })
-                                        )}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {renderTableRows()}
-                                </tbody>
-                            </Table>
-                        </div>
+                                    <div className="table-responsive" style={{ overflowX: 'auto', display: 'block' }}>
+                                        <Table bordered size="sm" className="text-center align-middle" style={{ minWidth: showInner ? '1550px' : '1050px', tableLayout: 'fixed' }}>
+                                            <thead className="table-light">
+                                                <tr>
+                                                    <th rowSpan={3} style={{ width: '50px' }}>組別</th>
+                                                    <th colSpan={showInner ? 6 : 4}>前段</th>
+                                                    <th colSpan={showInner ? 6 : 4}>中段</th>
+                                                    <th colSpan={showInner ? 6 : 4}>後段</th>
+                                                </tr>
+                                                <tr>
+                                                    {['前段', '中段', '後段'].map(sec =>
+                                                        ['外徑', '內徑', '厚度'].map(item => {
+                                                            if (item === '內徑' && !showInner) return null;
+                                                            return <th key={`${sec}-${item}`} colSpan={2}>{item}</th>;
+                                                        })
+                                                    )}
+                                                </tr>
+                                                <tr>
+                                                    {['前段', '中段', '後段'].map(sec =>
+                                                        ['外徑', '內徑', '厚度'].map(item => {
+                                                            if (item === '內徑' && !showInner) return null;
+                                                            return <Fragment key={`${sec}-${item}-hd`}><th>MIN</th><th>MAX</th></Fragment>;
+                                                        })
+                                                    )}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {renderTableRows()}
+                                            </tbody>
+                                        </Table>
+                                    </div>
 
-                        <div className="d-flex gap-2 mt-3">
-                            <Button variant="outline-primary" onClick={() => setGroupCount(c => c + 1)}>
-                                <i className="bi bi-plus-lg"></i> 新增組別
-                            </Button>
-                            <Button variant="outline-danger" onClick={() => setGroupCount(c => Math.max(1, c - 1))}>
-                                <i className="bi bi-dash-lg"></i> 刪除組別
-                            </Button>
-                            <Button variant={showInner ? "info" : "outline-info"} onClick={() => setShowInner(!showInner)}>
-                                <i className={`bi bi-arrows-${showInner ? 'collapse' : 'expand'}`}></i> {showInner ? '隱藏內徑' : '展開內徑'}
-                            </Button>
-                        </div>
+                                    <div className="d-flex gap-2 mt-3">
+                                        <Button variant="outline-primary" onClick={() => setGroupCount(c => c + 1)}>
+                                            <i className="bi bi-plus-lg"></i> 新增組別
+                                        </Button>
+                                        <Button variant="outline-danger" onClick={() => setGroupCount(c => Math.max(1, c - 1))}>
+                                            <i className="bi bi-dash-lg"></i> 刪除組別
+                                        </Button>
+                                        <Button variant={showInner ? "info" : "outline-info"} onClick={() => setShowInner(!showInner)}>
+                                            <i className={`bi bi-arrows-${showInner ? 'collapse' : 'expand'}`}></i> {showInner ? '隱藏內徑' : '展開內徑'}
+                                        </Button>
+                                    </div>
 
-                    </Form>
-                )}
-            </Modal.Body>
-            <Modal.Footer>
-                <Button variant="secondary" onClick={handleClose}>取消</Button>
-                <Button variant="success" onClick={handleSubmit} disabled={isSaving} type="button">
-                    {isSaving ? '儲存中...' : '儲存'}
-                </Button>
-            </Modal.Footer>
+                                </Form>
+                            </div>
+                        )}
+                    </Modal.Body>
+                    <Modal.Footer>
+                        <Button variant="secondary" onClick={handleClose}>取消</Button>
+                        <Button variant="success" onClick={handleSubmit} disabled={isSaving} type="button">
+                            {isSaving ? '儲存中...' : '儲存'}
+                        </Button>
+                    </Modal.Footer>
+                </div>
+            </div>
         </Modal>
     );
 };

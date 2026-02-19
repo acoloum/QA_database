@@ -256,16 +256,25 @@ h6 {
 .modal .form-control,
 .modal .form-select {
     width: 100% !important;
-    width: 100% !important;
     min-width: 100% !important;
 }
 
 /* Patrol Specific Inputs - Fix Clipping */
 .patrol-input {
     padding: 2px 4px !important;
-    min-width: 120px !important;
-    font-size: 1.1rem !important;
+    min-width: 72px !important;
+    width: 72px !important;
+    max-width: 90px !important;
+    font-size: 0.9rem !important;
     height: auto !important;
+    box-sizing: border-box !important;
+}
+
+/* Override modal form-control width for patrol inputs */
+.modal .patrol-input.form-control {
+    width: 72px !important;
+    min-width: 72px !important;
+    max-width: 90px !important;
 }
 
 /* SPC Stats Card Gradient */
@@ -659,21 +668,68 @@ h6 {
 }
 
 .modal.show .modal-dialog {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    margin: 0;
-    max-width: 100%;
-    width: 100%;
-    height: 100%;
+    position: relative;
+    top: auto;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    margin: 1.75rem auto;
+    max-width: var(--bs-modal-width, 500px);
+    width: calc(100% - 2rem);
+    height: auto;
+}
+
+.modal.show .modal-dialog.modal-90w {
+    max-width: 90%;
+    width: 90%;
+}
+
+.modal.show .modal-dialog.modal-95w {
+    max-width: 95%;
+    width: 95%;
+}
+
+.modal.show .modal-dialog.modal-rework-detail {
+    max-width: 900px;
+    width: 90%;
+}
+
+.modal.show .modal-dialog.modal-shipping-wide {
+    max-width: 1400px;
+    width: 98%;
+}
+
+.modal-shipping-wide .modal-body {
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.modal-patrol-wide {
+    min-width: 95vw !important;
+}
+
+.modal-patrol-wide .modal-dialog {
+    max-width: 1500px !important;
+    width: 98% !important;
+}
+
+.modal-patrol-wide .modal-body {
+    max-height: 85vh;
+    overflow-y: auto;
 }
 
 .modal-body {
     overflow-y: auto;
-    max-height: 100vh;
+    max-height: 90vh;
     padding-bottom: 80px;
+}
+
+.modal-patrol-wide~.modal-body,
+.modal-patrol-wide+.modal-body,
+.modal-patrol-wide .modal-body,
+body .modal-patrol-wide~.modal-body {
+    max-height: 85vh !important;
+    overflow-y: auto !important;
 }
 
 @media (max-width: 768px) {
@@ -1151,6 +1207,47 @@ header h1 {
     box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
 }
 
+.modal .nav-tabs .nav-link {
+    color: #495057 !important;
+    background-color: transparent !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    padding: 8px 16px !important;
+    font-weight: 500 !important;
+}
+
+.modal .nav-tabs .nav-link:hover {
+    color: #4f46e5 !important;
+    border-bottom-color: #4f46e5 !important;
+    background-color: rgba(79, 70, 229, 0.05) !important;
+}
+
+.modal .nav-tabs .nav-link.active,
+.modal .nav-tabs button.nav-link.active {
+    color: #4f46e5 !important;
+    border-bottom-color: #4f46e5 !important;
+    background-color: transparent !important;
+}
+
+.nav-tabs .nav-link {
+    color: #495057 !important;
+    background-color: transparent !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+}
+
+.nav-tabs .nav-link:hover {
+    color: #4f46e5 !important;
+    border-bottom-color: #4f46e5 !important;
+}
+
+.nav-tabs .nav-link.active,
+.nav-tabs button.nav-link.active {
+    color: #4f46e5 !important;
+    border-bottom-color: #4f46e5 !important;
+    background-color: transparent !important;
+}
+
 .sidebar-footer {
     padding: 16px 20px;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -1170,7 +1267,7 @@ header h1 {
     transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.sidebar.collapsed ~ .main-wrapper {
+.sidebar.collapsed~.main-wrapper {
     margin-left: 80px;
 }
 
@@ -1334,11 +1431,11 @@ header h1 {
     .welcome-banner {
         padding: 20px;
     }
-    
+
     .welcome-greeting {
         font-size: 1.4rem;
     }
-    
+
     .welcome-stats {
         width: 100%;
         justify-content: center;
@@ -1536,8 +1633,15 @@ header h1 {
 }
 
 @keyframes pulse {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.2); }
+
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.2);
+    }
 }
 
 .kpi-trend {
@@ -1643,4 +1747,22 @@ header h1 {
 .badge-warning {
     background-color: #fffbeb !important;
     color: #d97706 !important;
+}
+
+.pagination .page-link {
+    color: #333 !important;
+    background-color: #fff !important;
+    border-color: #dee2e6 !important;
+}
+
+.pagination .page-item.active .page-link {
+    background-color: #6366f1 !important;
+    border-color: #6366f1 !important;
+    color: #fff !important;
+    font-weight: 600 !important;
+}
+
+.pagination .page-item.disabled .page-link {
+    color: #6c757d !important;
+    background-color: #f8f9fa !important;
 }

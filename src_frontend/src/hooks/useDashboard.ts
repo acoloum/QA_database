@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import api from '../services/api';
 
 export interface DashboardStats {
@@ -39,32 +39,38 @@ export function useDashboardStats(period: DatePeriod = 'this_month', customDateR
     const [error, setError] = useState<string | null>(null);
     const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
 
-    const fetchStats = useCallback(async () => {
-        try {
-            setLoading(true);
-            const params: Record<string, string> = { period };
-            
-            if (period === 'custom' && customDateRange) {
-                params.start = customDateRange.start;
-                params.end = customDateRange.end;
+    useEffect(() => {
+        let cancelled = false;
+
+        const fetchStats = async () => {
+            try {
+                setLoading(true);
+                const params: Record<string, string> = { period };
+
+                if (period === 'custom' && customDateRange) {
+                    params.start = customDateRange.start;
+                    params.end = customDateRange.end;
+                }
+
+                const response = await api.get('/dashboard/stats', { params });
+                if (!cancelled) {
+                    setStats(response.data.stats);
+                    setDateRange({ start: response.data.start_date, end: response.data.end_date });
+                }
+            } catch (err) {
+                if (!cancelled) setError('Failed to load statistics');
+                console.error(err);
+            } finally {
+                if (!cancelled) setLoading(false);
             }
-            
-            const response = await api.get('/dashboard/stats', { params });
-            setStats(response.data.stats);
-            setDateRange({ start: response.data.start_date, end: response.data.end_date });
-        } catch (err) {
-            setError('Failed to load statistics');
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
+        };
+
+        fetchStats();
+
+        return () => { cancelled = true; };
     }, [period, customDateRange]);
 
-    useEffect(() => {
-        fetchStats();
-    }, [fetchStats]);
-
-    return { stats, loading, error, dateRange, refetch: fetchStats };
+    return { stats, loading, error, dateRange };
 }
 
 export function useDashboardTodos() {
@@ -73,20 +79,24 @@ export function useDashboardTodos() {
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        let cancelled = false;
+
         const fetchTodos = async () => {
             try {
                 setLoading(true);
                 const response = await api.get('/dashboard/todos');
-                setTodos(response.data);
+                if (!cancelled) setTodos(response.data);
             } catch (err) {
-                setError('Failed to load todos');
+                if (!cancelled) setError('Failed to load todos');
                 console.error(err);
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
         };
 
         fetchTodos();
+
+        return () => { cancelled = true; };
     }, []);
 
     return { todos, loading, error };
@@ -98,20 +108,24 @@ export function useDashboardTrends() {
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        let cancelled = false;
+
         const fetchTrends = async () => {
             try {
                 setLoading(true);
                 const response = await api.get('/dashboard/trends');
-                setTrends(response.data);
+                if (!cancelled) setTrends(response.data);
             } catch (err) {
-                setError('Failed to load trends');
+                if (!cancelled) setError('Failed to load trends');
                 console.error(err);
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
         };
 
         fetchTrends();
+
+        return () => { cancelled = true; };
     }, []);
 
     return { trends, loading, error };
