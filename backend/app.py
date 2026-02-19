@@ -1,6 +1,9 @@
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
-from .config import SECRET_KEY
+from flasgger import Swagger
+from datetime import datetime
+from .config import SECRET_KEY, SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS
+from .extensions import db
 from .routes.auth import auth_bp
 from .routes.admin import admin_bp
 from .routes.shipping import shipping_bp
@@ -11,6 +14,19 @@ from .routes.tolerance import tolerance_bp
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = SQLALCHEMY_TRACK_MODIFICATIONS
+app.config['SWAGGER'] = {
+    'title': 'QA Database API',
+    'uiversion': 3,
+    'version': '1.0.0',
+    'description': 'API documentation for QA Database System',
+    'specs_route': '/apidocs/'
+}
+
+Swagger(app)
+
+db.init_app(app)
 
 # Configure CORS
 CORS(app, supports_credentials=True)
@@ -25,9 +41,89 @@ app.register_blueprint(ncmr_bp)
 app.register_blueprint(tolerance_bp)
 
 # Global Error Handler (Optional but recommended)
-@app.errorhandler(500)
-def internal_error(error):
-    return {"error": "Internal Server Error"}, 500
+# Global Error Handler
+from .errors import APIError
+from sqlalchemy.exc import SQLAlchemyError
+from werkzeug.exceptions import HTTPException
+
+@app.errorhandler(APIError)
+def handle_api_error(error):
+    response = jsonify(error.to_dict())
+    response.status_code = error.status_code
+    return response
+
+@app.errorhandler(HTTPException)
+def handle_http_exception(error):
+    """Handle standard Flask/Werkzeug HTTP exceptions (404, 405, etc.)"""
+    response = jsonify({
+        "success": False,
+        "error": {
+            "code": error.name.upper().replace(" ", "_"),
+            "message": error.description,
+        }
+    })
+    response.status_code = error.code
+    return response
+
+@app.errorhandler(ValueError)
+def handle_value_error(error):
+    """Handle ValueError as 400 Bad Request"""
+    response = jsonify({
+        "success": False,
+        "error": {
+            "code": "VALIDATION_ERROR",
+            "message": str(error)
+        }
+    })
+    response.status_code = 400
+    return response
+
+@app.errorhandler(SQLAlchemyError)
+def handle_db_error(error):
+    """Handle Database errors"""
+    from .utils import handle_db_error as utils_handle_db_error
+    
+    # Log the error
+    import traceback
+    with open('error.log', 'a') as f:
+        f.write(f"[{datetime.now()}] DB_ERROR: {str(error)}\n")
+        f.write(traceback.format_exc())
+        f.write("\n" + "="*30 + "\n")
+
+    # Use the logic from utils to get a user-friendly message
+    # The utils function expects an exception and returns a string
+    friendly_message = utils_handle_db_error(error)
+    
+    response = jsonify({
+        "success": False,
+        "error": {
+            "code": "DB_ERROR",
+            "message": friendly_message,
+            "details": str(error) if app.debug else None
+        }
+    })
+    response.status_code = 500
+    return response
+
+@app.errorhandler(Exception)
+def handle_generic_error(error):
+    """Handle unexpected errors"""
+    import traceback
+    with open('error.log', 'a') as f:
+        f.write(f"[{datetime.now()}] {str(error)}\n")
+        f.write(traceback.format_exc())
+        f.write("\n" + "="*30 + "\n")
+        
+    response = jsonify({
+        "success": False,
+        "error": {
+            "code": "INTERNAL_SERVER_ERROR",
+            "message": "伺服器發生未預期的錯誤",
+            "details": str(error)
+        }
+    })
+    response.status_code = 500
+    return response
 
 if __name__ == '__main__':
     # Use waitress for production-like performance if available, else Flask default
@@ -37,7 +133,7 @@ if __name__ == '__main__':
         print("Starting QC System Backend (Modular)")
         print("Listening on http://0.0.0.0:5001")
         print("=" * 60)
-        serve(app, host='0.0.0.0', port=5001)
+        serve(app, host='0.0.0.0', port=5001, threads=8)
     except ImportError:
         print("Waitress not found, using Flask development server")
         app.run(host='0.0.0.0', port=5001, debug=True)
