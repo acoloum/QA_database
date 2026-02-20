@@ -287,7 +287,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                                         <Col md={12}><Form.Label>擠壓規格</Form.Label><Form.Control value={spec} onChange={e => setSpec(e.target.value)} style={{ width: '100%' }} /></Col>
                                     </Row>
 
-                                    <div className="table-responsive" style={{ overflowX: 'auto', display: 'block' }}>
+                                    <div className="table-responsive" style={{ overflow: 'auto', maxHeight: '50vh', display: 'block' }}>
                                         <Table bordered size="sm" className="text-center align-middle" style={{ minWidth: showInner ? '1550px' : '1050px', tableLayout: 'fixed' }}>
                                             <thead className="table-light">
                                                 <tr>
