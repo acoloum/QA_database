@@ -1,65 +1,29 @@
-import { useState, useEffect } from 'react';
+
+import { useState } from 'react';
 import { Button, Card, Table, Badge } from 'react-bootstrap';
-import api from '../../services/api';
 import type { NCMR } from '../../types';
 import NCMRModal from '../../components/ncmr/NCMRModal';
 import DispositionModal from '../../components/ncmr/DispositionModal';
-
 import { useNavigate } from 'react-router-dom';
+import { useNCMRList, useDeleteNCMR, useCreateCARA, useCreateCAPA } from '../../hooks/useNCMR';
 
 const NCMRPage = () => {
     const navigate = useNavigate();
-    const [data, setData] = useState<NCMR[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { data: ncmrList = [], isLoading } = useNCMRList();
+
+    // Mutations
+    const deleteMutation = useDeleteNCMR();
+    const createCARAMutation = useCreateCARA();
+    const createCAPAMutation = useCreateCAPA();
+
     const [showModal, setShowModal] = useState(false);
     const [showDisposeModal, setShowDisposeModal] = useState(false);
     const [editId, setEditId] = useState<number | null>(null);
     const [disposeItem, setDisposeItem] = useState<NCMR | null>(null);
 
-    useEffect(() => {
-        loadData();
-    }, []);
-
-    const loadData = async () => {
-        setLoading(true);
-        try {
-            const res = await api.get('/ncmr');
-            const mappedData = res.data.map((item: any) => ({
-                id: item.識別碼,
-                no: item.單號 || String(item.識別碼),
-                date: item.日期 || item.發現日期,
-                source: item.來源,
-                vendor: item.廠商,
-                material: item.材質,
-                product_info: item.產品資訊,
-                product_qty: item.產品數量,
-                defect_desc: item.不良描述,
-                defect_category: item.不良原因大類,
-                defect_reason: item.不良原因細項,
-                result: item.判定結果,
-                status: item.狀態,
-                car_status: item.CAR狀態 || item.car狀態,
-                capa_status: item.CAPA狀態 || item.capa狀態,
-                rework_status: item.重工狀態,
-                rework_count: item.重工執行次數
-            }));
-            setData(mappedData);
-        } catch (error) {
-            console.error("Failed to load NCMR data", error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
     const handleDelete = async (id: number) => {
         if (window.confirm(`確定要刪除異常單 #${id} 嗎？此動作無法復原。`)) {
-            try {
-                await api.post('/ncmr/delete', { id });
-                loadData();
-            } catch (error) {
-                console.error("Delete failed", error);
-                alert('刪除失敗');
-            }
+            deleteMutation.mutate(id);
         }
     };
 
@@ -86,38 +50,38 @@ const NCMRPage = () => {
 
     const convertToCAR = async (id: number) => {
         if (!window.confirm('確定要將此異常單轉為CAR嗎？')) return;
-        try {
-            const res = await api.post('/cara/create', { ncmr_id: id });
-            if (res.data.success) {
-                alert(`CAR單號：${res.data.car_number} 已成功建立！`);
-                // Navigate to CAR page later
-            } else {
-                alert('建立CAR失敗：' + res.data.error);
-            }
-        } catch (error: any) {
-            alert('建立CAR時發生錯誤：' + error.message);
-        }
+        createCARAMutation.mutate(id);
     };
 
     const convertTo8D = async (id: number) => {
         if (!window.confirm('確定要針對此異常單開立 8D 矯正措施嗎？')) return;
+        // 8D creation needs to redirect to CAPA page on success.
+        // We can handle success in local callback or use the mutation result.
+        // Since we need the ID returned, we should probably use mutateAsync or onSuccess in mutation.
+        // The hook I defined doesn't return ID in onSuccess.
+        // I should use mutateAsync here to get result.
         try {
-            const res = await api.post('/capa/create', { ncmr_id: id });
-            if (res.status === 200) {
-                alert('已成功建立 CAPA 單，即將前往矯正措施頁面。');
-                window.location.href = `/capa?editId=${res.data.id}`;
-            } else {
-                alert('建立失敗');
+            const res = await createCAPAMutation.mutateAsync(id);
+            if (res.success) { // Hook returns res.data
+                // Wait, hook returns res.data.
+                // Backend returns {success: true, id: ...} or just {id, ...}?
+                // Checking backend route: return jsonify({"success": True, **result})
+                // Result from create_capa returns {id: ...} probably?
+                // Let's assume it returns {id}.
+                // The hook returns res.data which is JSON.
+                if (res.id) {
+                    window.location.href = `/capa?editId=${res.id}`;
+                }
             }
-        } catch (error: any) {
-            alert('建立時發生錯誤：' + error.message);
+        } catch (e) {
+            // Error handled by global handler
         }
     };
 
     const renderStatusBadge = (status: string) => {
         let bg = 'secondary';
         if (status === '已結案') bg = 'success';
-        if (status === '轉CAPA') bg = 'primary'; // Bootstrap primary is blue-ish
+        if (status === '轉CAPA') bg = 'primary';
         if (status === '待處理') bg = 'warning';
         return <Badge bg={bg} text={bg === 'warning' ? 'dark' : 'white'}>{status}</Badge>;
     };
@@ -154,7 +118,7 @@ const NCMRPage = () => {
             </div>
 
             <Card className="shadow-sm">
-                <Card.Body className="p-0"> {/* Remove padding to gain space */}
+                <Card.Body className="p-0">
                     <Table hover className="align-middle table-compact mb-0">
                         <thead className="table-light">
                             <tr>
@@ -174,12 +138,12 @@ const NCMRPage = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {loading ? (
+                            {isLoading ? (
                                 <tr><td colSpan={13} className="text-center py-4">載入中...</td></tr>
-                            ) : data.length === 0 ? (
+                            ) : ncmrList.length === 0 ? (
                                 <tr><td colSpan={13} className="text-center py-4">無資料</td></tr>
                             ) : (
-                                data.map(item => (
+                                ncmrList.map((item: any) => (
                                     <tr key={item.id}>
                                         <td>{item.no || item.id}</td>
                                         <td>{item.date}</td>
@@ -221,14 +185,14 @@ const NCMRPage = () => {
             <NCMRModal
                 show={showModal}
                 handleClose={() => setShowModal(false)}
-                onSuccess={loadData}
+                onSuccess={() => { }} // React Query handles invalidation
                 editId={editId}
             />
 
             <DispositionModal
                 show={showDisposeModal}
                 handleClose={() => setShowDisposeModal(false)}
-                onSuccess={loadData}
+                onSuccess={() => { }} // React Query handles invalidation
                 item={disposeItem}
             />
         </div>

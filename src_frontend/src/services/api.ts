@@ -1,4 +1,5 @@
 import axios from 'axios';
+import toast from 'react-hot-toast';
 
 // 建立 axios 實例
 const api = axios.create({
@@ -22,20 +23,33 @@ api.interceptors.request.use(
     }
 );
 
-// 回應攔截器：處理 401 Token 失效
+// 回應攔截器：處理錯誤
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response && error.response.status === 401) {
-            // Token 失效，清除並重導至登入頁
-            // 注意：這裡不能直接使用 useNavigate，因為不在 React Component 中
-            // 可以透過 window.location 或者 event bus 處理
+        const { response } = error;
+
+        // 1. 處理 401 Token 失效
+        if (response && response.status === 401) {
             localStorage.removeItem('authToken');
             localStorage.removeItem('username');
             if (window.location.pathname !== '/login') {
                 window.location.href = '/login';
+                toast.error('登入已過期，請重新登入');
             }
+            return Promise.reject(error);
         }
+
+        // 2. 處理後端回傳的標準錯誤格式
+        if (response && response.data && response.data.error) {
+            const errorMsg = response.data.error.message || '發生未知錯誤';
+            toast.error(errorMsg);
+            return Promise.reject(new Error(errorMsg)); // 讓前端 catch 到乾淨的錯誤訊息
+        }
+
+        // 3. 處理網路或其他錯誤
+        const genericMsg = error.message || '網路連線異常';
+        toast.error(genericMsg);
         return Promise.reject(error);
     }
 );

@@ -5,6 +5,7 @@ import type { ShippingInspection } from '../../types';
 import ShippingModal from '../../components/shipping/ShippingModal';
 import ImportModal from '../../components/shipping/ImportModal';
 import ShippingCharts from '../../components/shipping/ShippingCharts';
+import { useShippingList, useDeleteShipping } from '../../hooks/useShipping';
 
 const parseSpec = (spec: string): Record<string, number> => {
     if (!spec) return {};
@@ -32,9 +33,6 @@ const parseSpec = (spec: string): Record<string, number> => {
 
 const ShippingPage = () => {
     const navigate = useNavigate();
-    const [inspections, setInspections] = useState<ShippingInspection[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [totalPages, setTotalPages] = useState(1);
     const [page, setPage] = useState(1);
 
     // Modal State
@@ -52,101 +50,103 @@ const ShippingPage = () => {
     // Tolerance Standards for the current page
     const [tolerances, setTolerances] = useState<Record<string, any>>({});
 
-    const loadData = async () => {
-        setLoading(true);
-        try {
-            const params = new URLSearchParams();
-            params.append('page', page.toString());
-            if (startDate) params.append('start_date', startDate);
-            if (endDate) params.append('end_date', endDate);
-            if (vendor) params.append('vendor', vendor);
-            if (material) params.append('material', material);
-            if (spec) params.append('spec', spec);
-
-            const res = await api.get<{ data: ShippingInspection[], total_pages: number }>(`/data?${params.toString()}`);
-            setInspections(res.data.data);
-            setTotalPages(res.data.total_pages);
-        } catch (error) {
-            console.error('Error loading shipping data:', error);
-        } finally {
-            setLoading(false);
-        }
+    // Hooks
+    const searchParams = {
+        page,
+        start_date: startDate,
+        end_date: endDate,
+        vendor,
+        material,
+        spec
     };
 
+    const { data: searchResult, isLoading } = useShippingList(searchParams);
+    const deleteMutation = useDeleteShipping();
+
+    const inspections = searchResult?.data || [];
+    const totalPages = searchResult?.total_pages || 1;
+
     // Fetch tolerances for all unique combinations on the current page
+    // Note: keeping this logic here as it's quite specific batch fetching
     const fetchTolerances = async () => {
         if (inspections.length === 0) return;
 
         const uniqueCombos = new Set<string>();
         inspections.forEach(item => {
             if (item.材質) {
-                // We need vendor ID to fetch tolerance. Since we only have vendor Name in inspection data, 
-                // we'll try to fetch without vendor_id first or we'd need a vendor map.
-                // Looking at ShippingModal, it uses vendor_id.
                 uniqueCombos.add(`${item.材質}|||${item.檢驗規格 || ''}|||${item.廠商中文名稱 || ''}`);
             }
         });
 
         const newTolerances: Record<string, any> = { ...tolerances };
-        const vendorsRes = await api.get<any[]>('/vendors');
-        const vendorMap: Record<string, string> = {};
-        vendorsRes.data.forEach(v => vendorMap[v.name] = v.id);
 
-        await Promise.all(Array.from(uniqueCombos).map(async (combo) => {
-            if (newTolerances[combo]) return;
+        // This part needs vendors list, we could use useVendors hook but we need it here imperatively or just fetch once
+        // For simplicity, let's just fetch it as before or optimistically assume we have IDs if backend provided them.
+        // The original code fetched /vendors every time inspections changed, which is not ideal.
+        // Let's rely on cached vendors if possible, or just fetch.
 
-            const [mat, sp, vName] = combo.split('|||');
-            const vId = vendorMap[vName] || '';
+        try {
+            const vendorsRes = await api.get<any[]>('/vendors');
+            const vendorMap: Record<string, string> = {};
+            vendorsRes.data.forEach(v => vendorMap[v.name] = v.id);
 
-            try {
-                const res = await api.get<any>(`/tolerance/check?material=${encodeURIComponent(mat)}&spec=${encodeURIComponent(sp)}&vendor_id=${vId}`);
-                if (res.data.success && res.data.found) {
-                    const specValues = parseSpec(sp);
-                    const std: Record<string, { lsl: number, usl: number }> = {};
-                    res.data.tolerances.forEach((t: any) => {
-                        let lsl = -Infinity, usl = Infinity;
-                        if (t.尺寸下限 !== null && t.尺寸上限 !== null) {
-                            lsl = t.尺寸下限;
-                            usl = t.尺寸上限;
-                        } else if (t.公差下限 !== null && t.公差上限 !== null) {
-                            let standardValue = specValues[t.項目];
-                            if (standardValue === undefined || standardValue === 0) {
-                                standardValue = t.標準值;
+            await Promise.all(Array.from(uniqueCombos).map(async (combo) => {
+                if (newTolerances[combo]) return;
+
+                const [mat, sp, vName] = combo.split('|||');
+                const vId = vendorMap[vName] || '';
+
+                try {
+                    const res = await api.get<any>(`/tolerance/check?material=${encodeURIComponent(mat)}&spec=${encodeURIComponent(sp)}&vendor_id=${vId}`);
+                    if (res.data.success && res.data.found) {
+                        const specValues = parseSpec(sp);
+                        const std: Record<string, { lsl: number, usl: number }> = {};
+                        res.data.tolerances.forEach((t: any) => {
+                            let lsl = -Infinity, usl = Infinity;
+                            if (t.尺寸下限 !== null && t.尺寸上限 !== null) {
+                                lsl = t.尺寸下限;
+                                usl = t.尺寸上限;
+                            } else if (t.公差下限 !== null && t.公差上限 !== null) {
+                                let standardValue = specValues[t.項目];
+                                if (standardValue === undefined || standardValue === 0) {
+                                    standardValue = t.標準值;
+                                }
+                                standardValue = standardValue || 0;
+                                if (standardValue === 0) return;
+                                lsl = standardValue + t.公差下限;
+                                usl = standardValue + t.公差上限;
+                            } else if (t.尺寸上限 !== null) {
+                                lsl = 0;
+                                usl = t.尺寸上限;
+                            } else if (t.尺寸下限 !== null) {
+                                lsl = t.尺寸下限;
+                                usl = Infinity;
+                            } else {
+                                return;
                             }
-                            standardValue = standardValue || 0;
-                            if (standardValue === 0) return;
-                            lsl = standardValue + t.公差下限;
-                            usl = standardValue + t.公差上限;
-                        } else if (t.尺寸上限 !== null) {
-                            lsl = 0;
-                            usl = t.尺寸上限;
-                        } else if (t.尺寸下限 !== null) {
-                            lsl = t.尺寸下限;
-                            usl = Infinity;
-                        } else {
-                            return;
-                        }
-                        std[t.項目] = { lsl, usl };
-                    });
-                    newTolerances[combo] = std;
-                } else {
-                    newTolerances[combo] = null;
+                            std[t.項目] = { lsl, usl };
+                        });
+                        newTolerances[combo] = std;
+                    } else {
+                        newTolerances[combo] = null;
+                    }
+                } catch (e) {
+                    console.error('Fetch tolerance failed for', combo, e);
                 }
-            } catch (e) {
-                console.error('Fetch tolerance failed for', combo, e);
-            }
-        }));
+            }));
 
-        setTolerances(newTolerances);
+            setTolerances(newTolerances);
+        } catch (e) {
+            console.error("Error fetching vendors for tolerance check", e);
+        }
     };
 
     useEffect(() => {
-        loadData();
-    }, [page, startDate, endDate, vendor, material, spec]);
-
-    useEffect(() => {
+        // Trigger fetchTolerances when inspections change
         fetchTolerances();
     }, [inspections]);
+
+    // Refresh list when filters change is handled by React Query key
 
     const checkViolation = (item: ShippingInspection) => {
         const combo = `${item.材質}|||${item.檢驗規格 || ''}|||${item.廠商中文名稱 || ''}`;
@@ -166,7 +166,7 @@ const ShippingPage = () => {
                     : [`${it}${g}`];
 
                 for (const k of keys) {
-                    const val = parseFloat(item[k]);
+                    const val = parseFloat((item as any)[k]);
                     if (!isNaN(val) && (val < tol.lsl || val > tol.usl)) {
                         hasViolation = true;
                         break;
@@ -198,13 +198,15 @@ const ShippingPage = () => {
 
     const handleDelete = async (id: number) => {
         if (!confirm(`確定刪除 ID: ${id}?`)) return;
-        try {
-            await api.post('/delete', { id });
-            loadData();
-        } catch (error) {
-            console.error('Delete failed:', error);
-            alert('刪除失敗');
-        }
+        deleteMutation.mutate(id);
+    };
+
+    // Handler for successful modal operations (create/update)
+    // React query invalidation handles the refresh, so we just close the modal
+    const handleSuccess = () => {
+        // refetch(); // Optional, but mutation invalidation should handle it
+        // If we want to be sure or reset page:
+        // refetch();
     };
 
     return (
@@ -330,7 +332,7 @@ const ShippingPage = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {loading ? (
+                                {isLoading ? (
                                     <tr>
                                         <td colSpan={7} className="text-center py-5">
                                             <div className="spinner-border text-primary" role="status">
@@ -415,14 +417,14 @@ const ShippingPage = () => {
             <ShippingModal
                 show={showModal}
                 handleClose={() => setShowModal(false)}
-                onSuccess={loadData}
+                onSuccess={handleSuccess}
                 editId={editId}
             />
 
             <ImportModal
                 show={showImportModal}
                 handleClose={() => setShowImportModal(false)}
-                onSuccess={loadData}
+                onSuccess={handleSuccess}
             />
         </div>
     );

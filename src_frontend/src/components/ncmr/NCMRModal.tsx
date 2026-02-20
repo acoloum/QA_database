@@ -121,7 +121,18 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
     const isSaving = createMutation.isPending || updateMutation.isPending;
 
     return (
-        <Modal show={show} onHide={handleClose} size="lg" backdrop="static" fullscreen="sm-down">
+        <Modal show={show} onHide={handleClose} size="lg" backdrop="static" dialogClassName="modal-ncmr">
+            <style type="text/css">
+                {`
+                    .modal-ncmr {
+                        max-width: 800px !important;
+                    }
+                    .modal-ncmr .modal-body {
+                        max-height: 75vh;
+                        overflow-y: auto;
+                    }
+                `}
+            </style>
             <Modal.Header closeButton>
                 <Modal.Title>{editId ? '編輯異常單' : '新增異常單'}</Modal.Title>
             </Modal.Header>
@@ -134,7 +145,7 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
                     </div>
                 ) : (
                     <Form>
-                        <Row className="g-3">
+                        <Row className="g-2">
                             <Col md={6}><Form.Label>發現日期</Form.Label><Form.Control type="date" value={date} onChange={e => setDate(e.target.value)} /></Col>
                             <Col md={6}>
                                 <Form.Label>來源</Form.Label>
@@ -146,15 +157,15 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
                                     <option value="退貨">退貨</option>
                                 </Form.Select>
                             </Col>
-                            <Col md={4}><Form.Label>廠商</Form.Label><Form.Control value={vendor} onChange={e => setVendor(e.target.value)} /></Col>
-                            <Col md={4}><Form.Label>材質</Form.Label><Form.Control value={material} onChange={e => setMaterial(e.target.value)} /></Col>
-                            <Col md={4}><Form.Label>規格</Form.Label><Form.Control value={productInfo} onChange={e => setProductInfo(e.target.value)} /></Col>
+                            <Col md={4}><Form.Label>廠商</Form.Label><Form.Control value={vendor} onChange={e => setVendor(e.target.value)} placeholder="請輸入廠商名稱" /></Col>
+                            <Col md={4}><Form.Label>材質</Form.Label><Form.Control value={material} onChange={e => setMaterial(e.target.value)} placeholder="請輸入材質" /></Col>
+                            <Col md={4}><Form.Label>規格</Form.Label><Form.Control value={productInfo} onChange={e => setProductInfo(e.target.value)} placeholder="請輸入規格" /></Col>
 
                             <Col md={6}><Form.Label>產品數量</Form.Label><Form.Control type="number" value={productQty} onChange={e => setProductQty(e.target.value)} /></Col>
                             <Col md={6}><Form.Label>不合格數量</Form.Label><Form.Control type="number" value={defectQty} onChange={e => setDefectQty(e.target.value)} /></Col>
 
-                            <Col md={12}><Form.Label>批號/訂單號</Form.Label><Form.Control value={batch} onChange={e => setBatch(e.target.value)} /></Col>
-                            <Col md={12}><Form.Label>不良描述</Form.Label><Form.Control as="textarea" rows={3} value={desc} onChange={e => setDesc(e.target.value)} /></Col>
+                            <Col md={12}><Form.Label>批號/訂單號</Form.Label><Form.Control value={batch} onChange={e => setBatch(e.target.value)} placeholder="請輸入批號或訂單號" /></Col>
+                            <Col md={12}><Form.Label>不良描述</Form.Label><Form.Control as="textarea" rows={2} value={desc} onChange={e => setDesc(e.target.value)} placeholder="請描述不良情況" /></Col>
 
                             <Col md={6}>
                                 <Form.Label>不良原因大類</Form.Label>

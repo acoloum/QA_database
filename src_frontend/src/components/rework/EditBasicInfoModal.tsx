@@ -1,22 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import api from '../../services/api';
-
-interface ReworkApplication {
-  識別碼: number;
-  申請單號: string;
-  NCMR_ID: number;
-  ncmr_number: string;
-  部門: string;
-  緊急程度: string;
-  廠商: string;
-  材質: string;
-  產品資訊: string;
-  批號: string;
-  重工數量: number;
-  申請原因: string;
-  預計完成日期: string;
-}
+import type { ReworkApplication } from '../../types';
 
 interface EditBasicInfoModalProps {
   show: boolean;
@@ -92,7 +77,16 @@ const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditB
   };
 
   return (
-    <Modal show={show} onHide={handleClose} size="lg">
+    <Modal show={show} onHide={handleClose} size="lg" dialogClassName="modal-rework">
+      <style type="text/css">{`
+        .modal-rework {
+          max-width: 800px !important;
+        }
+        .modal-rework .modal-body {
+          max-height: 75vh;
+          overflow-y: auto;
+        }
+      `}</style>
       <Modal.Header closeButton>
         <Modal.Title>編輯基本資訊 - {application?.申請單號}</Modal.Title>
       </Modal.Header>

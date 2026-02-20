@@ -1,82 +1,49 @@
-import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import WelcomeMessage from '../components/dashboard/WelcomeMessage';
+import KPICards from '../components/dashboard/KPICards';
+import QuickActions from '../components/dashboard/QuickActions';
+import TodoList from '../components/dashboard/TodoList';
+import TrendChart from '../components/dashboard/TrendChart';
+import DateFilter from '../components/dashboard/DateFilter';
+import { useDashboardStats } from '../hooks/useDashboard';
+import type { DatePeriod } from '../hooks/useDashboard';
 
 const DashboardPage = () => {
-    const navigate = useNavigate();
+    const [period, setPeriod] = useState<DatePeriod>('this_month');
+    const [customDateRange, setCustomDateRange] = useState<{ start: string; end: string } | undefined>();
+    
+    const { dateRange } = useDashboardStats(period, customDateRange);
 
-    const menuItems = [
-        {
-            title: '出貨檢驗',
-            desc: '把最棒的產品交給客戶吧！',
-            icon: 'fa-gift',
-            bgClass: 'bg-shipping',
-            path: '/shipping'
-        },
-        {
-            title: '現場巡檢',
-            desc: '巡視現場，變出完美品質！',
-            icon: 'fa-wand-magic-sparkles',
-            bgClass: 'bg-patrol',
-            path: '/patrol'
-        },
-        {
-            title: '不合格品',
-            desc: '異常快走開！攔截不良品',
-            icon: 'fa-triangle-exclamation',
-            bgClass: 'bg-ncmr',
-            path: '/ncmr'
-        },
-        {
-            title: '矯正措施',
-            desc: '錯誤不再犯！8D報告寫起來',
-            icon: 'fa-file-signature',
-            bgClass: 'bg-capa',
-            path: '/capa'
-        },
-        {
-            title: '公差管理',
-            desc: '差之毫釐，失之千里',
-            icon: 'fa-ruler-combined',
-            bgClass: 'bg-tolerance',
-            path: '/tolerance'
-        },
-        {
-            title: '使用者管理',
-            desc: '新增系統使用者',
-            icon: 'fa-users-gear',
-            bgClass: 'bg-admin',
-            path: '/admin/users'
-        },
-        {
-            title: 'CAR 要求',
-            desc: '對供應商發出怒吼！',
-            icon: 'fa-bullhorn',
-            bgClass: 'bg-cara',
-            path: '/cara'
-        },
-        {
-            title: '重工管理',
-            desc: '重工追蹤，品質復活',
-            icon: 'fa-rotate',
-            bgClass: 'bg-rework',
-            path: '/rework'
-        }
-    ];
+    const formatDateRange = () => {
+        if (!dateRange) return '';
+        const start = new Date(dateRange.start).toLocaleDateString('zh-TW', { month: 'short', day: 'numeric' });
+        const end = new Date(dateRange.end).toLocaleDateString('zh-TW', { month: 'short', day: 'numeric' });
+        return `${start} - ${end}`;
+    };
 
     return (
-        <div className="row justify-content-center g-5">
-            {menuItems.map((item, index) => (
-                <div key={index} className="col-md-5 col-lg-4" onClick={() => navigate(item.path)}>
-                    <div className={`card nav-card ${item.bgClass || ''}`}>
-                        <div className="icon-bubble">
-                            <i className={`fa-solid ${item.icon}`}></i>
-                        </div>
-                        <div className="card-body text-center">
-                            <h3 className="card-title">{item.title}</h3>
-                            <p className="description">{item.desc}</p>
-                        </div>
-                    </div>
+        <div className="dashboard-container">
+            <WelcomeMessage />
+            
+            <DateFilter 
+                period={period}
+                onPeriodChange={setPeriod}
+                customDateRange={customDateRange}
+                onCustomDateChange={setCustomDateRange}
+                dateRangeLabel={formatDateRange()}
+            />
+            
+            <KPICards period={period} customDateRange={customDateRange} />
+            
+            <div className="row">
+                <div className="col-lg-8">
+                    <QuickActions />
+                    <TrendChart />
                 </div>
-            ))}
+                <div className="col-lg-4">
+                    <TodoList />
+                </div>
+            </div>
         </div>
     );
 };

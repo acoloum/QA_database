@@ -11,11 +11,10 @@ interface CostModalProps {
     show: boolean;
     handleClose: () => void;
     onSuccess: () => void;
-    reworkId: number;
     reworkNumber: string;
 }
 
-const CostModal = ({ show, handleClose, onSuccess, reworkId, reworkNumber }: CostModalProps) => {
+const CostModal = ({ show, handleClose, onSuccess, reworkNumber }: CostModalProps) => {
     const [inspectors, setInspectors] = useState<Inspector[]>([]);
     const [loading, setLoading] = useState(false);
 

@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
+from ..extensions import db
+from ..models import User
 from ..utils import (
-    get_db_connection,
     generate_token,
     verify_token,
     generate_csrf_token,
@@ -19,36 +20,26 @@ def login():
     if not username or not password:
         return jsonify({'error': '使用者名稱和密碼為必填欄位'}), 400
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
     try:
-        cursor.execute(
-            'SELECT "識別碼", "密碼", "是否啟用" FROM "使用者" WHERE "使用者名稱" = %s',
-            (username,)
-        )
-        row = cursor.fetchone()
+        user = User.query.filter_by(username=username).first()
         
-        if not row:
+        if not user:
             return jsonify({"error": "使用者名稱或密碼錯誤"}), 401
             
-        user_id, stored_password, is_active = row
-        
-        if hash_password(password) != stored_password:
+        if user.password != hash_password(password):
             return jsonify({"error": "使用者名稱或密碼錯誤"}), 401
             
-        if not is_active:
+        if not user.is_active:
              return jsonify({"error": "帳號已被停用"}), 401
 
-        token = generate_token(user_id, username)
+        token = generate_token(user.id, user.username)
         return jsonify({
             'token': token,
-            'username': username,
-            'user_id': user_id
+            'username': user.username,
+            'user_id': user.id
         })
     except Exception as e:
-        return jsonify({"error": handle_db_error(e)}), 500
-    finally:
-        conn.close()
+        return jsonify({"error": str(e)}), 500
 
 @auth_bp.route('/api/verify-token', methods=['GET'])
 def verify_token_api():
@@ -86,24 +77,19 @@ def create_user():
     if not username or not password:
         return jsonify({"error": "使用者名稱和密碼為必填欄位"}), 400
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
     try:
-        cursor.execute(
-            '''SELECT "識別碼" FROM "使用者" WHERE "使用者名稱" = %s''',
-            (username,)
-        )
-        if cursor.fetchone():
+        if User.query.filter_by(username=username).first():
             return jsonify({"error": "使用者名稱已存在"}), 400
 
-        cursor.execute(
-            '''INSERT INTO "使用者" ("使用者名稱", "密碼", "是否啟用") VALUES (%s, %s, 1)''',
-            (username, hash_password(password))
+        new_user = User(
+            username=username,
+            password=hash_password(password),
+            is_active=1
         )
-        conn.commit()
+        db.session.add(new_user)
+        db.session.commit()
         return jsonify({"success": True, "message": "使用者建立成功"})
     except Exception as e:
-        conn.rollback()
-        return jsonify({"error": handle_db_error(e)}), 500
-    finally:
-        conn.close()
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+

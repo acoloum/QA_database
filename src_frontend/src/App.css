@@ -1227,6 +1227,8 @@ header h1 {
     color: #4f46e5 !important;
     border-bottom-color: #4f46e5 !important;
     background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
 }
 
 .nav-tabs .nav-link {
@@ -1246,6 +1248,8 @@ header h1 {
     color: #4f46e5 !important;
     border-bottom-color: #4f46e5 !important;
     background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
 }
 
 .sidebar-footer {

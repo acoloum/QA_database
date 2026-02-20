@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { Modal, Button, Form, Alert } from 'react-bootstrap';
-import api from '../../services/api';
+import { useImportShipping } from '../../hooks/useShipping';
 
 interface ImportModalProps {
     show: boolean;
@@ -10,9 +10,10 @@ interface ImportModalProps {
 
 const ImportModal = ({ show, handleClose, onSuccess }: ImportModalProps) => {
     const [file, setFile] = useState<File | null>(null);
-    const [uploading, setUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const importMutation = useImportShipping();
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
@@ -27,27 +28,17 @@ const ImportModal = ({ show, handleClose, onSuccess }: ImportModalProps) => {
             return;
         }
 
-        setUploading(true);
         setError(null);
 
-        const formData = new FormData();
-        formData.append('file', file);
-
         try {
-            await api.post('/import', formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
-            });
-            alert('匯入成功');
+            await importMutation.mutateAsync(file);
             onSuccess();
             handleClose();
             setFile(null);
+            if (fileInputRef.current) fileInputRef.current.value = '';
         } catch (err: any) {
             console.error('Import failed:', err);
             setError(err.response?.data?.error || '匯入失敗，請檢查檔案格式');
-        } finally {
-            setUploading(false);
         }
     };
 
@@ -70,13 +61,14 @@ const ImportModal = ({ show, handleClose, onSuccess }: ImportModalProps) => {
                     />
                 </Form.Group>
                 {error && <Alert variant="danger">{error}</Alert>}
+                {importMutation.isError && !error && <Alert variant="danger">匯入發生錯誤</Alert>}
             </Modal.Body>
             <Modal.Footer>
-                <Button variant="secondary" onClick={handleClose} disabled={uploading}>
+                <Button variant="secondary" onClick={handleClose} disabled={importMutation.isPending}>
                     取消
                 </Button>
-                <Button variant="success" onClick={handleUpload} disabled={!file || uploading}>
-                    {uploading ? '匯入中...' : '開始匯入'}
+                <Button variant="success" onClick={handleUpload} disabled={!file || importMutation.isPending}>
+                    {importMutation.isPending ? '匯入中...' : '開始匯入'}
                 </Button>
             </Modal.Footer>
         </Modal>

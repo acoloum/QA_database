@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+
+import { useState, useMemo } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import api from '../../services/api';
 import { analyzeWECO } from '../../utils/spcAnalysis';
 import { Alert, Card, Col, Row, Form, Collapse } from 'react-bootstrap';
+import { usePatrolStats } from '../../hooks/usePatrol';
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
@@ -28,103 +29,88 @@ const POSITIONS = ['前段', '中段', '後段'];
 const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate }: PatrolChartsProps) => {
     const [statsItem, setStatsItem] = useState('外徑');
     const [statsPos, setStatsPos] = useState('前段');
-    const [chartData, setChartData] = useState<any>(null);
-    const [analysis, setAnalysis] = useState<any>(null);
-    const [statsSummary, setStatsSummary] = useState<any>(null);
     const [showViolations, setShowViolations] = useState(true);
 
-    useEffect(() => {
-        const fetchStats = async () => {
-            // Only fetch if some filters are applied to avoid loading too much data
-            // But Patrol might differ, let's allow fetching with dates
-            try {
-                const qs = new URLSearchParams({
-                    item: statsItem,
-                    pos: statsPos,
-                    m_id: machine,
-                    op_id: operator,
-                    mat: material,
-                    spec: spec,
-                    s_date: startDate,
-                    e_date: endDate
-                });
+    const { data: statsData } = usePatrolStats({
+        item: statsItem,
+        pos: statsPos,
+        m_id: machine,
+        op_id: operator,
+        mat: material,
+        spec: spec,
+        s_date: startDate,
+        e_date: endDate
+    });
 
-                const res = await api.get(`/patrol/spc?${qs.toString()}`);
-                const data = res.data;
+    const { chartData, analysis, statsSummary } = useMemo(() => {
+        if (!statsData || !statsData.labels || statsData.labels.length === 0) {
+            return { chartData: null, analysis: null, statsSummary: null };
+        }
 
-                if (!data.labels || data.labels.length === 0) {
-                    setChartData(null);
-                    return;
-                }
+        const data = statsData;
+        const count = data.avgs.length;
 
-                // Analyze WECO
-                const weco = analyzeWECO(data.avgs, data.x_cl, data.x_ucl, data.x_lcl, data.labels);
-                setAnalysis(weco);
+        // Analyze WECO
+        const weco = analyzeWECO(data.avgs, data.x_cl, data.x_ucl, data.x_lcl, data.labels);
 
-                // Stats Summary
-                const count = data.avgs.length;
-                const mean = data.avgs.reduce((a: number, b: number) => a + b, 0) / count;
-                const sorted = [...data.avgs].sort((a: number, b: number) => a - b);
-                const min = sorted[0];
-                const max = sorted[count - 1];
-                const range = max - min;
-                const variance = data.avgs.reduce((acc: number, val: number) => acc + Math.pow(val - mean, 2), 0) / count;
-                const stdDev = Math.sqrt(variance);
+        // Stats Summary
+        const mean = data.avgs.reduce((a: number, b: number) => a + b, 0) / count;
+        const sorted = [...data.avgs].sort((a: number, b: number) => a - b);
+        const min = sorted[0];
+        const max = sorted[count - 1];
+        const range = max - min;
+        const variance = data.avgs.reduce((acc: number, val: number) => acc + Math.pow(val - mean, 2), 0) / count;
+        const stdDev = Math.sqrt(variance);
 
-                setStatsSummary({
-                    count,
-                    mean: mean.toFixed(3),
-                    min: min.toFixed(3),
-                    max: max.toFixed(3),
-                    range: range.toFixed(3),
-                    stdDev: stdDev.toFixed(3),
-                    violations: weco.violations.length
-                });
+        const summary = {
+            count,
+            mean: mean.toFixed(3),
+            min: min.toFixed(3),
+            max: max.toFixed(3),
+            range: range.toFixed(3),
+            stdDev: stdDev.toFixed(3),
+            violations: weco.violations.length
+        };
 
-                // Charts Configuration
-                const pointColors = weco.statuses.map((s) => s === "violation" ? '#ff0000' : '#0d6efd');
-                const pointRadius = weco.statuses.map((s) => s === "violation" ? 6 : 3);
+        // Charts Configuration
+        const pointColors = weco.statuses.map((s) => s === "violation" ? '#ff0000' : '#0d6efd');
+        const pointRadius = weco.statuses.map((s) => s === "violation" ? 6 : 3);
 
-                setChartData({
-                    xBar: {
-                        labels: data.labels,
-                        datasets: [
-                            {
-                                label: '平均值',
-                                data: data.avgs,
-                                borderColor: '#0d6efd',
-                                backgroundColor: pointColors,
-                                pointRadius: pointRadius,
-                                tension: 0.1
-                            },
-                            { label: 'UCL', data: Array(count).fill(data.x_ucl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0 },
-                            { label: 'CL', data: Array(count).fill(data.x_cl), borderColor: 'green', pointRadius: 0 },
-                            { label: 'LCL', data: Array(count).fill(data.x_lcl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0 }
-                        ]
+        const cData = {
+            xBar: {
+                labels: data.labels,
+                datasets: [
+                    {
+                        label: '平均值',
+                        data: data.avgs,
+                        borderColor: '#0d6efd',
+                        backgroundColor: pointColors,
+                        pointRadius: pointRadius,
+                        tension: 0.1
                     },
-                    rChart: {
-                        labels: data.labels,
-                        datasets: [
-                            {
-                                label: '全距 R',
-                                data: data.ranges,
-                                borderColor: '#6f42c1',
-                                backgroundColor: '#6f42c1',
-                                tension: 0.1
-                            },
-                            { label: 'UCL', data: Array(count).fill(data.r_ucl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0 }
-                        ]
-                    }
-                });
-
-            } catch (e) {
-                console.error('Error loading stats:', e);
-                setChartData(null);
+                    { label: 'UCL', data: Array(count).fill(data.x_ucl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0 },
+                    { label: 'CL', data: Array(count).fill(data.x_cl), borderColor: 'green', pointRadius: 0 },
+                    { label: 'LCL', data: Array(count).fill(data.x_lcl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0 }
+                ]
+            },
+            rChart: {
+                labels: data.labels,
+                datasets: [
+                    {
+                        label: '全距 R',
+                        data: data.ranges,
+                        borderColor: '#6f42c1',
+                        backgroundColor: '#6f42c1',
+                        tension: 0.1
+                    },
+                    { label: 'UCL', data: Array(count).fill(data.r_ucl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0 }
+                ]
             }
         };
 
-        fetchStats();
-    }, [statsItem, statsPos, machine, operator, material, spec, startDate, endDate]);
+        return { chartData: cData, analysis: weco, statsSummary: summary };
+
+    }, [statsData]);
 
     if (!chartData) return null;
 

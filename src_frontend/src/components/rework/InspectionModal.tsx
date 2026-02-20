@@ -11,11 +11,10 @@ interface InspectionModalProps {
     show: boolean;
     handleClose: () => void;
     onSuccess: () => void;
-    reworkId: number;
     reworkNumber: string;
 }
 
-const InspectionModal = ({ show, handleClose, onSuccess, reworkId, reworkNumber }: InspectionModalProps) => {
+const InspectionModal = ({ show, handleClose, onSuccess, reworkNumber }: InspectionModalProps) => {
     const [inspectors, setInspectors] = useState<Inspector[]>([]);
     const [loading, setLoading] = useState(false);
 

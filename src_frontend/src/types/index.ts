@@ -39,6 +39,9 @@ export interface ReworkApplication {
     預計完成日期?: string;
     審核狀態?: string;
     審核意見?: string;
+    廠商?: string;
+    材質?: string;
+    批號?: string;
 }
 
 export interface ToleranceResult {

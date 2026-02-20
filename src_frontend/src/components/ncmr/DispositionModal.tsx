@@ -1,7 +1,8 @@
+
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form } from 'react-bootstrap';
-import api from '../../services/api';
 import type { NCMR } from '../../types';
+import { useUpdateNCMR, useCreateCAPA } from '../../hooks/useNCMR';
 
 interface DispositionModalProps {
     show: boolean;
@@ -11,6 +12,9 @@ interface DispositionModalProps {
 }
 
 const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionModalProps) => {
+    const updateMutation = useUpdateNCMR();
+    const createCAPAMutation = useCreateCAPA();
+
     const [result, setResult] = useState('');
     const [status, setStatus] = useState('');
 
@@ -24,16 +28,16 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
     const handleSave = async () => {
         if (!item) return;
         try {
-            await api.post('/ncmr/update', {
+            await updateMutation.mutateAsync({
                 "識別碼": item.id,
                 "判定結果": result,
                 "狀態": status
             });
-            alert('更新成功');
             onSuccess();
             handleClose();
         } catch (error: any) {
-            alert('更新失敗: ' + (error.response?.data?.error || error.message));
+            // Global error handler handles toast
+            console.error(error);
         }
     };
 
@@ -49,19 +53,27 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
         if (!window.confirm('確定要針對此異常單開立 8D 矯正措施嗎？')) return;
 
         try {
-            const res = await api.post('/capa/create', { "ncmr_id": item.id });
-            if (res.status === 200) {
+            const res = await createCAPAMutation.mutateAsync(item.id);
+            // res is { success: true, id: ... } (from backend/routes/ncmr.py)
+            // Backend returns: jsonify({"success": True, **result})
+            // result is dictionary from Service.
+
+            if (res.success || res.id) { // Defensive check
+                const capaId = res.id;
                 alert('已成功建立 CAPA 單，即將前往矯正措施頁面。');
                 handleClose();
-                // Navigate to CAPA page with editId
-                window.location.href = `/capa?editId=${res.data.id}`;
+                window.location.href = `/capa?editId=${capaId}`;
             } else {
+                // Should be caught by catch block if status code is error, 
+                // but if 200 OK with success: false (unlikely for this backend), we handle it.
                 alert('建立失敗');
             }
         } catch (error: any) {
-            alert('建立失敗: ' + error.message);
+            console.error(error);
         }
     };
+
+    const isSaving = updateMutation.isPending || createCAPAMutation.isPending;
 
     return (
         <Modal show={show} onHide={handleClose}>
@@ -92,10 +104,12 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
             <Modal.Footer>
                 <div className="d-flex w-100 justify-content-between">
                     <div>
-                        <Button variant="warning" size="sm" className="me-1" onClick={createCAPA}>轉開 CAPA</Button>
-                        <Button variant="info" size="sm" onClick={convertToRework}>轉重工</Button>
+                        <Button variant="warning" size="sm" className="me-1" onClick={createCAPA} disabled={isSaving}>轉開 CAPA</Button>
+                        <Button variant="info" size="sm" onClick={convertToRework} disabled={isSaving}>轉重工</Button>
                     </div>
-                    <Button variant="primary" onClick={handleSave}>更新處置</Button>
+                    <Button variant="primary" onClick={handleSave} disabled={isSaving}>
+                        {updateMutation.isPending ? '更新中...' : '更新處置'}
+                    </Button>
                 </div>
             </Modal.Footer>
         </Modal>

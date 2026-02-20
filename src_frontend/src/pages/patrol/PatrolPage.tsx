@@ -1,21 +1,17 @@
-import { useState, useEffect } from 'react';
-import api from '../../services/api';
-import type { PatrolInspection } from '../../types';
+
+import { useState } from 'react';
 import PatrolModal from '../../components/patrol/PatrolModal';
-import ImportModal from '../../components/shipping/ImportModal'; // Reuse import modal
 import PatrolCharts from '../../components/patrol/PatrolCharts';
 import { Button, Form, Card, Row, Col, Table, Badge, Pagination } from 'react-bootstrap';
-
 import { useNavigate } from 'react-router-dom';
+import { usePatrolList, usePatrolOptions, useDeletePatrol, useImportPatrol } from '../../hooks/usePatrol';
+import api from '../../services/api';
 
 const PatrolPage = () => {
     const navigate = useNavigate();
-    const [data, setData] = useState<PatrolInspection[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [page, setPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
 
     // Filters
+    const [page, setPage] = useState(1);
     const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
     const [machine, setMachine] = useState('');
@@ -23,59 +19,56 @@ const PatrolPage = () => {
     const [material, setMaterial] = useState('');
     const [spec, setSpec] = useState('');
 
-    // Options
-    const [machines, setMachines] = useState<{ id: number, name: string }[]>([]);
-    const [operators, setOperators] = useState<{ id: number, name: string }[]>([]);
+    // Hooks
+    const { data: optionsData } = usePatrolOptions();
+    const machines = optionsData?.machines || [];
+    const operators = optionsData?.operators || [];
 
-    // Modal State
+    const { data: patrolData, isLoading } = usePatrolList({
+        page,
+        per_page: 20,
+        s_date: startDate,
+        e_date: endDate,
+        m_id: machine,
+        op_id: operator,
+        mat: material,
+        spec: spec
+    });
+
+    const deleteMutation = useDeletePatrol();
+
+    // We can reuse the shipping import modal if we pass a different mutation to it? 
+    // Actually the ImportModal handles its own upload logic internally via api call.
+    // But we should use the new ImportModal which uses useImportShipping... wait.
+    // The ImportModal I refactored was for Shipping (`src/components/shipping/ImportModal.tsx`).
+    // PatrolPage imports `../../components/shipping/ImportModal`.
+    // If I want to reuse it, I should probably make it generic or create a PatrolImportModal.
+    // However, the current `ImportModal` in shipping hardcodes `useImportShipping`.
+    // So I should probably create a specific `ImportModal` for Patrol or make the existing one generic.
+    // For now, I'll create a local implementation or use a clone to avoid breaking Shipping.
+    // Actually, looking at PatrolPage imports: `import ImportModal from '../../components/shipping/ImportModal';`
+    // This connects to the Shipping import logic! That's a bug in the original code or a reused component that was generic before I refactored it.
+    // Before my refactor, ImportModal took `api.post('/import')`... but which import?
+    // The previous ImportModal had `/import` hardcoded.
+    // If ShippingPage used it, it would hit the base URL + `/import`?
+    // Wait, `api.ts` usually has a baseURL.
+    // If `PatrolPage` was using `components/shipping/ImportModal`, and that modal hit `/import`, it might have been hitting the wrong endpoint if not careful?
+    // Actually `routes/shipping.py` has `/api/import` and `routes/patrol.py` has `/api/patrol/import`.
+    // If the old `ImportModal` used `/import`, it likely hit `/api/import` (Shipping).
+    // So PatrolPage was likely importing into Shipping table? That sounds like a bug I should fix.
+    // I should create a dedicated ImportModal for Patrol or make it accept a mutation.
+
+    // Let's create a specialized ImportModal for Patrol inside PatrolPage or a separate file.
+    // Since I can't easily change the shared one without checking all usages (ShippingPage uses it), 
+    // and I just hardcoded `useImportShipping` in it, I should definitely NOT use `components/shipping/ImportModal` for Patrol.
+
     const [showModal, setShowModal] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
     const [editId, setEditId] = useState<number | null>(null);
 
-    useEffect(() => {
-        fetchOptions();
-    }, []);
-
-    useEffect(() => {
-        loadData();
-    }, [page]); // Reload when page changes
-
-    const fetchOptions = async () => {
-        try {
-            const res = await api.get('/patrol/options');
-            setMachines(res.data.machines);
-            setOperators(res.data.operators);
-        } catch (error) {
-            console.error("Failed to load options", error);
-        }
-    };
-
-    const loadData = async () => {
-        setLoading(true);
-        try {
-            const params = {
-                page,
-                per_page: 20,
-                s_date: startDate,
-                e_date: endDate,
-                m_id: machine,
-                op_id: operator,
-                mat: material,
-                spec: spec
-            };
-            const res = await api.get('/patrol/history', { params });
-            setData(res.data.data);
-            setTotalPages(res.data.pages);
-        } catch (error) {
-            console.error("Failed to load data", error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
     const handleSearch = () => {
         setPage(1);
-        loadData();
+        // React Query handles refetching when params change
     };
 
     const handleExport = () => {
@@ -94,13 +87,7 @@ const PatrolPage = () => {
 
     const handleDelete = async (id: number) => {
         if (window.confirm('確定要刪除此筆資料嗎？')) {
-            try {
-                await api.post('/patrol/delete', { id });
-                loadData();
-            } catch (error) {
-                console.error("Delete failed", error);
-                alert('刪除失敗');
-            }
+            deleteMutation.mutate(id);
         }
     };
 
@@ -113,6 +100,9 @@ const PatrolPage = () => {
         setEditId(id);
         setShowModal(true);
     };
+
+    const data = patrolData?.data || [];
+    const totalPages = patrolData?.pages || 1;
 
     return (
         <div className="container-fluid p-4">
@@ -203,7 +193,7 @@ const PatrolPage = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {loading ? (
+                            {isLoading ? (
                                 <tr><td colSpan={7} className="text-center py-4">載入中...</td></tr>
                             ) : data.length === 0 ? (
                                 <tr><td colSpan={7} className="text-center py-4">無資料</td></tr>
@@ -252,16 +242,72 @@ const PatrolPage = () => {
             <PatrolModal
                 show={showModal}
                 handleClose={() => setShowModal(false)}
-                onSuccess={loadData}
+                onSuccess={() => { }} // React Query handles invalidation
                 editId={editId}
             />
 
-            <ImportModal
+            <PatrolImportModal
                 show={showImportModal}
                 handleClose={() => setShowImportModal(false)}
-                onSuccess={loadData}
+                onSuccess={() => { }} // React Query handles invalidation
             />
         </div>
+    );
+};
+
+// Internal component for import to avoid modifying shared one for now
+import { Modal as BSModal, Alert } from 'react-bootstrap';
+import { useRef } from 'react';
+
+const PatrolImportModal = ({ show, handleClose, onSuccess }: { show: boolean, handleClose: () => void, onSuccess: () => void }) => {
+    const [file, setFile] = useState<File | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const importMutation = useImportPatrol();
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files.length > 0) {
+            setFile(e.target.files[0]);
+            setError(null);
+        }
+    };
+
+    const handleUpload = async () => {
+        if (!file) {
+            setError('請選擇檔案');
+            return;
+        }
+        setError(null);
+        try {
+            await importMutation.mutateAsync(file);
+            onSuccess();
+            handleClose();
+            setFile(null);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        } catch (err: any) {
+            setError(err.response?.data?.error || '匯入失敗');
+        }
+    };
+
+    return (
+        <BSModal show={show} onHide={handleClose}>
+            <BSModal.Header closeButton><BSModal.Title>匯入巡檢數據</BSModal.Title></BSModal.Header>
+            <BSModal.Body>
+                <Alert variant="info">請上傳符合格式的 Excel 檔案。</Alert>
+                <Form.Group className="mb-3">
+                    <Form.Label>選擇檔案</Form.Label>
+                    <Form.Control type="file" accept=".xlsx,.xls" onChange={handleFileChange} ref={fileInputRef} />
+                </Form.Group>
+                {error && <Alert variant="danger">{error}</Alert>}
+                {importMutation.isError && !error && <Alert variant="danger">匯入發生錯誤</Alert>}
+            </BSModal.Body>
+            <BSModal.Footer>
+                <Button variant="secondary" onClick={handleClose} disabled={importMutation.isPending}>取消</Button>
+                <Button variant="success" onClick={handleUpload} disabled={!file || importMutation.isPending}>
+                    {importMutation.isPending ? '匯入中...' : '開始匯入'}
+                </Button>
+            </BSModal.Footer>
+        </BSModal>
     );
 };
 

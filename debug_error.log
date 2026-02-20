@@ -1,0 +1,443 @@
+[2026-02-16 09:05:36.614589] ERROR IN ADD_PATROL: (psycopg2.errors.DatatypeMismatch) column "最小值" is of type numeric but expression is of type character varying
+LINE 1: ...::INTEGER, p1::INTEGER, p2::VARCHAR, p3::VARCHAR, p4::VARCHA...
+                                                             ^
+HINT:  You will need to rewrite or cast the expression.
+
+[SQL: INSERT INTO "巡檢子檔" ("主檔ID", "組別", "測量項目", "測量位置", "最小值", "最大值") SELECT p0::INTEGER, p1::INTEGER, p2::VARCHAR, p3::VARCHAR, p4::VARCHAR, p5::VARCHAR FROM (VALUES (%(主檔ID__0)s, %(組別__0)s, %(測量項目__0)s, %(測量位置__0)s, %(最小值__0)s, %(最大值__0)s, 0), (%(主檔ID__1 ... 402 characters truncated ... , p2, p3, p4, p5, sen_counter) ORDER BY sen_counter RETURNING "巡檢子檔"."識別碼", "巡檢子檔"."識別碼" AS "識別碼__1"]
+[parameters: {'最小值__0': '100', '主檔ID__0': 37, '組別__0': 1, '測量位置__0': '前段', '最大值__0': '100', '測量項目__0': '外徑', '最小值__1': '100', '主檔ID__1': 37, '組別__1': 1, '測量位置__1': '前段', '最大值__1': '100', '測量項目__1': '厚度', '最小值__2': '100', '主檔ID__2': 37, '組別__2': 1, '測量位置__2': '中段', '最大值__2': '100', '測量項目__2': '外徑', '最小值__3': '100', '主檔ID__3': 37, '組別__3': 1, '測量位置__3': '中段', '最大值__3': '100', '測量項目__3': '厚度', '最小值__4': '100', '主檔ID__4': 37, '組別__4': 1, '測量位置__4': '後段', '最大值__4': '100', '測量項目__4': '外徑', '最小值__5': '100', '主檔ID__5': 37, '組別__5': 1, '測量位置__5': '後段', '最大值__5': '100', '測量項目__5': '厚度'}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+Traceback (most recent call last):
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 2125, in _exec_insertmany_context
+    dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~^
+        cursor,
+        ^^^^^^^
+    ...<2 lines>...
+        context,
+        ^^^^^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.DatatypeMismatch: column "最小值" is of type numeric but expression is of type character varying
+LINE 1: ...::INTEGER, p1::INTEGER, p2::VARCHAR, p3::VARCHAR, p4::VARCHA...
+                                                             ^
+HINT:  You will need to rewrite or cast the expression.
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Volumes/新建硬碟/QA_database/backend/services/patrol_service.py", line 202, in add_patrol
+    db.session.commit()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/scoping.py", line 597, in commit
+    return self._proxied.commit()
+           ~~~~~~~~~~~~~~~~~~~~^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 2030, in commit
+    trans.commit(_to_root=True)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "<string>", line 2, in commit
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 1311, in commit
+    self._prepare_impl()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "<string>", line 2, in _prepare_impl
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 1286, in _prepare_impl
+    self.session.flush()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 4331, in flush
+    self._flush(objects)
+    ~~~~~~~~~~~^^^^^^^^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 4466, in _flush
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 4427, in _flush
+    flush_context.execute()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/unitofwork.py", line 466, in execute
+    rec.execute(self)
+    ~~~~~~~~~~~^^^^^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/unitofwork.py", line 642, in execute
+    util.preloaded.orm_persistence.save_obj(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self.mapper,
+        ^^^^^^^^^^^^
+        uow.states_for_mapper_hierarchy(self.mapper, False, False),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        uow,
+        ^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/persistence.py", line 93, in save_obj
+    _emit_insert_statements(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        base_mapper,
+        ^^^^^^^^^^^^
+    ...<3 lines>...
+        insert,
+        ^^^^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/persistence.py", line 1143, in _emit_insert_statements
+    result = connection.execute(
+        statement, multiparams, execution_options=execution_options
+    )
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/sql/elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1844, in _execute_context
+    return self._exec_insertmany_context(dialect, context)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 2133, in _exec_insertmany_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e,
+        ^^
+    ...<4 lines>...
+        is_sub_exec=True,
+        ^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 2125, in _exec_insertmany_context
+    dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~^
+        cursor,
+        ^^^^^^^
+    ...<2 lines>...
+        context,
+        ^^^^^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.ProgrammingError: (psycopg2.errors.DatatypeMismatch) column "最小值" is of type numeric but expression is of type character varying
+LINE 1: ...::INTEGER, p1::INTEGER, p2::VARCHAR, p3::VARCHAR, p4::VARCHA...
+                                                             ^
+HINT:  You will need to rewrite or cast the expression.
+
+[SQL: INSERT INTO "巡檢子檔" ("主檔ID", "組別", "測量項目", "測量位置", "最小值", "最大值") SELECT p0::INTEGER, p1::INTEGER, p2::VARCHAR, p3::VARCHAR, p4::VARCHAR, p5::VARCHAR FROM (VALUES (%(主檔ID__0)s, %(組別__0)s, %(測量項目__0)s, %(測量位置__0)s, %(最小值__0)s, %(最大值__0)s, 0), (%(主檔ID__1 ... 402 characters truncated ... , p2, p3, p4, p5, sen_counter) ORDER BY sen_counter RETURNING "巡檢子檔"."識別碼", "巡檢子檔"."識別碼" AS "識別碼__1"]
+[parameters: {'最小值__0': '100', '主檔ID__0': 37, '組別__0': 1, '測量位置__0': '前段', '最大值__0': '100', '測量項目__0': '外徑', '最小值__1': '100', '主檔ID__1': 37, '組別__1': 1, '測量位置__1': '前段', '最大值__1': '100', '測量項目__1': '厚度', '最小值__2': '100', '主檔ID__2': 37, '組別__2': 1, '測量位置__2': '中段', '最大值__2': '100', '測量項目__2': '外徑', '最小值__3': '100', '主檔ID__3': 37, '組別__3': 1, '測量位置__3': '中段', '最大值__3': '100', '測量項目__3': '厚度', '最小值__4': '100', '主檔ID__4': 37, '組別__4': 1, '測量位置__4': '後段', '最大值__4': '100', '測量項目__4': '外徑', '最小值__5': '100', '主檔ID__5': 37, '組別__5': 1, '測量位置__5': '後段', '最大值__5': '100', '測量項目__5': '厚度'}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+
+==============================
+[2026-02-16 09:06:15.389609] ERROR IN ADD_PATROL: (psycopg2.errors.DatatypeMismatch) column "最小值" is of type numeric but expression is of type character varying
+LINE 1: ...::INTEGER, p1::INTEGER, p2::VARCHAR, p3::VARCHAR, p4::VARCHA...
+                                                             ^
+HINT:  You will need to rewrite or cast the expression.
+
+[SQL: INSERT INTO "巡檢子檔" ("主檔ID", "組別", "測量項目", "測量位置", "最小值", "最大值") SELECT p0::INTEGER, p1::INTEGER, p2::VARCHAR, p3::VARCHAR, p4::VARCHAR, p5::VARCHAR FROM (VALUES (%(主檔ID__0)s, %(組別__0)s, %(測量項目__0)s, %(測量位置__0)s, %(最小值__0)s, %(最大值__0)s, 0), (%(主檔ID__1 ... 402 characters truncated ... , p2, p3, p4, p5, sen_counter) ORDER BY sen_counter RETURNING "巡檢子檔"."識別碼", "巡檢子檔"."識別碼" AS "識別碼__1"]
+[parameters: {'最小值__0': '100', '主檔ID__0': 38, '組別__0': 1, '測量位置__0': '前段', '最大值__0': '1000', '測量項目__0': '外徑', '最小值__1': '100', '主檔ID__1': 38, '組別__1': 1, '測量位置__1': '前段', '最大值__1': '100', '測量項目__1': '厚度', '最小值__2': '100', '主檔ID__2': 38, '組別__2': 1, '測量位置__2': '中段', '最大值__2': '100', '測量項目__2': '外徑', '最小值__3': '100', '主檔ID__3': 38, '組別__3': 1, '測量位置__3': '中段', '最大值__3': '100', '測量項目__3': '厚度', '最小值__4': '100', '主檔ID__4': 38, '組別__4': 1, '測量位置__4': '後段', '最大值__4': '100', '測量項目__4': '外徑', '最小值__5': '100', '主檔ID__5': 38, '組別__5': 1, '測量位置__5': '後段', '最大值__5': '100', '測量項目__5': '厚度'}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+Traceback (most recent call last):
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 2125, in _exec_insertmany_context
+    dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~^
+        cursor,
+        ^^^^^^^
+    ...<2 lines>...
+        context,
+        ^^^^^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.DatatypeMismatch: column "最小值" is of type numeric but expression is of type character varying
+LINE 1: ...::INTEGER, p1::INTEGER, p2::VARCHAR, p3::VARCHAR, p4::VARCHA...
+                                                             ^
+HINT:  You will need to rewrite or cast the expression.
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Volumes/新建硬碟/QA_database/backend/services/patrol_service.py", line 202, in add_patrol
+    db.session.commit()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/scoping.py", line 597, in commit
+    return self._proxied.commit()
+           ~~~~~~~~~~~~~~~~~~~~^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 2030, in commit
+    trans.commit(_to_root=True)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "<string>", line 2, in commit
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 1311, in commit
+    self._prepare_impl()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "<string>", line 2, in _prepare_impl
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 1286, in _prepare_impl
+    self.session.flush()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 4331, in flush
+    self._flush(objects)
+    ~~~~~~~~~~~^^^^^^^^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 4466, in _flush
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 4427, in _flush
+    flush_context.execute()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/unitofwork.py", line 466, in execute
+    rec.execute(self)
+    ~~~~~~~~~~~^^^^^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/unitofwork.py", line 642, in execute
+    util.preloaded.orm_persistence.save_obj(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self.mapper,
+        ^^^^^^^^^^^^
+        uow.states_for_mapper_hierarchy(self.mapper, False, False),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        uow,
+        ^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/persistence.py", line 93, in save_obj
+    _emit_insert_statements(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        base_mapper,
+        ^^^^^^^^^^^^
+    ...<3 lines>...
+        insert,
+        ^^^^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/persistence.py", line 1143, in _emit_insert_statements
+    result = connection.execute(
+        statement, multiparams, execution_options=execution_options
+    )
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/sql/elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1844, in _execute_context
+    return self._exec_insertmany_context(dialect, context)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 2133, in _exec_insertmany_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e,
+        ^^
+    ...<4 lines>...
+        is_sub_exec=True,
+        ^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 2125, in _exec_insertmany_context
+    dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~^
+        cursor,
+        ^^^^^^^
+    ...<2 lines>...
+        context,
+        ^^^^^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.ProgrammingError: (psycopg2.errors.DatatypeMismatch) column "最小值" is of type numeric but expression is of type character varying
+LINE 1: ...::INTEGER, p1::INTEGER, p2::VARCHAR, p3::VARCHAR, p4::VARCHA...
+                                                             ^
+HINT:  You will need to rewrite or cast the expression.
+
+[SQL: INSERT INTO "巡檢子檔" ("主檔ID", "組別", "測量項目", "測量位置", "最小值", "最大值") SELECT p0::INTEGER, p1::INTEGER, p2::VARCHAR, p3::VARCHAR, p4::VARCHAR, p5::VARCHAR FROM (VALUES (%(主檔ID__0)s, %(組別__0)s, %(測量項目__0)s, %(測量位置__0)s, %(最小值__0)s, %(最大值__0)s, 0), (%(主檔ID__1 ... 402 characters truncated ... , p2, p3, p4, p5, sen_counter) ORDER BY sen_counter RETURNING "巡檢子檔"."識別碼", "巡檢子檔"."識別碼" AS "識別碼__1"]
+[parameters: {'最小值__0': '100', '主檔ID__0': 38, '組別__0': 1, '測量位置__0': '前段', '最大值__0': '1000', '測量項目__0': '外徑', '最小值__1': '100', '主檔ID__1': 38, '組別__1': 1, '測量位置__1': '前段', '最大值__1': '100', '測量項目__1': '厚度', '最小值__2': '100', '主檔ID__2': 38, '組別__2': 1, '測量位置__2': '中段', '最大值__2': '100', '測量項目__2': '外徑', '最小值__3': '100', '主檔ID__3': 38, '組別__3': 1, '測量位置__3': '中段', '最大值__3': '100', '測量項目__3': '厚度', '最小值__4': '100', '主檔ID__4': 38, '組別__4': 1, '測量位置__4': '後段', '最大值__4': '100', '測量項目__4': '外徑', '最小值__5': '100', '主檔ID__5': 38, '組別__5': 1, '測量位置__5': '後段', '最大值__5': '100', '測量項目__5': '厚度'}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+
+==============================
+[2026-02-16 09:12:20.165609] ERROR IN ADD_PATROL: (psycopg2.errors.DatatypeMismatch) column "最小值" is of type numeric but expression is of type character varying
+LINE 1: ...::INTEGER, p1::INTEGER, p2::VARCHAR, p3::VARCHAR, p4::VARCHA...
+                                                             ^
+HINT:  You will need to rewrite or cast the expression.
+
+[SQL: INSERT INTO "巡檢子檔" ("主檔ID", "組別", "測量項目", "測量位置", "最小值", "最大值") SELECT p0::INTEGER, p1::INTEGER, p2::VARCHAR, p3::VARCHAR, p4::VARCHAR, p5::VARCHAR FROM (VALUES (%(主檔ID__0)s, %(組別__0)s, %(測量項目__0)s, %(測量位置__0)s, %(最小值__0)s, %(最大值__0)s, 0), (%(主檔ID__1 ... 402 characters truncated ... , p2, p3, p4, p5, sen_counter) ORDER BY sen_counter RETURNING "巡檢子檔"."識別碼", "巡檢子檔"."識別碼" AS "識別碼__1"]
+[parameters: {'最小值__0': '100', '主檔ID__0': 39, '組別__0': 1, '測量位置__0': '前段', '最大值__0': '1000', '測量項目__0': '外徑', '最小值__1': '100', '主檔ID__1': 39, '組別__1': 1, '測量位置__1': '前段', '最大值__1': '100', '測量項目__1': '厚度', '最小值__2': '100', '主檔ID__2': 39, '組別__2': 1, '測量位置__2': '中段', '最大值__2': '100', '測量項目__2': '外徑', '最小值__3': '100', '主檔ID__3': 39, '組別__3': 1, '測量位置__3': '中段', '最大值__3': '100', '測量項目__3': '厚度', '最小值__4': '100', '主檔ID__4': 39, '組別__4': 1, '測量位置__4': '後段', '最大值__4': '100', '測量項目__4': '外徑', '最小值__5': '100', '主檔ID__5': 39, '組別__5': 1, '測量位置__5': '後段', '最大值__5': '100', '測量項目__5': '厚度'}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+Traceback (most recent call last):
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 2125, in _exec_insertmany_context
+    dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~^
+        cursor,
+        ^^^^^^^
+    ...<2 lines>...
+        context,
+        ^^^^^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.DatatypeMismatch: column "最小值" is of type numeric but expression is of type character varying
+LINE 1: ...::INTEGER, p1::INTEGER, p2::VARCHAR, p3::VARCHAR, p4::VARCHA...
+                                                             ^
+HINT:  You will need to rewrite or cast the expression.
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Volumes/新建硬碟/QA_database/backend/services/patrol_service.py", line 202, in add_patrol
+    )
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/scoping.py", line 597, in commit
+    return self._proxied.commit()
+           ~~~~~~~~~~~~~~~~~~~~^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 2030, in commit
+    trans.commit(_to_root=True)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "<string>", line 2, in commit
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 1311, in commit
+    self._prepare_impl()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "<string>", line 2, in _prepare_impl
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 1286, in _prepare_impl
+    self.session.flush()
+    ~~~~~~~~~~~~~~~~~~^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 4331, in flush
+    self._flush(objects)
+    ~~~~~~~~~~~^^^^^^^^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 4466, in _flush
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/session.py", line 4427, in _flush
+    flush_context.execute()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/unitofwork.py", line 466, in execute
+    rec.execute(self)
+    ~~~~~~~~~~~^^^^^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/unitofwork.py", line 642, in execute
+    util.preloaded.orm_persistence.save_obj(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self.mapper,
+        ^^^^^^^^^^^^
+        uow.states_for_mapper_hierarchy(self.mapper, False, False),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        uow,
+        ^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/persistence.py", line 93, in save_obj
+    _emit_insert_statements(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        base_mapper,
+        ^^^^^^^^^^^^
+    ...<3 lines>...
+        insert,
+        ^^^^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/orm/persistence.py", line 1143, in _emit_insert_statements
+    result = connection.execute(
+        statement, multiparams, execution_options=execution_options
+    )
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/sql/elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 1844, in _execute_context
+    return self._exec_insertmany_context(dialect, context)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 2133, in _exec_insertmany_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e,
+        ^^
+    ...<4 lines>...
+        is_sub_exec=True,
+        ^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/base.py", line 2125, in _exec_insertmany_context
+    dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~^
+        cursor,
+        ^^^^^^^
+    ...<2 lines>...
+        context,
+        ^^^^^^^^
+    )
+    ^
+  File "/Volumes/新建硬碟/QA_database/venv/lib/python3.14/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.ProgrammingError: (psycopg2.errors.DatatypeMismatch) column "最小值" is of type numeric but expression is of type character varying
+LINE 1: ...::INTEGER, p1::INTEGER, p2::VARCHAR, p3::VARCHAR, p4::VARCHA...
+                                                             ^
+HINT:  You will need to rewrite or cast the expression.
+
+[SQL: INSERT INTO "巡檢子檔" ("主檔ID", "組別", "測量項目", "測量位置", "最小值", "最大值") SELECT p0::INTEGER, p1::INTEGER, p2::VARCHAR, p3::VARCHAR, p4::VARCHAR, p5::VARCHAR FROM (VALUES (%(主檔ID__0)s, %(組別__0)s, %(測量項目__0)s, %(測量位置__0)s, %(最小值__0)s, %(最大值__0)s, 0), (%(主檔ID__1 ... 402 characters truncated ... , p2, p3, p4, p5, sen_counter) ORDER BY sen_counter RETURNING "巡檢子檔"."識別碼", "巡檢子檔"."識別碼" AS "識別碼__1"]
+[parameters: {'最小值__0': '100', '主檔ID__0': 39, '組別__0': 1, '測量位置__0': '前段', '最大值__0': '1000', '測量項目__0': '外徑', '最小值__1': '100', '主檔ID__1': 39, '組別__1': 1, '測量位置__1': '前段', '最大值__1': '100', '測量項目__1': '厚度', '最小值__2': '100', '主檔ID__2': 39, '組別__2': 1, '測量位置__2': '中段', '最大值__2': '100', '測量項目__2': '外徑', '最小值__3': '100', '主檔ID__3': 39, '組別__3': 1, '測量位置__3': '中段', '最大值__3': '100', '測量項目__3': '厚度', '最小值__4': '100', '主檔ID__4': 39, '組別__4': 1, '測量位置__4': '後段', '最大值__4': '100', '測量項目__4': '外徑', '最小值__5': '100', '主檔ID__5': 39, '組別__5': 1, '測量位置__5': '後段', '最大值__5': '100', '測量項目__5': '厚度'}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+
+==============================

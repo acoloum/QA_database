@@ -11,11 +11,10 @@ interface ExecutionModalProps {
     show: boolean;
     handleClose: () => void;
     onSuccess: () => void;
-    reworkId: number;
     reworkNumber: string;
 }
 
-const ExecutionModal = ({ show, handleClose, onSuccess, reworkId, reworkNumber }: ExecutionModalProps) => {
+const ExecutionModal = ({ show, handleClose, onSuccess, reworkNumber }: ExecutionModalProps) => {
     const [inspectors, setInspectors] = useState<Inspector[]>([]);
     const [loading, setLoading] = useState(false);
 
@@ -106,7 +105,16 @@ const ExecutionModal = ({ show, handleClose, onSuccess, reworkId, reworkNumber }
     };
 
     return (
-        <Modal show={show} onHide={handleClose} size="lg">
+        <Modal show={show} onHide={handleClose} size="lg" dialogClassName="modal-rework">
+            <style type="text/css">{`
+                .modal-rework {
+                    max-width: 800px !important;
+                }
+                .modal-rework .modal-body {
+                    max-height: 75vh;
+                    overflow-y: auto;
+                }
+            `}</style>
             <Modal.Header closeButton>
                 <Modal.Title>新增執行記錄 - {reworkNumber}</Modal.Title>
             </Modal.Header>

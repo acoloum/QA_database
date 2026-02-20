@@ -128,7 +128,16 @@ const EditExecutionModal = ({ show, handleClose, onSuccess, execution }: EditExe
     };
 
     return (
-        <Modal show={show} onHide={handleClose} size="lg">
+        <Modal show={show} onHide={handleClose} size="lg" dialogClassName="modal-rework">
+            <style type="text/css">{`
+                .modal-rework {
+                    max-width: 800px !important;
+                }
+                .modal-rework .modal-body {
+                    max-height: 75vh;
+                    overflow-y: auto;
+                }
+            `}</style>
             <Modal.Header closeButton>
                 <Modal.Title>編輯執行記錄</Modal.Title>
             </Modal.Header>

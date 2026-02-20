@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+
+import { useState, useMemo } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import api from '../../services/api';
 import { analyzeWECO } from '../../utils/spcAnalysis';
 import { Alert, Card, Col, Row, Form } from 'react-bootstrap';
+import { useShippingStats } from '../../hooks/useShipping';
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
@@ -29,99 +30,88 @@ const ITEMS = [
 
 const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointClick }: ShippingChartsProps) => {
     const [statsField, setStatsField] = useState('外徑');
-    const [chartData, setChartData] = useState<any>(null);
-    const [chartIds, setChartIds] = useState<string[]>([]);
-    const [analysis, setAnalysis] = useState<any>(null);
-    const [statsSummary, setStatsSummary] = useState<any>(null);
     const [showWeco, setShowWeco] = useState(false);
 
-    useEffect(() => {
-        const fetchStats = async () => {
-            if (!vendor && !material && !spec) {
-                setChartData(null);
-                return;
-            }
+    const { data: statsData } = useShippingStats({
+        field: statsField,
+        vendor,
+        material,
+        spec,
+        start_date: startDate,
+        end_date: endDate
+    });
 
-            try {
-                const res = await api.get(`/stats?field=${statsField}&vendor=${vendor}&material=${material}&spec=${spec}&start_date=${startDate}&end_date=${endDate}`);
-                const data = res.data;
-                setChartIds(data.ids || []);
+    const { chartData, ids, analysis, statsSummary } = useMemo(() => {
+        if (!statsData || !statsData.avgs || statsData.avgs.length === 0) {
+            return { chartData: null, ids: [], analysis: null, statsSummary: null };
+        }
 
-                if (!data.avgs || data.avgs.length === 0) {
-                    setChartData(null);
-                    return;
-                }
+        const data = statsData;
+        const ids = data.ids || [];
+        const count = data.avgs.length;
 
-                // Analyze WECO
-                const weco = analyzeWECO(data.avgs, data.x_cl, data.x_ucl, data.x_lcl, data.labels);
-                setAnalysis(weco);
+        // Analyze WECO
+        const weco = analyzeWECO(data.avgs, data.x_cl, data.x_ucl, data.x_lcl, data.labels);
 
-                // Calculate Summary Stats locally or use backend if available (backend doesn't seem to return summary stats object based on shipping.html, it calculates in JS)
-                // Let's calculate locally like shipping.html
-                const count = data.avgs.length;
-                const mean = data.avgs.reduce((a: number, b: number) => a + b, 0) / count;
-                const sorted = [...data.avgs].sort((a: number, b: number) => a - b);
-                const min = sorted[0];
-                const max = sorted[count - 1];
-                const range = max - min;
-                // Standard Deviation
-                const variance = data.avgs.reduce((acc: number, val: number) => acc + Math.pow(val - mean, 2), 0) / count;
-                const stdDev = Math.sqrt(variance);
+        // Calculate Summary Stats locally
+        const mean = data.avgs.reduce((a: number, b: number) => a + b, 0) / count;
+        const sorted = [...data.avgs].sort((a: number, b: number) => a - b);
+        const min = sorted[0];
+        const max = sorted[count - 1];
+        const range = max - min;
+        // Standard Deviation
+        const variance = data.avgs.reduce((acc: number, val: number) => acc + Math.pow(val - mean, 2), 0) / count;
+        const stdDev = Math.sqrt(variance);
 
-                setStatsSummary({
-                    count,
-                    mean: mean.toFixed(3),
-                    min: min.toFixed(3),
-                    max: max.toFixed(3),
-                    range: range.toFixed(3),
-                    stdDev: stdDev.toFixed(3),
-                    violations: weco.violations.length
-                });
+        const summary = {
+            count,
+            mean: mean.toFixed(3),
+            min: min.toFixed(3),
+            max: max.toFixed(3),
+            range: range.toFixed(3),
+            stdDev: stdDev.toFixed(3),
+            violations: weco.violations.length
+        };
 
-                // Charts Configuration
-                const pointColors = weco.statuses.map((s) => s === "violation" ? '#ff0000' : '#3498db');
-                const pointRadius = weco.statuses.map((s) => s === "violation" ? 6 : 3);
+        // Charts Configuration
+        const pointColors = weco.statuses.map((s) => s === "violation" ? '#ff0000' : '#3498db');
+        const pointRadius = weco.statuses.map((s) => s === "violation" ? 6 : 3);
 
-                setChartData({
-                    xBar: {
-                        labels: data.labels,
-                        datasets: [
-                            {
-                                label: '平均值',
-                                data: data.avgs,
-                                borderColor: '#3498db',
-                                backgroundColor: pointColors,
-                                pointRadius: pointRadius,
-                                tension: 0.1
-                            },
-                            { label: 'UCL', data: Array(count).fill(data.x_ucl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0 },
-                            { label: 'CL', data: Array(count).fill(data.x_cl), borderColor: 'green', pointRadius: 0 },
-                            { label: 'LCL', data: Array(count).fill(data.x_lcl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0 }
-                        ]
+        const cData = {
+            xBar: {
+                labels: data.labels,
+                datasets: [
+                    {
+                        label: '平均值',
+                        data: data.avgs,
+                        borderColor: '#3498db',
+                        backgroundColor: pointColors,
+                        pointRadius: pointRadius,
+                        tension: 0.1
                     },
-                    rChart: {
-                        labels: data.labels,
-                        datasets: [
-                            {
-                                label: '全距 R',
-                                data: data.ranges,
-                                borderColor: '#f39c12',
-                                backgroundColor: '#f39c12',
-                                tension: 0.1
-                            },
-                            { label: 'UCL', data: Array(count).fill(data.r_ucl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0 }
-                        ]
-                    }
-                });
-
-            } catch (e) {
-                console.error('Error loading stats:', e);
-                setChartData(null);
+                    { label: 'UCL', data: Array(count).fill(data.x_ucl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0 },
+                    { label: 'CL', data: Array(count).fill(data.x_cl), borderColor: 'green', pointRadius: 0 },
+                    { label: 'LCL', data: Array(count).fill(data.x_lcl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0 }
+                ]
+            },
+            rChart: {
+                labels: data.labels,
+                datasets: [
+                    {
+                        label: '全距 R',
+                        data: data.ranges,
+                        borderColor: '#f39c12',
+                        backgroundColor: '#f39c12',
+                        tension: 0.1
+                    },
+                    { label: 'UCL', data: Array(count).fill(data.r_ucl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0 }
+                ]
             }
         };
 
-        fetchStats();
-    }, [statsField, vendor, material, spec, startDate, endDate]);
+        return { chartData: cData, ids, analysis: weco, statsSummary: summary };
+
+    }, [statsData]);
 
     if (!chartData) return <div className="text-center py-5 text-muted">請選擇廠商、材質與規格以檢視 SPC 圖表。</div>;
 
@@ -189,9 +179,9 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                         maintainAspectRatio: false,
                                         plugins: { legend: { display: false } },
                                         onClick: (_event, elements) => {
-                                            if (elements.length > 0 && chartIds.length > 0) {
+                                            if (elements.length > 0 && ids.length > 0) {
                                                 const index = elements[0].index;
-                                                const id = chartIds[index];
+                                                const id = ids[index];
                                                 if (id && onPointClick) onPointClick(Number(id));
                                             }
                                         }
@@ -212,9 +202,9 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                         maintainAspectRatio: false,
                                         plugins: { legend: { display: false } },
                                         onClick: (_event, elements) => {
-                                            if (elements.length > 0 && chartIds.length > 0) {
+                                            if (elements.length > 0 && ids.length > 0) {
                                                 const index = elements[0].index;
-                                                const id = chartIds[index];
+                                                const id = ids[index];
                                                 if (id && onPointClick) onPointClick(Number(id));
                                             }
                                         }

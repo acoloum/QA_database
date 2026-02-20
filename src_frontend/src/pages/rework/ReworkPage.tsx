@@ -396,7 +396,7 @@ const ReworkPage = () => {
                 onSuccess={loadData}
                 reworkId={selectedReworkId}
             />
-            <Modal show={showDetailModal} onHide={() => setShowDetailModal(false)} size="lg">
+            <Modal show={showDetailModal} onHide={() => setShowDetailModal(false)} dialogClassName="modal-rework-detail">
                 <Modal.Header closeButton>
                     <Modal.Title>重工申請詳情 - {selectedReworkDetail?.申請單號}</Modal.Title>
                 </Modal.Header>

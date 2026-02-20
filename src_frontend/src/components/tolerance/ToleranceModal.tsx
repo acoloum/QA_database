@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Row, Col, Table } from 'react-bootstrap';
-import api from '../../services/api';
+import { useToleranceDetail, useCreateTolerance, useUpdateTolerance } from '../../hooks/useTolerance';
 
 interface ToleranceModalProps {
     show: boolean;
@@ -29,17 +29,49 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
     const [vendorId, setVendorId] = useState('');
     const [remark, setRemark] = useState('');
     const [details, setDetails] = useState<DetailRow[]>([]);
-    const [loading, setLoading] = useState(false);
+
+    const createEmptyRow = (): DetailRow => ({
+        item: '', position: '', size_min: '', size_max: '', tol_min: '', tol_max: '', std: '', unit: 'mm', remark: ''
+    });
+
+    // Hooks
+    const { data: detailData, isLoading: detailLoading } = useToleranceDetail(show && editId ? editId : null);
+    const createMutation = useCreateTolerance();
+    const updateMutation = useUpdateTolerance();
 
     useEffect(() => {
         if (show) {
             if (editId) {
-                loadDetail(editId);
+                // Wait for data to load
+                if (detailData) {
+                    const { main, details: dList } = detailData;
+                    setDate(main.建立日期 ? main.建立日期.split('T')[0] : '');
+                    setMaterial(main.材質 || '');
+                    setSpec(main.規格 || '');
+                    setVendorId(main.廠商ID?.toString() || '');
+                    setRemark(main.備註 || '');
+
+                    if (dList && dList.length > 0) {
+                        setDetails(dList.map((d: any) => ({
+                            item: d.測量項目 || '',
+                            position: d.測量位置 || '',
+                            size_min: d.尺寸下限 ?? '',
+                            size_max: d.尺寸上限 ?? '',
+                            tol_min: d.公差下限 ?? '',
+                            tol_max: d.公差上限 ?? '',
+                            std: d.標準值 ?? '',
+                            unit: d.單位 || 'mm',
+                            remark: d.備註 || ''
+                        })));
+                    } else {
+                        setDetails([createEmptyRow()]);
+                    }
+                }
             } else {
                 resetForm();
             }
         }
-    }, [show, editId]);
+    }, [show, editId, detailData]);
 
     const resetForm = () => {
         setDate(new Date().toISOString().split('T')[0]);
@@ -48,45 +80,6 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
         setVendorId('');
         setRemark('');
         setDetails([createEmptyRow()]);
-    };
-
-    const createEmptyRow = (): DetailRow => ({
-        item: '', position: '', size_min: '', size_max: '', tol_min: '', tol_max: '', std: '', unit: 'mm', remark: ''
-    });
-
-    const loadDetail = async (id: number) => {
-        setLoading(true);
-        try {
-            const res = await api.get(`/tolerance/${id}`);
-            if (res.data.success) {
-                const { main, details: dList } = res.data;
-                setDate(main.建立日期 ? main.建立日期.split('T')[0] : '');
-                setMaterial(main.材質 || '');
-                setSpec(main.規格 || '');
-                setVendorId(main.廠商ID || '');
-                setRemark(main.備註 || '');
-
-                if (dList && dList.length > 0) {
-                    setDetails(dList.map((d: any) => ({
-                        item: d.測量項目 || '',
-                        position: d.測量位置 || '',
-                        size_min: d.尺寸下限 ?? '',
-                        size_max: d.尺寸上限 ?? '',
-                        tol_min: d.公差下限 ?? '',
-                        tol_max: d.公差上限 ?? '',
-                        std: d.標準值 ?? '',
-                        unit: d.單位 || 'mm',
-                        remark: d.備註 || ''
-                    })));
-                } else {
-                    setDetails([createEmptyRow()]);
-                }
-            }
-        } catch (error) {
-            console.error("Failed to load detail", error);
-        } finally {
-            setLoading(false);
-        }
     };
 
     const handleDetailChange = (index: number, field: keyof DetailRow, value: string) => {
@@ -107,6 +100,11 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
 
     const handleSave = async () => {
         if (!material) {
+            // Toast will be better but keeping alert for client-side validation just in case, 
+            // though toast is preferred. 
+            // Since we have global error handling, using toast.error would be consistent if we import it,
+            // but the plan says "global error handling" used in interceptors. 
+            // For form validation, we can throw error or use alert. Alert is fine for now or validtion lib.
             alert('請輸入材質');
             return;
         }
@@ -134,19 +132,20 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
             details: payloadDetails
         };
 
-        try {
-            const url = editId ? `/tolerance/update/${editId}` : '/tolerance/add';
-            const res = await api.post(url, payload);
-            if (res.data.success) {
-                alert('儲存成功');
-                onSuccess();
-                handleClose();
-            } else {
-                alert(res.data.error || '儲存失敗');
-            }
-        } catch (error: any) {
-            console.error("Save failed", error);
-            alert('儲存失敗');
+        if (editId) {
+            updateMutation.mutate({ id: editId, data: payload }, {
+                onSuccess: () => {
+                    onSuccess();
+                    handleClose();
+                }
+            });
+        } else {
+            createMutation.mutate(payload, {
+                onSuccess: () => {
+                    onSuccess();
+                    handleClose();
+                }
+            });
         }
     };
 
@@ -163,7 +162,7 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
                         }
                     `}
                 </style>
-                {loading ? <div className="text-center">載入中...</div> : (
+                {detailLoading && editId ? <div className="text-center">載入中...</div> : (
                     <>
                         <div className="bg-light p-3 rounded mb-3">
                             <Row className="g-3">
@@ -225,7 +224,9 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
             </Modal.Body>
             <Modal.Footer>
                 <Button variant="secondary" onClick={handleClose}>取消</Button>
-                <Button variant="primary" onClick={handleSave}>儲存</Button>
+                <Button variant="primary" onClick={handleSave} disabled={createMutation.isPending || updateMutation.isPending}>
+                    {createMutation.isPending || updateMutation.isPending ? '儲存中...' : '儲存'}
+                </Button>
             </Modal.Footer>
         </Modal>
     );

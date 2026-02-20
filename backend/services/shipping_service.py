@@ -3,8 +3,11 @@ import pandas as pd
 import numpy as np
 from io import BytesIO
 from datetime import datetime
+from typing import List, Dict, Any, Optional, Union
+from sqlalchemy import or_, text
+from ..extensions import db
+from ..models import ShippingData, Inspector, Vendor, VendorToleranceMain, VendorToleranceDetail
 from ..utils import (
-    get_db_connection,
     format_value,
     validate_inspection_data,
     handle_db_error
@@ -12,571 +15,476 @@ from ..utils import (
 
 class ShippingService:
     @staticmethod
-    def get_list(args):
+    def _map_row_to_dict(item: ShippingData) -> Dict[str, Any]:
+        """Helper to map ShippingData model to the legacy dictionary format with Chinese keys"""
+        inspector_name = item.inspector.name if item.inspector else ""
+        vendor_name = item.vendor.name if item.vendor else ""
+        
+        # Handle date formatting
+        date_str = item.date.strftime('%Y-%m-%d') if item.date else ""
+
+        res = {
+            "識別碼": item.id,
+            "檢驗日期": date_str,
+            "材質": format_value(item.material),
+            "檢驗規格": format_value(item.spec),
+            "訂單號碼": format_value(item.order_num),
+            "檢驗人員": inspector_name.strip(),
+            "廠商中文名稱": vendor_name.strip(), # legacy key
+            "廠商名稱": vendor_name.strip()      # legacy key
+        }
+
+        # Map dynamic columns
+        for i in range(1, 6):
+            # Min/Max items
+            res[f"外徑{i}-min"] = format_value(getattr(item, f"od{i}_min"))
+            res[f"外徑{i}-max"] = format_value(getattr(item, f"od{i}_max"))
+            res[f"內徑{i}-min"] = format_value(getattr(item, f"id{i}_min"))
+            res[f"內徑{i}-max"] = format_value(getattr(item, f"id{i}_max"))
+            res[f"厚度{i}-min"] = format_value(getattr(item, f"th{i}_min"))
+            res[f"厚度{i}-max"] = format_value(getattr(item, f"th{i}_max"))
+             
+            # Single value items
+            res[f"同心度{i}"] = format_value(getattr(item, f"concentricity{i}"))
+            res[f"長度{i}"] = format_value(getattr(item, f"length{i}"))
+            res[f"硬度{i}"] = format_value(getattr(item, f"hardness{i}"))
+            res[f"真直度{i}"] = format_value(getattr(item, f"straightness{i}"))
+
+        return res
+
+    @staticmethod
+    def get_list(args: Dict[str, Any]) -> Dict[str, Any]:
         """獲取出貨檢驗數據列表"""
-        params = []
-        where = []
-
-        # 支援按 ID 查詢（優先處理）
-        if args.get('id'):
-            where.append("T1.識別碼 = %s")
-            params.append(args['id'])
-        else:
-            # 一般查詢條件
-            if args.get('vendor'):   where.append("V.廠商名稱 LIKE %s"); params.append(f"%{args['vendor']}%")
-            if args.get('material'): where.append("T1.材質 LIKE %s");     params.append(f"%{args['material']}%")
-            if args.get('spec'):     where.append("T1.檢驗規格 LIKE %s"); params.append(f"%{args['spec']}%")
-            if args.get('start_date'): where.append("T1.檢驗日期 >= %s"); params.append(args['start_date'])
-            if args.get('end_date'):   where.append("T1.檢驗日期 <= %s"); params.append(args['end_date'])
-
-        where_sql = " WHERE " + " AND ".join(where) if where else ""
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
         try:
-            sql = f"""
-                SELECT T1.識別碼, T1.檢驗日期, T1.材質, T1.檢驗規格, T1.訂單號碼,
-                       P.姓名 AS 檢驗人員, V.廠商名稱 AS 廠商中文名稱,
-                       T1."外徑1-min", T1."外徑1-max", T1."外徑2-min", T1."外徑2-max",
-                       T1."外徑3-min", T1."外徑3-max", T1."外徑4-min", T1."外徑4-max",
-                       T1."外徑5-min", T1."外徑5-max",
-                       T1."內徑1-min", T1."內徑1-max", T1."內徑2-min", T1."內徑2-max",
-                       T1."內徑3-min", T1."內徑3-max", T1."內徑4-min", T1."內徑4-max",
-                       T1."內徑5-min", T1."內徑5-max",
-                       T1."厚度1-min", T1."厚度1-max", T1."厚度2-min", T1."厚度2-max",
-                       T1."厚度3-min", T1."厚度3-max", T1."厚度4-min", T1."厚度4-max",
-                       T1."厚度5-min", T1."厚度5-max",
-                       T1.同心度1, T1.同心度2, T1.同心度3, T1.同心度4, T1.同心度5,
-                       T1.長度1, T1.長度2, T1.長度3, T1.長度4, T1.長度5,
-                       T1.硬度1, T1.硬度2, T1.硬度3, T1.硬度4, T1.硬度5,
-                       T1.真直度1, T1.真直度2, T1.真直度3, T1.真直度4, T1.真直度5
-                  FROM "出貨檢驗數據" T1
-                  LEFT JOIN "品管人員" P ON T1.檢驗人員 = P.識別碼
-                  LEFT JOIN "廠商資料" V ON T1.廠商名稱 = V.識別碼
-                  {where_sql}
-                  ORDER BY T1.識別碼 DESC
-            """
-            cursor.execute(sql, params)
-            cols = [c[0] for c in cursor.description]
-            all_data = []
-            for row in cursor.fetchall():
-                item = dict(zip(cols, row))
-                for key, val in item.items():
-                    item[key] = format_value(val)
-                
-                # 確保檢驗日期是 YYYY-MM-DD 格式
-                if item.get('檢驗日期'):
-                    date_val = item['檢驗日期']
-                    if isinstance(date_val, str):
-                        if len(date_val) == 10 and '-' in date_val:
-                            pass
-                        elif 'T' in date_val:
-                            item['檢驗日期'] = date_val.split('T')[0]
-                        else:
-                            try:
-                                parsed = datetime.strptime(date_val[:10], '%Y-%m-%d')
-                                item['檢驗日期'] = parsed.strftime('%Y-%m-%d')
-                            except:
-                                pass
-                
-                all_data.append(item)
-                
-            # 分頁處理
-            total = len(all_data)
+            query = ShippingData.query
+            
+            # Joins for filtering/display
+            query = query.outerjoin(Vendor, ShippingData.vendor_id == Vendor.id)
+            query = query.outerjoin(Inspector, ShippingData.inspector_id == Inspector.id)
+
+            if args.get('id'):
+                query = query.filter(ShippingData.id == args['id'])
+            else:
+                if args.get('vendor'):   query = query.filter(Vendor.name.like(f"%{args['vendor']}%"))
+                if args.get('material'): query = query.filter(ShippingData.material.like(f"%{args['material']}%"))
+                if args.get('spec'):     query = query.filter(ShippingData.spec.like(f"%{args['spec']}%"))
+                if args.get('start_date'): query = query.filter(ShippingData.date >= args['start_date'])
+                if args.get('end_date'):   query = query.filter(ShippingData.date <= args['end_date'])
+
+            query = query.order_by(ShippingData.id.desc())
+
+            # Pagination
             page = int(args.get('page', 1))
             per_page = 10
-            start = (page - 1) * per_page
-            end = start + per_page
+            pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+            all_data = [ShippingService._map_row_to_dict(item) for item in pagination.items]
             
             return {
-                "data": all_data[start:end],
-                "total": total,
-                "total_pages": (total + per_page - 1) // per_page
+                "data": all_data,
+                "total": pagination.total,
+                "total_pages": pagination.pages
             }
-        finally:
-            conn.close()
+        except Exception as e:
+            raise e
 
     @staticmethod
-    def get_by_id(data_id):
+    def get_by_id(data_id: int) -> Optional[Dict[str, Any]]:
         """根據 ID 獲取單筆出貨檢驗資料"""
-        conn = get_db_connection()
-        cursor = conn.cursor()
         try:
-            sql = """
-                SELECT T1.識別碼, T1.檢驗日期, T1.材質, T1.檢驗規格, T1.訂單號碼,
-                       P.姓名 AS 檢驗人員, V.廠商名稱 AS 廠商中文名稱,
-                       T1."外徑1-min", T1."外徑1-max", T1."外徑2-min", T1."外徑2-max",
-                       T1."外徑3-min", T1."外徑3-max", T1."外徑4-min", T1."外徑4-max",
-                       T1."外徑5-min", T1."外徑5-max",
-                       T1."內徑1-min", T1."內徑1-max", T1."內徑2-min", T1."內徑2-max",
-                       T1."內徑3-min", T1."內徑3-max", T1."內徑4-min", T1."內徑4-max",
-                       T1."內徑5-min", T1."內徑5-max",
-                       T1."厚度1-min", T1."厚度1-max", T1."厚度2-min", T1."厚度2-max",
-                       T1."厚度3-min", T1."厚度3-max", T1."厚度4-min", T1."厚度4-max",
-                       T1."厚度5-min", T1."厚度5-max",
-                       T1.同心度1, T1.同心度2, T1.同心度3, T1.同心度4, T1.同心度5,
-                       T1.長度1, T1.長度2, T1.長度3, T1.長度4, T1.長度5,
-                       T1.硬度1, T1.硬度2, T1.硬度3, T1.硬度4, T1.硬度5,
-                       T1.真直度1, T1.真直度2, T1.真直度3, T1.真直度4, T1.真直度5
-                FROM "出貨檢驗數據" T1
-                LEFT JOIN "品管人員" P ON T1.檢驗人員 = P.識別碼
-                LEFT JOIN "廠商資料" V ON T1.廠商名稱 = V.識別碼
-                WHERE T1.識別碼 = %s
-            """
-            cursor.execute(sql, (data_id,))
-            cols = [c[0] for c in cursor.description]
-            row = cursor.fetchone()
-            
-            if row is None:
+            item = ShippingData.query.get(data_id)
+            if not item:
                 return None
-            
-            item = dict(zip(cols, row))
-            
-            # 格式化每個值
-            for key, val in item.items():
-                item[key] = format_value(val)
-            
-            # 確保檢驗日期是 YYYY-MM-DD 格式
-            if item.get('檢驗日期'):
-                date_val = item['檢驗日期']
-                if isinstance(date_val, str) and 'T' in date_val:
-                    item['檢驗日期'] = date_val.split('T')[0]
-            
-            return item
-        finally:
-            cursor.close()
-            conn.close()
+            return ShippingService._map_row_to_dict(item)
+        except Exception as e:
+            raise e
 
     @staticmethod
-    def get_stats(args):
+    def get_stats(args: Dict[str, Any]) -> Dict[str, Any]:
         """獲取出貨檢驗的 SPC 統計數據（含公差界限）"""
-        field = args.get('field', '外徑')
+        field = args.get('field', '外徑') # Example: "外徑"
         vendor = args.get('vendor')
         material = args.get('material')
         spec = args.get('spec')
         start_date = args.get('start_date')
         end_date = args.get('end_date')
 
-        params = []
-        where = []
-        if vendor: where.append("V.廠商名稱 LIKE %s"); params.append(f"%{vendor}%")
-        if material: where.append("T1.材質 LIKE %s"); params.append(f"%{material}%")
-        if spec: where.append("T1.檢驗規格 LIKE %s"); params.append(f"%{spec}%")
-        if start_date: where.append("T1.檢驗日期 >= %s"); params.append(start_date)
-        if end_date: where.append("T1.檢驗日期 <= %s"); params.append(end_date)
-        
-        where_sql = " WHERE " + " AND ".join(where) if where else ""
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
         try:
-            # 查詢公差標準（如果有）
+            # 1. Tolerance Lookup (ORM)
             tolerance_limits = {"USL": None, "LSL": None, "found": False}
             if material:
-                cursor.execute("""
-                    SELECT T1."識別碼"
-                    FROM "廠商公差主檔" T1
-                    WHERE T1."材質" = %s
-                    ORDER BY T1."廠商ID" DESC NULLS LAST, T1."規格" DESC NULLS LAST
-                    LIMIT 1
-                """, (material,))
-                tol_main = cursor.fetchone()
+                tol_main = VendorToleranceMain.query.filter_by(material=material)\
+                    .order_by(VendorToleranceMain.vendor_id.desc().nullslast(), VendorToleranceMain.spec.desc().nullslast())\
+                    .first()
+                
                 if tol_main:
-                    # 查找對應測量項目的公差
-                    cursor.execute("""
-                        SELECT "公差下限", "公差上限", "尺寸下限", "尺寸上限"
-                        FROM "廠商公差明細檔"
-                        WHERE "主檔ID" = %s AND "測量項目" = %s
-                        LIMIT 1
-                    """, (tol_main[0], field))
-                    tol_detail = cursor.fetchone()
+                    tol_detail = VendorToleranceDetail.query.filter_by(main_id=tol_main.id, item=field).first()
                     if tol_detail:
                         tolerance_limits["found"] = True
-                        tolerance_limits["公差下限"] = float(tol_detail[0]) if tol_detail[0] is not None else None
-                        tolerance_limits["公差上限"] = float(tol_detail[1]) if tol_detail[1] is not None else None
-                        tolerance_limits["尺寸下限"] = float(tol_detail[2]) if tol_detail[2] is not None else None
-                        tolerance_limits["尺寸上限"] = float(tol_detail[3]) if tol_detail[3] is not None else None
-                        # 計算 USL/LSL (標準值 ± 公差)
-                        if tol_detail[2] is not None and tol_detail[3] is not None:
-                            tolerance_limits["LSL"] = float(tol_detail[2])
-                            tolerance_limits["USL"] = float(tol_detail[3])
-                        elif tol_detail[0] is not None and tol_detail[1] is not None:
-                            # 如果沒有尺寸上下限，嘗試用公差計算
-                            std_val = cursor.execute("""
-                                SELECT "標準值" FROM "廠商公差明細檔" 
-                                WHERE "主檔ID" = %s AND "測量項目" = %s LIMIT 1
-                            """, (tol_main[0], field))
-                            std_result = cursor.fetchone()
-                            if std_result and std_result[0] is not None:
-                                std = float(std_result[0])
-                                tolerance_limits["LSL"] = std - float(tol_detail[0])
-                                tolerance_limits["USL"] = std + float(tol_detail[1])
-                            else:
-                                tolerance_limits["LSL"] = None
-                                tolerance_limits["USL"] = None
-            sql = f"""
-                SELECT T1.識別碼, T1.檢驗日期, T1.訂單號碼,
-                       T1."{field}1-min", T1."{field}1-max",
-                       T1."{field}2-min", T1."{field}2-max",
-                       T1."{field}3-min", T1."{field}3-max",
-                       T1."{field}4-min", T1."{field}4-max",
-                       T1."{field}5-min", T1."{field}5-max"
-                FROM "出貨檢驗數據" T1
-                LEFT JOIN "廠商資料" V ON T1.廠商名稱 = V.識別碼
-                {where_sql}
-                ORDER BY T1.識別碼 DESC
-            """
-            # 如果欄位不是 minmax 類型，SQL 會有不同
+                        tolerance_limits["公差下限"] = tol_detail.tolerance_min
+                        tolerance_limits["公差上限"] = tol_detail.tolerance_max
+                        tolerance_limits["尺寸下限"] = tol_detail.dim_min
+                        tolerance_limits["尺寸上限"] = tol_detail.dim_max
+                        
+                        if tol_detail.dim_min is not None and tol_detail.dim_max is not None:
+                            tolerance_limits["LSL"] = tol_detail.dim_min
+                            tolerance_limits["USL"] = tol_detail.dim_max
+                        elif tol_detail.tolerance_min is not None and tol_detail.tolerance_max is not None:
+                            # Try to get standard value if dims missing
+                             # For simplicity, if standard value was needed we query it. 
+                             # The model has dim_min/max, tol_min/max, and std_val?
+                             # In model definition: std_val = db.Column('標準值', db.Float)
+                             
+                             std = tol_detail.std_val
+                             if std is not None:
+                                 tolerance_limits["LSL"] = std - tol_detail.tolerance_min
+                                 tolerance_limits["USL"] = std + tol_detail.tolerance_max
+
+            # 2. Data Query (ORM)
+            # Map field name to model attribute prefix
+            field_map = {
+                '外徑': 'od',
+                '內徑': 'id', # id{i}_min
+                '厚度': 'th',
+                '同心度': 'concentricity',
+                '長度': 'length',
+                '硬度': 'hardness',
+                '真直度': 'straightness'
+            }
+            attr_prefix = field_map.get(field)
+            if not attr_prefix:
+                return {"labels": [], "avgs": [], "ranges": []}
+
             is_minmax = field in ['外徑', '內徑', '厚度']
-            if not is_minmax:
-                sql = f"""
-                    SELECT T1.識別碼, T1.檢驗日期, T1.訂單號碼,
-                           T1."{field}1", T1."{field}2", T1."{field}3", T1."{field}4", T1."{field}5"
-                    FROM "出貨檢驗數據" T1
-                    LEFT JOIN "廠商資料" V ON T1.廠商名稱 = V.識別碼
-                    {where_sql}
-                    ORDER BY T1.識別碼 DESC
-                """
+
+            # Dynamic query selection
+            # Select ID, Date, OrderNum and the relevant 5 groups columns
+            entities = [ShippingData.id, ShippingData.date, ShippingData.order_num]
+            for i in range(1, 6):
+                if is_minmax:
+                    entities.append(getattr(ShippingData, f"{attr_prefix}{i}_min"))
+                    entities.append(getattr(ShippingData, f"{attr_prefix}{i}_max"))
+                else:
+                    entities.append(getattr(ShippingData, f"{attr_prefix}{i}"))
+
+            query = db.session.query(*entities).outerjoin(Vendor, ShippingData.vendor_id == Vendor.id)
+
+            if vendor:   query = query.filter(Vendor.name.like(f"%{vendor}%"))
+            if material: query = query.filter(ShippingData.material.like(f"%{material}%"))
+            if spec:     query = query.filter(ShippingData.spec.like(f"%{spec}%"))
+            if start_date: query = query.filter(ShippingData.date >= start_date)
+            if end_date:   query = query.filter(ShippingData.date <= end_date)
             
-            rows = cursor.execute(sql, params)
-            rows = cursor.fetchall()
+            query = query.order_by(ShippingData.id.desc())
             
+            rows = query.all() # These are tuples now
+
             if not rows:
                 return {"labels": [], "avgs": [], "ranges": [], "x_cl":0, "x_ucl":0, "x_lcl":0, "r_cl":0, "r_ucl":0}
 
-            labels = []
-            ids = []
-            dates = []
+            # Processing Logic (Same as before but accessing tuple indices)
+            # Tuple structure:
+            # 0: id, 1: date, 2: order_num
+            # 3...: measurements
+            
             avgs = []
             ranges = []
-            ids_valid = []  # 只存有效數據的 ID
-            dates_valid = []  # 只存有效數據的日期
-            labels_valid = []  # 只存有效數據的標籤
-            insufficient_data = []  # 標記數據不足的原始索引
-            
-            # 從後往前排（時間序）
+            ids_valid = []
+            dates_valid = []
+            labels_valid = []
+            insufficient_data = []
+
             for idx, r in enumerate(rows[::-1]):
-                vals = []
-                valid_groups = 0  # 有效組數
+                vals: List[float] = []
+                valid_groups = 0
                 
-                if is_minmax:
-                    # 每組取 (min + max) / 2，min 和 max 都必須有值才算有效
-                    for i in range(3, 13, 2):
-                        if r[i] is not None and r[i+1] is not None and r[i] != '' and r[i+1] != '':
-                            try:
-                                val = (float(r[i]) + float(r[i+1])) / 2
+                # Iterate logic depends on how many columns we fetched
+                # If minmax: 3,4 (Group1), 5,6 (Group2)...
+                # If single: 3 (Group1), 4 (Group2)...
+                
+                current_col_idx = 3
+                
+                for i in range(1, 6):
+                    try:
+                        if is_minmax:
+                            v1_str = r[current_col_idx]
+                            v2_str = r[current_col_idx+1]
+                            current_col_idx += 2
+                            
+                            if v1_str and v2_str: # checking not None and not empty string
+                                val = (float(v1_str) + float(v2_str)) / 2
                                 vals.append(val)
                                 valid_groups += 1
-                            except (ValueError, TypeError):
-                                pass
-                else:
-                    for i in range(3, 8):
-                        if r[i] is not None and r[i] != '':
-                            try:
-                                vals.append(float(r[i]))
+                        else:
+                            v_str = r[current_col_idx]
+                            current_col_idx += 1
+                            if v_str:
+                                vals.append(float(v_str))
                                 valid_groups += 1
-                            except (ValueError, TypeError):
-                                pass
-                
+                    except (ValueError, TypeError):
+                         pass # Skip invalid numbers
+
                 original_idx = len(rows) - 1 - idx
                 
                 if valid_groups >= 3 and vals:
                     vals_np = np.array(vals, dtype=float)
-                    avg_val = float(np.mean(vals_np))
-                    range_val = float(np.ptp(vals_np))
-                    avgs.append(avg_val)
-                    ranges.append(range_val)
+                    avgs.append(float(np.mean(vals_np)))
+                    ranges.append(float(np.ptp(vals_np)))
                     ids_valid.append(str(r[0]))
-                    dates_valid.append(str(r[1]) if r[1] else '')
-                    labels_valid.append(str(r[2]) if r[2] else str(r[0]))
+                    # Date formatting
+                    d_val = r[1]
+                    d_str = d_val.strftime('%Y-%m-%d') if hasattr(d_val, 'strftime') else str(d_val) if d_val else ''
+                    dates_valid.append(d_str)
+                    
+                    label_val = r[2] # Order number
+                    labels_valid.append(str(label_val) if label_val else str(r[0]))
                 else:
                     insufficient_data.append({
-                        "id": str(r[0]),
-                        "date": str(r[1]) if r[1] else '',
-                        "valid_groups": valid_groups,
-                        "original_idx": original_idx
+                         "id": str(r[0]),
+                         "date": str(r[1]) if r[1] else '',
+                         "valid_groups": valid_groups,
+                         "original_idx": original_idx
                     })
 
+            # Control Limit Calculation (Same as before)
             BASELINE_COUNT = 25
-            
             if len(avgs) >= 5:
                 baseline_count = min(BASELINE_COUNT, len(avgs))
-                baseline_avgs = avgs[:baseline_count]
-                baseline_ranges = ranges[:baseline_count]
-                
-                x_cl = np.mean(baseline_avgs)
-                r_cl = np.mean(baseline_ranges)
+                base_avgs = avgs[:baseline_count]
+                base_ranges = ranges[:baseline_count]
+                x_cl = float(np.mean(base_avgs))
+                r_cl = float(np.mean(base_ranges))
                 x_ucl = x_cl + 0.577 * r_cl
                 x_lcl = x_cl - 0.577 * r_cl
                 r_ucl = 2.114 * r_cl
-                
                 x_lcl = max(x_lcl, 0)
             else:
-                x_cl = x_ucl = x_lcl = r_cl = r_ucl = 0
+                x_cl = x_ucl = x_lcl = r_cl = r_ucl = 0.0
                 baseline_count = 0
 
             return {
                 "labels": labels_valid,
                 "ids": ids_valid,
                 "dates": dates_valid,
-                "avgs": [float(x) for x in avgs],
-                "ranges": [float(x) for x in ranges],
-                "x_cl": float(x_cl),
-                "x_ucl": float(x_ucl),
-                "x_lcl": float(x_lcl),
-                "r_cl": float(r_cl),
-                "r_ucl": float(r_ucl),
+                "avgs": avgs,
+                "ranges": ranges,
+                "x_cl": x_cl,
+                "x_ucl": x_ucl,
+                "x_lcl": x_lcl,
+                "r_cl": r_cl,
+                "r_ucl": r_ucl,
                 "baseline_count": baseline_count,
                 "insufficient_data": insufficient_data,
                 "total_rows": len(rows),
                 "valid_count": len(avgs),
                 "tolerance": tolerance_limits
             }
-        finally:
-            conn.close()
+        except Exception as e:
+            raise e
 
     @staticmethod
-    def save_data(data, is_update=False):
+    def save_data(data: Dict[str, Any], is_update: bool = False) -> bool:
         """新增或更新出貨檢驗資料"""
         errors = validate_inspection_data(data)
         if errors:
             raise ValueError(", ".join(errors))
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
         try:
-            # 檢驗人員 ID
-            cursor.execute(
-                '''SELECT "識別碼" FROM "品管人員" WHERE "姓名" = %s''',
-                (data.get('檢驗人員姓名'),)
-            )
-            p = cursor.fetchone()
-            p_id = p[0] if p else None
-            if not p_id:
+            # Lookups
+            inspector = Inspector.query.filter_by(name=data.get('檢驗人員姓名')).first()
+            if not inspector:
                 raise ValueError(f"找不到檢驗人員: {data.get('檢驗人員姓名')}")
 
-            # 廠商 ID
-            cursor.execute(
-                '''SELECT "識別碼" FROM "廠商資料" WHERE "廠商名稱" = %s''',
-                (data.get('廠商中文名稱'),)
-            )
-            v = cursor.fetchone()
-            v_id = v[0] if v else None
-            if not v_id:
+            vendor = Vendor.query.filter_by(name=data.get('廠商中文名稱')).first()
+            if not vendor:
                 raise ValueError(f"找不到廠商: {data.get('廠商中文名稱')}")
 
-            fields = ['"檢驗日期"', '"檢驗人員"', '"廠商名稱"', '"檢驗規格"', '"材質"', '"訂單號碼"']
-            params = [
-                data.get('檢驗日期'),
-                p_id,
-                v_id,
-                data.get('檢驗規格'),
-                data.get('材質'),
-                data.get('訂單號碼')
-            ]
+            if is_update:
+                record_id = data.get('識別碼')
+                shipping_data = ShippingData.query.get(record_id)
+                if not shipping_data:
+                    raise ValueError(f"找不到 ID {record_id} 的資料")
+            else:
+                shipping_data = ShippingData()
 
+            # Set basic fields
+            shipping_data.date = data.get('檢驗日期')
+            shipping_data.inspector_id = inspector.id
+            shipping_data.vendor_id = vendor.id
+            shipping_data.spec = data.get('檢驗規格')
+            shipping_data.material = data.get('材質')
+            shipping_data.order_num = data.get('訂單號碼')
+
+            # Set dynamic columns
             def get_val(k):
                 val = data.get(k)
-                return None if val == "" else val
+                if val is None or val == "":
+                    return None
+                return str(val)
 
             for i in range(1, 6):
-                for col in ['外徑', '內徑', '厚度']:
-                    fields += [f'"{col}{i}-min"', f'"{col}{i}-max"']
-                    params += [get_val(f'{col}{i}-min'), get_val(f'{col}{i}-max')]
+                setattr(shipping_data, f"od{i}_min", get_val(f'外徑{i}-min'))
+                setattr(shipping_data, f"od{i}_max", get_val(f'外徑{i}-max'))
+                setattr(shipping_data, f"id{i}_min", get_val(f'內徑{i}-min'))
+                setattr(shipping_data, f"id{i}_max", get_val(f'內徑{i}-max'))
+                setattr(shipping_data, f"th{i}_min", get_val(f'厚度{i}-min'))
+                setattr(shipping_data, f"th{i}_max", get_val(f'厚度{i}-max'))
+                
+                setattr(shipping_data, f"concentricity{i}", get_val(f'同心度{i}'))
+                setattr(shipping_data, f"length{i}", get_val(f'長度{i}'))
+                setattr(shipping_data, f"hardness{i}", get_val(f'硬度{i}'))
+                setattr(shipping_data, f"straightness{i}", get_val(f'真直度{i}'))
 
-                for col in ['同心度', '長度', '硬度', '真直度']:
-                    fields.append(f'"{col}{i}"')
-                    params.append(get_val(f'{col}{i}'))
-
-            if is_update:
-                set_sql = ", ".join([f'{f}=%s' for f in fields])
-                params.append(data.get('識別碼'))
-                cursor.execute(
-                    f'UPDATE "出貨檢驗數據" SET {set_sql} WHERE "識別碼" = %s',
-                    params
-                )
-            else:
-                cursor.execute(
-                    f"""
-                    INSERT INTO "出貨檢驗數據"
-                    ({','.join(fields)})
-                    VALUES ({','.join(['%s' for _ in params])})
-                    """,
-                    params
-                )
-
-            conn.commit()
+            if not is_update:
+                db.session.add(shipping_data)
+            
+            db.session.commit()
             return True
         except Exception as e:
-            conn.rollback()
+            db.session.rollback()
             raise e
-        finally:
-            conn.close()
 
     @staticmethod
-    def delete_data(record_id):
+    def delete_data(record_id: int) -> bool:
         """刪除出貨檢驗資料"""
-        conn = get_db_connection()
-        cursor = conn.cursor()
         try:
-            cursor.execute('''DELETE FROM "出貨檢驗數據" WHERE "識別碼" = %s''', (record_id,))
-            conn.commit()
+            item = ShippingData.query.get(record_id)
+            if item:
+                db.session.delete(item)
+                db.session.commit()
             return True
         except Exception as e:
-            conn.rollback()
+            db.session.rollback()
             raise e
-        finally:
-            conn.close()
 
     @staticmethod
-    def import_data(file):
+    def import_data(file: Any) -> int:
         """匯入 Excel 資料"""
         try:
             df = pd.read_excel(file, engine='openpyxl')
         except Exception as e:
             raise ValueError(f"檔案讀取失敗: {str(e)}")
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        success_count = 0
         try:
-            success_count = 0
             for row_num, row in enumerate(df.iterrows()):
                 main_data = row[1].to_dict()
-                for key, value in main_data.items():
-                    if pd.isna(value):
-                        main_data[key] = None
-
-                inspector_name = main_data.get('檢驗人員')
-                if pd.isna(inspector_name) or str(inspector_name).strip() == "":
-                    inspector_id = None
-                else:
-                    inspector_str = str(inspector_name).strip()
-                    cursor.execute('''SELECT 識別碼 FROM "品管人員" WHERE 姓名 = %s''', (inspector_str,))
-                    i = cursor.fetchone()
-                    inspector_id = i[0] if i else None
-                    if not inspector_id:
-                        cursor.execute('''SELECT "姓名" FROM "品管人員"''')
-                        all_inspectors = [row[0] for row in cursor.fetchall()]
-                        display_row_num = row_num + 2
-                        raise ValueError(f"第 {display_row_num} 行: 找不到檢驗人員 '{inspector_str}'。資料庫中的檢驗人員有：{', '.join(all_inspectors)}")
-
-                vendor_name = main_data.get('廠商名稱')
-                if pd.isna(vendor_name) or str(vendor_name).strip() == "":
-                    vendor_id = None
-                else:
-                    vendor_str = str(vendor_name).strip()
-                    cursor.execute('''SELECT 識別碼 FROM "廠商資料" WHERE 廠商名稱 = %s''', (vendor_str,))
-                    v = cursor.fetchone()
-                    vendor_id = v[0] if v else None
+                
+                # Cleanup NaNs
+                for k, v in main_data.items():
+                    if pd.isna(v): main_data[k] = None
 
                 display_row_num = row_num + 2
-                if not inspector_id:
+
+                # Lookups
+                inspector_name = str(main_data.get('檢驗人員', '')).strip()
+                inspector = Inspector.query.filter_by(name=inspector_name).first()
+                if not inspector and inspector_name:
+                    # Optional: detailed error with list of available inspectors
                     raise ValueError(f"第 {display_row_num} 行: 找不到檢驗人員 '{inspector_name}'")
-                if not vendor_id:
-                    raise ValueError(f"第 {display_row_num} 行: 找不到廠商 '{vendor_name}'")
+                
+                vendor_name = str(main_data.get('廠商名稱', '')).strip()
+                vendor = Vendor.query.filter_by(name=vendor_name).first()
+                
+                if not inspector or not vendor:
+                    # Legacy behavior raised error if missing
+                     if not inspector: raise ValueError(f"第 {display_row_num} 行: 檢驗人員不存在")
+                     if not vendor: raise ValueError(f"第 {display_row_num} 行: 廠商不存在")
 
-                fields = ["檢驗日期", "檢驗人員", "廠商名稱", "檢驗規格", "材質", "訂單號碼"]
-                params = [
-                    main_data.get('檢驗日期'),
-                    inspector_id,
-                    vendor_id,
-                    main_data.get('檢驗規格'),
-                    main_data.get('材質'),
-                    main_data.get('訂單號碼')
-                ]
-
-                for i in range(1, 6):
-                    for col in ['外徑', '內徑', '厚度']:
-                        fields += [f'"{col}{i}-min"', f'"{col}{i}-max"']
-                        params += [main_data.get(f'{col}{i}-min'), main_data.get(f'{col}{i}-max')]
-
-                    for col in ['同心度', '長度', '硬度', '真直度']:
-                        fields.append(f'"{col}{i}"')
-                        params.append(main_data.get(f'{col}{i}'))
-
-                cursor.execute(
-                    f"""
-                    INSERT INTO "出貨檢驗數據"
-                    ({','.join(fields)})
-                    VALUES ({','.join(['%s' for _ in params])})
-                    """,
-                    params
+                shipping_data = ShippingData(
+                    date=main_data.get('檢驗日期'),
+                    inspector_id=inspector.id,
+                    vendor_id=vendor.id,
+                    spec=main_data.get('檢驗規格'),
+                    material=main_data.get('材質'),
+                    order_num=main_data.get('訂單號碼')
                 )
-                success_count += 1
 
-            conn.commit()
+                # Map columns
+                def get_val(k):
+                    val = main_data.get(k)
+                    if pd.isna(val) or val is None or str(val).strip() == "":
+                        return None
+                    return str(val)
+                
+                for i in range(1, 6):
+                    setattr(shipping_data, f"od{i}_min", get_val(f'外徑{i}-min'))
+                    setattr(shipping_data, f"od{i}_max", get_val(f'外徑{i}-max'))
+                    setattr(shipping_data, f"id{i}_min", get_val(f'內徑{i}-min'))
+                    setattr(shipping_data, f"id{i}_max", get_val(f'內徑{i}-max'))
+                    setattr(shipping_data, f"th{i}_min", get_val(f'厚度{i}-min'))
+                    setattr(shipping_data, f"th{i}_max", get_val(f'厚度{i}-max'))
+                    
+                    setattr(shipping_data, f"concentricity{i}", get_val(f'同心度{i}'))
+                    setattr(shipping_data, f"length{i}", get_val(f'長度{i}'))
+                    setattr(shipping_data, f"hardness{i}", get_val(f'硬度{i}'))
+                    setattr(shipping_data, f"straightness{i}", get_val(f'真直度{i}'))
+
+                db.session.add(shipping_data)
+                success_count += 1
+            
+            db.session.commit()
             return success_count
         except Exception as e:
-            conn.rollback()
+            db.session.rollback()
             raise e
-        finally:
-            conn.close()
 
     @staticmethod
-    def export_excel(args):
+    def export_excel(args: Dict[str, Any]) -> BytesIO:
         """匯出 Excel"""
-        params = []
-        where = []
-
-        if args.get('vendor'):   where.append("V.廠商名稱 LIKE %s"); params.append(f"%{args['vendor']}%")
-        if args.get('material'): where.append("T1.材質 LIKE %s");     params.append(f"%{args['material']}%")
-        if args.get('spec'):     where.append("T1.檢驗規格 LIKE %s"); params.append(f"%{args['spec']}%")
-        if args.get('start_date'): where.append("T1.檢驗日期 >= %s"); params.append(args['start_date'])
-        if args.get('end_date'):   where.append("T1.檢驗日期 <= %s"); params.append(args['end_date'])
-
-        where_sql = " WHERE " + " AND ".join(where) if where else ""
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
         try:
-            sql = """
-                SELECT T1.識別碼, T1.檢驗日期, T1.材質, T1.檢驗規格, T1.訂單號碼,
-                       P.姓名 AS 檢驗人員, V.廠商名稱 AS 廠商名稱,
-                       T1."外徑1-min", T1."外徑1-max", T1."外徑2-min", T1."外徑2-max",
-                       T1."外徑3-min", T1."外徑3-max", T1."外徑4-min", T1."外徑4-max",
-                       T1."外徑5-min", T1."外徑5-max",
-                       T1."內徑1-min", T1."內徑1-max", T1."內徑2-min", T1."內徑2-max",
-                       T1."內徑3-min", T1."內徑3-max", T1."內徑4-min", T1."內徑4-max",
-                       T1."內徑5-min", T1."內徑5-max",
-                       T1."厚度1-min", T1."厚度1-max", T1."厚度2-min", T1."厚度2-max",
-                       T1."厚度3-min", T1."厚度3-max", T1."厚度4-min", T1."厚度4-max",
-                       T1."厚度5-min", T1."厚度5-max",
-                       T1.同心度1, T1.同心度2, T1.同心度3, T1.同心度4, T1.同心度5,
-                       T1.長度1, T1.長度2, T1.長度3, T1.長度4, T1.長度5,
-                       T1.硬度1, T1.硬度2, T1.硬度3, T1.硬度4, T1.硬度5,
-                       T1.真直度1, T1.真直度2, T1.真直度3, T1.真直度4, T1.真直度5
-                  FROM "出貨檢驗數據" T1
-                  LEFT JOIN "品管人員" P ON T1.檢驗人員 = P.識別碼
-                  LEFT JOIN "廠商資料" V ON T1.廠商名稱 = V.識別碼
-                  {where_sql}
-                  ORDER BY T1.識別碼 DESC
-              """
-            sql = sql.format(where_sql=where_sql)
-            rows = cursor.execute(sql, params)
-            rows = cursor.fetchall()
+            query = ShippingData.query.outerjoin(Vendor, ShippingData.vendor_id == Vendor.id)
+            
+            if args.get('vendor'):   query = query.filter(Vendor.name.like(f"%{args['vendor']}%"))
+            if args.get('material'): query = query.filter(ShippingData.material.like(f"%{args['material']}%"))
+            if args.get('spec'):     query = query.filter(ShippingData.spec.like(f"%{args['spec']}%"))
+            if args.get('start_date'): query = query.filter(ShippingData.date >= args['start_date'])
+            if args.get('end_date'):   query = query.filter(ShippingData.date <= args['end_date'])
 
-            if not rows:
-                df = pd.DataFrame(columns=['識別碼', '檢驗日期', '材質', '檢驗規格', '訂單號碼', '檢驗人員', '廠商名稱',
-                                             '外徑1-最小', '外徑1-最大', '外徑2-最小', '外徑2-最大',
-                                             '外徑3-最小', '外徑3-最大', '外徑4-最小', '外徑4-最大', '外徑5-最小', '外徑5-最大',
-                                             '內徑1-最小', '內徑1-最大', '內徑2-最小', '內徑2-最大',
-                                             '內徑3-最小', '內徑3-最大', '內徑4-最小', '內徑4-最大', '內徑5-最小', '內徑5-最大',
-                                             '厚度1-最小', '厚度1-最大', '厚度2-最小', '厚度2-最大',
-                                             '厚度3-最小', '厚度3-最大', '厚度4-最小', '厚度4-最大', '厚度5-最小', '厚度5-最大',
-                                             '同心度1', '同心度2', '同心度3', '同心度4', '同心度5',
-                                             '長度1', '長度2', '長度3', '長度4', '長度5',
-                                             '硬度1', '硬度2', '硬度3', '硬度4', '硬度5',
-                                             '真直度1', '真直度2', '真直度3', '真直度4', '真直度5'])
+            query = query.order_by(ShippingData.id.desc())
+            
+            items = query.all()
+            
+            if not items:
+                # Empty DF with columns
+                cols = ['識別碼', '檢驗日期', '材質', '檢驗規格', '訂單號碼', '檢驗人員', '廠商名稱']
+                for i in range(1, 6):
+                    cols.extend([f'外徑{i}-最小', f'外徑{i}-最大', f'內徑{i}-最小', f'內徑{i}-最大', f'厚度{i}-最小', f'厚度{i}-最大'])
+                    cols.extend([f'同心度{i}', f'長度{i}', f'硬度{i}', f'真直度{i}'])
+                df = pd.DataFrame(columns=cols)
             else:
-                cols = [c[0] for c in cursor.description]
-                df = pd.DataFrame([list(r) for r in rows], columns=cols)
-
-                if '檢驗日期' in df.columns:
-                    df['檢驗日期'] = pd.to_datetime(df['檢驗日期']).dt.strftime('%Y-%m-%d')
+                export_data = []
+                for item in items:
+                    row = ShippingService._map_row_to_dict(item)
+                    # Convert keys to export headers (Legacy export used '最小'/'最大', dict uses 'min'/'max')
+                    export_row = {
+                        '識別碼': row['識別碼'],
+                        '檢驗日期': row['檢驗日期'],
+                        '材質': row['材質'],
+                        '檢驗規格': row['檢驗規格'],
+                        '訂單號碼': row['訂單號碼'],
+                        '檢驗人員': row['檢驗人員'],
+                        '廠商名稱': row['廠商中文名稱']
+                    }
+                    for i in range(1, 6):
+                        export_row[f'外徑{i}-最小'] = row.get(f'外徑{i}-min', '')
+                        export_row[f'外徑{i}-最大'] = row.get(f'外徑{i}-max', '')
+                        export_row[f'內徑{i}-最小'] = row.get(f'內徑{i}-min', '')
+                        export_row[f'內徑{i}-最大'] = row.get(f'內徑{i}-max', '')
+                        export_row[f'厚度{i}-最小'] = row.get(f'厚度{i}-min', '')
+                        export_row[f'厚度{i}-最大'] = row.get(f'厚度{i}-max', '')
+                        export_row[f'同心度{i}'] = row.get(f'同心度{i}', '')
+                        export_row[f'長度{i}'] = row.get(f'長度{i}', '')
+                        export_row[f'硬度{i}'] = row.get(f'硬度{i}', '')
+                        export_row[f'真直度{i}'] = row.get(f'真直度{i}', '')
+                    
+                    export_data.append(export_row)
+                
+                df = pd.DataFrame(export_data)
 
             output = BytesIO()
             df.to_excel(output, index=False, engine='openpyxl')
             output.seek(0)
             return output
-        finally:
-            conn.close()
+        except Exception as e:
+            raise e
