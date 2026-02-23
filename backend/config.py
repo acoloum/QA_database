@@ -1,4 +1,8 @@
 import os
+from dotenv import load_dotenv
+
+# Load .env file
+load_dotenv()
 
 
 # Database Configuration - Support environment variables

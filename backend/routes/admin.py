@@ -32,6 +32,7 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
     
     def count_pending_capa():
         return CorrectiveAction.query.filter(
+            CorrectiveAction.eight_d_number != None,
             CorrectiveAction.status.in_(['待處理', '進行中'])
         ).count()
     
@@ -64,8 +65,14 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
             "pending": count_pending_ncmr()
         },
         "capa": {
-            "current": count_for_model(CorrectiveAction, CorrectiveAction.created_at, start_date, end_date),
-            "previous": count_for_model(CorrectiveAction, CorrectiveAction.created_at, compare_start, compare_end),
+            "current": count_for_model(
+                CorrectiveAction, CorrectiveAction.created_at, start_date, end_date,
+                CorrectiveAction.eight_d_number != None
+            ),
+            "previous": count_for_model(
+                CorrectiveAction, CorrectiveAction.created_at, compare_start, compare_end,
+                CorrectiveAction.eight_d_number != None
+            ),
             "pending": count_pending_capa()
         },
         "rework": {
@@ -171,14 +178,32 @@ def get_dashboard_todos():
                 "path": "/ncmr"
             })
         
+        # CAR items (car_number exists)
+        pending_cars = CorrectiveAction.query.filter(
+            CorrectiveAction.car_number != None,
+            CorrectiveAction.status.in_(['待處理', '進行中'])
+        ).order_by(CorrectiveAction.created_at.desc()).limit(5).all()
+        for c in pending_cars:
+            todos.append({
+                "type": "cara",
+                "id": c.car_number,
+                "title": f"CAR {c.car_number} {c.status}",
+                "description": c.d2[:50] + "..." if c.d2 and len(c.d2) > 50 else c.d2,
+                "date": c.created_at.isoformat() if c.created_at else None,
+                "priority": "medium",
+                "path": "/cara"
+            })
+        
+        # CAPA items (8D number exists)
         pending_capas = CorrectiveAction.query.filter(
+            CorrectiveAction.eight_d_number != None,
             CorrectiveAction.status.in_(['待處理', '進行中'])
         ).order_by(CorrectiveAction.created_at.desc()).limit(5).all()
         for c in pending_capas:
             todos.append({
                 "type": "capa",
-                "id": c.car_number,
-                "title": f"CAR {c.car_number} {c.status}",
+                "id": c.eight_d_number,
+                "title": f"CAPA {c.eight_d_number} {c.status}",
                 "description": c.d2[:50] + "..." if c.d2 and len(c.d2) > 50 else c.d2,
                 "date": c.created_at.isoformat() if c.created_at else None,
                 "priority": "medium",

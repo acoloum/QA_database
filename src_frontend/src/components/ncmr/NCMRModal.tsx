@@ -73,9 +73,9 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
                 setVendor(d.廠商 || '');
                 setMaterial(d.材質 || '');
                 setProductInfo(d.產品資訊 || '');
-                setProductQty(d.產品數量 || '');
+                setProductQty(d.產品數量 ? Math.floor(Number(d.產品數量)).toString() : '');
                 setBatch(d.批號 || '');
-                setDefectQty(d.不合格數量 || '');
+                setDefectQty(d.不合格數量 ? Math.floor(Number(d.不合格數量)).toString() : '');
                 setDesc(d.不良描述 || '');
                 setCategory(d.不良原因大類 || '');
                 setReason(d.不良原因細項 || '');
