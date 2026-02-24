@@ -175,6 +175,7 @@ const PatrolPage = () => {
                 spec={spec}
                 startDate={startDate}
                 endDate={endDate}
+                onEditPoint={handleEdit}
             />
 
             {/* Data Table */}

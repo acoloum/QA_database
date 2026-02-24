@@ -16,6 +16,7 @@ interface PatrolChartsProps {
     spec: string;
     startDate: string;
     endDate: string;
+    onEditPoint?: (id: number) => void;
 }
 
 const ITEMS = [
@@ -26,7 +27,7 @@ const ITEMS = [
 
 const POSITIONS = ['前段', '中段', '後段'];
 
-const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate }: PatrolChartsProps) => {
+const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, onEditPoint }: PatrolChartsProps) => {
     const [statsItem, setStatsItem] = useState('外徑');
     const [statsPos, setStatsPos] = useState('前段');
     const [showViolations, setShowViolations] = useState(true);
@@ -204,7 +205,23 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate }:
                             <div style={{ height: '300px' }}>
                                 <Line
                                     data={chartData.xBar}
-                                    options={{ maintainAspectRatio: false, plugins: { legend: { display: false } } }}
+                                    options={{ 
+                                        maintainAspectRatio: false, 
+                                        plugins: { legend: { display: false } },
+                                        onClick: (_evt, elements) => {
+                                            if (elements.length > 0 && onEditPoint) {
+                                                const idx = elements[0].index;
+                                                const label = chartData.xBar.labels[idx];
+                                                const match = label.match(/#(\d+)/);
+                                                if (match) {
+                                                    onEditPoint(parseInt(match[1], 10));
+                                                }
+                                            }
+                                        },
+                                        onHover: (event, elements) => {
+                                            event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+                                        }
+                                    }}
                                 />
                             </div>
                         </Card.Body>
@@ -217,7 +234,23 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate }:
                             <div style={{ height: '300px' }}>
                                 <Line
                                     data={chartData.rChart}
-                                    options={{ maintainAspectRatio: false, plugins: { legend: { display: false } } }}
+                                    options={{ 
+                                        maintainAspectRatio: false, 
+                                        plugins: { legend: { display: false } },
+                                        onClick: (_evt, elements) => {
+                                            if (elements.length > 0 && onEditPoint) {
+                                                const idx = elements[0].index;
+                                                const label = chartData.rChart.labels[idx];
+                                                const match = label.match(/#(\d+)/);
+                                                if (match) {
+                                                    onEditPoint(parseInt(match[1], 10));
+                                                }
+                                            }
+                                        },
+                                        onHover: (event, elements) => {
+                                            event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+                                        }
+                                    }}
                                 />
                             </div>
                         </Card.Body>

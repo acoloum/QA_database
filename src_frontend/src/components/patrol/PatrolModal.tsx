@@ -96,12 +96,12 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                 // Determine group count
                 const groups = new Set(newDetails.map(d => d.group));
                 setGroupCount(groups.size || 1);
-            } else {
+            } else if (!editId) {
                 console.log('Calling resetForm from useEffect');
                 resetForm();
             }
         }
-    }, [show, editId]);
+    }, [show, editId, detailData]);
 
     const handleDetailChange = (group: string, pos: string, item: string, type: 'min' | 'max', value: string) => {
         // console.log(`Change: ${group} ${pos} ${item} ${type} = ${value}`);

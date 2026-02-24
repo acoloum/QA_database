@@ -97,8 +97,8 @@ export const usePatrolStats = (params: PatrolStatsParams) => {
             const res = await api.get(`/patrol/spc?${queryParams.toString()}`);
             return res.data;
         },
-        // Only fetch if item and pos are provided (they are usually default selected)
-        enabled: !!(params.item && params.pos),
+        // Only fetch if item is provided (pos can be empty for "全段")
+        enabled: !!params.item,
     });
 };
 
