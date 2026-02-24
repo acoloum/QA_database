@@ -100,6 +100,7 @@ class NCMRService:
             ncmr = NCMR(
                 ncmr_number=ncmr_number,
                 date=data.get('日期'),
+                create_date=data.get('建立日期') or datetime.date.today(),
                 source=data.get('來源'),
                 product_info=data.get('產品資訊'),
                 quantity=data.get('產品數量') if data.get('產品數量') != '' else None,
@@ -140,7 +141,7 @@ class NCMRService:
 
             # Mapping
             field_map = {
-                '日期': 'date', '來源': 'source', '產品資訊': 'product_info',
+                '日期': 'date', '建立日期': 'create_date', '來源': 'source', '產品資訊': 'product_info',
                 '產品數量': 'quantity', '材質': 'material', '廠商': 'vendor',
                 '批號': 'batch_num', '不良描述': 'description', 
                 '不合格數量': 'defect_quantity', '判定結果': 'result',
@@ -217,6 +218,7 @@ class NCMRService:
             item = {
                 "識別碼": n.id,
                 "NCMR單號": n.ncmr_number,
+                "建立日期": n.create_date,
                 "發現日期": n.date, # DateTime object
                 "來源": n.source,
                 "產品資訊": n.product_info,

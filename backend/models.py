@@ -129,6 +129,7 @@ class NCMR(db.Model):
     status = db.Column('狀態', db.String)
     defect_category = db.Column('不良原因大類', db.String)
     defect_detail = db.Column('不良原因細項', db.String)
+    create_date = db.Column('建立日期', db.Date)
 
     inspector = db.relationship('Inspector', backref='ncmr_list')
     corrective_actions = db.relationship('CorrectiveAction', backref='ncmr', cascade="all, delete-orphan")

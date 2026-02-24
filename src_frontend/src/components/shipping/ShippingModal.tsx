@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Table, Alert } from 'react-bootstrap';
 import type { ToleranceResult } from '../../types';
@@ -164,7 +163,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
 
         const timeout = setTimeout(checkTolerance, 500);
         return () => clearTimeout(timeout);
-    }, [material, spec, vendorName, vendors]); // checkToleranceMutation should be stable
+    }, [material, spec, vendorName, vendors]);
 
     // Validate measurements against tolerance
     useEffect(() => {
@@ -251,7 +250,6 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             onSuccess();
             handleClose();
         } catch (error) {
-            // Error handling is mostly done by global interceptor, but we catch here to stop modal close if needed
             console.error(error);
         }
     };
@@ -366,6 +364,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                                                             <Form.Control
                                                                 size="sm"
                                                                 placeholder="Min"
+                                                                style={{ fontSize: '0.75rem', padding: '2px 4px', width: '60px' }}
                                                                 className={`text-center shipping-input ${violations[`${item.key}${g}-min`] ? 'is-invalid-breathing' : ''}`}
                                                                 value={measurements[`${item.key}${g}-min`] || ''}
                                                                 onChange={e => handleMeasurementChange(`${item.key}${g}-min`, e.target.value)}
@@ -374,6 +373,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                                                             <Form.Control
                                                                 size="sm"
                                                                 placeholder="Max"
+                                                                style={{ fontSize: '0.75rem', padding: '2px 4px', width: '60px' }}
                                                                 className={`text-center shipping-input ${violations[`${item.key}${g}-max`] ? 'is-invalid-breathing' : ''}`}
                                                                 value={measurements[`${item.key}${g}-max`] || ''}
                                                                 onChange={e => handleMeasurementChange(`${item.key}${g}-max`, e.target.value)}
@@ -383,6 +383,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                                                     ) : (
                                                         <Form.Control
                                                             size="sm"
+                                                            style={{ fontSize: '0.75rem', padding: '2px 4px', width: '60px' }}
                                                             className={`text-center mx-auto shipping-input ${violations[`${item.key}${g}`] ? 'is-invalid-breathing' : ''}`}
                                                             value={measurements[`${item.key}${g}`] || ''}
                                                             onChange={e => handleMeasurementChange(`${item.key}${g}`, e.target.value)}

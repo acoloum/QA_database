@@ -20,21 +20,23 @@ const DEFECT_REASONS: Record<string, string[]> = {
     'E': ['E-01: 擠型溫度不當', 'E-02: 擠壓速度異常', 'E-03: 擠壓比不當', 'E-04: 表面波紋/料紋', 'E-05: 表面氣泡/砂眼/針孔', 'E-06: 表面刮傷/擦傷', 'E-07: 尺寸公差超差', 'E-08: 彎曲/扭曲/翹曲', 'E-09: 橘皮/粗晶', 'E-10: 亮帶/暗帶/色差', 'E-11: 料頭料尾不良', 'E-12: 擠型裂紋/撕裂', 'E-13: 機台參數設定錯誤'],
     'D': ['D-01: 內徑尺寸超差', 'D-02: 外徑尺寸超差', 'D-03: 壁厚不均', 'D-04: 橢圓度超差', 'D-05: 抽管表面刮傷', 'D-06: 抽管速度過快導致變形', 'D-07: 潤滑不良', 'D-08: 抽管裂紋'],
     'H': ['H-01: 硬度不足', 'H-02: 硬度過高', 'H-03: 淬火裂紋', 'H-04: 熱處理變形/彎曲', 'H-05: 淬火溫度不當', 'H-06: 時效溫度/時間不當', 'H-07: 冷卻速度不當', 'H-08: 爐溫不均', 'H-09: 硬度分布不均'],
+    'PO': ['PO-01: 拋光壓力過大', 'PO-02: 拋光表面刮傷', 'PO-03: 拋光表面亮度不足', 'PO-04: 拋光表面霧化', 'PO-05: 拋光變形/彎曲'],
+    'SR': ['SR-01: 打直壓力過大', 'SR-02: 打直次數過多', 'SR-03: 打直模磨損', 'SR-04: 打直變形/翹曲', 'SR-05: 打直裂紋', 'SR-06: 打直角度偏差', 'SR-07: 打直回復'],
     'T': ['T-01: 擠型模磨損/損傷', 'T-02: 擠型模設計不良', 'T-03: 擠型模溫度控制不當', 'T-04: 抽管模磨損', 'T-05: 模具清潔不良', 'T-06: 治具定位不準', 'T-07: 模具維護保養不足'],
+    'S': ['S-01: 鋸片磨損/損壞', 'S-02: 鋸片尺寸規格不符', 'S-03: 鋸切速度不當', 'S-04: 鋸切角度偏差', 'S-05: 鋸切表面毛邊', 'S-06: 鋸切尺寸超差', 'S-07: 鋸屑清理不完全', 'S-08: 夾持固定不當', 'S-09: 鋸台潤滑不足', 'S-10: 材料滑動/偏移'],
     'P': ['P-01: 操作錯誤', 'P-02: 參數設定錯誤', 'P-03: 未依SOP作業', 'P-04: 訓練不足', 'P-05: 換線/換模錯誤', 'P-06: 標示錯誤/混料', 'P-07: 疲勞失誤'],
     'Q': ['Q-01: 量具未校驗/不準', 'Q-02: 檢驗方法錯誤', 'Q-03: 漏檢', 'Q-04: 誤判', 'Q-05: 取樣方式不當', 'Q-06: 檢驗標準理解錯誤'],
     'O': ['O-01: 包裝不良', 'O-02: 搬運碰撞/刮傷', 'O-03: 儲存環境不當', 'O-04: 圖面/規格錯誤', 'O-05: 客戶使用不當', 'O-06: 運輸損傷', 'O-07: 待分析/複合原因']
 };
 
 const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => {
-    // Hooks
     const { data: inspectors = [] } = useInspectors();
     const { data: detailData, isLoading: isLoadingDetail } = useNCMRDetail(editId);
-
     const createMutation = useCreateNCMR();
     const updateMutation = useUpdateNCMR();
 
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [createDate, setCreateDate] = useState(new Date().toISOString().split('T')[0]);
     const [source, setSource] = useState('進料');
     const [vendor, setVendor] = useState('');
     const [material, setMaterial] = useState('');
@@ -50,6 +52,7 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
 
     const resetForm = () => {
         setDate(new Date().toISOString().split('T')[0]);
+        setCreateDate(new Date().toISOString().split('T')[0]);
         setSource('進料');
         setVendor('');
         setMaterial('');
@@ -69,6 +72,7 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
             if (editId && detailData) {
                 const d = detailData;
                 setDate(d.日期 || d.發現日期);
+                setCreateDate(d.建立日期 || new Date().toISOString().split('T')[0]);
                 setSource(d.來源);
                 setVendor(d.廠商 || '');
                 setMaterial(d.材質 || '');
@@ -81,16 +85,17 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
                 setReason(d.不良原因細項 || '');
                 setInspector(d.發現人員姓名 || '');
                 setResult(d.判定結果 || '');
-            } else if (!editId) {
+            } else {
                 resetForm();
             }
         }
-    }, [show, editId, detailData]);
+    }, [show, editId]);
 
     const handleSubmit = async () => {
         const payload = {
             "識別碼": editId,
             "日期": date,
+            "建立日期": createDate,
             "來源": source,
             "廠商": vendor,
             "材質": material,
@@ -122,17 +127,6 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
 
     return (
         <Modal show={show} onHide={handleClose} size="lg" backdrop="static" dialogClassName="modal-ncmr">
-            <style type="text/css">
-                {`
-                    .modal-ncmr {
-                        max-width: 800px !important;
-                    }
-                    .modal-ncmr .modal-body {
-                        max-height: 75vh;
-                        overflow-y: auto;
-                    }
-                `}
-            </style>
             <Modal.Header closeButton>
                 <Modal.Title>{editId ? '編輯異常單' : '新增異常單'}</Modal.Title>
             </Modal.Header>
@@ -146,8 +140,9 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
                 ) : (
                     <Form>
                         <Row className="g-2">
-                            <Col md={6}><Form.Label>發現日期</Form.Label><Form.Control type="date" value={date} onChange={e => setDate(e.target.value)} /></Col>
-                            <Col md={6}>
+                            <Col md={4}><Form.Label>發現日期</Form.Label><Form.Control type="date" value={date} onChange={e => setDate(e.target.value)} /></Col>
+                            <Col md={4}><Form.Label>建立日期</Form.Label><Form.Control type="date" value={createDate} onChange={e => setCreateDate(e.target.value)} /></Col>
+                            <Col md={4}>
                                 <Form.Label>來源</Form.Label>
                                 <Form.Select value={source} onChange={e => setSource(e.target.value)}>
                                     <option value="進料">進料</option>
@@ -160,13 +155,10 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
                             <Col md={4}><Form.Label>廠商</Form.Label><Form.Control value={vendor} onChange={e => setVendor(e.target.value)} placeholder="請輸入廠商名稱" /></Col>
                             <Col md={4}><Form.Label>材質</Form.Label><Form.Control value={material} onChange={e => setMaterial(e.target.value)} placeholder="請輸入材質" /></Col>
                             <Col md={4}><Form.Label>規格</Form.Label><Form.Control value={productInfo} onChange={e => setProductInfo(e.target.value)} placeholder="請輸入規格" /></Col>
-
                             <Col md={6}><Form.Label>產品數量</Form.Label><Form.Control type="number" value={productQty} onChange={e => setProductQty(e.target.value)} /></Col>
                             <Col md={6}><Form.Label>不合格數量</Form.Label><Form.Control type="number" value={defectQty} onChange={e => setDefectQty(e.target.value)} /></Col>
-
                             <Col md={12}><Form.Label>批號/訂單號</Form.Label><Form.Control value={batch} onChange={e => setBatch(e.target.value)} placeholder="請輸入批號或訂單號" /></Col>
                             <Col md={12}><Form.Label>不良描述</Form.Label><Form.Control as="textarea" rows={2} value={desc} onChange={e => setDesc(e.target.value)} placeholder="請描述不良情況" /></Col>
-
                             <Col md={6}>
                                 <Form.Label>不良原因大類</Form.Label>
                                 <Form.Select value={category} onChange={e => { setCategory(e.target.value); setReason(''); }}>
@@ -175,7 +167,10 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
                                     <option value="E">E - 擠型製程</option>
                                     <option value="D">D - 抽管製程</option>
                                     <option value="H">H - 熱處理</option>
+                                    <option value="PO">PO - 拋光</option>
+                                    <option value="SR">SR - 打直</option>
                                     <option value="T">T - 模具治具</option>
+                                    <option value="S">S - 鋸台</option>
                                     <option value="P">P - 人員操作</option>
                                     <option value="Q">Q - 品管檢驗</option>
                                     <option value="O">O - 其他</option>
@@ -190,7 +185,6 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
                                     ))}
                                 </Form.Select>
                             </Col>
-
                             <Col md={6}>
                                 <Form.Label>發現人員</Form.Label>
                                 <Form.Select value={inspector} onChange={e => setInspector(e.target.value)}>

@@ -96,18 +96,12 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                 // Determine group count
                 const groups = new Set(newDetails.map(d => d.group));
                 setGroupCount(groups.size || 1);
-            } else if (!editId && details.length === 0) {
-                // Only reset if details are empty? 
-                // No, usually reset on open. 
-                // But if useEffect runs AGAIN while user is typing?
-                // But deps are [show, editId, detailData].
-                // If show stays true, editId stays null, detailData stays undefined.
-                // It shouldn't run again.
+            } else {
                 console.log('Calling resetForm from useEffect');
                 resetForm();
             }
         }
-    }, [show, editId, detailData]);
+    }, [show, editId]);
 
     const handleDetailChange = (group: string, pos: string, item: string, type: 'min' | 'max', value: string) => {
         // console.log(`Change: ${group} ${pos} ${item} ${type} = ${value}`);

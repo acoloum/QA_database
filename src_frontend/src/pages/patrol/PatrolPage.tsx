@@ -12,8 +12,8 @@ const PatrolPage = () => {
 
     // Filters
     const [page, setPage] = useState(1);
-    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
     const [machine, setMachine] = useState('');
     const [operator, setOperator] = useState('');
     const [material, setMaterial] = useState('');
@@ -241,7 +241,7 @@ const PatrolPage = () => {
 
             <PatrolModal
                 show={showModal}
-                handleClose={() => setShowModal(false)}
+                handleClose={() => { setShowModal(false); setEditId(null); }}
                 onSuccess={() => { }} // React Query handles invalidation
                 editId={editId}
             />
