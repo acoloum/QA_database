@@ -74,8 +74,32 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
         };
 
         // Charts Configuration
-        const pointColors = weco.statuses.map((s) => s === "violation" ? '#ff0000' : '#3498db');
-        const pointRadius = weco.statuses.map((s) => s === "violation" ? 6 : 3);
+        // Determine if violation is UCL/LCL (more severe) or pattern-based
+        const pointColors = data.avgs.map((val, i) => {
+            // Check for UCL/LCL violation (Rule 1) - most severe
+            if (val > data.x_ucl || val < data.x_lcl) {
+                return '#dc3545'; // Red - UCL/LCL violation
+            }
+            // Check for pattern violations
+            if (weco.statuses[i] === 'violation') {
+                return '#fd7e14'; // Orange - pattern violation
+            }
+            return '#0d6efd'; // Blue - normal
+        });
+
+        const pointRadius = data.avgs.map((val, i) => {
+            if (weco.statuses[i] === 'violation') {
+                return 8; // Larger for violations
+            }
+            return 4;
+        });
+
+        const pointBorderColor = data.avgs.map((val, i) => {
+            if (weco.statuses[i] === 'violation') {
+                return '#fff'; // White border for violations
+            }
+            return '#0d6efd';
+        });
 
         const cData = {
             xBar: {
@@ -84,9 +108,11 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                     {
                         label: '平均值',
                         data: data.avgs,
-                        borderColor: '#3498db',
+                        borderColor: '#0d6efd',
                         backgroundColor: pointColors,
                         pointRadius: pointRadius,
+                        pointBorderColor: pointBorderColor,
+                        pointBorderWidth: 2,
                         tension: 0.1
                     },
                     { label: 'UCL', data: Array(count).fill(data.x_ucl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0 },
@@ -100,8 +126,8 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                     {
                         label: '全距 R',
                         data: data.ranges,
-                        borderColor: '#f39c12',
-                        backgroundColor: '#f39c12',
+                        borderColor: '#6f42c1',
+                        backgroundColor: '#6f42c1',
                         tension: 0.1
                     },
                     { label: 'UCL', data: Array(count).fill(data.r_ucl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0 }
@@ -112,6 +138,14 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
         return { chartData: cData, ids, analysis: weco, statsSummary: summary };
 
     }, [statsData]);
+
+    // Helper to get violation reasons for tooltip
+    const getViolationReasons = (idx: number): string => {
+        if (!analysis || !analysis.violations) return '';
+        const label = chartData?.xBar?.labels?.[idx];
+        const violation = analysis.violations.find(v => v.label === label);
+        return violation ? violation.reasons.join(', ') : '';
+    };
 
     if (!chartData) return <div className="text-center py-5 text-muted">請選擇廠商、材質與規格以檢視 SPC 圖表。</div>;
 
@@ -175,15 +209,28 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                             <div style={{ height: '300px' }}>
                                 <Line
                                     data={chartData.xBar}
-                                    options={{
+                                    options={{ 
                                         maintainAspectRatio: false,
-                                        plugins: { legend: { display: false } },
+                                        plugins: { 
+                                            legend: { display: false },
+                                            tooltip: {
+                                                callbacks: {
+                                                    afterLabel: (ctx) => {
+                                                        const reasons = getViolationReasons(ctx.dataIndex);
+                                                        return reasons ? `⚠️ ${reasons}` : '';
+                                                    }
+                                                }
+                                            }
+                                        },
                                         onClick: (_event, elements) => {
                                             if (elements.length > 0 && ids.length > 0) {
                                                 const index = elements[0].index;
                                                 const id = ids[index];
                                                 if (id && onPointClick) onPointClick(Number(id));
                                             }
+                                        },
+                                        onHover: (event, elements) => {
+                                            event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
                                         }
                                     }}
                                 />
@@ -207,6 +254,9 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                                 const id = ids[index];
                                                 if (id && onPointClick) onPointClick(Number(id));
                                             }
+                                        },
+                                        onHover: (event, elements) => {
+                                            event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
                                         }
                                     }}
                                 />
@@ -215,6 +265,22 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                     </Card>
                 </Col>
             </Row>
+
+            {/* Legend */}
+            <div className="d-flex justify-content-center gap-4 mt-3">
+                <div className="d-flex align-items-center">
+                    <span style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: '#0d6efd', marginRight: 8, display: 'inline-block' }}></span>
+                    <span className="small">正常</span>
+                </div>
+                <div className="d-flex align-items-center">
+                    <span style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: '#fd7e14', marginRight: 8, display: 'inline-block', border: '2px solid #fff' }}></span>
+                    <span className="small">趨勢異常 (WECO)</span>
+                </div>
+                <div className="d-flex align-items-center">
+                    <span style={{ width: 16, height: 16, borderRadius: '50%', backgroundColor: '#dc3545', marginRight: 8, display: 'inline-block', border: '2px solid #fff' }}></span>
+                    <span className="small">超出管制界限</span>
+                </div>
+            </div>
         </div>
     );
 };

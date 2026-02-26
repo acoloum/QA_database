@@ -175,7 +175,7 @@ class ShippingService:
             if start_date: query = query.filter(ShippingData.date >= start_date)
             if end_date:   query = query.filter(ShippingData.date <= end_date)
             
-            query = query.order_by(ShippingData.id.desc())
+            query = query.order_by(ShippingData.date.asc())
             
             rows = query.all() # These are tuples now
 
@@ -194,7 +194,7 @@ class ShippingService:
             labels_valid = []
             insufficient_data = []
 
-            for idx, r in enumerate(rows[::-1]):
+            for idx, r in enumerate(rows):
                 vals: List[float] = []
                 valid_groups = 0
                 
@@ -441,7 +441,7 @@ class ShippingService:
             if args.get('start_date'): query = query.filter(ShippingData.date >= args['start_date'])
             if args.get('end_date'):   query = query.filter(ShippingData.date <= args['end_date'])
 
-            query = query.order_by(ShippingData.id.desc())
+            query = query.order_by(ShippingData.date.asc())
             
             items = query.all()
             

@@ -57,7 +57,7 @@ class PatrolService:
         if args.get('spec'):   
             query = query.filter(PatrolMain.spec.like(f"%{args['spec']}%"))
 
-        query = query.order_by(PatrolMain.id.desc())
+        query = query.order_by(PatrolMain.date.asc(), PatrolDetail.group.asc())
         
         rows = query.all()
 

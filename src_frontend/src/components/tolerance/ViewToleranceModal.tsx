@@ -73,7 +73,7 @@ const ViewToleranceModal = ({ show, handleClose, viewId }: ViewToleranceModalPro
             <Modal.Header closeButton>
                 <Modal.Title>查看公差資料</Modal.Title>
             </Modal.Header>
-            <Modal.Body style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+            <Modal.Body style={{ maxHeight: '80vh', overflowY: 'auto', overflowX: 'auto' }}>
                 {loading ? (
                     <div className="text-center py-4">載入中...</div>
                 ) : (
@@ -100,8 +100,20 @@ const ViewToleranceModal = ({ show, handleClose, viewId }: ViewToleranceModalPro
 
                         <h5 className="mb-2"><i className="bi bi-list"></i> 公差明細</h5>
 
-                        <Table bordered hover responsive size="sm">
-                            <thead className="table-light text-center">
+                        <style type="text/css">
+                            {`
+                                .sticky-header th {
+                                    position: sticky;
+                                    top: 0;
+                                    z-index: 2;
+                                    background-color: var(--bs-light);
+                                    box-shadow: inset 0 -1px 0 var(--bs-border-color, #dee2e6);
+                                }
+                            `}
+                        </style>
+
+                        <Table bordered hover size="sm">
+                            <thead className="table-light text-center sticky-header">
                                 <tr>
                                     <th>測量項目</th>
                                     <th>位置</th>

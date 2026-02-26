@@ -154,11 +154,18 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
             <Modal.Header closeButton>
                 <Modal.Title>{editId ? '編輯公差資料' : '新增公差資料'}</Modal.Title>
             </Modal.Header>
-            <Modal.Body style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+            <Modal.Body style={{ maxHeight: '80vh', overflowY: 'auto', overflowX: 'auto' }}>
                 <style type="text/css">
                     {`
                         .modal-90w {
                             max-width: 90% !important;
+                        }
+                        .sticky-header th {
+                            position: sticky;
+                            top: 0;
+                            z-index: 2;
+                            background-color: var(--bs-light);
+                            box-shadow: inset 0 -1px 0 var(--bs-border-color, #dee2e6);
                         }
                     `}
                 </style>
@@ -185,8 +192,8 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
                             <Button variant="outline-primary" size="sm" onClick={addRow}><i className="bi bi-plus"></i> 新增明細</Button>
                         </div>
 
-                        <Table bordered hover responsive size="sm">
-                            <thead className="table-light text-center">
+                        <Table bordered hover size="sm">
+                            <thead className="table-light text-center sticky-header">
                                 <tr>
                                     <th style={{ width: '15%' }}>測量項目</th>
                                     <th style={{ width: '8%' }}>位置</th>
