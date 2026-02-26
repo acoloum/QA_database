@@ -294,11 +294,85 @@ class ToleranceService:
                     elif has_spec and similar(t_spec, input_spec): priority_buckets[7].append(t)
                     elif not has_spec: priority_buckets[8].append(t)
             
+            # Parse input spec to extract dimensional values for smart matching
+            def parse_spec_values(spec_str):
+                """Parse spec like '62.5*2.3*450' into dimensional values"""
+                if not spec_str:
+                    return {}
+                s = str(spec_str).strip().replace('×', '*').replace('x', '*').replace('X', '*')
+                while '**' in s:
+                    s = s.replace('**', '*')
+                parts = s.split('*')
+                result = {}
+                try:
+                    nums = [float(p.strip()) for p in parts if p.strip()]
+                except (ValueError, TypeError):
+                    return {}
+                
+                if len(nums) >= 2:
+                    result['外徑'] = nums[0]
+                    val2 = nums[1]
+                    if val2 < (nums[0] / 2):
+                        result['厚度'] = val2
+                        result['內徑'] = nums[0] - (val2 * 2)
+                    else:
+                        result['內徑'] = val2
+                        result['厚度'] = (nums[0] - val2) / 2
+                    if len(nums) >= 3:
+                        result['長度'] = nums[2]
+                elif len(nums) == 1:
+                    result['外徑'] = nums[0]
+                return result
+
+            def score_candidate(candidate, spec_vals):
+                """Score how well a candidate matches dimensional conditions.
+                Returns >= 0 for match (higher = more specific), -1 for no match."""
+                if not spec_vals:
+                    return 0
+                score = 0
+                for detail in candidate.details:
+                    item_name = detail.item
+                    if item_name not in spec_vals:
+                        continue
+                    
+                    spec_val = spec_vals[item_name]
+                    dim_min = detail.dim_min
+                    dim_max = detail.dim_max
+                    
+                    # Skip if no dimensional range set on this detail
+                    if dim_min is None and dim_max is None:
+                        continue
+                    
+                    # Check if spec value falls within the dimensional range
+                    if dim_min is not None and spec_val < dim_min:
+                        return -1  # Doesn't match
+                    if dim_max is not None and spec_val > dim_max:
+                        return -1  # Doesn't match
+                    score += 1  # Matches this range condition
+                
+                return score
+
+            spec_values = parse_spec_values(input_spec)
+
             matched = None
             final_p = None
             for i in range(1, 9):
-                if priority_buckets[i]:
-                    matched = priority_buckets[i][0]
+                bucket = priority_buckets[i]
+                if not bucket:
+                    continue
+                
+                if spec_values:
+                    # Score candidates and pick the best dimensional match
+                    scored = [(c, score_candidate(c, spec_values)) for c in bucket]
+                    valid = [(c, s) for c, s in scored if s >= 0]
+                    if valid:
+                        valid.sort(key=lambda x: x[1], reverse=True)
+                        matched = valid[0][0]
+                        final_p = i
+                        break
+                else:
+                    # No spec values to parse, just pick first (original behavior)
+                    matched = bucket[0]
                     final_p = i
                     break
             
