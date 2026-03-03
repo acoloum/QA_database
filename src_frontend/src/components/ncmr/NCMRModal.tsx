@@ -89,7 +89,7 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
                 resetForm();
             }
         }
-    }, [show, editId]);
+    }, [show, editId, detailData]);
 
     const handleSubmit = async () => {
         const payload = {
