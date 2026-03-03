@@ -29,3 +29,11 @@ TOKEN_EXPIRATION_HOURS = 24
 # SQLAlchemy Configuration
 SQLALCHEMY_DATABASE_URI = f"postgresql://{POSTGRESQL_CONFIG['user']}:{POSTGRESQL_CONFIG['password']}@{POSTGRESQL_CONFIG['host']}:{POSTGRESQL_CONFIG['port']}/{POSTGRESQL_CONFIG['database']}"
 SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+# SQLAlchemy Engine Options - Connection Pool
+SQLALCHEMY_ENGINE_OPTIONS = {
+    'pool_size': 10,           # 連線池大小 (預設 5)
+    'pool_pre_ping': True,     # 檢查連線有效性
+    'pool_recycle': 3600,      # 每小時回收連線
+    'max_overflow': 5,         # 允許額外連線 (超過 pool_size)
+}
