@@ -139,7 +139,7 @@ class NCMRService:
                 if inspector:
                      ncmr.inspector_id = inspector.id
 
-            # Mapping
+            # Mapping with type conversion
             field_map = {
                 '日期': 'date', '建立日期': 'create_date', '來源': 'source', '產品資訊': 'product_info',
                 '產品數量': 'quantity', '材質': 'material', '廠商': 'vendor',
@@ -149,9 +149,32 @@ class NCMRService:
                 '不良原因細項': 'defect_detail'
             }
             
+            # Type converters
+            int_fields = {'產品數量', '不合格數量'}
+            date_fields = {'日期', '建立日期'}
+            
             for key, attr in field_map.items():
-                if key in data and data[key] is not None:
-                    setattr(ncmr, attr, data[key])
+                if key in data:
+                    val = data[key]
+                    # Handle empty strings -> None
+                    if val == '' or val is None:
+                        setattr(ncmr, attr, None)
+                    # Type conversion
+                    elif key in int_fields:
+                        try:
+                            setattr(ncmr, attr, int(val))
+                        except (ValueError, TypeError):
+                            setattr(ncmr, attr, None)
+                    elif key in date_fields:
+                        try:
+                            if isinstance(val, str):
+                                setattr(ncmr, attr, datetime.datetime.strptime(val, '%Y-%m-%d').date())
+                            else:
+                                setattr(ncmr, attr, val)
+                        except (ValueError, TypeError):
+                            setattr(ncmr, attr, None)
+                    else:
+                        setattr(ncmr, attr, val)
             
             db.session.commit()
             return True
