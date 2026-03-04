@@ -114,6 +114,10 @@ export const useCreateShipping = () => {
             queryClient.invalidateQueries({ queryKey: ['shippingList'] });
             queryClient.invalidateQueries({ queryKey: ['shippingStats'] });
         },
+        onError: (error: any) => {
+            const msg = error?.response?.data?.error || '儲存失敗，請檢查輸入資料';
+            toast.error(msg);
+        },
     });
 };
 
@@ -129,6 +133,10 @@ export const useUpdateShipping = () => {
             queryClient.invalidateQueries({ queryKey: ['shippingList'] });
             queryClient.invalidateQueries({ queryKey: ['shippingDetail', variables.id] });
             queryClient.invalidateQueries({ queryKey: ['shippingStats'] });
+        },
+        onError: (error: any) => {
+            const msg = error?.response?.data?.error || '更新失敗，請檢查輸入資料';
+            toast.error(msg);
         },
     });
 };

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Table, Alert } from 'react-bootstrap';
+import toast from 'react-hot-toast';
 import type { ToleranceResult } from '../../types';
 import {
     useInspectors,
@@ -229,6 +230,19 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     };
 
     const handleSubmit = async () => {
+        // Client-side validation
+        const validationErrors: string[] = [];
+        if (!date) validationErrors.push('請選擇檢驗日期');
+        if (!inspectorName) validationErrors.push('請選擇檢驗人員');
+        if (!vendorName) validationErrors.push('請選擇廠商');
+        if (!spec) validationErrors.push('請輸入檢驗規格');
+        if (!material) validationErrors.push('請輸入材質');
+
+        if (validationErrors.length > 0) {
+            toast.error(validationErrors.join('、'));
+            return;
+        }
+
         const payload: any = {
             "檢驗日期": date,
             "檢驗人員姓名": inspectorName,
@@ -250,6 +264,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             onSuccess();
             handleClose();
         } catch (error) {
+            // Error is already handled by mutation's onError
             console.error(error);
         }
     };
@@ -277,7 +292,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                                 <Form.Control type="date" value={date} onChange={e => setDate(e.target.value)} />
                             </div>
                             <div className="col-md-2">
-                                <Form.Label>人員</Form.Label>
+                                <Form.Label>檢驗人員</Form.Label>
                                 <Form.Select value={inspectorName} onChange={e => setInspectorName(e.target.value)}>
                                     <option value="">請選擇</option>
                                     {inspectors.map(i => <option key={i.id} value={i.name}>{i.name}</option>)}
