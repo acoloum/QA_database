@@ -327,7 +327,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                                     {tolerance.tolerances.map((t, idx) => {
                                         let rangeDisplay = '';
                                         if (t.尺寸下限 !== null && t.尺寸上限 !== null) {
-                                            rangeDisplay = `尺寸${t.尺寸下限}~${t.尺寸上限}`;
+                                            rangeDisplay = `${t.尺寸下限}~${t.尺寸上限}`;
                                         } else if (t.公差上限 !== null && t.公差下限 !== null) {
                                             const max = t.公差上限;
                                             const min = t.公差下限;
