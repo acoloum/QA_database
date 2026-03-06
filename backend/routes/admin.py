@@ -243,13 +243,24 @@ def get_dashboard_trends():
             "rework_by_month": []
         }
         
+        # Use proper month arithmetic to avoid issues with months of different lengths
+        today = date.today()
+        current_month_start = today.replace(day=1)
+        
         for i in range(5, -1, -1):
-            month_date = date.today().replace(day=1) - timedelta(days=i * 30)
-            month_start = month_date.replace(day=1)
-            if month_date.month == 12:
-                month_end = month_date.replace(year=month_date.year + 1, month=1, day=1) - timedelta(days=1)
+            # Calculate the target month by subtracting months properly
+            year = current_month_start.year
+            month = current_month_start.month - i
+            while month <= 0:
+                month += 12
+                year -= 1
+            month_start = date(year, month, 1)
+            
+            # Calculate month end: first day of next month minus 1 day
+            if month == 12:
+                month_end = date(year + 1, 1, 1) - timedelta(days=1)
             else:
-                month_end = month_date.replace(month=month_date.month + 1, day=1) - timedelta(days=1)
+                month_end = date(year, month + 1, 1) - timedelta(days=1)
             
             ncmr_count = NCMR.query.filter(
                 NCMR.date >= month_start,
@@ -266,16 +277,17 @@ def get_dashboard_trends():
                 ReworkRequest.created_at <= month_end
             ).count()
             
+            month_label = month_start.strftime("%Y-%m")
             trends["ncmr_by_month"].append({
-                "month": month_date.strftime("%Y-%m"),
+                "month": month_label,
                 "count": ncmr_count
             })
             trends["shipping_by_month"].append({
-                "month": month_date.strftime("%Y-%m"),
+                "month": month_label,
                 "count": shipping_count
             })
             trends["rework_by_month"].append({
-                "month": month_date.strftime("%Y-%m"),
+                "month": month_label,
                 "count": rework_count
             })
         
