@@ -5,6 +5,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.chart import LineChart, BarChart, Reference
+from openpyxl.chart.layout import Layout, ManualLayout
 
 
 class SpcReportService:
@@ -261,16 +262,19 @@ class SpcReportService:
             xbar_chart = LineChart()
             xbar_chart.title = f"X̄ 平均值管制圖 - {field}"
             xbar_chart.y_axis.title = "量測值"
-            xbar_chart.x_axis.title = "樣本序號"
             xbar_chart.y_axis.delete = False
             xbar_chart.x_axis.delete = False
             xbar_chart.y_axis.tickLblPos = "low"
             xbar_chart.x_axis.tickLblPos = "low"
             xbar_chart.y_axis.numFmt = '0.000'
-            xbar_chart.width = 32
-            xbar_chart.height = 16
+            xbar_chart.x_axis.tickLblSkip = 1
+            xbar_chart.width = 40
+            xbar_chart.height = 25
             xbar_chart.style = 10
             xbar_chart.legend.position = 'b'
+            xbar_chart.legend.layout = Layout(
+                manualLayout=ManualLayout(x=0.25, y=0.92, w=0.5, h=0.06)
+            )
 
             cats = Reference(ws2, min_col=1, min_row=2, max_row=data_count + 1)
             avg_data = Reference(ws2, min_col=4, min_row=1, max_row=data_count + 1)
@@ -309,16 +313,19 @@ class SpcReportService:
             r_chart = LineChart()
             r_chart.title = f"R 全距管制圖 - {field}"
             r_chart.y_axis.title = "全距"
-            r_chart.x_axis.title = "樣本序號"
             r_chart.y_axis.delete = False
             r_chart.x_axis.delete = False
             r_chart.y_axis.tickLblPos = "low"
             r_chart.x_axis.tickLblPos = "low"
             r_chart.y_axis.numFmt = '0.000'
-            r_chart.width = 32
-            r_chart.height = 16
+            r_chart.x_axis.tickLblSkip = 1
+            r_chart.width = 40
+            r_chart.height = 25
             r_chart.style = 10
             r_chart.legend.position = 'b'
+            r_chart.legend.layout = Layout(
+                manualLayout=ManualLayout(x=0.25, y=0.92, w=0.5, h=0.06)
+            )
 
             r_data = Reference(ws2, min_col=5, min_row=1, max_row=data_count + 1)
             r_ucl_ref = Reference(ws2, min_col=9, min_row=1, max_row=data_count + 1)
@@ -336,24 +343,23 @@ class SpcReportService:
             s_r_ucl.graphicalProperties.line.dashStyle = "dash"
             s_r_ucl.graphicalProperties.line.width = 15000
 
-            ws_chart.add_chart(r_chart, "A32")
+            ws_chart.add_chart(r_chart, "A50")
 
             # --- Histogram ---
             if hist_data_rows > 0 and ws3 is not None:
                 hist_chart = BarChart()
                 hist_chart.title = f"量測值分佈直方圖 - {field}"
                 hist_chart.y_axis.title = "頻次"
-                hist_chart.x_axis.title = "量測值區間"
                 hist_chart.y_axis.delete = False
                 hist_chart.x_axis.delete = False
                 hist_chart.y_axis.tickLblPos = "low"
                 hist_chart.x_axis.tickLblPos = "low"
-                hist_chart.width = 32
-                hist_chart.height = 16
+                hist_chart.width = 40
+                hist_chart.height = 25
                 hist_chart.style = 10
                 hist_chart.type = "col"
                 hist_chart.grouping = "clustered"
-                hist_chart.legend.position = 'b'
+                hist_chart.legend = None
 
                 hist_cats = Reference(ws3, min_col=1, min_row=2, max_row=hist_data_rows + 1)
                 hist_vals = Reference(ws3, min_col=2, min_row=1, max_row=hist_data_rows + 1)
@@ -364,7 +370,7 @@ class SpcReportService:
                 s_hist = hist_chart.series[0]
                 s_hist.graphicalProperties.solidFill = "0D6EFD"
 
-                ws_chart.add_chart(hist_chart, "A63")
+                ws_chart.add_chart(hist_chart, "A100")
 
         output = BytesIO()
         wb.save(output)
