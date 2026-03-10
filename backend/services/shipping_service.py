@@ -110,35 +110,75 @@ class ShippingService:
         end_date = args.get('end_date')
 
         try:
-            # 1. Tolerance Lookup (ORM)
+            # 1. Tolerance Lookup — reuse the same logic as the form
+            from ..services.tolerance_service import ToleranceService
             tolerance_limits = {"USL": None, "LSL": None, "found": False}
             if material:
-                tol_main = VendorToleranceMain.query.filter_by(material=material)\
-                    .order_by(VendorToleranceMain.vendor_id.desc().nullslast(), VendorToleranceMain.spec.desc().nullslast())\
-                    .first()
-                
-                if tol_main:
-                    tol_detail = VendorToleranceDetail.query.filter_by(main_id=tol_main.id, item=field).first()
-                    if tol_detail:
-                        tolerance_limits["found"] = True
-                        tolerance_limits["公差下限"] = tol_detail.tolerance_min
-                        tolerance_limits["公差上限"] = tol_detail.tolerance_max
-                        tolerance_limits["尺寸下限"] = tol_detail.dim_min
-                        tolerance_limits["尺寸上限"] = tol_detail.dim_max
-                        
-                        if tol_detail.dim_min is not None and tol_detail.dim_max is not None:
-                            tolerance_limits["LSL"] = tol_detail.dim_min
-                            tolerance_limits["USL"] = tol_detail.dim_max
-                        elif tol_detail.tolerance_min is not None and tol_detail.tolerance_max is not None:
-                            # Try to get standard value if dims missing
-                             # For simplicity, if standard value was needed we query it. 
-                             # The model has dim_min/max, tol_min/max, and std_val?
-                             # In model definition: std_val = db.Column('標準值', db.Float)
-                             
-                             std = tol_detail.std_val
-                             if std is not None:
-                                 tolerance_limits["LSL"] = std - tol_detail.tolerance_min
-                                 tolerance_limits["USL"] = std + tol_detail.tolerance_max
+                # Resolve vendor_id from name for tolerance matching
+                vendor_id = None
+                if vendor:
+                    v = Vendor.query.filter(Vendor.name.like(f"%{vendor}%")).first()
+                    if v:
+                        vendor_id = v.id
+
+                tol_result = ToleranceService.check_tolerance({
+                    'material': material,
+                    'spec': spec or '',
+                    'vendor_id': str(vendor_id) if vendor_id else ''
+                })
+
+
+                if tol_result.get('found'):
+                    tolerance_limits["found"] = True
+                    # Parse nominal values from spec (e.g. '31.9*2.2*589' → 外徑=31.9)
+                    nominal_from_spec = {}
+                    if spec:
+                        s = str(spec).strip().replace('×', '*').replace('x', '*').replace('X', '*')
+                        while '**' in s: s = s.replace('**', '*')
+                        parts = s.split('*')
+                        try:
+                            nums = [float(p.strip()) for p in parts if p.strip()]
+                            if len(nums) >= 2:
+                                nominal_from_spec['外徑'] = nums[0]
+                                val2 = nums[1]
+                                if val2 < (nums[0] / 2):
+                                    nominal_from_spec['厚度'] = val2
+                                    nominal_from_spec['內徑'] = nums[0] - (val2 * 2)
+                                else:
+                                    nominal_from_spec['內徑'] = val2
+                                    nominal_from_spec['厚度'] = (nums[0] - val2) / 2
+                                if len(nums) >= 3:
+                                    nominal_from_spec['長度'] = nums[2]
+                            elif len(nums) == 1:
+                                nominal_from_spec['外徑'] = nums[0]
+                        except (ValueError, TypeError):
+                            pass
+
+                    # Find the matching detail for the current field
+                    for t in tol_result.get('tolerances', []):
+                        if t.get('項目') == field:
+
+                            tolerance_limits["公差下限"] = t.get('公差下限')
+                            tolerance_limits["公差上限"] = t.get('公差上限')
+                            tolerance_limits["尺寸下限"] = t.get('尺寸下限')
+                            tolerance_limits["尺寸上限"] = t.get('尺寸上限')
+
+                            dim_min = t.get('尺寸下限')
+                            dim_max = t.get('尺寸上限')
+                            if dim_min is not None and dim_max is not None:
+                                tolerance_limits["LSL"] = dim_min
+                                tolerance_limits["USL"] = dim_max
+                            else:
+                                tol_min = t.get('公差下限')
+                                tol_max = t.get('公差上限')
+                                # Try std_val first, then fall back to nominal from spec
+                                std = t.get('標準值')
+                                if std is None and field in nominal_from_spec:
+                                    std = nominal_from_spec[field]
+                                if tol_min is not None and tol_max is not None and std is not None:
+                                    tolerance_limits["LSL"] = std - abs(tol_min)
+                                    tolerance_limits["USL"] = std + abs(tol_max)
+                            break
 
             # 2. Data Query (ORM)
             # Map field name to model attribute prefix
@@ -189,6 +229,7 @@ class ShippingService:
             
             avgs = []
             ranges = []
+            all_values = []  # All individual measurements for histogram
             ids_valid = []
             dates_valid = []
             labels_valid = []
@@ -197,10 +238,6 @@ class ShippingService:
             for idx, r in enumerate(rows):
                 vals: List[float] = []
                 valid_groups = 0
-                
-                # Iterate logic depends on how many columns we fetched
-                # If minmax: 3,4 (Group1), 5,6 (Group2)...
-                # If single: 3 (Group1), 4 (Group2)...
                 
                 current_col_idx = 3
                 
@@ -211,18 +248,23 @@ class ShippingService:
                             v2_str = r[current_col_idx+1]
                             current_col_idx += 2
                             
-                            if v1_str and v2_str: # checking not None and not empty string
-                                val = (float(v1_str) + float(v2_str)) / 2
+                            if v1_str and v2_str:
+                                v1 = float(v1_str)
+                                v2 = float(v2_str)
+                                val = (v1 + v2) / 2
                                 vals.append(val)
+                                all_values.extend([v1, v2])
                                 valid_groups += 1
                         else:
                             v_str = r[current_col_idx]
                             current_col_idx += 1
                             if v_str:
-                                vals.append(float(v_str))
+                                v = float(v_str)
+                                vals.append(v)
+                                all_values.append(v)
                                 valid_groups += 1
                     except (ValueError, TypeError):
-                         pass # Skip invalid numbers
+                         pass
 
                 original_idx = len(rows) - 1 - idx
                 
@@ -231,12 +273,11 @@ class ShippingService:
                     avgs.append(float(np.mean(vals_np)))
                     ranges.append(float(np.ptp(vals_np)))
                     ids_valid.append(str(r[0]))
-                    # Date formatting
                     d_val = r[1]
                     d_str = d_val.strftime('%Y-%m-%d') if hasattr(d_val, 'strftime') else str(d_val) if d_val else ''
                     dates_valid.append(d_str)
                     
-                    label_val = r[2] # Order number
+                    label_val = r[2]
                     labels_valid.append(str(label_val) if label_val else str(r[0]))
                 else:
                     insufficient_data.append({
@@ -246,7 +287,7 @@ class ShippingService:
                          "original_idx": original_idx
                     })
 
-            # Control Limit Calculation (Same as before)
+            # Control Limit Calculation
             BASELINE_COUNT = 25
             if len(avgs) >= 5:
                 baseline_count = min(BASELINE_COUNT, len(avgs))
@@ -262,12 +303,58 @@ class ShippingService:
                 x_cl = x_ucl = x_lcl = r_cl = r_ucl = 0.0
                 baseline_count = 0
 
+            # --- Process Capability Indices (Cp/Cpk/Pp/Ppk) ---
+            process_capability = {"available": False}
+            usl = tolerance_limits.get("USL")
+            lsl = tolerance_limits.get("LSL")
+
+            if usl is not None and lsl is not None and len(avgs) >= 5:
+                x_bar = float(np.mean(avgs))
+                # Within-group sigma: estimated from R-bar / d2
+                # For subgroup size n=5, d2 = 2.326
+                d2 = 2.326
+                sigma_within = r_cl / d2 if r_cl > 0 else 0
+
+                # Overall sigma: standard deviation of all individual values
+                if len(all_values) >= 2:
+                    sigma_overall = float(np.std(all_values, ddof=1))
+                else:
+                    sigma_overall = 0
+
+                process_capability["available"] = True
+                process_capability["usl"] = float(usl)
+                process_capability["lsl"] = float(lsl)
+
+                if sigma_within > 0:
+                    cp = (float(usl) - float(lsl)) / (6 * sigma_within)
+                    cpu = (float(usl) - x_bar) / (3 * sigma_within)
+                    cpl = (x_bar - float(lsl)) / (3 * sigma_within)
+                    cpk = min(cpu, cpl)
+                    process_capability.update({"cp": round(cp, 3), "cpk": round(cpk, 3),
+                                               "cpu": round(cpu, 3), "cpl": round(cpl, 3)})
+                else:
+                    process_capability.update({"cp": None, "cpk": None, "cpu": None, "cpl": None})
+
+                if sigma_overall > 0:
+                    pp = (float(usl) - float(lsl)) / (6 * sigma_overall)
+                    ppu = (float(usl) - x_bar) / (3 * sigma_overall)
+                    ppl = (x_bar - float(lsl)) / (3 * sigma_overall)
+                    ppk = min(ppu, ppl)
+                    process_capability.update({"pp": round(pp, 3), "ppk": round(ppk, 3),
+                                               "ppu": round(ppu, 3), "ppl": round(ppl, 3)})
+                else:
+                    process_capability.update({"pp": None, "ppk": None, "ppu": None, "ppl": None})
+
+                process_capability["sigma_within"] = round(sigma_within, 6)
+                process_capability["sigma_overall"] = round(sigma_overall, 6)
+
             return {
                 "labels": labels_valid,
                 "ids": ids_valid,
                 "dates": dates_valid,
                 "avgs": avgs,
                 "ranges": ranges,
+                "all_values": [round(v, 4) for v in all_values],
                 "x_cl": x_cl,
                 "x_ucl": x_ucl,
                 "x_lcl": x_lcl,
@@ -277,7 +364,8 @@ class ShippingService:
                 "insufficient_data": insufficient_data,
                 "total_rows": len(rows),
                 "valid_count": len(avgs),
-                "tolerance": tolerance_limits
+                "tolerance": tolerance_limits,
+                "process_capability": process_capability
             }
         except Exception as e:
             raise e

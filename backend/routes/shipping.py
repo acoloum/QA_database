@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request, send_file
 from ..services.shipping_service import ShippingService
+from ..services.spc_report import SpcReportService
 from ..utils import auth_required, handle_db_error
 
 shipping_bp = Blueprint('shipping', __name__)
@@ -31,6 +32,33 @@ def get_shipping_stats():
     try:
         result = ShippingService.get_stats(request.args)
         return jsonify(result)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@shipping_bp.route('/api/spc-report', methods=['GET'])
+@auth_required
+def export_spc_report():
+    """匯出 SPC 統計分析報告 (Excel)"""
+    try:
+        stats_data = ShippingService.get_stats(request.args)
+        field = request.args.get('field', '外徑')
+        filters = {
+            'vendor': request.args.get('vendor', ''),
+            'material': request.args.get('material', ''),
+            'spec': request.args.get('spec', ''),
+            'start_date': request.args.get('start_date', ''),
+            'end_date': request.args.get('end_date', ''),
+        }
+        output = SpcReportService.generate_report(stats_data, field, filters)
+        filename = f'SPC報告_{field}_{filters["material"] or "all"}.xlsx'
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -98,3 +126,4 @@ def export_excel():
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+

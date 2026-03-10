@@ -95,3 +95,80 @@ export function analyzeWECO(data: number[], cl: number, ucl: number, lcl: number
     }
     return { statuses, violations };
 }
+
+// --- Process Capability Helpers ---
+
+export interface ProcessCapabilityGrade {
+    label: string;
+    color: string;
+    bgColor: string;
+    description: string;
+}
+
+export function getCpkGrade(cpk: number | null | undefined): ProcessCapabilityGrade {
+    if (cpk == null) return { label: 'N/A', color: '#6c757d', bgColor: '#e9ecef', description: '無法計算' };
+    if (cpk >= 1.67) return { label: 'A', color: '#155724', bgColor: '#d4edda', description: '優秀' };
+    if (cpk >= 1.33) return { label: 'B', color: '#0c5460', bgColor: '#d1ecf1', description: '良好' };
+    if (cpk >= 1.0) return { label: 'C', color: '#856404', bgColor: '#fff3cd', description: '可接受' };
+    return { label: 'D', color: '#721c24', bgColor: '#f8d7da', description: '不足' };
+}
+
+// --- Histogram ---
+
+export interface HistogramBin {
+    label: string;
+    min: number;
+    max: number;
+    count: number;
+    midpoint: number;
+}
+
+export function generateHistogramBins(data: number[], binCount?: number): HistogramBin[] {
+    if (data.length === 0) return [];
+
+    const sorted = [...data].sort((a, b) => a - b);
+    const min = sorted[0];
+    const max = sorted[sorted.length - 1];
+    const range = max - min;
+
+    if (range === 0) {
+        return [{ label: min.toFixed(3), min, max, count: data.length, midpoint: min }];
+    }
+
+    // Sturges' formula
+    const n = binCount || Math.ceil(Math.log2(data.length) + 1);
+    const binWidth = range / n;
+
+    const bins: HistogramBin[] = [];
+    for (let i = 0; i < n; i++) {
+        const bMin = min + i * binWidth;
+        const bMax = i === n - 1 ? max + 0.0001 : min + (i + 1) * binWidth;
+        const count = data.filter(v => v >= bMin && v < bMax).length;
+        bins.push({
+            label: `${bMin.toFixed(2)}~${(min + (i + 1) * binWidth).toFixed(2)}`,
+            min: bMin,
+            max: bMax,
+            count,
+            midpoint: (bMin + bMax) / 2
+        });
+    }
+    return bins;
+}
+
+// --- Normal Distribution PDF ---
+
+export function normalPDF(x: number, mean: number, stdDev: number): number {
+    if (stdDev <= 0) return 0;
+    const exponent = -0.5 * Math.pow((x - mean) / stdDev, 2);
+    return (1 / (stdDev * Math.sqrt(2 * Math.PI))) * Math.exp(exponent);
+}
+
+// --- Moving Average ---
+
+export function movingAverage(data: number[], window: number = 5): (number | null)[] {
+    return data.map((_, i) => {
+        if (i < window - 1) return null;
+        const slice = data.slice(i - window + 1, i + 1);
+        return slice.reduce((a, b) => a + b, 0) / window;
+    });
+}

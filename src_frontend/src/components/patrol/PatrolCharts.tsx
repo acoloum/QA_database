@@ -75,28 +75,26 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
 
         // Charts Configuration
         // Determine if violation is UCL/LCL (more severe) or pattern-based
-        const pointColors = data.avgs.map((val, i) => {
-            // Check for UCL/LCL violation (Rule 1) - most severe
+        const pointColors = data.avgs.map((val: number, i: number) => {
             if (val > data.x_ucl || val < data.x_lcl) {
-                return '#dc3545'; // Red - UCL/LCL violation
+                return '#dc3545';
             }
-            // Check for pattern violations
             if (weco.statuses[i] === 'violation') {
-                return '#fd7e14'; // Orange - pattern violation
+                return '#fd7e14';
             }
-            return '#0d6efd'; // Blue - normal
+            return '#0d6efd';
         });
 
-        const pointRadius = data.avgs.map((val, i) => {
+        const pointRadius = data.avgs.map((_val: number, i: number) => {
             if (weco.statuses[i] === 'violation') {
-                return 8; // Larger for violations
+                return 8;
             }
             return 4;
         });
 
-        const pointBorderColor = data.avgs.map((val, i) => {
+        const pointBorderColor = data.avgs.map((_val: number, i: number) => {
             if (weco.statuses[i] === 'violation') {
-                return '#fff'; // White border for violations
+                return '#fff';
             }
             return '#0d6efd';
         });
@@ -239,9 +237,9 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                             <div style={{ height: '300px' }}>
                                 <Line
                                     data={chartData.xBar}
-                                    options={{ 
-                                        maintainAspectRatio: false, 
-                                        plugins: { 
+                                    options={{
+                                        maintainAspectRatio: false,
+                                        plugins: {
                                             legend: { display: false },
                                             tooltip: {
                                                 callbacks: {
@@ -262,8 +260,10 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                                                 }
                                             }
                                         },
-                                        onHover: (event, elements) => {
-                                            event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+                                        onHover: (event: any, elements: any[]) => {
+                                            if (event?.native?.target) {
+                                                (event.native.target as HTMLElement).style.cursor = elements.length > 0 ? 'pointer' : 'default';
+                                            }
                                         }
                                     }}
                                 />
@@ -278,9 +278,9 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                             <div style={{ height: '300px' }}>
                                 <Line
                                     data={chartData.rChart}
-                                    options={{ 
-                                        maintainAspectRatio: false, 
-                                        plugins: { 
+                                    options={{
+                                        maintainAspectRatio: false,
+                                        plugins: {
                                             legend: { display: false },
                                             tooltip: {
                                                 callbacks: {
@@ -301,8 +301,10 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                                                 }
                                             }
                                         },
-                                        onHover: (event, elements) => {
-                                            event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+                                        onHover: (event: any, elements: any[]) => {
+                                            if (event?.native?.target) {
+                                                (event.native.target as HTMLElement).style.cursor = elements.length > 0 ? 'pointer' : 'default';
+                                            }
                                         }
                                     }}
                                 />

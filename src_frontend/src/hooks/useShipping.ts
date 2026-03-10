@@ -183,3 +183,38 @@ export const useCheckTolerance = () => {
         }
     });
 };
+
+// 6. SPC Report Export
+export const useExportSpcReport = () => {
+    return useMutation({
+        mutationFn: async (params: ShippingStatsParams & { vendor?: string; material?: string; spec?: string }) => {
+            const queryParams = new URLSearchParams();
+            queryParams.append('field', params.field);
+            if (params.vendor) queryParams.append('vendor', params.vendor);
+            if (params.material) queryParams.append('material', params.material);
+            if (params.spec) queryParams.append('spec', params.spec);
+            if (params.start_date) queryParams.append('start_date', params.start_date);
+            if (params.end_date) queryParams.append('end_date', params.end_date);
+
+            const res = await api.get(`/spc-report?${queryParams.toString()}`, {
+                responseType: 'blob'
+            });
+
+            // Trigger download
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `SPC報告_${params.field}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        },
+        onSuccess: () => {
+            toast.success('SPC 報告匯出成功');
+        },
+        onError: () => {
+            toast.error('SPC 報告匯出失敗');
+        }
+    });
+};
