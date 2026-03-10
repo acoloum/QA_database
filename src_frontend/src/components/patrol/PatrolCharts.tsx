@@ -60,7 +60,9 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
         const min = sorted[0];
         const max = sorted[count - 1];
         const range = max - min;
-        const variance = data.avgs.reduce((acc: number, val: number) => acc + Math.pow(val - mean, 2), 0) / count;
+        const variance = count > 1
+            ? data.avgs.reduce((acc: number, val: number) => acc + Math.pow(val - mean, 2), 0) / (count - 1)
+            : 0;
         const stdDev = Math.sqrt(variance);
 
         const summary = {

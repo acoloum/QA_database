@@ -8,6 +8,39 @@ from openpyxl.chart import LineChart, BarChart, Reference
 from openpyxl.chart.layout import Layout, ManualLayout
 
 
+def detect_weco_violations(data, cl, ucl, lcl, labels, chart_type):
+    """Detect WECO violations for Excel report generation."""
+    violations = []
+    if not data:
+        return violations
+    for i, val in enumerate(data):
+        reasons = []
+        # Rule 1: Beyond control limits
+        if val > ucl or val < lcl:
+            reasons.append("Rule 1: 超出控制限")
+        # Rule 2: 9 consecutive on same side
+        if i >= 8:
+            last9 = data[i - 8:i + 1]
+            if all(v > cl for v in last9) or all(v < cl for v in last9):
+                reasons.append("Rule 2: 連續9點同側")
+        # Rule 3: 6 consecutive trending
+        if i >= 5:
+            last6 = data[i - 5:i + 1]
+            inc = all(last6[j] > last6[j - 1] for j in range(1, len(last6)))
+            dec = all(last6[j] < last6[j - 1] for j in range(1, len(last6)))
+            if inc or dec:
+                reasons.append("Rule 3: 連續6點趨勢")
+        if reasons:
+            violations.append({
+                'label': labels[i] if i < len(labels) else str(i),
+                'chart_type': chart_type,
+                'value': val,
+                'reasons': reasons
+            })
+    return violations
+
+
+
 class SpcReportService:
     @staticmethod
     def generate_report(stats_data: dict, field: str, filters: dict) -> BytesIO:
@@ -70,6 +103,14 @@ class SpcReportService:
                 ("最大值", round(max(avgs), 4)),
                 ("全距 (R)", round(max(avgs) - min(avgs), 4)),
             ]
+
+            # Add distribution stats if available
+            dist_stats = stats_data.get('distribution_stats', {})
+            if dist_stats:
+                stats_items.append(("偏態係數 (Skewness)", dist_stats.get('skewness', 'N/A')))
+                stats_items.append(("峰態係數 (Kurtosis)", dist_stats.get('kurtosis', 'N/A')))
+                stats_items.append(("常態性評估", dist_stats.get('normality_label', 'N/A')))
+
             headers = ["統計項目", "數值"]
             for col_idx, h in enumerate(headers, 1):
                 cell = ws.cell(row=row, column=col_idx, value=h)
@@ -86,6 +127,15 @@ class SpcReportService:
                 cell_val.font = normal_font
                 cell_val.border = thin_border
                 cell_val.alignment = Alignment(horizontal='center')
+                # Highlight normality assessment
+                if name == "常態性評估":
+                    normality = dist_stats.get('normality', '')
+                    if normality == 'good':
+                        cell_val.fill = good_fill
+                    elif normality == 'moderate':
+                        cell_val.fill = warn_fill
+                    elif normality == 'poor':
+                        cell_val.fill = bad_fill
                 row += 1
 
         # --- Control Limits ---
@@ -95,7 +145,9 @@ class SpcReportService:
         ws[f'A{row}'].font = Font(name="微軟正黑體", size=12, bold=True)
         row += 1
 
+        avg_n = stats_data.get('avg_subgroup_size', 5)
         cl_items = [
+            ("平均子群大小 (n)", avg_n),
             ("X̄ 中心線 (CL)", stats_data.get('x_cl', 0)),
             ("X̄ 管制上限 (UCL)", stats_data.get('x_ucl', 0)),
             ("X̄ 管制下限 (LCL)", stats_data.get('x_lcl', 0)),
@@ -180,6 +232,78 @@ class SpcReportService:
                         cell_grade.fill = fill
                 row += 1
 
+            # --- PPM Row ---
+            ppm = pc.get('ppm', {})
+            if ppm:
+                row += 1
+                ws.merge_cells(f'A{row}:F{row}')
+                ws[f'A{row}'] = "PPM 不良率估算"
+                ws[f'A{row}'].font = Font(name="微軟正黑體", size=12, bold=True)
+                row += 1
+                ppm_items = [
+                    ("PPM 超上限", ppm.get('upper', 0)),
+                    ("PPM 超下限", ppm.get('lower', 0)),
+                    ("PPM 總計", ppm.get('total', 0)),
+                ]
+                for col_idx, h in enumerate(["項目", "數值"], 1):
+                    cell = ws.cell(row=row, column=col_idx, value=h)
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.border = thin_border
+                    cell.alignment = Alignment(horizontal='center')
+                row += 1
+                for name, value in ppm_items:
+                    ws.cell(row=row, column=1, value=name).font = normal_font
+                    ws.cell(row=row, column=1).border = thin_border
+                    cell_val = ws.cell(row=row, column=2, value=round(value, 1) if isinstance(value, (int, float)) else value)
+                    cell_val.font = normal_font
+                    cell_val.border = thin_border
+                    cell_val.alignment = Alignment(horizontal='center')
+                    if name == "PPM 總計" and isinstance(value, (int, float)):
+                        if value <= 3.4:
+                            cell_val.fill = good_fill
+                        elif value <= 6210:
+                            cell_val.fill = warn_fill
+                        else:
+                            cell_val.fill = bad_fill
+                    row += 1
+
+            # --- Process Capability Conclusion ---
+            row += 1
+            ws.merge_cells(f'A{row}:F{row}')
+            ws[f'A{row}'] = "製程能力結論"
+            ws[f'A{row}'].font = Font(name="微軟正黑體", size=12, bold=True)
+            row += 1
+
+            cpk_val = pc.get('cpk')
+            conclusion_lines = []
+            if cpk_val is not None:
+                if cpk_val >= 1.67:
+                    conclusion_lines.append("✅ 製程能力優秀 (Cpk ≥ 1.67)，製程穩定且具備充裕的安全裕度。")
+                    conclusion_lines.append("建議：維持現有製程管控，可考慮減少抽檢頻率。")
+                elif cpk_val >= 1.33:
+                    conclusion_lines.append("✅ 製程能力良好 (Cpk ≥ 1.33)，製程穩定且符合規格要求。")
+                    conclusion_lines.append("建議：持續監控製程，維持現有管控水準。")
+                elif cpk_val >= 1.0:
+                    conclusion_lines.append("⚠️ 製程能力可接受 (Cpk ≥ 1.0)，但安全裕度較低。")
+                    conclusion_lines.append("建議：加強製程監控，分析變異來源，尋求改善。")
+                else:
+                    conclusion_lines.append("❌ 製程能力不足 (Cpk < 1.0)，產品超出規格的風險較高。")
+                    conclusion_lines.append("建議：立即進行製程改善，進行根本原因分析 (Root Cause Analysis)。")
+
+                # Normality note
+                dist_stats = stats_data.get('distribution_stats', {})
+                normality = dist_stats.get('normality', '')
+                if normality == 'poor':
+                    conclusion_lines.append("⚠️ 注意：數據分佈明顯非常態，以上 Cpk 數值可能不準確，建議搭配其他分析方法。")
+                elif normality == 'moderate':
+                    conclusion_lines.append("📋 備註：數據分佈略偏常態，Cpk 數值僅供參考。")
+
+            for line in conclusion_lines:
+                ws.cell(row=row, column=1, value=line).font = normal_font
+                ws.merge_cells(f'A{row}:F{row}')
+                row += 1
+
         # Column widths
         ws.column_dimensions['A'].width = 25
         ws.column_dimensions['B'].width = 18
@@ -188,7 +312,7 @@ class SpcReportService:
         # --- Sheet 2: Control Chart Data ---
         ws2 = wb.create_sheet(title="管制圖數據")
         # Headers include control limit columns for chart references
-        data_headers = ["序號", "標籤", "日期", "平均值 (X̄)", "全距 (R)", "UCL", "CL", "LCL", "R_UCL"]
+        data_headers = ["序號", "標籤", "日期", "平均值 (X̄)", "全距 (R)", "UCL", "CL", "LCL", "R_UCL", "R̄"]
         for col_idx, h in enumerate(data_headers, 1):
             cell = ws2.cell(row=1, column=col_idx, value=h)
             cell.font = header_font
@@ -203,6 +327,17 @@ class SpcReportService:
         x_cl = stats_data.get('x_cl', 0)
         x_lcl = stats_data.get('x_lcl', 0)
         r_ucl = stats_data.get('r_ucl', 0)
+        r_cl = stats_data.get('r_cl', 0)
+
+        # USL/LSL columns if available
+        has_spec_limits = pc.get('available') and pc.get('usl') is not None and pc.get('lsl') is not None
+        if has_spec_limits:
+            for col_idx, h in enumerate(["USL", "LSL"], len(data_headers) + 1):
+                cell = ws2.cell(row=1, column=col_idx, value=h)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.border = thin_border
+                cell.alignment = Alignment(horizontal='center')
 
         for i in range(len(avgs)):
             r = i + 2
@@ -215,13 +350,20 @@ class SpcReportService:
                 cell_avg.fill = bad_fill
             cell_range = ws2.cell(row=r, column=5, value=round(ranges[i], 4) if i < len(ranges) else "")
             cell_range.border = thin_border
+            if i < len(ranges) and ranges[i] > r_ucl:
+                cell_range.fill = bad_fill
             # Control limit columns for chart series
             ws2.cell(row=r, column=6, value=round(x_ucl, 4))
             ws2.cell(row=r, column=7, value=round(x_cl, 4))
             ws2.cell(row=r, column=8, value=round(x_lcl, 4))
             ws2.cell(row=r, column=9, value=round(r_ucl, 4))
+            ws2.cell(row=r, column=10, value=round(r_cl, 4))
 
-        for col_idx in range(1, 10):
+            if has_spec_limits:
+                ws2.cell(row=r, column=11, value=round(pc['usl'], 4))
+                ws2.cell(row=r, column=12, value=round(pc['lsl'], 4))
+
+        for col_idx in range(1, 13):
             ws2.column_dimensions[get_column_letter(col_idx)].width = 15
 
         # --- Sheet 3: Histogram Data ---
@@ -253,7 +395,40 @@ class SpcReportService:
             for col_idx in range(1, 4):
                 ws3.column_dimensions[get_column_letter(col_idx)].width = 20
 
-        # ======== Sheet 4: Embedded Charts ========
+        # --- Sheet 4: WECO Violations ---
+        ws_weco = wb.create_sheet(title="WECO 異常清單")
+        weco_headers = ["序號", "數據標籤", "類型", "量測值/全距", "違規規則"]
+        for col_idx, h in enumerate(weco_headers, 1):
+            cell = ws_weco.cell(row=1, column=col_idx, value=h)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.border = thin_border
+            cell.alignment = Alignment(horizontal='center')
+
+        # Detect WECO violations for the report
+        weco_row = 2
+        if len(avgs) > 0:
+            x_violations = detect_weco_violations(avgs, x_cl, x_ucl, x_lcl, labels, 'X̄')
+            r_violations = detect_weco_violations(ranges, r_cl, r_ucl, 0, labels, 'R')
+
+            for v in x_violations + r_violations:
+                ws_weco.cell(row=weco_row, column=1, value=weco_row - 1).border = thin_border
+                ws_weco.cell(row=weco_row, column=2, value=v['label']).border = thin_border
+                ws_weco.cell(row=weco_row, column=3, value=v['chart_type']).border = thin_border
+                ws_weco.cell(row=weco_row, column=4, value=round(v['value'], 4)).border = thin_border
+                cell_rules = ws_weco.cell(row=weco_row, column=5, value=', '.join(v['reasons']))
+                cell_rules.border = thin_border
+                cell_rules.fill = bad_fill
+                weco_row += 1
+
+        if weco_row == 2:
+            ws_weco.cell(row=2, column=1, value="無異常檢出").font = Font(name="微軟正黑體", size=11, color="28A745")
+            ws_weco.merge_cells('A2:E2')
+
+        for col_idx, w in enumerate([8, 15, 8, 15, 40], 1):
+            ws_weco.column_dimensions[get_column_letter(col_idx)].width = w
+
+        # ======== Sheet 5: Embedded Charts ========
         if avgs and len(avgs) >= 2:
             ws_chart = wb.create_sheet(title="圖表")
             data_count = len(avgs)
@@ -273,7 +448,7 @@ class SpcReportService:
             xbar_chart.style = 10
             xbar_chart.legend.position = 'b'
             xbar_chart.legend.layout = Layout(
-                manualLayout=ManualLayout(x=0.25, y=0.92, w=0.5, h=0.06)
+                manualLayout=ManualLayout(x=0.15, y=0.92, w=0.7, h=0.06)
             )
 
             cats = Reference(ws2, min_col=1, min_row=2, max_row=data_count + 1)
@@ -286,6 +461,14 @@ class SpcReportService:
             xbar_chart.add_data(ucl_data, titles_from_data=True)
             xbar_chart.add_data(cl_data, titles_from_data=True)
             xbar_chart.add_data(lcl_data, titles_from_data=True)
+
+            # Add USL/LSL if available
+            if has_spec_limits:
+                usl_data = Reference(ws2, min_col=11, min_row=1, max_row=data_count + 1)
+                lsl_data = Reference(ws2, min_col=12, min_row=1, max_row=data_count + 1)
+                xbar_chart.add_data(usl_data, titles_from_data=True)
+                xbar_chart.add_data(lsl_data, titles_from_data=True)
+
             xbar_chart.set_categories(cats)
 
             # Style: Avg=blue, UCL/LCL=red dashed, CL=green
@@ -306,6 +489,17 @@ class SpcReportService:
             s_lcl.graphicalProperties.line.solidFill = "FF0000"
             s_lcl.graphicalProperties.line.dashStyle = "dash"
             s_lcl.graphicalProperties.line.width = 15000
+
+            if has_spec_limits:
+                s_usl = xbar_chart.series[4]
+                s_usl.graphicalProperties.line.solidFill = "E83E8C"
+                s_usl.graphicalProperties.line.dashStyle = "lgDash"
+                s_usl.graphicalProperties.line.width = 18000
+
+                s_lsl = xbar_chart.series[5]
+                s_lsl.graphicalProperties.line.solidFill = "E83E8C"
+                s_lsl.graphicalProperties.line.dashStyle = "lgDash"
+                s_lsl.graphicalProperties.line.width = 18000
 
             ws_chart.add_chart(xbar_chart, "A1")
 
@@ -329,9 +523,11 @@ class SpcReportService:
 
             r_data = Reference(ws2, min_col=5, min_row=1, max_row=data_count + 1)
             r_ucl_ref = Reference(ws2, min_col=9, min_row=1, max_row=data_count + 1)
+            r_cl_ref = Reference(ws2, min_col=10, min_row=1, max_row=data_count + 1)
 
             r_chart.add_data(r_data, titles_from_data=True)
             r_chart.add_data(r_ucl_ref, titles_from_data=True)
+            r_chart.add_data(r_cl_ref, titles_from_data=True)
             r_chart.set_categories(cats)
 
             s_r = r_chart.series[0]
@@ -342,6 +538,10 @@ class SpcReportService:
             s_r_ucl.graphicalProperties.line.solidFill = "FF0000"
             s_r_ucl.graphicalProperties.line.dashStyle = "dash"
             s_r_ucl.graphicalProperties.line.width = 15000
+
+            s_r_cl = r_chart.series[2]
+            s_r_cl.graphicalProperties.line.solidFill = "00B050"
+            s_r_cl.graphicalProperties.line.width = 15000
 
             ws_chart.add_chart(r_chart, "A50")
 

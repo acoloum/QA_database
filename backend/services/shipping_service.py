@@ -3,8 +3,10 @@ import pandas as pd
 import numpy as np
 from io import BytesIO
 from datetime import datetime
+from collections import defaultdict
 from typing import List, Dict, Any, Optional, Union
 from sqlalchemy import or_, text
+from scipy import stats as scipy_stats
 from ..extensions import db
 from ..models import ShippingData, Inspector, Vendor, VendorToleranceMain, VendorToleranceDetail
 from ..utils import (
@@ -12,6 +14,21 @@ from ..utils import (
     validate_inspection_data,
     handle_db_error
 )
+
+# SPC constants lookup table by subgroup size n
+# Keys: n (subgroup size), Values: (A2, D3, D4, d2)
+SPC_CONSTANTS = {
+    2: (1.880, 0.000, 3.267, 1.128),
+    3: (1.023, 0.000, 2.574, 1.693),
+    4: (0.729, 0.000, 2.282, 2.059),
+    5: (0.577, 0.000, 2.114, 2.326),
+    6: (0.483, 0.000, 2.004, 2.534),
+    7: (0.419, 0.076, 1.924, 2.704),
+    8: (0.373, 0.136, 1.864, 2.847),
+    9: (0.337, 0.184, 1.816, 2.970),
+    10: (0.308, 0.223, 1.777, 3.078),
+}
+
 
 class ShippingService:
     @staticmethod
@@ -229,6 +246,7 @@ class ShippingService:
             
             avgs = []
             ranges = []
+            subgroup_sizes = []  # Track actual subgroup size per row
             all_values = []  # All individual measurements for histogram
             ids_valid = []
             dates_valid = []
@@ -268,10 +286,11 @@ class ShippingService:
 
                 original_idx = len(rows) - 1 - idx
                 
-                if valid_groups >= 3 and vals:
+                if valid_groups >= 2 and vals:
                     vals_np = np.array(vals, dtype=float)
                     avgs.append(float(np.mean(vals_np)))
                     ranges.append(float(np.ptp(vals_np)))
+                    subgroup_sizes.append(valid_groups)
                     ids_valid.append(str(r[0]))
                     d_val = r[1]
                     d_str = d_val.strftime('%Y-%m-%d') if hasattr(d_val, 'strftime') else str(d_val) if d_val else ''
@@ -287,20 +306,30 @@ class ShippingService:
                          "original_idx": original_idx
                     })
 
-            # Control Limit Calculation
+            # Control Limit Calculation with dynamic subgroup-size constants
             BASELINE_COUNT = 25
             if len(avgs) >= 5:
                 baseline_count = min(BASELINE_COUNT, len(avgs))
                 base_avgs = avgs[:baseline_count]
                 base_ranges = ranges[:baseline_count]
+                base_ns = subgroup_sizes[:baseline_count]
+
+                # Use average subgroup size to look up constants
+                avg_n = round(float(np.mean(base_ns)))
+                avg_n = max(2, min(10, avg_n))  # Clamp to table range
+                A2, D3, D4, d2 = SPC_CONSTANTS[avg_n]
+
                 x_cl = float(np.mean(base_avgs))
                 r_cl = float(np.mean(base_ranges))
-                x_ucl = x_cl + 0.577 * r_cl
-                x_lcl = x_cl - 0.577 * r_cl
-                r_ucl = 2.114 * r_cl
+                x_ucl = x_cl + A2 * r_cl
+                x_lcl = x_cl - A2 * r_cl
+                r_ucl = D4 * r_cl
+                r_lcl = D3 * r_cl
                 x_lcl = max(x_lcl, 0)
             else:
-                x_cl = x_ucl = x_lcl = r_cl = r_ucl = 0.0
+                x_cl = x_ucl = x_lcl = r_cl = r_ucl = r_lcl = 0.0
+                d2 = 2.326
+                avg_n = 5
                 baseline_count = 0
 
             # --- Process Capability Indices (Cp/Cpk/Pp/Ppk) ---
@@ -310,9 +339,7 @@ class ShippingService:
 
             if usl is not None and lsl is not None and len(avgs) >= 5:
                 x_bar = float(np.mean(avgs))
-                # Within-group sigma: estimated from R-bar / d2
-                # For subgroup size n=5, d2 = 2.326
-                d2 = 2.326
+                # Within-group sigma: estimated from R-bar / d2 (dynamic)
                 sigma_within = r_cl / d2 if r_cl > 0 else 0
 
                 # Overall sigma: standard deviation of all individual values
@@ -348,24 +375,95 @@ class ShippingService:
                 process_capability["sigma_within"] = round(sigma_within, 6)
                 process_capability["sigma_overall"] = round(sigma_overall, 6)
 
+                # --- PPM estimation (normal distribution assumption) ---
+                if sigma_overall > 0:
+                    z_upper = (float(usl) - x_bar) / sigma_overall
+                    z_lower = (x_bar - float(lsl)) / sigma_overall
+                    ppm_upper = round(float(scipy_stats.norm.sf(z_upper) * 1_000_000), 1)
+                    ppm_lower = round(float(scipy_stats.norm.sf(z_lower) * 1_000_000), 1)
+                    ppm_total = round(ppm_upper + ppm_lower, 1)
+                    process_capability["ppm"] = {"upper": ppm_upper, "lower": ppm_lower, "total": ppm_total}
+                else:
+                    process_capability["ppm"] = {"upper": 0, "lower": 0, "total": 0}
+
+            # --- Skewness & Kurtosis ---
+            distribution_stats = {}
+            if len(all_values) >= 4:
+                arr = np.array(all_values, dtype=float)
+                distribution_stats["skewness"] = round(float(scipy_stats.skew(arr)), 3)
+                distribution_stats["kurtosis"] = round(float(scipy_stats.kurtosis(arr)), 3)
+                # Normality assessment
+                sk = abs(distribution_stats["skewness"])
+                ku = abs(distribution_stats["kurtosis"])
+                if sk < 0.5 and ku < 1.0:
+                    distribution_stats["normality"] = "good"
+                    distribution_stats["normality_label"] = "分佈接近常態"
+                elif sk < 1.0 and ku < 2.0:
+                    distribution_stats["normality"] = "moderate"
+                    distribution_stats["normality_label"] = "分佈略偏，Cpk 僅供參考"
+                else:
+                    distribution_stats["normality"] = "poor"
+                    distribution_stats["normality_label"] = "分佈明顯非常態，Cpk 可能不準確"
+
+            # --- Monthly Cpk Trend ---
+            cpk_trend = []
+            if usl is not None and lsl is not None and len(avgs) >= 5:
+                # Group data by month
+                monthly_data = defaultdict(list)
+                for i, date_str in enumerate(dates_valid):
+                    if date_str:
+                        month_key = date_str[:7]  # 'YYYY-MM'
+                        monthly_data[month_key].append(all_values[i] if i < len(all_values) else avgs[i])
+
+                # Collect individual values by month more accurately
+                monthly_values = defaultdict(list)
+                val_idx = 0
+                for i in range(len(avgs)):
+                    month_key = dates_valid[i][:7] if dates_valid[i] else 'unknown'
+                    n_vals = subgroup_sizes[i] if i < len(subgroup_sizes) else 5
+                    if is_minmax:
+                        n_raw = n_vals * 2  # Each group has min+max
+                    else:
+                        n_raw = n_vals
+                    for j in range(n_raw):
+                        if val_idx < len(all_values):
+                            monthly_values[month_key].append(all_values[val_idx])
+                            val_idx += 1
+
+                for month_key in sorted(monthly_values.keys()):
+                    vals = monthly_values[month_key]
+                    if len(vals) >= 5:
+                        m_mean = float(np.mean(vals))
+                        m_std = float(np.std(vals, ddof=1))
+                        if m_std > 0:
+                            m_cpu = (float(usl) - m_mean) / (3 * m_std)
+                            m_cpl = (m_mean - float(lsl)) / (3 * m_std)
+                            m_cpk = round(min(m_cpu, m_cpl), 3)
+                            cpk_trend.append({"month": month_key, "cpk": m_cpk, "count": len(vals)})
+
             return {
                 "labels": labels_valid,
                 "ids": ids_valid,
                 "dates": dates_valid,
                 "avgs": avgs,
                 "ranges": ranges,
+                "subgroup_sizes": subgroup_sizes,
                 "all_values": [round(v, 4) for v in all_values],
                 "x_cl": x_cl,
                 "x_ucl": x_ucl,
                 "x_lcl": x_lcl,
                 "r_cl": r_cl,
                 "r_ucl": r_ucl,
+                "r_lcl": r_lcl,
+                "avg_subgroup_size": avg_n if len(avgs) >= 5 else 5,
                 "baseline_count": baseline_count,
                 "insufficient_data": insufficient_data,
                 "total_rows": len(rows),
                 "valid_count": len(avgs),
                 "tolerance": tolerance_limits,
-                "process_capability": process_capability
+                "process_capability": process_capability,
+                "distribution_stats": distribution_stats,
+                "cpk_trend": cpk_trend
             }
         except Exception as e:
             raise e

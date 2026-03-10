@@ -172,3 +172,60 @@ export function movingAverage(data: number[], window: number = 5): (number | nul
         return slice.reduce((a, b) => a + b, 0) / window;
     });
 }
+
+// --- R-chart WECO analysis (simplified: Rule 1 + Rule 2) ---
+export function analyzeRChartWECO(data: number[], r_cl: number, r_ucl: number, labels: string[]): AnalyzedData {
+    const violations: { label: string; reasons: string[] }[] = [];
+    const statuses: ('violation' | null)[] = new Array(data.length).fill(null);
+
+    if (data.length === 0) return { statuses, violations };
+
+    for (let i = 0; i < data.length; i++) {
+        const val = data[i];
+        const reasons: string[] = [];
+
+        // Rule 1: Beyond UCL
+        if (val > r_ucl) reasons.push("R Rule 1: 超出管制上限");
+
+        // Rule 2: 9 consecutive points on same side of CL
+        if (i >= 8) {
+            const last9 = data.slice(i - 8, i + 1);
+            if (last9.every(v => v > r_cl) || last9.every(v => v < r_cl))
+                reasons.push("R Rule 2: 連續9點同側");
+        }
+
+        // Rule 3: 6 consecutive increasing or decreasing
+        if (i >= 5) {
+            const last6 = data.slice(i - 5, i + 1);
+            let inc = true, dec = true;
+            for (let j = 1; j < last6.length; j++) {
+                if (last6[j] <= last6[j - 1]) inc = false;
+                if (last6[j] >= last6[j - 1]) dec = false;
+            }
+            if (inc || dec) reasons.push("R Rule 3: 連續6點趨勢");
+        }
+
+        if (reasons.length > 0) {
+            statuses[i] = 'violation';
+            violations.push({ label: labels[i], reasons });
+        }
+    }
+    return { statuses, violations };
+}
+
+// --- PPM formatting ---
+export function formatPPM(ppm: number): string {
+    if (ppm >= 1000000) return '> 1M';
+    if (ppm >= 10000) return `${(ppm / 1000).toFixed(1)}K`;
+    if (ppm >= 1) return ppm.toFixed(0);
+    if (ppm >= 0.001) return ppm.toFixed(2);
+    return '< 0.001';
+}
+
+// --- PPM grade color ---
+export function getPpmGrade(ppm: number): { color: string; bgColor: string; label: string } {
+    if (ppm <= 3.4) return { color: '#155724', bgColor: '#d4edda', label: '六標準差水準' };
+    if (ppm <= 63) return { color: '#0c5460', bgColor: '#d1ecf1', label: '極低不良率' };
+    if (ppm <= 6210) return { color: '#856404', bgColor: '#fff3cd', label: '中等不良率' };
+    return { color: '#721c24', bgColor: '#f8d7da', label: '需要改善' };
+}

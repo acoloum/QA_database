@@ -13,7 +13,16 @@ import {
     Filler
 } from 'chart.js';
 import { Line, Chart } from 'react-chartjs-2';
-import { analyzeWECO, getCpkGrade, generateHistogramBins, normalPDF, movingAverage } from '../../utils/spcAnalysis';
+import {
+    analyzeWECO,
+    analyzeRChartWECO,
+    getCpkGrade,
+    generateHistogramBins,
+    normalPDF,
+    movingAverage,
+    formatPPM,
+    getPpmGrade
+} from '../../utils/spcAnalysis';
 import { Alert, Badge, Button, Card, Col, Row, Form } from 'react-bootstrap';
 import { useShippingStats, useExportSpcReport } from '../../hooks/useShipping';
 
@@ -54,26 +63,32 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
 
     const exportSpcReport = useExportSpcReport();
 
-    const { chartData, ids, analysis, statsSummary, processCapability, histogramData } = useMemo(() => {
+    const { chartData, ids, analysis, rAnalysis, statsSummary, processCapability, histogramData, distributionStats, cpkTrend } = useMemo(() => {
         if (!statsData || !statsData.avgs || statsData.avgs.length === 0) {
-            return { chartData: null, ids: [], analysis: null, statsSummary: null, processCapability: null, histogramData: null };
+            return { chartData: null, ids: [], analysis: null, rAnalysis: null, statsSummary: null, processCapability: null, histogramData: null, distributionStats: null, cpkTrend: null };
         }
 
         const data = statsData;
         const ids = data.ids || [];
         const count = data.avgs.length;
 
-        // Analyze WECO
+        // Analyze WECO for X-bar
         const weco = analyzeWECO(data.avgs, data.x_cl, data.x_ucl, data.x_lcl, data.labels);
 
-        // Calculate Summary Stats locally
+        // Analyze WECO for R chart
+        const rWeco = analyzeRChartWECO(data.ranges, data.r_cl, data.r_ucl, data.labels);
+
+        // Calculate Summary Stats locally (using sample stdDev: N-1)
         const mean = data.avgs.reduce((a: number, b: number) => a + b, 0) / count;
         const sorted = [...data.avgs].sort((a: number, b: number) => a - b);
         const min = sorted[0];
         const max = sorted[count - 1];
         const range = max - min;
-        const variance = data.avgs.reduce((acc: number, val: number) => acc + Math.pow(val - mean, 2), 0) / count;
+        const variance = count > 1
+            ? data.avgs.reduce((acc: number, val: number) => acc + Math.pow(val - mean, 2), 0) / (count - 1)
+            : 0;
         const stdDev = Math.sqrt(variance);
+        const cv = mean !== 0 ? (stdDev / Math.abs(mean)) * 100 : 0;  // CV%
 
         const summary = {
             count,
@@ -82,11 +97,18 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
             max: max.toFixed(3),
             range: range.toFixed(3),
             stdDev: stdDev.toFixed(3),
-            violations: weco.violations.length
+            cv: cv.toFixed(2),
+            violations: weco.violations.length + rWeco.violations.length
         };
 
         // Process capability from backend
         const pc = data.process_capability || null;
+
+        // Distribution stats from backend
+        const distStats = data.distribution_stats || null;
+
+        // Cpk trend from backend
+        const trend = data.cpk_trend || [];
 
         // --- Histogram Data ---
         const allValues = data.all_values || [];
@@ -94,7 +116,9 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
         if (allValues.length > 0) {
             const bins = generateHistogramBins(allValues);
             const allMean = allValues.reduce((a: number, b: number) => a + b, 0) / allValues.length;
-            const allVariance = allValues.reduce((a: number, v: number) => a + Math.pow(v - allMean, 2), 0) / allValues.length;
+            const allVariance = allValues.length > 1
+                ? allValues.reduce((a: number, v: number) => a + Math.pow(v - allMean, 2), 0) / (allValues.length - 1)
+                : 0;
             const allStdDev = Math.sqrt(allVariance);
             const binWidth = bins.length > 1 ? bins[1].midpoint - bins[0].midpoint : 1;
 
@@ -115,7 +139,7 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
         const zone2Upper = Array(count).fill(data.x_cl + 2 * sigma);
         const zone2Lower = Array(count).fill(data.x_cl - 2 * sigma);
 
-        // Point colors
+        // Point colors for X-bar
         const pointColors = data.avgs.map((val: number, i: number) => {
             if (val > data.x_ucl || val < data.x_lcl) return '#dc3545';
             if (weco.statuses[i] === 'violation') return '#fd7e14';
@@ -130,6 +154,18 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
         const pointBorderColor = data.avgs.map((_: number, i: number) => {
             if (weco.statuses[i] === 'violation') return '#fff';
             return '#0d6efd';
+        });
+
+        // R-chart point colors
+        const rPointColors = data.ranges.map((val: number, i: number) => {
+            if (val > data.r_ucl) return '#dc3545';
+            if (rWeco.statuses[i] === 'violation') return '#fd7e14';
+            return '#6f42c1';
+        });
+
+        const rPointRadius = data.ranges.map((_: number, i: number) => {
+            if (rWeco.statuses[i] === 'violation') return 8;
+            return 4;
         });
 
         // X-bar chart datasets
@@ -224,15 +260,29 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                         label: '全距 R',
                         data: data.ranges,
                         borderColor: '#6f42c1',
-                        backgroundColor: '#6f42c1',
+                        backgroundColor: rPointColors,
+                        pointRadius: rPointRadius,
+                        pointBorderColor: rPointColors,
+                        pointBorderWidth: 2,
                         tension: 0.1
                     },
-                    { label: 'UCL', data: Array(count).fill(data.r_ucl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0 }
+                    { label: 'UCL', data: Array(count).fill(data.r_ucl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0 },
+                    { label: 'R̄', data: Array(count).fill(data.r_cl), borderColor: 'green', pointRadius: 0 }
                 ]
             }
         };
 
-        return { chartData: cData, ids, analysis: weco, statsSummary: summary, processCapability: pc, histogramData: histData };
+        return {
+            chartData: cData,
+            ids,
+            analysis: weco,
+            rAnalysis: rWeco,
+            statsSummary: summary,
+            processCapability: pc,
+            histogramData: histData,
+            distributionStats: distStats,
+            cpkTrend: trend
+        };
 
     }, [statsData]);
 
@@ -241,6 +291,13 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
         if (!analysis || !analysis.violations) return '';
         const label = chartData?.xBar?.labels?.[idx];
         const violation = analysis.violations.find((v: any) => v.label === label);
+        return violation ? violation.reasons.join(', ') : '';
+    };
+
+    const getRViolationReasons = (idx: number): string => {
+        if (!rAnalysis || !rAnalysis.violations) return '';
+        const label = chartData?.rChart?.labels?.[idx];
+        const violation = rAnalysis.violations.find((v: any) => v.label === label);
         return violation ? violation.reasons.join(', ') : '';
     };
 
@@ -257,6 +314,14 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
 
     const cpkGrade = processCapability?.cpk != null ? getCpkGrade(processCapability.cpk) : null;
     const ppkGrade = processCapability?.ppk != null ? getCpkGrade(processCapability.ppk) : null;
+    const ppmData = processCapability?.ppm || null;
+    const ppmGrade = ppmData ? getPpmGrade(ppmData.total) : null;
+
+    // Combine X-bar and R-chart violations for alert
+    const allViolations = [
+        ...(analysis?.violations || []),
+        ...(rAnalysis?.violations || []).map((v: any) => ({ ...v, label: `[R] ${v.label}` }))
+    ];
 
     return (
         <div className="mt-4">
@@ -289,7 +354,7 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                 <>
 
                     {/* Alarm Panel */}
-                    {analysis && analysis.violations.length > 0 && (
+                    {allViolations.length > 0 && (
                         <Alert variant="danger">
                             <div
                                 className="d-flex justify-content-between align-items-center"
@@ -297,13 +362,13 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                 onClick={() => setShowWeco(!showWeco)}
                             >
                                 <Alert.Heading className="mb-0" style={{ fontSize: '1rem' }}>
-                                    🚨 偵測到 {analysis.violations.length} 個製程異常數據點 (WECO Rules) - 點擊展開/收合
+                                    🚨 偵測到 {allViolations.length} 個製程異常數據點 (WECO Rules) - 點擊展開/收合
                                 </Alert.Heading>
                                 <i className={`bi bi-chevron-${showWeco ? 'up' : 'down'}`}></i>
                             </div>
                             {showWeco && (
                                 <ul className="mb-0 mt-3">
-                                    {analysis.violations.map((v: any, idx: number) => (
+                                    {allViolations.map((v: any, idx: number) => (
                                         <li key={idx}><strong>{v.label}</strong>: {v.reasons.join(', ')}</li>
                                     ))}
                                 </ul>
@@ -318,10 +383,45 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                 <Row className="text-center">
                                     <Col><strong>樣本數</strong><div className="h4">{statsSummary.count}</div></Col>
                                     <Col><strong>平均值</strong><div className="h4">{statsSummary.mean}</div></Col>
-                                    <Col><strong>標準差</strong><div className={`h4 ${parseFloat(statsSummary.stdDev) > 0.1 ? 'text-danger' : 'text-success'}`}>{statsSummary.stdDev}</div></Col>
+                                    <Col>
+                                        <strong>標準差</strong>
+                                        <div className={`h4 ${parseFloat(statsSummary.cv) > 5 ? 'text-danger' : 'text-success'}`}>
+                                            {statsSummary.stdDev}
+                                        </div>
+                                        <div className="text-muted small">CV: {statsSummary.cv}%</div>
+                                    </Col>
                                     <Col><strong>最小值</strong><div className="h4">{statsSummary.min}</div></Col>
                                     <Col><strong>最大值</strong><div className="h4">{statsSummary.max}</div></Col>
                                     <Col><strong>異常點</strong><div className={`h4 ${statsSummary.violations > 0 ? 'text-danger' : 'text-success'}`}>{statsSummary.violations}</div></Col>
+                                </Row>
+                            </Card.Body>
+                        </Card>
+                    )}
+
+                    {/* Distribution Stats (Skewness / Kurtosis) */}
+                    {distributionStats && (
+                        <Card className="mb-3" style={{
+                            border: `2px solid ${distributionStats.normality === 'good' ? '#28a745' : distributionStats.normality === 'moderate' ? '#ffc107' : '#dc3545'}`,
+                            backgroundColor: distributionStats.normality === 'good' ? '#f8fff8' : distributionStats.normality === 'moderate' ? '#fffef5' : '#fff8f8'
+                        }}>
+                            <Card.Body className="py-2">
+                                <Row className="text-center align-items-center">
+                                    <Col xs="auto">
+                                        <strong>📐 常態性檢查</strong>
+                                    </Col>
+                                    <Col>
+                                        <span className="text-muted small me-1">偏態</span>
+                                        <strong>{distributionStats.skewness}</strong>
+                                    </Col>
+                                    <Col>
+                                        <span className="text-muted small me-1">峰態</span>
+                                        <strong>{distributionStats.kurtosis}</strong>
+                                    </Col>
+                                    <Col xs="auto">
+                                        <Badge bg={distributionStats.normality === 'good' ? 'success' : distributionStats.normality === 'moderate' ? 'warning' : 'danger'}>
+                                            {distributionStats.normality_label}
+                                        </Badge>
+                                    </Col>
                                 </Row>
                             </Card.Body>
                         </Card>
@@ -332,44 +432,77 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                         <Card.Body>
                             <h5 className="mb-3">🎯 製程能力指標</h5>
                             {processCapability?.available ? (
-                                <Row className="text-center">
-                                    <Col>
-                                        <div className="text-muted small">Cp</div>
-                                        <div className="h4">{processCapability.cp?.toFixed(3) ?? 'N/A'}</div>
-                                        <div className="text-muted small">製程能力</div>
-                                    </Col>
-                                    <Col>
-                                        <div className="text-muted small">Cpk</div>
-                                        <div className="h3 mb-1">{processCapability.cpk?.toFixed(3) ?? 'N/A'}</div>
-                                        {cpkGrade && (
-                                            <Badge style={{ backgroundColor: cpkGrade.bgColor, color: cpkGrade.color, fontSize: '0.85rem' }}>
-                                                {cpkGrade.label} - {cpkGrade.description}
-                                            </Badge>
-                                        )}
-                                    </Col>
-                                    <Col>
-                                        <div className="text-muted small">Pp</div>
-                                        <div className="h4">{processCapability.pp?.toFixed(3) ?? 'N/A'}</div>
-                                        <div className="text-muted small">製程績效</div>
-                                    </Col>
-                                    <Col>
-                                        <div className="text-muted small">Ppk</div>
-                                        <div className="h3 mb-1">{processCapability.ppk?.toFixed(3) ?? 'N/A'}</div>
-                                        {ppkGrade && (
-                                            <Badge style={{ backgroundColor: ppkGrade.bgColor, color: ppkGrade.color, fontSize: '0.85rem' }}>
-                                                {ppkGrade.label} - {ppkGrade.description}
-                                            </Badge>
-                                        )}
-                                    </Col>
-                                    <Col>
-                                        <div className="text-muted small">USL</div>
-                                        <div className="h5" style={{ color: '#e83e8c' }}>{processCapability.usl?.toFixed(3) ?? 'N/A'}</div>
-                                    </Col>
-                                    <Col>
-                                        <div className="text-muted small">LSL</div>
-                                        <div className="h5" style={{ color: '#e83e8c' }}>{processCapability.lsl?.toFixed(3) ?? 'N/A'}</div>
-                                    </Col>
-                                </Row>
+                                <>
+                                    <Row className="text-center">
+                                        <Col>
+                                            <div className="text-muted small">Cp</div>
+                                            <div className="h4">{processCapability.cp?.toFixed(3) ?? 'N/A'}</div>
+                                            <div className="text-muted small">製程能力</div>
+                                        </Col>
+                                        <Col>
+                                            <div className="text-muted small">Cpk</div>
+                                            <div className="h3 mb-1">{processCapability.cpk?.toFixed(3) ?? 'N/A'}</div>
+                                            {cpkGrade && (
+                                                <Badge style={{ backgroundColor: cpkGrade.bgColor, color: cpkGrade.color, fontSize: '0.85rem' }}>
+                                                    {cpkGrade.label} - {cpkGrade.description}
+                                                </Badge>
+                                            )}
+                                        </Col>
+                                        <Col>
+                                            <div className="text-muted small">Pp</div>
+                                            <div className="h4">{processCapability.pp?.toFixed(3) ?? 'N/A'}</div>
+                                            <div className="text-muted small">製程績效</div>
+                                        </Col>
+                                        <Col>
+                                            <div className="text-muted small">Ppk</div>
+                                            <div className="h3 mb-1">{processCapability.ppk?.toFixed(3) ?? 'N/A'}</div>
+                                            {ppkGrade && (
+                                                <Badge style={{ backgroundColor: ppkGrade.bgColor, color: ppkGrade.color, fontSize: '0.85rem' }}>
+                                                    {ppkGrade.label} - {ppkGrade.description}
+                                                </Badge>
+                                            )}
+                                        </Col>
+                                        <Col>
+                                            <div className="text-muted small">USL</div>
+                                            <div className="h5" style={{ color: '#e83e8c' }}>{processCapability.usl?.toFixed(3) ?? 'N/A'}</div>
+                                        </Col>
+                                        <Col>
+                                            <div className="text-muted small">LSL</div>
+                                            <div className="h5" style={{ color: '#e83e8c' }}>{processCapability.lsl?.toFixed(3) ?? 'N/A'}</div>
+                                        </Col>
+                                    </Row>
+
+                                    {/* PPM Row */}
+                                    {ppmData && (
+                                        <div className="mt-3 pt-3 border-top">
+                                            <Row className="text-center align-items-center">
+                                                <Col xs="auto">
+                                                    <strong>📉 PPM 不良率估算</strong>
+                                                </Col>
+                                                <Col>
+                                                    <span className="text-muted small me-1">超上限</span>
+                                                    <strong>{formatPPM(ppmData.upper)}</strong>
+                                                </Col>
+                                                <Col>
+                                                    <span className="text-muted small me-1">超下限</span>
+                                                    <strong>{formatPPM(ppmData.lower)}</strong>
+                                                </Col>
+                                                <Col>
+                                                    <span className="text-muted small me-1">總計</span>
+                                                    <strong className="h5 mb-0">{formatPPM(ppmData.total)}</strong>
+                                                    <span className="text-muted small ms-1">PPM</span>
+                                                </Col>
+                                                {ppmGrade && (
+                                                    <Col xs="auto">
+                                                        <Badge style={{ backgroundColor: ppmGrade.bgColor, color: ppmGrade.color, fontSize: '0.8rem' }}>
+                                                            {ppmGrade.label}
+                                                        </Badge>
+                                                    </Col>
+                                                )}
+                                            </Row>
+                                        </div>
+                                    )}
+                                </>
                             ) : (
                                 <Alert variant="info" className="mb-0">
                                     <i className="bi bi-info-circle me-2"></i>
@@ -442,7 +575,26 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                             data={chartData.rChart}
                                             options={{
                                                 maintainAspectRatio: false,
-                                                plugins: { legend: { display: false } },
+                                                plugins: {
+                                                    legend: {
+                                                        display: true,
+                                                        position: 'bottom',
+                                                        labels: {
+                                                            usePointStyle: true,
+                                                            pointStyle: 'line',
+                                                            font: { size: 10 }
+                                                        }
+                                                    },
+                                                    tooltip: {
+                                                        callbacks: {
+                                                            afterLabel: (ctx: any) => {
+                                                                if (ctx.datasetIndex !== 0) return '';
+                                                                const reasons = getRViolationReasons(ctx.dataIndex);
+                                                                return reasons ? `⚠️ ${reasons}` : '';
+                                                            }
+                                                        }
+                                                    }
+                                                },
                                                 onClick: (_event: any, elements: any[]) => {
                                                     if (elements.length > 0 && ids.length > 0) {
                                                         const index = elements[0].index;
@@ -563,6 +715,86 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                         </div>
                                         <div className="text-center text-muted small mt-2">
                                             平均值: {histogramData.allMean.toFixed(3)} | 標準差: {histogramData.allStdDev.toFixed(3)} | 樣本數: {statsData?.all_values?.length ?? 0}
+                                        </div>
+                                    </Card.Body>
+                                </Card>
+                            </Col>
+                        </Row>
+                    )}
+
+                    {/* Cpk Monthly Trend Chart */}
+                    {cpkTrend && cpkTrend.length >= 2 && (
+                        <Row className="mb-3">
+                            <Col md={8} className="mx-auto">
+                                <Card className="shadow-sm">
+                                    <Card.Body>
+                                        <h5 className="card-title text-center">📈 Cpk 月趨勢圖</h5>
+                                        <div style={{ height: '280px' }}>
+                                            <Line
+                                                data={{
+                                                    labels: cpkTrend.map((t: any) => t.month),
+                                                    datasets: [
+                                                        {
+                                                            label: 'Cpk',
+                                                            data: cpkTrend.map((t: any) => t.cpk),
+                                                            borderColor: '#0d6efd',
+                                                            backgroundColor: cpkTrend.map((t: any) => {
+                                                                if (t.cpk >= 1.33) return '#28a745';
+                                                                if (t.cpk >= 1.0) return '#ffc107';
+                                                                return '#dc3545';
+                                                            }),
+                                                            pointRadius: 6,
+                                                            pointBorderWidth: 2,
+                                                            pointBorderColor: '#fff',
+                                                            tension: 0.2,
+                                                            fill: false
+                                                        },
+                                                        {
+                                                            label: '目標線 (1.33)',
+                                                            data: Array(cpkTrend.length).fill(1.33),
+                                                            borderColor: '#28a745',
+                                                            borderDash: [8, 4],
+                                                            borderWidth: 1,
+                                                            pointRadius: 0,
+                                                            fill: false
+                                                        },
+                                                        {
+                                                            label: '警戒線 (1.0)',
+                                                            data: Array(cpkTrend.length).fill(1.0),
+                                                            borderColor: '#dc3545',
+                                                            borderDash: [5, 5],
+                                                            borderWidth: 1,
+                                                            pointRadius: 0,
+                                                            fill: false
+                                                        }
+                                                    ]
+                                                }}
+                                                options={{
+                                                    maintainAspectRatio: false,
+                                                    plugins: {
+                                                        legend: {
+                                                            display: true,
+                                                            position: 'bottom',
+                                                            labels: { usePointStyle: true, font: { size: 10 } }
+                                                        },
+                                                        tooltip: {
+                                                            callbacks: {
+                                                                afterLabel: (ctx: any) => {
+                                                                    if (ctx.datasetIndex !== 0) return '';
+                                                                    const t = cpkTrend[ctx.dataIndex];
+                                                                    return t ? `樣本數: ${t.count}` : '';
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    scales: {
+                                                        y: {
+                                                            title: { display: true, text: 'Cpk' },
+                                                            beginAtZero: true
+                                                        }
+                                                    }
+                                                }}
+                                            />
                                         </div>
                                     </Card.Body>
                                 </Card>
