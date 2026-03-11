@@ -153,14 +153,15 @@ const ShippingPage = () => {
         const std = tolerances[combo];
         if (!std) return { hasViolation: false, found: false };
 
-        const items = ["外徑", "內徑", "厚度", "同心度", "長度", "硬度", "真直度"];
+        const items = ["外徑", "內徑", "真圓度", "厚度", "同心度", "長度", "硬度", "真直度"];
+        const gc = (item as any).組數 || 5;
         let hasViolation = false;
 
         for (const it of items) {
             const tol = std[it];
             if (!tol) continue;
 
-            for (let g = 1; g <= 5; g++) {
+            for (let g = 1; g <= gc; g++) {
                 const keys = it === "外徑" || it === "內徑" || it === "厚度"
                     ? [`${it}${g}-min`, `${it}${g}-max`]
                     : [`${it}${g}`];

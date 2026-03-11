@@ -48,16 +48,18 @@ class ShippingService:
             "訂單號碼": format_value(item.order_num),
             "檢驗人員": inspector_name.strip(),
             "廠商中文名稱": vendor_name.strip(), # legacy key
-            "廠商名稱": vendor_name.strip()      # legacy key
+            "廠商名稱": vendor_name.strip(),      # legacy key
+            "組數": item.group_count or 5
         }
 
-        # Map dynamic columns
-        for i in range(1, 6):
+        # Map dynamic columns (groups 1-10)
+        for i in range(1, 11):
             # Min/Max items
             res[f"外徑{i}-min"] = format_value(getattr(item, f"od{i}_min"))
             res[f"外徑{i}-max"] = format_value(getattr(item, f"od{i}_max"))
             res[f"內徑{i}-min"] = format_value(getattr(item, f"id{i}_min"))
             res[f"內徑{i}-max"] = format_value(getattr(item, f"id{i}_max"))
+            res[f"真圓度{i}"] = format_value(getattr(item, f"roundness{i}"))
             res[f"厚度{i}-min"] = format_value(getattr(item, f"th{i}_min"))
             res[f"厚度{i}-max"] = format_value(getattr(item, f"th{i}_max"))
              
@@ -206,7 +208,8 @@ class ShippingService:
                 '同心度': 'concentricity',
                 '長度': 'length',
                 '硬度': 'hardness',
-                '真直度': 'straightness'
+                '真直度': 'straightness',
+                '真圓度': 'roundness'
             }
             attr_prefix = field_map.get(field)
             if not attr_prefix:
@@ -215,9 +218,9 @@ class ShippingService:
             is_minmax = field in ['外徑', '內徑', '厚度']
 
             # Dynamic query selection
-            # Select ID, Date, OrderNum and the relevant 5 groups columns
-            entities = [ShippingData.id, ShippingData.date, ShippingData.order_num]
-            for i in range(1, 6):
+            # Select ID, Date, OrderNum, GroupCount, and the relevant 10 groups columns
+            entities = [ShippingData.id, ShippingData.date, ShippingData.order_num, ShippingData.group_count]
+            for i in range(1, 11):
                 if is_minmax:
                     entities.append(getattr(ShippingData, f"{attr_prefix}{i}_min"))
                     entities.append(getattr(ShippingData, f"{attr_prefix}{i}_max"))
@@ -241,8 +244,8 @@ class ShippingService:
 
             # Processing Logic (Same as before but accessing tuple indices)
             # Tuple structure:
-            # 0: id, 1: date, 2: order_num
-            # 3...: measurements
+            # 0: id, 1: date, 2: order_num, 3: group_count
+            # 4...: measurements
             
             avgs = []
             ranges = []
@@ -256,17 +259,19 @@ class ShippingService:
             for idx, r in enumerate(rows):
                 vals: List[float] = []
                 valid_groups = 0
+                row_group_count = r[3] or 5  # group_count, default 5
                 
-                current_col_idx = 3
+                current_col_idx = 4
                 
-                for i in range(1, 6):
+                for i in range(1, 11):
                     try:
                         if is_minmax:
                             v1_str = r[current_col_idx]
                             v2_str = r[current_col_idx+1]
                             current_col_idx += 2
                             
-                            if v1_str and v2_str:
+                            # Only process groups within the record's group_count
+                            if i <= row_group_count and v1_str and v2_str:
                                 v1 = float(v1_str)
                                 v2 = float(v2_str)
                                 val = (v1 + v2) / 2
@@ -276,7 +281,8 @@ class ShippingService:
                         else:
                             v_str = r[current_col_idx]
                             current_col_idx += 1
-                            if v_str:
+                            # Only process groups within the record's group_count
+                            if i <= row_group_count and v_str:
                                 v = float(v_str)
                                 vals.append(v)
                                 all_values.append(v)
@@ -500,15 +506,16 @@ class ShippingService:
             shipping_data.spec = data.get('檢驗規格')
             shipping_data.material = data.get('材質')
             shipping_data.order_num = data.get('訂單號碼')
+            shipping_data.group_count = int(data.get('組數', 5))
 
-            # Set dynamic columns
+            # Set dynamic columns (groups 1-10)
             def get_val(k):
                 val = data.get(k)
                 if val is None or val == "":
                     return None
                 return str(val)
 
-            for i in range(1, 6):
+            for i in range(1, 11):
                 setattr(shipping_data, f"od{i}_min", get_val(f'外徑{i}-min'))
                 setattr(shipping_data, f"od{i}_max", get_val(f'外徑{i}-max'))
                 setattr(shipping_data, f"id{i}_min", get_val(f'內徑{i}-min'))
@@ -520,6 +527,7 @@ class ShippingService:
                 setattr(shipping_data, f"length{i}", get_val(f'長度{i}'))
                 setattr(shipping_data, f"hardness{i}", get_val(f'硬度{i}'))
                 setattr(shipping_data, f"straightness{i}", get_val(f'真直度{i}'))
+                setattr(shipping_data, f"roundness{i}", get_val(f'真圓度{i}'))
 
             if not is_update:
                 db.session.add(shipping_data)
@@ -577,13 +585,18 @@ class ShippingService:
                      if not inspector: raise ValueError(f"第 {display_row_num} 行: 檢驗人員不存在")
                      if not vendor: raise ValueError(f"第 {display_row_num} 行: 廠商不存在")
 
+                # Determine group count from data (default 5)
+                gc_val = main_data.get('組數')
+                group_count_val = int(gc_val) if gc_val and not pd.isna(gc_val) else 5
+
                 shipping_data = ShippingData(
                     date=main_data.get('檢驗日期'),
                     inspector_id=inspector.id,
                     vendor_id=vendor.id,
                     spec=main_data.get('檢驗規格'),
                     material=main_data.get('材質'),
-                    order_num=main_data.get('訂單號碼')
+                    order_num=main_data.get('訂單號碼'),
+                    group_count=group_count_val
                 )
 
                 # Map columns
@@ -593,7 +606,7 @@ class ShippingService:
                         return None
                     return str(val)
                 
-                for i in range(1, 6):
+                for i in range(1, 11):
                     setattr(shipping_data, f"od{i}_min", get_val(f'外徑{i}-min'))
                     setattr(shipping_data, f"od{i}_max", get_val(f'外徑{i}-max'))
                     setattr(shipping_data, f"id{i}_min", get_val(f'內徑{i}-min'))
@@ -605,6 +618,7 @@ class ShippingService:
                     setattr(shipping_data, f"length{i}", get_val(f'長度{i}'))
                     setattr(shipping_data, f"hardness{i}", get_val(f'硬度{i}'))
                     setattr(shipping_data, f"straightness{i}", get_val(f'真直度{i}'))
+                    setattr(shipping_data, f"roundness{i}", get_val(f'真圓度{i}'))
 
                 db.session.add(shipping_data)
                 success_count += 1
@@ -633,9 +647,9 @@ class ShippingService:
             
             if not items:
                 # Empty DF with columns
-                cols = ['識別碼', '檢驗日期', '材質', '檢驗規格', '訂單號碼', '檢驗人員', '廠商名稱']
-                for i in range(1, 6):
-                    cols.extend([f'外徑{i}-最小', f'外徑{i}-最大', f'內徑{i}-最小', f'內徑{i}-最大', f'厚度{i}-最小', f'厚度{i}-最大'])
+                cols = ['識別碼', '檢驗日期', '材質', '檢驗規格', '訂單號碼', '檢驗人員', '廠商名稱', '組數']
+                for i in range(1, 11):
+                    cols.extend([f'外徑{i}-最小', f'外徑{i}-最大', f'內徑{i}-最小', f'內徑{i}-最大', f'真圓度{i}', f'厚度{i}-最小', f'厚度{i}-最大'])
                     cols.extend([f'同心度{i}', f'長度{i}', f'硬度{i}', f'真直度{i}'])
                 df = pd.DataFrame(columns=cols)
             else:
@@ -650,13 +664,15 @@ class ShippingService:
                         '檢驗規格': row['檢驗規格'],
                         '訂單號碼': row['訂單號碼'],
                         '檢驗人員': row['檢驗人員'],
-                        '廠商名稱': row['廠商中文名稱']
+                        '廠商名稱': row['廠商中文名稱'],
+                        '組數': row.get('組數', 5)
                     }
-                    for i in range(1, 6):
+                    for i in range(1, 11):
                         export_row[f'外徑{i}-最小'] = row.get(f'外徑{i}-min', '')
                         export_row[f'外徑{i}-最大'] = row.get(f'外徑{i}-max', '')
                         export_row[f'內徑{i}-最小'] = row.get(f'內徑{i}-min', '')
                         export_row[f'內徑{i}-最大'] = row.get(f'內徑{i}-max', '')
+                        export_row[f'真圓度{i}'] = row.get(f'真圓度{i}', '')
                         export_row[f'厚度{i}-最小'] = row.get(f'厚度{i}-min', '')
                         export_row[f'厚度{i}-最大'] = row.get(f'厚度{i}-max', '')
                         export_row[f'同心度{i}'] = row.get(f'同心度{i}', '')

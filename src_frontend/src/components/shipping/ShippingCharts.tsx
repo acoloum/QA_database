@@ -41,6 +41,7 @@ interface ShippingChartsProps {
 const ITEMS = [
     { label: "外徑", key: "外徑" },
     { label: "內徑", key: "內徑" },
+    { label: "真圓度", key: "真圓度" },
     { label: "厚度", key: "厚度" },
     { label: "同心度", key: "同心度" },
     { label: "長度", key: "長度" },

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Modal, Button, Form, Table, Alert } from 'react-bootstrap';
 import toast from 'react-hot-toast';
 import type { ToleranceResult } from '../../types';
@@ -24,7 +24,8 @@ interface ItemConfig {
     type: 'minmax' | 'single';
 }
 
-const ITEMS: ItemConfig[] = [
+// Base items for all vendors
+const BASE_ITEMS: ItemConfig[] = [
     { label: "外徑", key: "外徑", type: "minmax" },
     { label: "內徑", key: "內徑", type: "minmax" },
     { label: "厚度", key: "厚度", type: "minmax" },
@@ -34,14 +35,13 @@ const ITEMS: ItemConfig[] = [
     { label: "真直度", key: "真直度", type: "single" }
 ];
 
-// Pre-calculate offsets for tab index (Vertical Traversal)
-const ITEM_OFFSETS = ITEMS.reduce((acc, _, index) => {
-    const prevOffset = index > 0 ? acc[index - 1] : 0;
-    const prevCount = index > 0 ? (ITEMS[index - 1].type === 'minmax' ? 2 : 1) : 0;
-    acc.push(prevOffset + prevCount);
-    return acc;
-}, [] as number[]);
-const TOTAL_INPUTS_PER_GROUP = ITEM_OFFSETS[ITEMS.length - 1] + (ITEMS[ITEMS.length - 1].type === 'minmax' ? 2 : 1);
+// Additional item for 安泰 vendor (placed after 內徑)
+const ROUNDNESS_ITEM: ItemConfig = { label: "真圓度", key: "真圓度", type: "single" };
+
+// Vendor name that requires extra features
+const ANTAI_VENDOR_NAME = "安泰";
+
+const DEFAULT_GROUP_COUNT = 5;
 
 const parseSpec = (spec: string): Record<string, number> => {
     if (!spec) return {};
@@ -84,6 +84,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     const [material, setMaterial] = useState('');
     const [spec, setSpec] = useState('');
     const [orderNo, setOrderNo] = useState('');
+    const [groupCount, setGroupCount] = useState(DEFAULT_GROUP_COUNT);
 
     // Measurement Data
     const [measurements, setMeasurements] = useState<Record<string, string>>({});
@@ -92,6 +93,34 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     const [tolerance, setTolerance] = useState<ToleranceResult | null>(null);
     const [violations, setViolations] = useState<Record<string, boolean>>({});
 
+    // Determine if current vendor is 安泰
+    const isAntai = vendorName === ANTAI_VENDOR_NAME;
+
+    // Active items based on vendor — 真圓度 inserted after 內徑 (index 2)
+    const ITEMS = useMemo(() => {
+        if (!isAntai) return BASE_ITEMS;
+        const items = [...BASE_ITEMS];
+        items.splice(2, 0, ROUNDNESS_ITEM); // Insert after 內徑 (index 1)
+        return items;
+    }, [isAntai]);
+
+    // Dynamic group indices
+    const groupIndices = useMemo(() => {
+        return Array.from({ length: groupCount }, (_, i) => i + 1);
+    }, [groupCount]);
+
+    // Pre-calculate offsets for tab index (Vertical Traversal)
+    const { ITEM_OFFSETS, TOTAL_INPUTS_PER_GROUP } = useMemo(() => {
+        const offsets = ITEMS.reduce((acc, _, index) => {
+            const prevOffset = index > 0 ? acc[index - 1] : 0;
+            const prevCount = index > 0 ? (ITEMS[index - 1].type === 'minmax' ? 2 : 1) : 0;
+            acc.push(prevOffset + prevCount);
+            return acc;
+        }, [] as number[]);
+        const total = offsets[ITEMS.length - 1] + (ITEMS[ITEMS.length - 1].type === 'minmax' ? 2 : 1);
+        return { ITEM_OFFSETS: offsets, TOTAL_INPUTS_PER_GROUP: total };
+    }, [ITEMS]);
+
     const resetForm = () => {
         setDate(new Date().toISOString().split('T')[0]);
         setInspectorName('');
@@ -99,6 +128,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         setMaterial('');
         setSpec('');
         setOrderNo('');
+        setGroupCount(DEFAULT_GROUP_COUNT);
         setMeasurements({});
         setTolerance(null);
         setViolations({});
@@ -115,9 +145,19 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                 setSpec(detailData.檢驗規格);
                 setOrderNo(detailData.訂單號碼 || '');
 
+                // Restore group count from saved data
+                const savedGroupCount = (detailData as any).組數 || DEFAULT_GROUP_COUNT;
+                setGroupCount(savedGroupCount);
+
+                // Determine items based on vendor for loading measurements
+                const loadVendor = detailData.廠商中文名稱;
+                const loadItems = loadVendor === ANTAI_VENDOR_NAME
+                    ? [...BASE_ITEMS, ROUNDNESS_ITEM]
+                    : BASE_ITEMS;
+
                 const m: Record<string, string> = {};
-                ITEMS.forEach(item => {
-                    for (let g = 1; g <= 5; g++) {
+                loadItems.forEach(item => {
+                    for (let g = 1; g <= 10; g++) {
                         if (item.type === 'minmax') {
                             m[`${item.key}${g}-min`] = (detailData as any)[`${item.key}${g}-min`] || '';
                             m[`${item.key}${g}-max`] = (detailData as any)[`${item.key}${g}-max`] || '';
@@ -132,6 +172,17 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             }
         }
     }, [show, editId, detailData]);
+
+    // Reset groupCount when vendor changes (only for new records)
+    useEffect(() => {
+        if (!editId) {
+            if (vendorName === ANTAI_VENDOR_NAME) {
+                // Keep current groupCount or default — user can change via dropdown
+            } else {
+                setGroupCount(DEFAULT_GROUP_COUNT);
+            }
+        }
+    }, [vendorName, editId]);
 
     // Check tolerance when specific fields change
     useEffect(() => {
@@ -204,7 +255,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                 return;
             }
 
-            for (let g = 1; g <= 5; g++) {
+            for (const g of groupIndices) {
                 if (item.type === 'minmax') {
                     const minKey = `${item.key}${g}-min`;
                     const maxKey = `${item.key}${g}-max`;
@@ -223,7 +274,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
 
         setViolations(newViolations);
 
-    }, [measurements, tolerance, spec]);
+    }, [measurements, tolerance, spec, groupIndices, ITEMS]);
 
     const handleMeasurementChange = (key: string, val: string) => {
         setMeasurements(prev => ({ ...prev, [key]: val }));
@@ -250,6 +301,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             "檢驗規格": spec,
             "材質": material,
             "訂單號碼": orderNo,
+            "組數": groupCount,
             ...measurements
         };
 
@@ -319,6 +371,31 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                             </div>
                         </div>
 
+                        {/* Group Count Selector — Only for 安泰 */}
+                        {isAntai && (
+                            <div className="row g-3 mb-3">
+                                <div className="col-md-3">
+                                    <Form.Label className="fw-bold text-primary">
+                                        <i className="bi bi-sliders me-1"></i>
+                                        檢驗組數
+                                    </Form.Label>
+                                    <Form.Select
+                                        value={groupCount}
+                                        onChange={e => setGroupCount(parseInt(e.target.value))}
+                                    >
+                                        {Array.from({ length: 8 }, (_, i) => i + 3).map(n => (
+                                            <option key={n} value={n}>{n} 組</option>
+                                        ))}
+                                    </Form.Select>
+                                </div>
+                                <div className="col-md-9 d-flex align-items-end">
+                                    <small className="text-muted">
+                                        📋 安泰廠商可自訂檢驗組數（3~10組），其他廠商固定為 5 組
+                                    </small>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Tolerance Info */}
                         {tolerance && (
                             <Alert variant="info" className="mb-4">
@@ -365,14 +442,14 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                                 <thead className="table-primary">
                                     <tr>
                                         <th className="text-nowrap">項目 \ 組別</th>
-                                        {[1, 2, 3, 4, 5].map(i => <th key={i}>{i}</th>)}
+                                        {groupIndices.map(i => <th key={i}>{i}</th>)}
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {ITEMS.map((item, idx) => (
                                         <tr key={item.key}>
                                             <th className="bg-light text-nowrap">{item.label}</th>
-                                            {[1, 2, 3, 4, 5].map(g => (
+                                            {groupIndices.map(g => (
                                                 <td key={g} className={item.type === 'minmax' ? 'shipping-cell-double' : 'shipping-cell-single'}>
                                                     {item.type === 'minmax' ? (
                                                         <div className="d-flex gap-2 justify-content-center flex-nowrap">
