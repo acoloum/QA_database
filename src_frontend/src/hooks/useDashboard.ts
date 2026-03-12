@@ -27,7 +27,8 @@ export interface TrendData {
 
 export interface DashboardTrends {
     ncmr_by_month: TrendData[];
-    shipping_by_month: TrendData[];
+    shipping_ok_by_month: TrendData[];
+    shipping_ng_by_month: TrendData[];
     rework_by_month: TrendData[];
 }
 

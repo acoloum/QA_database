@@ -232,20 +232,126 @@ def get_dashboard_todos():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+def parse_spec(spec_str):
+    if not spec_str: return {}
+    s = str(spec_str).replace('×', '*').replace('x', '*').replace('X', '*')
+    while '**' in s: s = s.replace('**', '*')
+    parts = s.split('*')
+    res = {}
+    nums = []
+    for p in parts:
+        try: nums.append(float(p.strip()))
+        except ValueError: pass
+    if len(nums) >= 2:
+        res['外徑'] = nums[0]
+        val2 = nums[1]
+        if val2 < (nums[0] / 2.0):
+            res['厚度'] = val2
+            res['內徑'] = nums[0] - (val2 * 2.0)
+        else:
+            res['內徑'] = val2
+            res['厚度'] = (nums[0] - val2) / 2.0
+        if len(nums) >= 3:
+            res['長度'] = nums[2]
+    elif len(nums) == 1:
+        res['外徑'] = nums[0]
+    return res
+
+def check_shipping_violation(item, tolerances):
+    if not tolerances:
+        return False
+        
+    spec_values = parse_spec(item.spec)
+    
+    std_limits = {}
+    for t in tolerances:
+        lsl = float('-inf')
+        usl = float('inf')
+        
+        tc_min = t.get('尺寸下限')
+        tc_max = t.get('尺寸上限')
+        tol_min = t.get('公差下限')
+        tol_max = t.get('公差上限')
+        t_std = t.get('標準值')
+        t_item = t.get('項目')
+        
+        if tc_min is not None and tc_max is not None:
+            lsl = tc_min
+            usl = tc_max
+        elif tol_min is not None and tol_max is not None:
+            std_val = spec_values.get(t_item, 0)
+            if std_val == 0 and t_std is not None:
+                std_val = t_std
+            if std_val == 0:
+                continue
+            lsl = std_val + tol_min
+            usl = std_val + tol_max
+        elif tc_max is not None:
+            lsl = 0
+            usl = tc_max
+        elif tc_min is not None:
+            lsl = tc_min
+            usl = float('inf')
+        else:
+            continue
+            
+        std_limits[t_item] = {'lsl': lsl, 'usl': usl}
+
+    items_to_check = ["外徑", "內徑", "真圓度", "厚度", "同心度", "長度", "硬度", "真直度"]
+    gc = item.group_count or 5
+
+    def safe_float(v):
+        try: return float(v)
+        except (ValueError, TypeError): return None
+        
+    attr_map = {
+        '外徑': 'od',
+        '內徑': 'id',
+        '厚度': 'th',
+        '同心度': 'concentricity',
+        '長度': 'length',
+        '硬度': 'hardness',
+        '真直度': 'straightness',
+        '真圓度': 'roundness'
+    }
+
+    for it in items_to_check:
+        tol = std_limits.get(it)
+        if not tol: continue
+
+        attr_prefix = attr_map[it]
+        is_minmax = it in ["外徑", "內徑", "厚度"]
+        
+        for g in range(1, int(gc) + 1):
+            if is_minmax:
+                v_min = safe_float(getattr(item, f"{attr_prefix}{g}_min", None))
+                v_max = safe_float(getattr(item, f"{attr_prefix}{g}_max", None))
+                if v_min is not None and (v_min < tol['lsl'] or v_min > tol['usl']): return True
+                if v_max is not None and (v_max < tol['lsl'] or v_max > tol['usl']): return True
+            else:
+                v = safe_float(getattr(item, f"{attr_prefix}{g}", None))
+                if v is not None and (v < tol['lsl'] or v > tol['usl']): return True
+                
+    return False
+
 @admin_bp.route('/api/dashboard/trends')
 def get_dashboard_trends():
     from datetime import date, timedelta
+    from ..services.tolerance_service import ToleranceService
     
     try:
         trends = {
             "ncmr_by_month": [],
-            "shipping_by_month": [],
+            "shipping_ok_by_month": [],
+            "shipping_ng_by_month": [],
             "rework_by_month": []
         }
         
         # Use proper month arithmetic to avoid issues with months of different lengths
         today = date.today()
         current_month_start = today.replace(day=1)
+        
+        tolerance_cache = {}
         
         for i in range(5, -1, -1):
             # Calculate the target month by subtracting months properly
@@ -267,10 +373,32 @@ def get_dashboard_trends():
                 NCMR.date <= month_end
             ).count()
             
-            shipping_count = ShippingData.query.filter(
+            shipping_records = ShippingData.query.filter(
                 ShippingData.date >= month_start,
                 ShippingData.date <= month_end
-            ).count()
+            ).all()
+            
+            ok_count = 0
+            ng_count = 0
+            
+            for r in shipping_records:
+                key = (r.material, r.spec, r.vendor_id)
+                if key not in tolerance_cache:
+                    res = ToleranceService.check_tolerance({
+                        'material': r.material,
+                        'spec': r.spec,
+                        'vendor_id': r.vendor_id
+                    })
+                    if res.get('found'):
+                        tolerance_cache[key] = res.get('tolerances', [])
+                    else:
+                        tolerance_cache[key] = []
+                
+                tolerances = tolerance_cache[key]
+                if tolerances and check_shipping_violation(r, tolerances):
+                    ng_count += 1
+                else:
+                    ok_count += 1
             
             rework_count = ReworkRequest.query.filter(
                 ReworkRequest.created_at >= month_start,
@@ -282,9 +410,13 @@ def get_dashboard_trends():
                 "month": month_label,
                 "count": ncmr_count
             })
-            trends["shipping_by_month"].append({
+            trends["shipping_ok_by_month"].append({
                 "month": month_label,
-                "count": shipping_count
+                "count": ok_count
+            })
+            trends["shipping_ng_by_month"].append({
+                "month": month_label,
+                "count": ng_count
             })
             trends["rework_by_month"].append({
                 "month": month_label,

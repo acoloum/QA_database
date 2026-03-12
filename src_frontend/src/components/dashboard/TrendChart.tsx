@@ -70,8 +70,18 @@ const TrendChart = () => {
                 pointHoverRadius: 6
             },
             {
-                label: '出貨檢驗',
-                data: trends.shipping_by_month.map(item => item.count),
+                label: '出貨檢驗 (合格)',
+                data: trends.shipping_ok_by_month.map(item => item.count),
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                fill: true,
+                tension: 0.4,
+                pointRadius: 4,
+                pointHoverRadius: 6
+            },
+            {
+                label: '出貨檢驗 (超差)',
+                data: trends.shipping_ng_by_month.map(item => item.count),
                 borderColor: '#f97316',
                 backgroundColor: 'rgba(249, 115, 22, 0.1)',
                 fill: true,
