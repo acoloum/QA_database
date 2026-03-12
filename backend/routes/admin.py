@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request
-from sqlalchemy import text, func
+from sqlalchemy import text, func, or_
 from datetime import datetime, timedelta, date
 from ..extensions import db
 from ..models import Inspector, Vendor, Machine, Operator, ShippingData, PatrolMain, NCMR, CorrectiveAction, ReworkRequest
@@ -152,14 +152,12 @@ def get_dashboard_stats():
             "stats": stats
         })
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        from flask import current_app
+        current_app.logger.exception("Error loading dashboard stats")
         return jsonify({"error": str(e)}), 500
 
 @admin_bp.route('/api/dashboard/todos')
 def get_dashboard_todos():
-    from datetime import date, timedelta
-    
     today = date.today()
     week_ago = today - timedelta(days=7)
     
@@ -228,11 +226,9 @@ def get_dashboard_todos():
         
         return jsonify(todos[:10])
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        from flask import current_app
+        current_app.logger.exception("Error loading dashboard todos")
         return jsonify({"error": str(e)}), 500
-
-def parse_spec(spec_str):
     if not spec_str: return {}
     s = str(spec_str).replace('×', '*').replace('x', '*').replace('X', '*')
     while '**' in s: s = s.replace('**', '*')
@@ -336,9 +332,6 @@ def check_shipping_violation(item, tolerances):
 
 @admin_bp.route('/api/dashboard/trends')
 def get_dashboard_trends():
-    from datetime import date, timedelta
-    from ..services.tolerance_service import ToleranceService
-    
     try:
         trends = {
             "ncmr_by_month": [],
@@ -347,14 +340,10 @@ def get_dashboard_trends():
             "rework_by_month": []
         }
         
-        # Use proper month arithmetic to avoid issues with months of different lengths
         today = date.today()
         current_month_start = today.replace(day=1)
         
-        tolerance_cache = {}
-        
         for i in range(5, -1, -1):
-            # Calculate the target month by subtracting months properly
             year = current_month_start.year
             month = current_month_start.month - i
             while month <= 0:
@@ -362,7 +351,6 @@ def get_dashboard_trends():
                 year -= 1
             month_start = date(year, month, 1)
             
-            # Calculate month end: first day of next month minus 1 day
             if month == 12:
                 month_end = date(year + 1, 1, 1) - timedelta(days=1)
             else:
@@ -373,32 +361,17 @@ def get_dashboard_trends():
                 NCMR.date <= month_end
             ).count()
             
-            shipping_records = ShippingData.query.filter(
+            ok_count = ShippingData.query.filter(
                 ShippingData.date >= month_start,
-                ShippingData.date <= month_end
-            ).all()
+                ShippingData.date <= month_end,
+                or_(ShippingData.is_ng == False, ShippingData.is_ng == None)
+            ).count()
             
-            ok_count = 0
-            ng_count = 0
-            
-            for r in shipping_records:
-                key = (r.material, r.spec, r.vendor_id)
-                if key not in tolerance_cache:
-                    res = ToleranceService.check_tolerance({
-                        'material': r.material,
-                        'spec': r.spec,
-                        'vendor_id': r.vendor_id
-                    })
-                    if res.get('found'):
-                        tolerance_cache[key] = res.get('tolerances', [])
-                    else:
-                        tolerance_cache[key] = []
-                
-                tolerances = tolerance_cache[key]
-                if tolerances and check_shipping_violation(r, tolerances):
-                    ng_count += 1
-                else:
-                    ok_count += 1
+            ng_count = ShippingData.query.filter(
+                ShippingData.date >= month_start,
+                ShippingData.date <= month_end,
+                ShippingData.is_ng == True
+            ).count()
             
             rework_count = ReworkRequest.query.filter(
                 ReworkRequest.created_at >= month_start,
@@ -406,27 +379,15 @@ def get_dashboard_trends():
             ).count()
             
             month_label = month_start.strftime("%Y-%m")
-            trends["ncmr_by_month"].append({
-                "month": month_label,
-                "count": ncmr_count
-            })
-            trends["shipping_ok_by_month"].append({
-                "month": month_label,
-                "count": ok_count
-            })
-            trends["shipping_ng_by_month"].append({
-                "month": month_label,
-                "count": ng_count
-            })
-            trends["rework_by_month"].append({
-                "month": month_label,
-                "count": rework_count
-            })
+            trends["ncmr_by_month"].append({"month": month_label, "count": ncmr_count})
+            trends["shipping_ok_by_month"].append({"month": month_label, "count": ok_count})
+            trends["shipping_ng_by_month"].append({"month": month_label, "count": ng_count})
+            trends["rework_by_month"].append({"month": month_label, "count": rework_count})
         
         return jsonify(trends)
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        from flask import current_app
+        current_app.logger.exception("Error loading dashboard trends")
         return jsonify({"error": str(e)}), 500
 
 @admin_bp.route('/api/inspectors')

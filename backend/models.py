@@ -86,6 +86,99 @@ class ShippingData(db.Model):
     inspector = db.relationship('Inspector', backref='shipping_data')
     vendor = db.relationship('Vendor', backref='shipping_data')
 
+    is_ng = db.Column('是否超差', db.Boolean, default=False)
+    
+    def get_measurement(self, attr_prefix, group, is_minmax):
+        """Get measurement block for a specific group and prefix"""
+        if is_minmax:
+            v_min = getattr(self, f"{attr_prefix}{group}_min", None)
+            v_max = getattr(self, f"{attr_prefix}{group}_max", None)
+            return (v_min, v_max)
+        else:
+            return getattr(self, f"{attr_prefix}{group}", None)
+            
+    def compute_is_ng(self, tolerances):
+        """Evaluate if record is out of tolerance"""
+        if not tolerances:
+            return False
+            
+        from .services.tolerance_service import ToleranceService
+        # spec values parsing
+        spec_values = ToleranceService.parse_spec_values(self.spec)
+        
+        std_limits = {}
+        for t in tolerances:
+            lsl = float('-inf')
+            usl = float('inf')
+            
+            tc_min = t.get('尺寸下限')
+            tc_max = t.get('尺寸上限')
+            tol_min = t.get('公差下限')
+            tol_max = t.get('公差上限')
+            t_std = t.get('標準值')
+            t_item = t.get('項目')
+            
+            if tc_min is not None and tc_max is not None:
+                lsl = tc_min
+                usl = tc_max
+            elif tol_min is not None and tol_max is not None:
+                std_val = spec_values.get(t_item, 0)
+                if std_val == 0 and t_std is not None:
+                    std_val = t_std
+                if std_val == 0:
+                    continue
+                lsl = std_val + tol_min
+                usl = std_val + tol_max
+            elif tc_max is not None:
+                lsl = 0
+                usl = tc_max
+            elif tc_min is not None:
+                lsl = tc_min
+                usl = float('inf')
+            else:
+                continue
+                
+            std_limits[t_item] = {'lsl': lsl, 'usl': usl}
+
+        items_to_check = ["外徑", "內徑", "真圓度", "厚度", "同心度", "長度", "硬度", "真直度"]
+        gc = self.group_count or 5
+
+        def safe_float(v):
+            try: return float(v)
+            except (ValueError, TypeError): return None
+            
+        attr_map = {
+            '外徑': 'od',
+            '內徑': 'id',
+            '厚度': 'th',
+            '同心度': 'concentricity',
+            '長度': 'length',
+            '硬度': 'hardness',
+            '真直度': 'straightness',
+            '真圓度': 'roundness'
+        }
+
+        for it in items_to_check:
+            tol = std_limits.get(it)
+            if not tol: continue
+
+            attr_prefix = attr_map[it]
+            is_minmax = it in ["外徑", "內徑", "厚度"]
+            
+            for g in range(1, int(gc) + 1):
+                if is_minmax:
+                    v_min, v_max = self.get_measurement(attr_prefix, g, True)
+                    v_min = safe_float(v_min)
+                    v_max = safe_float(v_max)
+                    if v_min is not None and (v_min < tol['lsl'] or v_min > tol['usl']): return True
+                    if v_max is not None and (v_max < tol['lsl'] or v_max > tol['usl']): return True
+                else:
+                    v = self.get_measurement(attr_prefix, g, False)
+                    v = safe_float(v)
+                    if v is not None and (v < tol['lsl'] or v > tol['usl']): return True
+                    
+        return False
+
 class VendorToleranceMain(db.Model):
     __tablename__ = '廠商公差主檔'
     id = db.Column('識別碼', db.Integer, primary_key=True)

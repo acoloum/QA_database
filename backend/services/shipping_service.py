@@ -529,6 +529,18 @@ class ShippingService:
                 setattr(shipping_data, f"straightness{i}", get_val(f'真直度{i}'))
                 setattr(shipping_data, f"roundness{i}", get_val(f'真圓度{i}'))
 
+            # Compute is_ng
+            from .tolerance_service import ToleranceService
+            tol_res = ToleranceService.check_tolerance({
+                'material': shipping_data.material,
+                'spec': shipping_data.spec,
+                'vendor_id': shipping_data.vendor_id
+            })
+            if tol_res.get('found'):
+                shipping_data.is_ng = shipping_data.compute_is_ng(tol_res.get('tolerances', []))
+            else:
+                shipping_data.is_ng = False
+
             if not is_update:
                 db.session.add(shipping_data)
             
@@ -619,6 +631,17 @@ class ShippingService:
                     setattr(shipping_data, f"hardness{i}", get_val(f'硬度{i}'))
                     setattr(shipping_data, f"straightness{i}", get_val(f'真直度{i}'))
                     setattr(shipping_data, f"roundness{i}", get_val(f'真圓度{i}'))
+
+                from .tolerance_service import ToleranceService
+                tol_res = ToleranceService.check_tolerance({
+                    'material': shipping_data.material,
+                    'spec': shipping_data.spec,
+                    'vendor_id': shipping_data.vendor_id
+                })
+                if tol_res.get('found'):
+                    shipping_data.is_ng = shipping_data.compute_is_ng(tol_res.get('tolerances', []))
+                else:
+                    shipping_data.is_ng = False
 
                 db.session.add(shipping_data)
                 success_count += 1

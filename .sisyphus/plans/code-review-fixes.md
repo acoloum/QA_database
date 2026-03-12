@@ -10,23 +10,23 @@
 
 | # | 問題 | 檔案 | 優先順序 |
 |---|------|------|----------|
-| 1 | 密碼雜湊改用 bcrypt (加入鹽值) | backend/utils.py | 🔴 高 |
-| 2 | 移除預設 SECRET_KEY，無環境變數則拋出錯誤 | backend/config.py | 🔴 高 |
-| 3 | 加入登入速率限制 (5次失敗鎖定15分鐘) | backend/routes/auth.py | 🔴 高 |
-| 4 | 修復重複的 SQLALCHEMY_TRACK_MODIFICATIONS 設定 | backend/app.py | 🟡 中 |
-| 5 | 使用 Python logging 框架取代檔案寫入 | backend/app.py | 🟡 中 |
-| 6 | 修正錯誤詳情暴露問題 (debug=False 時隱藏) | backend/app.py | 🟡 中 |
-| 7 | 改進例外處理，不直接輸出錯誤字串 | backend/routes/auth.py | 🟡 中 |
-| 8 | 加入請求資料驗證 (使用 marshmallow) | backend/routes/ncmr.py | 🟡 中 |
+| 1 | [ ] 密碼雜湊改用 bcrypt (加入鹽值) | backend/utils.py | 🔴 高 |
+| 2 | [ ] 移除預設 SECRET_KEY，無環境變數則拋出錯誤 | backend/config.py | 🔴 高 |
+| 3 | [ ] 加入登入速率限制 (5次失敗鎖定15分鐘) | backend/routes/auth.py | 🔴 高 |
+| 4 | [ ] 修復重複的 SQLALCHEMY_TRACK_MODIFICATIONS 設定 | backend/app.py | 🟡 中 |
+| 5 | [ ] 使用 Python logging 框架取代檔案寫入 | backend/app.py | 🟡 中 |
+| 6 | [ ] 修正錯誤詳情暴露問題 (debug=False 時隱藏) | backend/app.py | 🟡 中 |
+| 7 | [ ] 改進例外處理，不直接輸出錯誤字串 | backend/routes/auth.py | 🟡 中 |
+| 8 | [ ] 加入請求資料驗證 (使用 marshmallow) | backend/routes/ncmr.py | 🟡 中 |
 
 ### 前端修復 (React/TypeScript)
 
 | # | 問題 | 檔案 | 優先順序 |
 |---|------|------|----------|
-| 9 | 移除 any 類型，改用明確介面 | src_frontend/src/hooks/*.ts | 🟡 中 |
-| 10 | 修復 ToleranceResult 類型重複定義 | src_frontend/src/types/index.ts | 🟢 低 |
-| 11 | 調整 staleTime (1小時 → 10分鐘) | src_frontend/src/hooks/useNCMR.ts | 🟢 低 |
-| 12 | 區分 Toast 錯誤嚴重程度 | src_frontend/src/services/api.ts | 🟢 低 |
+| 9 | [ ] 移除 any 類型，改用明確介面 | src_frontend/src/hooks/*.ts | 🟡 中 |
+| 10 | [ ] 修復 ToleranceResult 類型重複定義 | src_frontend/src/types/index.ts | 🟢 低 |
+| 11 | [ ] 調整 staleTime (1小時 → 10分鐘) | src_frontend/src/hooks/useNCMR.ts | 🟢 低 |
+| 12 | [ ] 區分 Toast 錯誤嚴重程度 | src_frontend/src/services/api.ts | 🟢 低 |
 
 ---
 

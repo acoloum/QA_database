@@ -1,10 +1,8 @@
 {
-  "active_plan": "C:\\QC_Database\\.sisyphus\\plans\\antai-roundness-feature.md",
-  "started_at": "2026-03-12T00:32:54.922Z",
-  "session_ids": [
-    "ses_320a9de39ffeqoY4vLJozI0ocM"
-  ],
-  "plan_name": "antai-roundness-feature",
-  "worktree_path": "C:\\antai-feature",
+  "active_plan": "C:\\QC_Database\\.sisyphus\\plans\\code-review-fixes.md",
+  "started_at": "2026-03-12T07:05:00.000Z",
+  "session_ids": ["ses_31f2d4319ffed7Fyhmmm2Hy1Ib"],
+  "plan_name": "code-review-fixes",
+  "worktree_path": "C:\\QC_Database",
   "agent": "atlas"
 }

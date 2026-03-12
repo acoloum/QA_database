@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useDashboardTrends } from '../../hooks/useDashboard';
 import {
     Chart as ChartJS,
@@ -26,27 +27,11 @@ ChartJS.register(
 const TrendChart = () => {
     const { trends, loading, error } = useDashboardTrends();
 
-    if (loading) {
-        return (
-            <div className="card mb-4">
-                <div className="card-header">
-                    <i className="fa-solid fa-chart-line me-2 text-success"></i>
-                    <span className="fw-bold">趨勢分析</span>
-                </div>
-                <div className="card-body">
-                    <div className="chart-skeleton" style={{ height: '300px' }}></div>
-                </div>
-            </div>
-        );
-    }
-
-    if (error || !trends) {
-        return null;
-    }
-
-    const labels = trends.ncmr_by_month.map(item => item.month);
-
-    const data = {
+    const data = useMemo(() => {
+        if (!trends) return { labels: [], datasets: [] };
+        
+        const labels = trends.ncmr_by_month.map(item => item.month);
+        return {
         labels,
         datasets: [
             {
@@ -90,9 +75,10 @@ const TrendChart = () => {
                 pointHoverRadius: 6
             }
         ]
-    };
+        };
+    }, [trends]);
 
-    const options = {
+    const options = useMemo(() => ({
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
@@ -151,7 +137,38 @@ const TrendChart = () => {
             intersect: false,
             mode: 'index' as const
         }
-    };
+    }), []);
+
+    if (loading) {
+        return (
+            <div className="card mb-4">
+                <div className="card-header">
+                    <i className="fa-solid fa-chart-line me-2 text-success"></i>
+                    <span className="fw-bold">趨勢分析</span>
+                </div>
+                <div className="card-body">
+                    <div className="chart-skeleton" style={{ height: '300px' }}></div>
+                </div>
+            </div>
+        );
+    }
+
+    if (error || !trends) {
+        return (
+            <div className="card mb-4 border-danger">
+                <div className="card-header bg-danger text-white">
+                    <i className="fa-solid fa-chart-line me-2"></i>
+                    <span className="fw-bold">趨勢分析</span>
+                </div>
+                <div className="card-body d-flex align-items-center justify-content-center" style={{ height: '300px' }}>
+                    <div className="text-danger">
+                        <i className="fa-solid fa-triangle-exclamation me-2"></i>
+                        {error || "無法載入趨勢資料"}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="card mb-4">
