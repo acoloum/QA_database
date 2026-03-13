@@ -22,8 +22,14 @@ POSTGRESQL_CONFIG = {
 
 
 # Security Configuration
-SECRET_KEY = os.getenv('SECRET_KEY', 'qa-inspection-system-2026-secure-key-a7b9c3d5e1f2g4h6')
-TOKEN_EXPIRATION_HOURS = 24
+SECRET_KEY = os.getenv('SECRET_KEY')
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY environment variable is not set. "
+        "Please set it in your .env file or environment. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+    )
+TOKEN_EXPIRATION_HOURS = int(os.getenv('TOKEN_EXPIRATION_HOURS', '24'))
 
 
 # SQLAlchemy Configuration

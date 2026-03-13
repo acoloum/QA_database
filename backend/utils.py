@@ -3,6 +3,7 @@ import hashlib
 import jwt
 import re
 import decimal
+import bcrypt
 from datetime import datetime, timedelta, timezone, date
 from functools import wraps
 from flask import request, jsonify, session
@@ -94,7 +95,16 @@ def validate_csrf_token(token: Optional[str]) -> bool:
 # Authentication
 # ==================================================
 def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Hash password using bcrypt with random salt."""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def verify_password(password: str, hashed: str) -> bool:
+    """Verify password against bcrypt hash. Falls back to SHA256 for legacy migration."""
+    # Try bcrypt first
+    if hashed.startswith('$2b$') or hashed.startswith('$2a$'):
+        return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+    # Legacy SHA256 fallback for migration
+    return hashlib.sha256(password.encode()).hexdigest() == hashed
 
 def generate_token(user_id: int, username: str) -> str:
     payload = {

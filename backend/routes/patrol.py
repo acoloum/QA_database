@@ -31,6 +31,7 @@ def patrol_detail(id):
         return jsonify({"error": str(e)}), 500
 
 @patrol_bp.route('/api/patrol/add', methods=['POST', 'OPTIONS'])
+@auth_required
 def patrol_add():
     if request.method == 'OPTIONS':
         return '', 200
@@ -43,6 +44,7 @@ def patrol_add():
         return jsonify({"error": str(e)}), 500
 
 @patrol_bp.route('/api/patrol/update', methods=['POST'])
+@auth_required
 def patrol_update():
     try:
         PatrolService.update_patrol(request.json)
@@ -53,6 +55,7 @@ def patrol_update():
         return jsonify({"error": str(e)}), 500
 
 @patrol_bp.route('/api/patrol/delete', methods=['POST'])
+@auth_required
 def patrol_delete():
     try:
         record_id = request.json.get('id')
@@ -73,6 +76,7 @@ def patrol_history():
         return jsonify({"error": str(e)}), 500
 
 @patrol_bp.route('/api/patrol/export')
+@auth_required
 def patrol_export():
     try:
         output = PatrolService.export_excel(request.args)
@@ -86,6 +90,7 @@ def patrol_export():
         return jsonify({"error": str(e)}), 500
 
 @patrol_bp.route('/api/patrol/import', methods=['POST', 'OPTIONS'])
+@auth_required
 def patrol_import():
     if request.method == 'OPTIONS':
         return '', 200
@@ -96,6 +101,20 @@ def patrol_import():
     file = request.files['file']
     if file.filename == '':
         return jsonify({"error": "沒有選擇檔案"}), 400
+
+    # Validate file type
+    allowed_extensions = {'.xlsx', '.xls'}
+    import os
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in allowed_extensions:
+        return jsonify({"error": f"不支援的檔案格式: {ext}，僅接受 .xlsx / .xls"}), 400
+
+    # Validate file size (10MB max)
+    file.seek(0, 2)
+    file_size = file.tell()
+    file.seek(0)
+    if file_size > 10 * 1024 * 1024:
+        return jsonify({"error": "檔案大小超過 10MB 限制"}), 400
 
     try:
         count = PatrolService.import_data(file)

@@ -60,8 +60,8 @@ class PatrolDetail(db.Model):
 class ShippingData(db.Model):
     __tablename__ = '出貨檢驗數據'
     id = db.Column('識別碼', db.Integer, primary_key=True)
-    date = db.Column('檢驗日期', db.Date) 
-    material = db.Column('材質', db.String)
+    date = db.Column('檢驗日期', db.Date, index=True)
+    material = db.Column('材質', db.String, index=True)
     spec = db.Column('檢驗規格', db.String)
     order_num = db.Column('訂單號碼', db.String)
     inspector_id = db.Column('檢驗人員', db.Integer, db.ForeignKey('品管人員.識別碼'))
@@ -86,7 +86,7 @@ class ShippingData(db.Model):
     inspector = db.relationship('Inspector', backref='shipping_data')
     vendor = db.relationship('Vendor', backref='shipping_data')
 
-    is_ng = db.Column('是否超差', db.Boolean, default=False)
+    is_ng = db.Column('是否超差', db.Boolean, default=False, index=True)
     
     def get_measurement(self, attr_prefix, group, is_minmax):
         """Get measurement block for a specific group and prefix"""
@@ -209,8 +209,8 @@ class VendorToleranceDetail(db.Model):
 class NCMR(db.Model):
     __tablename__ = '不合格品單'
     id = db.Column('識別碼', db.Integer, primary_key=True)
-    ncmr_number = db.Column('NCMR單號', db.String)
-    date = db.Column('發現日期', db.Date)
+    ncmr_number = db.Column('NCMR單號', db.String, index=True)
+    date = db.Column('發現日期', db.Date, index=True)
     source = db.Column('來源', db.String)
     product_info = db.Column('產品資訊', db.String)
     quantity = db.Column('產品數量', db.Integer)
@@ -221,7 +221,7 @@ class NCMR(db.Model):
     defect_quantity = db.Column('不良數量', db.Integer)
     inspector_id = db.Column('發現人員', db.Integer, db.ForeignKey('品管人員.識別碼'))
     result = db.Column('判定結果', db.String)
-    status = db.Column('狀態', db.String)
+    status = db.Column('狀態', db.String, index=True)
     defect_category = db.Column('不良原因大類', db.String)
     defect_detail = db.Column('不良原因細項', db.String)
     create_date = db.Column('建立日期', db.Date)
@@ -234,10 +234,10 @@ class CorrectiveAction(db.Model):
     __tablename__ = '異常矯正單'
     id = db.Column('識別碼', db.Integer, primary_key=True)
     ncmr_id = db.Column('NCMR_ID', db.Integer, db.ForeignKey('不合格品單.識別碼'))
-    car_number = db.Column('CAR單號', db.String)
-    eight_d_number = db.Column('8D單號', db.String)
+    car_number = db.Column('CAR單號', db.String, index=True)
+    eight_d_number = db.Column('8D單號', db.String, index=True)
     owner_id = db.Column('負責人員', db.Integer, db.ForeignKey('品管人員.識別碼'))
-    status = db.Column('狀態', db.String)
+    status = db.Column('狀態', db.String, index=True)
     
     d1 = db.Column('D1_小組成員', db.String)
     d2 = db.Column('D2_問題描述', db.String)

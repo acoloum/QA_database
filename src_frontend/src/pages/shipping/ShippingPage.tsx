@@ -6,30 +6,7 @@ import ShippingModal from '../../components/shipping/ShippingModal';
 import ImportModal from '../../components/shipping/ImportModal';
 import ShippingCharts from '../../components/shipping/ShippingCharts';
 import { useShippingList, useDeleteShipping } from '../../hooks/useShipping';
-
-const parseSpec = (spec: string): Record<string, number> => {
-    if (!spec) return {};
-    const parts = spec.replace(/×/g, '*').replace(/x/g, '*').split('*').map(p => parseFloat(p.trim()));
-    const result: Record<string, number> = {};
-
-    if (parts.length >= 2 && !isNaN(parts[0])) {
-        result['外徑'] = parts[0];
-        if (parts[1] && !isNaN(parts[1])) {
-            const val2 = parts[1];
-            if (val2 < (parts[0] / 2)) {
-                result['厚度'] = val2;
-                result['內徑'] = parts[0] - (val2 * 2);
-            } else {
-                result['內徑'] = val2;
-                result['厚度'] = (parts[0] - val2) / 2;
-            }
-        }
-        if (parts[2] && !isNaN(parts[2])) {
-            result['長度'] = parts[2];
-        }
-    }
-    return result;
-};
+import { parseSpec } from '../../utils/parseSpec';
 
 const ShippingPage = () => {
     const navigate = useNavigate();
@@ -141,10 +118,12 @@ const ShippingPage = () => {
         }
     };
 
+    // Use a stable key derived from inspections to avoid infinite re-fetching
+    const inspectionKey = JSON.stringify(inspections.map(i => `${i.材質}|||${i.檢驗規格}|||${i.廠商中文名稱}`));
     useEffect(() => {
-        // Trigger fetchTolerances when inspections change
         fetchTolerances();
-    }, [inspections]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [inspectionKey]);
 
     // Refresh list when filters change is handled by React Query key
 
@@ -181,10 +160,23 @@ const ShippingPage = () => {
         return { hasViolation, found: true };
     };
 
-    const handleExport = () => {
-        const token = localStorage.getItem('authToken');
-        const url = `${api.defaults.baseURL?.replace('/api', '')}/api/export/excel?vendor=${vendor}&material=${material}&spec=${spec}&start_date=${startDate}&end_date=${endDate}&token=${token}`;
-        window.location.href = url;
+    const handleExport = async () => {
+        try {
+            const response = await api.get('/export/excel', {
+                params: { vendor, material, spec, start_date: startDate, end_date: endDate },
+                responseType: 'blob'
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', '出貨檢驗數據.xlsx');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Export failed:', error);
+        }
     };
 
     const handleAdd = () => {

@@ -51,8 +51,8 @@ def get_rework_executions():
         data = ReworkService.get_execution_list(request.args.get('rework_id'))
         return jsonify(data)
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        from flask import current_app
+        current_app.logger.exception("Rework error: %s", str(e))
         return jsonify({"error": str(e)}), 500
 
 @rework_bp.route('/api/rework/execute', methods=['POST'])
@@ -94,8 +94,8 @@ def get_rework_inspections():
         data = ReworkService.get_inspection_list(rework_id)
         return jsonify(data)
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        from flask import current_app
+        current_app.logger.exception("Rework error: %s", str(e))
         return jsonify({"error": str(e)}), 500
 
 @rework_bp.route('/api/rework/costs', methods=['GET'])
@@ -107,8 +107,8 @@ def get_rework_costs():
         data = ReworkService.get_cost_list(rework_id)
         return jsonify(data)
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        from flask import current_app
+        current_app.logger.exception("Rework error: %s", str(e))
         return jsonify({"error": str(e)}), 500
 
 @rework_bp.route('/api/rework/cost', methods=['POST'])

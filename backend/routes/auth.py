@@ -6,7 +6,9 @@ from ..utils import (
     verify_token,
     generate_csrf_token,
     hash_password,
-    handle_db_error
+    verify_password,
+    handle_db_error,
+    auth_required
 )
 
 auth_bp = Blueprint('auth', __name__)
@@ -25,12 +27,17 @@ def login():
         
         if not user:
             return jsonify({"error": "使用者名稱或密碼錯誤"}), 401
-            
-        if user.password != hash_password(password):
+
+        if not verify_password(password, user.password):
             return jsonify({"error": "使用者名稱或密碼錯誤"}), 401
-            
+
         if not user.is_active:
              return jsonify({"error": "帳號已被停用"}), 401
+
+        # Migrate legacy SHA256 hash to bcrypt on successful login
+        if not user.password.startswith('$2b$') and not user.password.startswith('$2a$'):
+            user.password = hash_password(password)
+            db.session.commit()
 
         token = generate_token(user.id, user.username)
         return jsonify({
@@ -68,6 +75,7 @@ def get_csrf_token_api():
     return jsonify({'csrf_token': token})
 
 @auth_bp.route('/api/users', methods=['POST'])
+@auth_required
 def create_user():
     """新增使用者"""
     data = request.json

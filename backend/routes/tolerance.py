@@ -125,6 +125,7 @@ def delete_tolerance(id):
         return jsonify({"error": handle_db_error(e)}), 500
 
 @tolerance_bp.route('/api/tolerance/options', methods=['GET'])
+@auth_required
 def get_tolerance_options():
     """獲取公差選項資料"""
     try:
@@ -144,39 +145,10 @@ def export_tolerance_excel():
     except Exception as e:
         return jsonify({"error": handle_db_error(e)}), 500
 
-@tolerance_bp.route('/api/tolerance/check', methods=['GET', 'OPTIONS'])
+@tolerance_bp.route('/api/tolerance/check', methods=['GET'])
+@auth_required
 def check_tolerance():
     """根據廠商+材質+規格查詢公差標準，用於出貨檢驗驗證"""
-    if request.method == 'OPTIONS':
-        return jsonify({}), 200
-    
-    # Auth verification handled in service or here? 
-    # Legacy code did verification manually in route.
-    # We should keep it consistent. 
-    # Since specific auth logic (token manual check) was present, let's keep it or rely on @auth_required if possible.
-    # ORIGINAL CODE manual check:
-    # token = request.headers.get('Authorization') ... verify_token(token)
-    # The @auth_required decorator does exactly this. 
-    # However, legacy code manually checked it because maybe it wanted to support OPTIONS without auth?
-    # Flask routes with OPTIONS method usually handle CORS automatically if configured, but here manual.
-    # I will apply @auth_required to GET but handle OPTIONS separately found in decorator?
-    # Actually @auth_required usually wraps the function. 
-    # Let's use manual check to be safe and identical to legacy behavior for now, or just use @auth_required.
-    # The legacy code:
-    # if request.method == 'OPTIONS': return ..., 200
-    # verify_token...
-    
-    # I'll implement manual check to match legacy `check_tolerance` exact behavior regarding token reading.
-    from ..utils import verify_token
-    token = request.headers.get('Authorization')
-    if not token:
-        return jsonify({'error': '缺少認證 Token'}), 401
-    if token.startswith('Bearer '):
-        token = token[7:]
-    payload = verify_token(token)
-    if not payload:
-        return jsonify({'error': '無效或過期的 Token'}), 401
-    
     try:
         result = ToleranceService.check_tolerance(request.args)
         return jsonify(result)

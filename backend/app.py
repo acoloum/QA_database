@@ -1,3 +1,5 @@
+import logging
+from logging.handlers import RotatingFileHandler
 from flask import Flask, jsonify
 from flask_cors import CORS
 from flasgger import Swagger
@@ -27,6 +29,14 @@ app.config['SWAGGER'] = {
 }
 
 Swagger(app)
+
+# Configure rotating file handler for error logging
+file_handler = RotatingFileHandler('error.log', maxBytes=5*1024*1024, backupCount=5)
+file_handler.setLevel(logging.ERROR)
+file_handler.setFormatter(logging.Formatter(
+    '[%(asctime)s] %(levelname)s: %(message)s\n%(pathname)s:%(lineno)d\n'
+))
+app.logger.addHandler(file_handler)
 
 db.init_app(app)
 
@@ -84,18 +94,11 @@ def handle_value_error(error):
 def handle_db_error(error):
     """Handle Database errors"""
     from .utils import handle_db_error as utils_handle_db_error
-    
-    # Log the error
-    import traceback
-    with open('error.log', 'a') as f:
-        f.write(f"[{datetime.now()}] DB_ERROR: {str(error)}\n")
-        f.write(traceback.format_exc())
-        f.write("\n" + "="*30 + "\n")
 
-    # Use the logic from utils to get a user-friendly message
-    # The utils function expects an exception and returns a string
+    app.logger.exception("DB_ERROR: %s", str(error))
+
     friendly_message = utils_handle_db_error(error)
-    
+
     response = jsonify({
         "success": False,
         "error": {
@@ -110,18 +113,14 @@ def handle_db_error(error):
 @app.errorhandler(Exception)
 def handle_generic_error(error):
     """Handle unexpected errors"""
-    import traceback
-    with open('error.log', 'a') as f:
-        f.write(f"[{datetime.now()}] {str(error)}\n")
-        f.write(traceback.format_exc())
-        f.write("\n" + "="*30 + "\n")
-        
+    app.logger.exception("INTERNAL_ERROR: %s", str(error))
+
     response = jsonify({
         "success": False,
         "error": {
             "code": "INTERNAL_SERVER_ERROR",
             "message": "伺服器發生未預期的錯誤",
-            "details": str(error)
+            "details": str(error) if app.debug else None
         }
     })
     response.status_code = 500

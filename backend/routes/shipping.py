@@ -6,6 +6,7 @@ from ..utils import auth_required, handle_db_error
 shipping_bp = Blueprint('shipping', __name__)
 
 @shipping_bp.route('/api/data', methods=['GET'])
+@auth_required
 def get_data():
     try:
         result = ShippingService.get_list(request.args)
@@ -33,8 +34,8 @@ def get_shipping_stats():
         result = ShippingService.get_stats(request.args)
         return jsonify(result)
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        from flask import current_app
+        current_app.logger.exception("Shipping error: %s", str(e))
         return jsonify({"error": str(e)}), 500
 
 @shipping_bp.route('/api/spc-report', methods=['GET'])
@@ -60,8 +61,8 @@ def export_spc_report():
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        from flask import current_app
+        current_app.logger.exception("Shipping error: %s", str(e))
         return jsonify({"error": str(e)}), 500
 
 @shipping_bp.route('/api/add', methods=['POST'])
@@ -104,6 +105,20 @@ def shipping_import():
     file = request.files['file']
     if file.filename == '':
         return jsonify({"error": "沒有選擇檔案"}), 400
+
+    # Validate file type
+    allowed_extensions = {'.xlsx', '.xls'}
+    import os
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in allowed_extensions:
+        return jsonify({"error": f"不支援的檔案格式: {ext}，僅接受 .xlsx / .xls"}), 400
+
+    # Validate file size (10MB max)
+    file.seek(0, 2)
+    file_size = file.tell()
+    file.seek(0)
+    if file_size > 10 * 1024 * 1024:
+        return jsonify({"error": "檔案大小超過 10MB 限制"}), 400
 
     try:
         count = ShippingService.import_data(file)

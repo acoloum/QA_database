@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { useDashboardStats } from '../../hooks/useDashboard';
 import type { DatePeriod } from '../../hooks/useDashboard';
 
@@ -163,4 +164,4 @@ const KPICards = ({ period = 'this_month', customDateRange }: KPICardsProps) => 
     );
 };
 
-export default KPICards;
+export default memo(KPICards);

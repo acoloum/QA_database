@@ -9,6 +9,7 @@ ncmr_bp = Blueprint('ncmr', __name__)
 # ==================================================
 
 @ncmr_bp.route('/api/ncmr', methods=['GET'])
+@auth_required
 def get_ncmr_list():
     try:
         data = NCMRService.get_ncmr_list(request.args.get('status'))
@@ -49,6 +50,7 @@ def delete_ncmr():
         return jsonify({"error": str(e)}), 500
 
 @ncmr_bp.route('/api/ncmr/source_info', methods=['GET'])
+@auth_required
 def get_source_info():
     try:
         info = NCMRService.get_source_info(request.args.get('type'), request.args.get('id'))
@@ -72,6 +74,7 @@ def get_ncmr_info(ncmr_id):
 # ==================================================
 
 @ncmr_bp.route('/api/cara', methods=['GET'])
+@auth_required
 def get_cara_list():
     try:
         data = NCMRService.get_cara_list()
@@ -80,6 +83,7 @@ def get_cara_list():
         return jsonify({"error": str(e)}), 500
 
 @ncmr_bp.route('/api/cara/create', methods=['POST'])
+@auth_required
 def create_cara():
     try:
         result = NCMRService.create_cara(request.json)
@@ -90,6 +94,7 @@ def create_cara():
         return jsonify({"error": str(e)}), 500
 
 @ncmr_bp.route('/api/cara/detail/<int:id>')
+@auth_required
 def get_cara_detail(id):
     try:
         data = NCMRService.get_cara_detail(id)
@@ -100,6 +105,7 @@ def get_cara_detail(id):
         return jsonify({"error": str(e)}), 500
 
 @ncmr_bp.route('/api/cara/update', methods=['POST'])
+@auth_required
 def update_cara():
     try:
         NCMRService.update_cara(request.json)
@@ -124,6 +130,7 @@ def delete_cara():
 # ==================================================
 
 @ncmr_bp.route('/api/capa', methods=['GET'])
+@auth_required
 def get_capa_list():
     try:
         data = NCMRService.get_capa_list()
@@ -132,6 +139,7 @@ def get_capa_list():
         return jsonify({"error": str(e)}), 500
 
 @ncmr_bp.route('/api/capa/create', methods=['POST'])
+@auth_required
 def create_capa():
     try:
         result = NCMRService.create_capa(request.json)
@@ -142,6 +150,7 @@ def create_capa():
         return jsonify({"error": str(e)}), 500
 
 @ncmr_bp.route('/api/capa/detail/<int:id>')
+@auth_required
 def get_capa_detail(id):
     try:
         data = NCMRService.get_capa_detail(id)
@@ -152,6 +161,7 @@ def get_capa_detail(id):
         return jsonify({"error": str(e)}), 500
 
 @ncmr_bp.route('/api/capa/update', methods=['POST'])
+@auth_required
 def update_capa():
     try:
         NCMRService.update_capa(request.json)

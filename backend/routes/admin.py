@@ -3,6 +3,7 @@ from sqlalchemy import text, func, or_
 from datetime import datetime, timedelta, date
 from ..extensions import db
 from ..models import Inspector, Vendor, Machine, Operator, ShippingData, PatrolMain, NCMR, CorrectiveAction, ReworkRequest
+from ..utils import auth_required
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -113,6 +114,7 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
     return stats
 
 @admin_bp.route('/api/dashboard/stats')
+@auth_required
 def get_dashboard_stats():
     period = request.args.get('period', 'this_month')
     start_date = request.args.get('start')
@@ -157,6 +159,7 @@ def get_dashboard_stats():
         return jsonify({"error": str(e)}), 500
 
 @admin_bp.route('/api/dashboard/todos')
+@auth_required
 def get_dashboard_todos():
     today = date.today()
     week_ago = today - timedelta(days=7)
@@ -229,108 +232,9 @@ def get_dashboard_todos():
         from flask import current_app
         current_app.logger.exception("Error loading dashboard todos")
         return jsonify({"error": str(e)}), 500
-    if not spec_str: return {}
-    s = str(spec_str).replace('×', '*').replace('x', '*').replace('X', '*')
-    while '**' in s: s = s.replace('**', '*')
-    parts = s.split('*')
-    res = {}
-    nums = []
-    for p in parts:
-        try: nums.append(float(p.strip()))
-        except ValueError: pass
-    if len(nums) >= 2:
-        res['外徑'] = nums[0]
-        val2 = nums[1]
-        if val2 < (nums[0] / 2.0):
-            res['厚度'] = val2
-            res['內徑'] = nums[0] - (val2 * 2.0)
-        else:
-            res['內徑'] = val2
-            res['厚度'] = (nums[0] - val2) / 2.0
-        if len(nums) >= 3:
-            res['長度'] = nums[2]
-    elif len(nums) == 1:
-        res['外徑'] = nums[0]
-    return res
-
-def check_shipping_violation(item, tolerances):
-    if not tolerances:
-        return False
-        
-    spec_values = parse_spec(item.spec)
-    
-    std_limits = {}
-    for t in tolerances:
-        lsl = float('-inf')
-        usl = float('inf')
-        
-        tc_min = t.get('尺寸下限')
-        tc_max = t.get('尺寸上限')
-        tol_min = t.get('公差下限')
-        tol_max = t.get('公差上限')
-        t_std = t.get('標準值')
-        t_item = t.get('項目')
-        
-        if tc_min is not None and tc_max is not None:
-            lsl = tc_min
-            usl = tc_max
-        elif tol_min is not None and tol_max is not None:
-            std_val = spec_values.get(t_item, 0)
-            if std_val == 0 and t_std is not None:
-                std_val = t_std
-            if std_val == 0:
-                continue
-            lsl = std_val + tol_min
-            usl = std_val + tol_max
-        elif tc_max is not None:
-            lsl = 0
-            usl = tc_max
-        elif tc_min is not None:
-            lsl = tc_min
-            usl = float('inf')
-        else:
-            continue
-            
-        std_limits[t_item] = {'lsl': lsl, 'usl': usl}
-
-    items_to_check = ["外徑", "內徑", "真圓度", "厚度", "同心度", "長度", "硬度", "真直度"]
-    gc = item.group_count or 5
-
-    def safe_float(v):
-        try: return float(v)
-        except (ValueError, TypeError): return None
-        
-    attr_map = {
-        '外徑': 'od',
-        '內徑': 'id',
-        '厚度': 'th',
-        '同心度': 'concentricity',
-        '長度': 'length',
-        '硬度': 'hardness',
-        '真直度': 'straightness',
-        '真圓度': 'roundness'
-    }
-
-    for it in items_to_check:
-        tol = std_limits.get(it)
-        if not tol: continue
-
-        attr_prefix = attr_map[it]
-        is_minmax = it in ["外徑", "內徑", "厚度"]
-        
-        for g in range(1, int(gc) + 1):
-            if is_minmax:
-                v_min = safe_float(getattr(item, f"{attr_prefix}{g}_min", None))
-                v_max = safe_float(getattr(item, f"{attr_prefix}{g}_max", None))
-                if v_min is not None and (v_min < tol['lsl'] or v_min > tol['usl']): return True
-                if v_max is not None and (v_max < tol['lsl'] or v_max > tol['usl']): return True
-            else:
-                v = safe_float(getattr(item, f"{attr_prefix}{g}", None))
-                if v is not None and (v < tol['lsl'] or v > tol['usl']): return True
-                
-    return False
 
 @admin_bp.route('/api/dashboard/trends')
+@auth_required
 def get_dashboard_trends():
     try:
         trends = {
