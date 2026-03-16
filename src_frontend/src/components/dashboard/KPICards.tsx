@@ -20,7 +20,11 @@ const KPICards = ({ period = 'this_month', customDateRange }: KPICardsProps) => 
             getTrend: (s: any) => s?.shipping?.trend || 'stable',
             getChange: (s: any) => s?.shipping?.change_pct || 0,
             path: '/shipping',
-            isAnomaly: (s: any) => (s?.shipping?.trend === 'up' && s?.shipping?.change_pct > 30)
+            isAnomaly: () => false,
+            getNgInfo: (s: any) => ({
+                rate: s?.shipping?.ng_rate ?? null,
+                count: s?.shipping?.ng_count ?? 0,
+            }),
         },
         {
             label: '現場巡檢',
@@ -152,7 +156,25 @@ const KPICards = ({ period = 'this_month', customDateRange }: KPICardsProps) => 
                                     </div>
                                     <div className="kpi-label">{item.label}</div>
                                     <div className="kpi-trend">
-                                        {getTrendIcon(trend, change)}
+                                        {(item as any).getNgInfo ? (
+                                            (() => {
+                                                const { rate, count } = (item as any).getNgInfo(stats);
+                                                if (rate === null) {
+                                                    return <span style={{ color: '#94a3b8' }}>—</span>;
+                                                }
+                                                if (count === 0) {
+                                                    return <span style={{ color: '#22c55e', fontWeight: 600 }}>✓ 全數合格</span>;
+                                                }
+                                                const isHigh = rate > 5;
+                                                return (
+                                                    <span style={{ color: isHigh ? '#ef4444' : '#22c55e', fontWeight: 600 }}>
+                                                        {isHigh ? '⚠ ' : '✓ '}超差率 {rate}%（{count} 筆）
+                                                    </span>
+                                                );
+                                            })()
+                                        ) : (
+                                            getTrendIcon(trend, change)
+                                        )}
                                     </div>
                                 </div>
                             </div>

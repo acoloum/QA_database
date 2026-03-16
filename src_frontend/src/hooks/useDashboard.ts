@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
 
 export interface DashboardStats {
-    shipping: { current: number; previous: number; pending: number; trend: string; change_pct: number };
+    shipping: { current: number; previous: number; pending: number; trend: string; change_pct: number; ng_count?: number; ng_rate?: number | null };
     patrol: { current: number; previous: number; pending: number; trend: string; change_pct: number };
     ncmr: { current: number; previous: number; pending: number; trend: string; change_pct: number };
     capa: { current: number; previous: number; pending: number; trend: string; change_pct: number };
