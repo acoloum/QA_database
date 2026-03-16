@@ -162,7 +162,7 @@ const KPICards = ({ period = 'this_month', customDateRange }: KPICardsProps) => 
                                                 if (rate === null) {
                                                     return <span style={{ color: '#94a3b8' }}>—</span>;
                                                 }
-                                                if (count === 0) {
+                                                if (rate === 0) {
                                                     return <span style={{ color: '#22c55e', fontWeight: 600 }}>✓ 全數合格</span>;
                                                 }
                                                 const isHigh = rate > 5;
