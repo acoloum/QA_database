@@ -49,10 +49,18 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
             ReworkRequest.status.notin_(['已完成', '已拒絕'])
         ).count()
     
+    _shipping_current = count_for_model(ShippingData, ShippingData.date, start_date, end_date)
+    _shipping_ng = count_for_model(
+        ShippingData, ShippingData.date, start_date, end_date,
+        ShippingData.is_ng == True
+    )
+
     stats = {
         "shipping": {
-            "current": count_for_model(ShippingData, ShippingData.date, start_date, end_date),
+            "current": _shipping_current,
             "previous": count_for_model(ShippingData, ShippingData.date, compare_start, compare_end),
+            "ng_count": _shipping_ng,
+            "ng_rate": round((_shipping_ng / _shipping_current * 100), 1) if _shipping_current > 0 else None,
             "pending": 0
         },
         "patrol": {
