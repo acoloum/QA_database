@@ -1,6 +1,24 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Row, Col, Table } from 'react-bootstrap';
 import { useToleranceDetail, useCreateTolerance, useUpdateTolerance } from '../../hooks/useTolerance';
+import {
+    DndContext,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+} from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import {
+    arrayMove,
+    SortableContext,
+    sortableKeyboardCoordinates,
+    useSortable,
+    verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import type { CSSProperties } from 'react';
 
 interface ToleranceModalProps {
     show: boolean;
@@ -11,6 +29,7 @@ interface ToleranceModalProps {
 }
 
 interface DetailRow {
+    id: string;
     item: string;
     position: string;
     size_min: string;
@@ -22,6 +41,54 @@ interface DetailRow {
     remark: string;
 }
 
+// 拖曳排序表格列元件
+interface SortableRowProps {
+    id: string;
+    detail: DetailRow;
+    index: number;
+    onChange: (index: number, field: keyof DetailRow, value: string) => void;
+    onRemove: (index: number) => void;
+    canDelete: boolean;
+}
+
+const SortableRow = ({ id, detail, index, onChange, onRemove, canDelete }: SortableRowProps) => {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({ id });
+
+    const style: CSSProperties = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        backgroundColor: isDragging ? '#f8f9fa' : 'transparent',
+    };
+
+    return (
+        <tr ref={setNodeRef} style={style}>
+            <td className="text-center" style={{ cursor: 'grab', width: '40px' }} {...attributes} {...listeners}>
+                <i className="bi bi-grip-vertical text-muted"></i>
+            </td>
+            <td><Form.Control size="sm" value={detail.item} onChange={e => onChange(index, 'item', e.target.value)} placeholder="項目" /></td>
+            <td><Form.Control size="sm" value={detail.position} onChange={e => onChange(index, 'position', e.target.value)} placeholder="Pos" /></td>
+            <td><Form.Control size="sm" type="number" step="0.0001" value={detail.size_min} onChange={e => onChange(index, 'size_min', e.target.value)} /></td>
+            <td><Form.Control size="sm" type="number" step="0.0001" value={detail.size_max} onChange={e => onChange(index, 'size_max', e.target.value)} /></td>
+            <td><Form.Control size="sm" type="number" step="0.0001" value={detail.tol_min} onChange={e => onChange(index, 'tol_min', e.target.value)} /></td>
+            <td><Form.Control size="sm" type="number" step="0.0001" value={detail.tol_max} onChange={e => onChange(index, 'tol_max', e.target.value)} /></td>
+            <td><Form.Control size="sm" type="number" step="0.0001" value={detail.std} onChange={e => onChange(index, 'std', e.target.value)} /></td>
+            <td><Form.Control size="sm" value={detail.unit} onChange={e => onChange(index, 'unit', e.target.value)} /></td>
+            <td><Form.Control size="sm" value={detail.remark} onChange={e => onChange(index, 'remark', e.target.value)} /></td>
+            <td className="text-center">
+                <Button variant="outline-danger" size="sm" onClick={() => onRemove(index)} tabIndex={-1} disabled={!canDelete}><i className="bi bi-trash"></i></Button>
+            </td>
+        </tr>
+    );
+};
+
 const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: ToleranceModalProps) => {
     const [date, setDate] = useState('');
     const [material, setMaterial] = useState('');
@@ -30,9 +97,38 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
     const [remark, setRemark] = useState('');
     const [details, setDetails] = useState<DetailRow[]>([]);
 
+    // 產生唯一 ID 用於拖曳排序
+    const generateId = () => Math.random().toString(36).substring(2, 11);
+
     const createEmptyRow = (): DetailRow => ({
+        id: generateId(),
         item: '', position: '', size_min: '', size_max: '', tol_min: '', tol_max: '', std: '', unit: 'mm', remark: ''
     });
+
+    // 設定拖曳感測器
+    const sensors = useSensors(
+        useSensor(PointerSensor, {
+            activationConstraint: {
+                distance: 8, // 必須拖曳 8px 才會觸發
+            },
+        }),
+        useSensor(KeyboardSensor, {
+            coordinateGetter: sortableKeyboardCoordinates,
+        })
+    );
+
+    // 處理拖曳結束
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+
+        if (over && active.id !== over.id) {
+            setDetails((items) => {
+                const oldIndex = items.findIndex((item) => item.id === active.id);
+                const newIndex = items.findIndex((item) => item.id === over.id);
+                return arrayMove(items, oldIndex, newIndex);
+            });
+        }
+    };
 
     // Hooks
     const { data: detailData, isLoading: detailLoading } = useToleranceDetail(show && editId ? editId : null);
@@ -52,7 +148,8 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
                     setRemark(main.備註 || '');
 
                     if (dList && dList.length > 0) {
-                        setDetails(dList.map((d: any) => ({
+                        setDetails(dList.map((d: any, idx: number) => ({
+                            id: d.id || `existing-${idx}`,
                             item: d.測量項目 || '',
                             position: d.測量位置 || '',
                             size_min: d.尺寸下限 ?? '',
@@ -188,44 +285,48 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
                         </div>
 
                         <div className="d-flex justify-content-between align-items-center mb-2">
-                            <h5 className="mb-0"><i className="bi bi-list"></i> 公差明細</h5>
+                            <h5 className="mb-0"><i className="bi bi-list"></i> 公差明細 <small className="text-muted fs-6">(可拖曳排序)</small></h5>
                             <Button variant="outline-primary" size="sm" onClick={addRow}><i className="bi bi-plus"></i> 新增明細</Button>
                         </div>
 
-                        <Table bordered hover size="sm">
-                            <thead className="table-light text-center sticky-header">
-                                <tr>
-                                    <th style={{ width: '15%' }}>測量項目</th>
-                                    <th style={{ width: '8%' }}>位置</th>
-                                    <th>尺寸下限</th>
-                                    <th>尺寸上限</th>
-                                    <th>公差下限</th>
-                                    <th>公差上限</th>
-                                    <th>標準值</th>
-                                    <th style={{ width: '8%' }}>單位</th>
-                                    <th>備註</th>
-                                    <th style={{ width: '5%' }}></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {details.map((d, index) => (
-                                    <tr key={index}>
-                                        <td><Form.Control size="sm" value={d.item} onChange={e => handleDetailChange(index, 'item', e.target.value)} placeholder="項目" /></td>
-                                        <td><Form.Control size="sm" value={d.position} onChange={e => handleDetailChange(index, 'position', e.target.value)} placeholder="Pos" /></td>
-                                        <td><Form.Control size="sm" type="number" step="0.0001" value={d.size_min} onChange={e => handleDetailChange(index, 'size_min', e.target.value)} /></td>
-                                        <td><Form.Control size="sm" type="number" step="0.0001" value={d.size_max} onChange={e => handleDetailChange(index, 'size_max', e.target.value)} /></td>
-                                        <td><Form.Control size="sm" type="number" step="0.0001" value={d.tol_min} onChange={e => handleDetailChange(index, 'tol_min', e.target.value)} /></td>
-                                        <td><Form.Control size="sm" type="number" step="0.0001" value={d.tol_max} onChange={e => handleDetailChange(index, 'tol_max', e.target.value)} /></td>
-                                        <td><Form.Control size="sm" type="number" step="0.0001" value={d.std} onChange={e => handleDetailChange(index, 'std', e.target.value)} /></td>
-                                        <td><Form.Control size="sm" value={d.unit} onChange={e => handleDetailChange(index, 'unit', e.target.value)} /></td>
-                                        <td><Form.Control size="sm" value={d.remark} onChange={e => handleDetailChange(index, 'remark', e.target.value)} /></td>
-                                        <td className="text-center">
-                                            <Button variant="outline-danger" size="sm" onClick={() => removeRow(index)} tabIndex={-1}><i className="bi bi-trash"></i></Button>
-                                        </td>
+                        <DndContext
+                            sensors={sensors}
+                            collisionDetection={closestCenter}
+                            onDragEnd={handleDragEnd}
+                        >
+                            <Table bordered hover size="sm">
+                                <thead className="table-light text-center sticky-header">
+                                    <tr>
+                                        <th style={{ width: '40px' }}></th>
+                                        <th style={{ width: '15%' }}>測量項目</th>
+                                        <th style={{ width: '8%' }}>位置</th>
+                                        <th>尺寸下限</th>
+                                        <th>尺寸上限</th>
+                                        <th>公差下限</th>
+                                        <th>公差上限</th>
+                                        <th>標準值</th>
+                                        <th style={{ width: '8%' }}>單位</th>
+                                        <th>備註</th>
+                                        <th style={{ width: '5%' }}></th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </Table>
+                                </thead>
+                                <tbody>
+                                    <SortableContext items={details.map(d => d.id)} strategy={verticalListSortingStrategy}>
+                                        {details.map((d, index) => (
+                                            <SortableRow
+                                                key={d.id}
+                                                id={d.id}
+                                                detail={d}
+                                                index={index}
+                                                onChange={handleDetailChange}
+                                                onRemove={removeRow}
+                                                canDelete={details.length > 1}
+                                            />
+                                        ))}
+                                    </SortableContext>
+                                </tbody>
+                            </Table>
+                        </DndContext>
                     </>
                 )}
             </Modal.Body>
