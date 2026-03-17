@@ -383,16 +383,36 @@ class SpcReportService:
             arr = np.array(all_values)
             counts, bin_edges = np.histogram(arr, bins='auto')
             total = len(all_values)
+            hist_mean = float(np.mean(arr))
+            hist_std = float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0
+            hist_bin_width = float(bin_edges[1] - bin_edges[0]) if len(bin_edges) > 1 else 1.0
             cumulative = 0
             hist_data_rows = len(counts)
+
+            # 第 4 欄：常態分佈標頭
+            cell_nd = ws3.cell(row=1, column=4, value="常態分佈")
+            cell_nd.font = header_font
+            cell_nd.fill = header_fill
+            cell_nd.border = thin_border
+            cell_nd.alignment = Alignment(horizontal='center')
+
             for i in range(len(counts)):
                 label = f"{round(bin_edges[i], 3)} ~ {round(bin_edges[i + 1], 3)}"
                 cumulative += counts[i]
                 ws3.cell(row=i + 2, column=1, value=label).border = thin_border
                 ws3.cell(row=i + 2, column=2, value=int(counts[i])).border = thin_border
                 ws3.cell(row=i + 2, column=3, value=f"{round(cumulative / total * 100, 1)}%").border = thin_border
+                # 常態 PDF 值（縮放至頻次單位）
+                midpoint = float((bin_edges[i] + bin_edges[i + 1]) / 2)
+                if hist_std > 0:
+                    normal_val = (1 / (hist_std * np.sqrt(2 * np.pi))) * np.exp(
+                        -0.5 * ((midpoint - hist_mean) / hist_std) ** 2
+                    ) * total * hist_bin_width
+                else:
+                    normal_val = 0.0
+                ws3.cell(row=i + 2, column=4, value=round(float(normal_val), 4)).border = thin_border
 
-            for col_idx in range(1, 4):
+            for col_idx in range(1, 5):
                 ws3.column_dimensions[get_column_letter(col_idx)].width = 20
 
         # --- Sheet 4: WECO Violations ---
@@ -439,16 +459,14 @@ class SpcReportService:
             xbar_chart.y_axis.title = "量測值"
             xbar_chart.y_axis.delete = False
             xbar_chart.x_axis.delete = False
-            xbar_chart.y_axis.tickLblPos = "low"
-            xbar_chart.x_axis.tickLblPos = "low"
             xbar_chart.y_axis.numFmt = '0.000'
             xbar_chart.x_axis.tickLblSkip = 1
-            xbar_chart.width = 40
-            xbar_chart.height = 25
+            xbar_chart.width = 22
+            xbar_chart.height = 14
             xbar_chart.style = 10
             xbar_chart.legend.position = 'b'
-            xbar_chart.legend.layout = Layout(
-                manualLayout=ManualLayout(x=0.15, y=0.92, w=0.7, h=0.06)
+            xbar_chart.plotArea.layout = Layout(
+                manualLayout=ManualLayout(x=0.05, y=0.12, w=0.90, h=0.68)
             )
 
             cats = Reference(ws2, min_col=1, min_row=2, max_row=data_count + 1)
@@ -509,16 +527,14 @@ class SpcReportService:
             r_chart.y_axis.title = "全距"
             r_chart.y_axis.delete = False
             r_chart.x_axis.delete = False
-            r_chart.y_axis.tickLblPos = "low"
-            r_chart.x_axis.tickLblPos = "low"
             r_chart.y_axis.numFmt = '0.000'
             r_chart.x_axis.tickLblSkip = 1
-            r_chart.width = 40
-            r_chart.height = 25
+            r_chart.width = 22
+            r_chart.height = 14
             r_chart.style = 10
             r_chart.legend.position = 'b'
-            r_chart.legend.layout = Layout(
-                manualLayout=ManualLayout(x=0.25, y=0.92, w=0.5, h=0.06)
+            r_chart.plotArea.layout = Layout(
+                manualLayout=ManualLayout(x=0.05, y=0.12, w=0.90, h=0.68)
             )
 
             r_data = Reference(ws2, min_col=5, min_row=1, max_row=data_count + 1)
@@ -552,14 +568,15 @@ class SpcReportService:
                 hist_chart.y_axis.title = "頻次"
                 hist_chart.y_axis.delete = False
                 hist_chart.x_axis.delete = False
-                hist_chart.y_axis.tickLblPos = "low"
-                hist_chart.x_axis.tickLblPos = "low"
-                hist_chart.width = 40
-                hist_chart.height = 25
+                hist_chart.width = 22
+                hist_chart.height = 14
                 hist_chart.style = 10
                 hist_chart.type = "col"
                 hist_chart.grouping = "clustered"
-                hist_chart.legend = None
+                hist_chart.legend.position = 'b'
+                hist_chart.plotArea.layout = Layout(
+                    manualLayout=ManualLayout(x=0.05, y=0.12, w=0.90, h=0.68)
+                )
 
                 hist_cats = Reference(ws3, min_col=1, min_row=2, max_row=hist_data_rows + 1)
                 hist_vals = Reference(ws3, min_col=2, min_row=1, max_row=hist_data_rows + 1)
@@ -569,6 +586,18 @@ class SpcReportService:
 
                 s_hist = hist_chart.series[0]
                 s_hist.graphicalProperties.solidFill = "0D6EFD"
+
+                # 常態分佈曲線（LineChart 疊加）
+                normal_chart = LineChart()
+                normal_data_ref = Reference(ws3, min_col=4, min_row=1, max_row=hist_data_rows + 1)
+                normal_chart.add_data(normal_data_ref, titles_from_data=True)
+                normal_chart.smooth = True
+                s_normal = normal_chart.series[0]
+                s_normal.graphicalProperties.line.solidFill = "DC3545"
+                s_normal.graphicalProperties.line.width = 20000
+                s_normal.marker.symbol = "none"
+
+                hist_chart += normal_chart
 
                 ws_chart.add_chart(hist_chart, "A100")
 
