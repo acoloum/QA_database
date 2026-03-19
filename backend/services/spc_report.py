@@ -443,13 +443,12 @@ class SpcReportService:
             xbar_chart.x_axis.tickLblPos = "low"
             xbar_chart.y_axis.numFmt = '0.000'
             xbar_chart.x_axis.tickLblSkip = 1
-            xbar_chart.width = 40
-            xbar_chart.height = 25
+            # 縮小圖表尺寸
+            xbar_chart.width = 20
+            xbar_chart.height = 14
             xbar_chart.style = 10
-            xbar_chart.legend.position = 'b'
-            xbar_chart.legend.layout = Layout(
-                manualLayout=ManualLayout(x=0.15, y=0.92, w=0.7, h=0.06)
-            )
+            # 隱藏圖例（頁面已有圖例說明），避免與軸重疊
+            xbar_chart.legend = None
 
             cats = Reference(ws2, min_col=1, min_row=2, max_row=data_count + 1)
             avg_data = Reference(ws2, min_col=4, min_row=1, max_row=data_count + 1)
@@ -513,13 +512,12 @@ class SpcReportService:
             r_chart.x_axis.tickLblPos = "low"
             r_chart.y_axis.numFmt = '0.000'
             r_chart.x_axis.tickLblSkip = 1
-            r_chart.width = 40
-            r_chart.height = 25
+            # 縮小圖表尺寸
+            r_chart.width = 20
+            r_chart.height = 14
             r_chart.style = 10
-            r_chart.legend.position = 'b'
-            r_chart.legend.layout = Layout(
-                manualLayout=ManualLayout(x=0.25, y=0.92, w=0.5, h=0.06)
-            )
+            # 隱藏圖例
+            r_chart.legend = None
 
             r_data = Reference(ws2, min_col=5, min_row=1, max_row=data_count + 1)
             r_ucl_ref = Reference(ws2, min_col=9, min_row=1, max_row=data_count + 1)
@@ -543,7 +541,8 @@ class SpcReportService:
             s_r_cl.graphicalProperties.line.solidFill = "00B050"
             s_r_cl.graphicalProperties.line.width = 15000
 
-            ws_chart.add_chart(r_chart, "A50")
+            # 調整 R 圖表位置（從 A50 改為 A30，與 X-bar 圖表並排）
+            ws_chart.add_chart(r_chart, "A30")
 
             # --- Histogram ---
             if hist_data_rows > 0 and ws3 is not None:
@@ -554,11 +553,13 @@ class SpcReportService:
                 hist_chart.x_axis.delete = False
                 hist_chart.y_axis.tickLblPos = "low"
                 hist_chart.x_axis.tickLblPos = "low"
-                hist_chart.width = 40
-                hist_chart.height = 25
+                # 縮小圖表尺寸
+                hist_chart.width = 20
+                hist_chart.height = 14
                 hist_chart.style = 10
                 hist_chart.type = "col"
                 hist_chart.grouping = "clustered"
+                # 圖例隱藏（因為只有一個數據系列）
                 hist_chart.legend = None
 
                 hist_cats = Reference(ws3, min_col=1, min_row=2, max_row=hist_data_rows + 1)
@@ -570,7 +571,8 @@ class SpcReportService:
                 s_hist = hist_chart.series[0]
                 s_hist.graphicalProperties.solidFill = "0D6EFD"
 
-                ws_chart.add_chart(hist_chart, "A100")
+                # 調整直方圖位置（從 A100 改為 A55）
+                ws_chart.add_chart(hist_chart, "A55")
 
         output = BytesIO()
         wb.save(output)
