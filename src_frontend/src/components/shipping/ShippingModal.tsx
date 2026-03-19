@@ -135,11 +135,12 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                 const m: Record<string, string> = {};
                 loadItems.forEach(item => {
                     for (let g = 1; g <= 10; g++) {
+                        const rawVal = (detailData as any)[`${item.key}${g}`];
                         if (item.type === 'minmax') {
-                            m[`${item.key}${g}-min`] = (detailData as any)[`${item.key}${g}-min`] || '';
-                            m[`${item.key}${g}-max`] = (detailData as any)[`${item.key}${g}-max`] || '';
+                            m[`${item.key}${g}-min`] = (detailData as any)[`${item.key}${g}-min`] == null ? '' : String((detailData as any)[`${item.key}${g}-min`]);
+                            m[`${item.key}${g}-max`] = (detailData as any)[`${item.key}${g}-max`] == null ? '' : String((detailData as any)[`${item.key}${g}-max`]);
                         } else {
-                            m[`${item.key}${g}`] = (detailData as any)[`${item.key}${g}`] || '';
+                            m[`${item.key}${g}`] = rawVal == null ? '' : String(rawVal);
                         }
                     }
                 });
@@ -435,7 +436,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                                                                 placeholder="Min"
                                                                 style={{ fontSize: '0.75rem', padding: '2px 4px', width: '60px' }}
                                                                 className={`text-center shipping-input ${violations[`${item.key}${g}-min`] ? 'is-invalid-breathing' : ''}`}
-                                                                value={measurements[`${item.key}${g}-min`] || ''}
+                                                                value={measurements[`${item.key}${g}-min`] ?? ''}
                                                                 onChange={e => handleMeasurementChange(`${item.key}${g}-min`, e.target.value)}
                                                                 tabIndex={100 + (g - 1) * TOTAL_INPUTS_PER_GROUP + ITEM_OFFSETS[idx]}
                                                             />
@@ -444,7 +445,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                                                                 placeholder="Max"
                                                                 style={{ fontSize: '0.75rem', padding: '2px 4px', width: '60px' }}
                                                                 className={`text-center shipping-input ${violations[`${item.key}${g}-max`] ? 'is-invalid-breathing' : ''}`}
-                                                                value={measurements[`${item.key}${g}-max`] || ''}
+                                                                value={measurements[`${item.key}${g}-max`] ?? ''}
                                                                 onChange={e => handleMeasurementChange(`${item.key}${g}-max`, e.target.value)}
                                                                 tabIndex={100 + (g - 1) * TOTAL_INPUTS_PER_GROUP + ITEM_OFFSETS[idx] + 1}
                                                             />
@@ -454,7 +455,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                                                             size="sm"
                                                             style={{ fontSize: '0.75rem', padding: '2px 4px', width: '60px' }}
                                                             className={`text-center mx-auto shipping-input ${violations[`${item.key}${g}`] ? 'is-invalid-breathing' : ''}`}
-                                                            value={measurements[`${item.key}${g}`] || ''}
+                                                            value={measurements[`${item.key}${g}`] ?? ''}
                                                             onChange={e => handleMeasurementChange(`${item.key}${g}`, e.target.value)}
                                                             tabIndex={100 + (g - 1) * TOTAL_INPUTS_PER_GROUP + ITEM_OFFSETS[idx]}
                                                         />
