@@ -29,6 +29,15 @@ const ApplyModal = ({ show, handleClose, onSuccess, initialNcmrId, initialNcmrNo
     const [reason, setReason] = useState('');
     const [expectedDate, setExpectedDate] = useState('');
 
+    const loadInspectors = async () => {
+        try {
+            const res = await api.get<Inspector[]>('/inspectors');
+            setInspectors(res.data);
+        } catch (error) {
+            console.error('Failed to load inspectors', error);
+        }
+    };
+
     useEffect(() => {
         if (show) {
             loadInspectors();
@@ -41,15 +50,6 @@ const ApplyModal = ({ show, handleClose, onSuccess, initialNcmrId, initialNcmrNo
             }
         }
     }, [show, initialNcmrId, initialNcmrNo]);
-
-    const loadInspectors = async () => {
-        try {
-            const res = await api.get<Inspector[]>('/inspectors');
-            setInspectors(res.data);
-        } catch (error) {
-            console.error('Failed to load inspectors', error);
-        }
-    };
 
     const handleNcmrChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;

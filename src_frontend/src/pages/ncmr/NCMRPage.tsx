@@ -180,7 +180,7 @@ const NCMRPage = () => {
                     window.location.href = `/capa?editId=${res.id}`;
                 }
             }
-        } catch (e) {
+        } catch {
             // Error handled by global handler
         }
     };

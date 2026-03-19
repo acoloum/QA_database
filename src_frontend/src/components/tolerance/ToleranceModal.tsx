@@ -105,6 +105,15 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
         item: '', position: '', size_min: '', size_max: '', tol_min: '', tol_max: '', std: '', unit: 'mm', remark: ''
     });
 
+    const resetForm = () => {
+        setDate(new Date().toISOString().split('T')[0]);
+        setMaterial('');
+        setSpec('');
+        setVendorId('');
+        setRemark('');
+        setDetails([createEmptyRow()]);
+    };
+
     // 設定拖曳感測器
     const sensors = useSensors(
         useSensor(PointerSensor, {
@@ -169,15 +178,6 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
             }
         }
     }, [show, editId, detailData]);
-
-    const resetForm = () => {
-        setDate(new Date().toISOString().split('T')[0]);
-        setMaterial('');
-        setSpec('');
-        setVendorId('');
-        setRemark('');
-        setDetails([createEmptyRow()]);
-    };
 
     const handleDetailChange = (index: number, field: keyof DetailRow, value: string) => {
         const newDetails = [...details];

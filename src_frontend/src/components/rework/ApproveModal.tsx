@@ -20,15 +20,6 @@ const ApproveModal = ({ show, handleClose, onSuccess, reworkId }: ApproveModalPr
     const [action, setAction] = useState('核准');
     const [opinion, setOpinion] = useState('');
 
-    useEffect(() => {
-        if (show) {
-            loadInspectors();
-            setAction('核准');
-            setOpinion('');
-            setReviewerName('');
-        }
-    }, [show]);
-
     const loadInspectors = async () => {
         try {
             const res = await api.get<Inspector[]>('/inspectors');
@@ -37,6 +28,15 @@ const ApproveModal = ({ show, handleClose, onSuccess, reworkId }: ApproveModalPr
             console.error('Failed to load inspectors', error);
         }
     };
+
+    useEffect(() => {
+        if (show) {
+            loadInspectors();
+            setAction('核准');
+            setOpinion('');
+            setReviewerName('');
+        }
+    }, [show]);
 
     const handleSubmit = async () => {
         if (!reworkId) return;
