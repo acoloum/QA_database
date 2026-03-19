@@ -11,3 +11,4 @@ nul
 database_backup/
 .env
 *.log
+.env
