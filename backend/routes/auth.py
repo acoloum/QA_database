@@ -92,7 +92,7 @@ def create_user():
         new_user = User(
             username=username,
             password=hash_password(password),
-            is_active=1
+            is_active=True
         )
         db.session.add(new_user)
         db.session.commit()
