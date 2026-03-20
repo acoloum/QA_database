@@ -48,20 +48,24 @@ api.interceptors.response.use(
                 ? rawError
                 : (rawError.message || '發生未知錯誤');
             const field = rawError && typeof rawError === 'object' ? rawError.field : undefined;
-            // 讓前端 catch 到包含 field 資訊的錯誤物件
+
+            // 4xx 驗證錯誤（如「使用者名稱已存在」）→ 不顯示 toast，讓 caller 自行處理
+            // 5xx server error 或沒有 response 的錯誤 → 顯示 toast
+            const isServerError = !response || response.status >= 500;
+
             const err = new Error(errorMsg) as Error & { field?: string; _toasted?: boolean };
             err.field = field;
-            // 標記為已顯示 toast（避免雙重 toast）
-            err._toasted = true;
-            // 若是無特定欄位的錯誤（如連線失敗），才顯示 toast
-            if (!field) {
+
+            if (isServerError || !response) {
                 toast.error(errorMsg);
                 err._toasted = true;
             }
+            // 4xx 驗證錯誤不放 toast，_toasted 保持 undefined
+
             return Promise.reject(err);
         }
 
-        // 3. 處理網路或其他錯誤
+        // 3. 處理網路或其他錯誤（沒有 error.data 的情況）
         const genericMsg = error.message || '網路連線異常';
         toast.error(genericMsg);
         return Promise.reject(error);

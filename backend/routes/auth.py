@@ -99,5 +99,6 @@ def create_user():
         return jsonify({"success": True, "message": "使用者建立成功"})
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        error_info = handle_db_error(e)
+        return jsonify({"error": error_info["message"]}), 500
 
