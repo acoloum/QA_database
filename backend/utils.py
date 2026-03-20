@@ -236,6 +236,32 @@ def validate_inspection_data(data: Dict[str, Any]) -> List[str]:
         errors.append("檢驗規格為必填欄位")
     if not data.get('檢驗人員姓名'):
         errors.append("檢驗人員為必填欄位")
+
+    # 測量欄位數字格式驗證（嚴格 regex：杜絕 "40.06+" 等尾隨字元）
+    measurement_fields = [
+        # (field_prefix, suffix) - suffix 為空字串時為單一數值欄位
+        ('外徑', 'min'), ('外徑', 'max'),
+        ('內徑', 'min'), ('內徑', 'max'),
+        ('厚度', 'min'), ('厚度', 'max'),
+        ('同心度', ''), ('長度', ''), ('硬度', ''),
+        ('真直度', ''), ('真圓度', ''),
+    ]
+    import re
+    num_pattern = re.compile(r'^[+-]?\d+(\.\d+)?$')
+    group_count = int(data.get('組數', 5)) if data.get('組數') else 5
+
+    for i in range(1, group_count + 1):
+        for prefix, suffix in measurement_fields:
+            if suffix:
+                key = f'{prefix}{i}-{suffix}'
+            else:
+                key = f'{prefix}{i}'
+            val = data.get(key)
+            if val is not None and val != '':
+                if not num_pattern.match(str(val)):
+                    display_name = f'{prefix}{i}{("-" + suffix) if suffix else ""}'
+                    errors.append(f'「{display_name}」需為有效數字')
+
     return errors
 
 def validate_patrol_data(data: Dict[str, Any]) -> List[str]:
@@ -254,19 +280,47 @@ def validate_patrol_data(data: Dict[str, Any]) -> List[str]:
         errors.append("明細資料為必填欄位")
     return errors
 
-def handle_db_error(e: Exception) -> str:
+def handle_db_error(e: Exception) -> Dict[str, Any]:
+    """處理資料庫錯誤，回傳結構成 {message, field?} 供前端欄位對應"""
     error_msg = str(e)
+    # 嘗試從錯誤訊息中解析欄位名稱
+    # 格式: ... "外徑1-min", '40.06+', ... → 取第一個遇到的欄位名稱
+    field_name = None
+    # 常見測量欄位模式
+    import re
+    patterns = [
+        r'"([^"]*-min)"',
+        r'"([^"]*-max)"',
+        r'"(外徑\d+)"',
+        r'"(內徑\d+)"',
+        r'"(厚度\d+)"',
+        r'"(同心度\d+)"',
+        r'"(長度\d+)"',
+        r'"(硬度\d+)"',
+        r'"(真直度\d+)"',
+        r'"(真圓度\d+)"',
+    ]
+    for p in patterns:
+        m = re.search(p, error_msg)
+        if m:
+            field_name = m.group(1)
+            break
+
     if 'FOREIGN KEY' in error_msg:
-        return '關聯資料錯誤：請檢查相關資料是否存在'
+        return {"message": '關聯資料錯誤：請檢查相關資料是否存在'}
     elif 'UNIQUE' in error_msg:
-        return '資料重複：此筆資料已存在'
+        return {"message": '資料重複：此筆資料已存在'}
     elif 'NOT NULL' in error_msg:
-        return '資料不完整：請填寫所有必填欄位'
+        return {"message": '資料不完整：請填寫所有必填欄位'}
+    elif 'InvalidTextRepresentation' in error_msg:
+        if field_name:
+            return {"message": f'「{field_name}」包含無效字元，請輸入純數字', "field": field_name}
+        return {"message": '測量數值包含無效字元，請檢查是否輸入非數字內容'}
     elif 'timeout' in error_msg.lower():
-        return '資料庫連線逾時，請稍後再試'
+        return {"message": '資料庫連線逾時，請稍後再試'}
     elif 'connection' in error_msg.lower():
-        return '資料庫連線失敗，請檢查連線設定'
+        return {"message": '資料庫連線失敗，請檢查連線設定'}
     elif 'login' in error_msg.lower() or 'authentication' in error_msg.lower():
-        return '資料庫認證失敗，請檢查連線設定'
+        return {"message": '資料庫認證失敗，請檢查連線設定'}
     else:
-        return f'資料庫錯誤：{error_msg}'
+        return {"message": f'資料庫錯誤：{error_msg}'}

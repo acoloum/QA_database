@@ -78,7 +78,8 @@ def save_data():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({"error": handle_db_error(e)}), 500
+        db_err = handle_db_error(e)
+        return jsonify({"error": db_err}), 500
 
 @shipping_bp.route('/api/delete', methods=['POST'])
 @auth_required

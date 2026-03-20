@@ -1707,3 +1707,20 @@ header h1 {
     color: #6c757d !important;
     background-color: #f8f9fa !important;
 }
+
+/* 出貨檢驗 - 輸入框驗證錯誤樣式 */
+
+/* 格式錯誤：實線純紅框 */
+.shipping-input.is-invalid-format {
+    border-color: #dc3545 !important;
+    box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.25) !important;
+}
+
+/* 超公差：呼吸動畫（JS 驅動 class 切換，繞過 CSS animation 屬性衝突） */
+.shipping-input.is-invalid-breathing {
+    border: 2px solid #dc3545 !important;
+}
+.shipping-input.is-invalid-breathing.breathing-active {
+    border-color: #ff6b6b !important;
+    box-shadow: 0 0 8px 3px rgba(220, 53, 69, 0.6) !important;
+}

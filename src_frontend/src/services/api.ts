@@ -42,9 +42,23 @@ api.interceptors.response.use(
 
         // 2. 處理後端回傳的標準錯誤格式
         if (response && response.data && response.data.error) {
-            const errorMsg = response.data.error.message || '發生未知錯誤';
-            toast.error(errorMsg);
-            return Promise.reject(new Error(errorMsg)); // 讓前端 catch 到乾淨的錯誤訊息
+            // 後端可能回 { error: "訊息" } 或 { error: { message: "訊息", field: "欄位" } }
+            const rawError = response.data.error;
+            const errorMsg = typeof rawError === 'string'
+                ? rawError
+                : (rawError.message || '發生未知錯誤');
+            const field = rawError && typeof rawError === 'object' ? rawError.field : undefined;
+            // 讓前端 catch 到包含 field 資訊的錯誤物件
+            const err = new Error(errorMsg) as Error & { field?: string; _toasted?: boolean };
+            err.field = field;
+            // 標記為已顯示 toast（避免雙重 toast）
+            err._toasted = true;
+            // 若是無特定欄位的錯誤（如連線失敗），才顯示 toast
+            if (!field) {
+                toast.error(errorMsg);
+                err._toasted = true;
+            }
+            return Promise.reject(err);
         }
 
         // 3. 處理網路或其他錯誤

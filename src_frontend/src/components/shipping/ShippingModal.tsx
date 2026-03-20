@@ -70,6 +70,9 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     const [tolerance, setTolerance] = useState<ToleranceResult | null>(null);
     const [violations, setViolations] = useState<Record<string, boolean>>({});
 
+    // 欄位格式錯誤（key: 欄位名稱, value: 錯誤訊息）
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
     // Determine if current vendor is 安泰
     const isAntai = vendorName === ANTAI_VENDOR_NAME;
 
@@ -109,6 +112,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         setMeasurements({});
         setTolerance(null);
         setViolations({});
+        setFieldErrors({});
     };
 
     // Populate form when detailData loads or when modal opens
@@ -254,6 +258,28 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
 
     }, [measurements, tolerance, spec, groupIndices, ITEMS]);
 
+    // 呼吸動畫：每 750ms 切換 breathing-active class（JS 驅動，繞過 CSS animation 屬性衝突）
+    useEffect(() => {
+        const hasViolations = Object.keys(violations).length > 0;
+        if (!hasViolations) return;
+
+        let active = false;
+        const interval = setInterval(() => {
+            active = !active;
+            // 找所有帶有 is-invalid-breathing 的輸入框
+            const els = document.querySelectorAll<HTMLInputElement>('.shipping-input.is-invalid-breathing');
+            els.forEach(el => {
+                if (active) {
+                    el.classList.add('breathing-active');
+                } else {
+                    el.classList.remove('breathing-active');
+                }
+            });
+        }, 750);
+
+        return () => clearInterval(interval);
+    }, [violations]);
+
     const handleMeasurementChange = (key: string, val: string) => {
         setMeasurements(prev => ({ ...prev, [key]: val }));
     };
@@ -267,8 +293,44 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         if (!spec) validationErrors.push('請輸入檢驗規格');
         if (!material) validationErrors.push('請輸入材質');
 
+        // 測量欄位數字格式驗證（使用嚴格 regex，避免 parseFloat("40.06+") → 40.06 的問題）
+        const newFieldErrors: Record<string, string> = {};
+        const numPattern = /^[+-]?\d+(\.\d+)?$/;
+        ITEMS.forEach(item => {
+            for (let g = 1; g <= groupCount; g++) {
+                if (item.type === 'minmax') {
+                    const minKey = `${item.key}${g}-min`;
+                    const maxKey = `${item.key}${g}-max`;
+                    const minVal = measurements[minKey];
+                    const maxVal = measurements[maxKey];
+
+                    if (minVal && !numPattern.test(minVal)) {
+                        newFieldErrors[minKey] = `「${item.label}${g}最小值」需為有效數字`;
+                    }
+                    if (maxVal && !numPattern.test(maxVal)) {
+                        newFieldErrors[maxKey] = `「${item.label}${g}最大值」需為有效數字`;
+                    }
+                } else {
+                    const key = `${item.key}${g}`;
+                    const val = measurements[key];
+                    if (val && !numPattern.test(val)) {
+                        newFieldErrors[key] = `「${item.label}${g}」需為有效數字`;
+                    }
+                }
+            }
+        });
+
+        setFieldErrors(newFieldErrors);
+
         if (validationErrors.length > 0) {
             toast.error(validationErrors.join('、'));
+            return;
+        }
+
+        if (Object.keys(newFieldErrors).length > 0) {
+            // 顯示第一個欄位錯誤
+            const firstError = Object.values(newFieldErrors)[0];
+            toast.error(firstError);
             return;
         }
 
@@ -293,8 +355,17 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             }
             onSuccess();
             handleClose();
-        } catch (error) {
-            // Error is already handled by mutation's onError
+        } catch (error: any) {
+            const fieldInfo = error?.field;
+            if (fieldInfo) {
+                setFieldErrors({ [fieldInfo]: error.message });
+            } else {
+                setFieldErrors({});
+                // 若 api.ts 尚未顯示 toast（_toasted 不為 true），才顯示
+                if (!error?._toasted) {
+                    toast.error(error?.message || '發生未知錯誤');
+                }
+            }
             console.error(error);
         }
     };
@@ -435,18 +506,36 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                                                                 size="sm"
                                                                 placeholder="Min"
                                                                 style={{ fontSize: '0.75rem', padding: '2px 4px', width: '60px' }}
-                                                                className={`text-center shipping-input ${violations[`${item.key}${g}-min`] ? 'is-invalid-breathing' : ''}`}
+                                                                className={`text-center shipping-input ${fieldErrors[`${item.key}${g}-min`] ? 'is-invalid-format' : ''} ${violations[`${item.key}${g}-min`] ? 'is-invalid-breathing' : ''}`}
                                                                 value={measurements[`${item.key}${g}-min`] ?? ''}
-                                                                onChange={e => handleMeasurementChange(`${item.key}${g}-min`, e.target.value)}
+                                                                onChange={e => {
+                                                                    handleMeasurementChange(`${item.key}${g}-min`, e.target.value);
+                                                                    if (fieldErrors[`${item.key}${g}-min`]) {
+                                                                        setFieldErrors(prev => {
+                                                                            const next = { ...prev };
+                                                                            delete next[`${item.key}${g}-min`];
+                                                                            return next;
+                                                                        });
+                                                                    }
+                                                                }}
                                                                 tabIndex={100 + (g - 1) * TOTAL_INPUTS_PER_GROUP + ITEM_OFFSETS[idx]}
                                                             />
                                                             <Form.Control
                                                                 size="sm"
                                                                 placeholder="Max"
                                                                 style={{ fontSize: '0.75rem', padding: '2px 4px', width: '60px' }}
-                                                                className={`text-center shipping-input ${violations[`${item.key}${g}-max`] ? 'is-invalid-breathing' : ''}`}
+                                                                className={`text-center shipping-input ${fieldErrors[`${item.key}${g}-max`] ? 'is-invalid-format' : ''} ${violations[`${item.key}${g}-max`] ? 'is-invalid-breathing' : ''}`}
                                                                 value={measurements[`${item.key}${g}-max`] ?? ''}
-                                                                onChange={e => handleMeasurementChange(`${item.key}${g}-max`, e.target.value)}
+                                                                onChange={e => {
+                                                                    handleMeasurementChange(`${item.key}${g}-max`, e.target.value);
+                                                                    if (fieldErrors[`${item.key}${g}-max`]) {
+                                                                        setFieldErrors(prev => {
+                                                                            const next = { ...prev };
+                                                                            delete next[`${item.key}${g}-max`];
+                                                                            return next;
+                                                                        });
+                                                                    }
+                                                                }}
                                                                 tabIndex={100 + (g - 1) * TOTAL_INPUTS_PER_GROUP + ITEM_OFFSETS[idx] + 1}
                                                             />
                                                         </div>
@@ -454,9 +543,18 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                                                         <Form.Control
                                                             size="sm"
                                                             style={{ fontSize: '0.75rem', padding: '2px 4px', width: '60px' }}
-                                                            className={`text-center mx-auto shipping-input ${violations[`${item.key}${g}`] ? 'is-invalid-breathing' : ''}`}
+                                                            className={`text-center mx-auto shipping-input ${fieldErrors[`${item.key}${g}`] ? 'is-invalid-format' : ''} ${violations[`${item.key}${g}`] ? 'is-invalid-breathing' : ''}`}
                                                             value={measurements[`${item.key}${g}`] ?? ''}
-                                                            onChange={e => handleMeasurementChange(`${item.key}${g}`, e.target.value)}
+                                                            onChange={e => {
+                                                                handleMeasurementChange(`${item.key}${g}`, e.target.value);
+                                                                if (fieldErrors[`${item.key}${g}`]) {
+                                                                    setFieldErrors(prev => {
+                                                                        const next = { ...prev };
+                                                                        delete next[`${item.key}${g}`];
+                                                                        return next;
+                                                                    });
+                                                                }
+                                                            }}
                                                             tabIndex={100 + (g - 1) * TOTAL_INPUTS_PER_GROUP + ITEM_OFFSETS[idx]}
                                                         />
                                                     )}
