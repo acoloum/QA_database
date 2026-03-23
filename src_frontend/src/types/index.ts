@@ -83,6 +83,24 @@ export interface PatrolInspection {
     details?: PatrolDetail[];
 }
 
+export interface PatrolCreateInput {
+    檢驗日期: string;
+    機台ID: number;
+    機台名稱?: string;
+    作業員ID: number;
+    作業員姓名?: string;
+    檢驗人員ID: number;
+    檢驗人員姓名?: string;
+    材質?: string;
+    批號?: string;
+    規格?: string;
+    details: PatrolDetail[];
+}
+
+export interface PatrolUpdateInput extends PatrolCreateInput {
+    識別碼: number;
+}
+
 // NCMR Types
 export interface NCMR {
     id: number;
@@ -105,6 +123,42 @@ export interface NCMR {
     capa_status?: string;
     rework_status?: string;
     rework_count?: number;
+}
+
+export interface NCMRCreateInput {
+    日期: string;
+    來源: string;
+    廠商?: string;
+    材質?: string;
+    產品資訊?: string;
+    產品數量?: number;
+    批號?: string;
+    不良描述?: string;
+    不良原因大類?: string;
+    不良原因細項?: string;
+    判定結果?: string;
+    檢驗人員姓名?: string;
+}
+
+export interface NCMRUpdateInput extends NCMRCreateInput {
+    識別碼: number;
+}
+
+// Shipping Types
+export interface ShippingCreateInput {
+    檢驗日期: string;
+    檢驗人員ID: number;
+    檢驗人員姓名?: string;
+    廠商ID: number;
+    廠商中文名稱?: string;
+    檢驗規格: string;
+    材質: string;
+    訂單號碼?: string;
+    [key: string]: unknown;
+}
+
+export interface ShippingUpdateInput extends ShippingCreateInput {
+    識別碼: number;
 }
 
 export interface ReworkStatistics {
@@ -218,7 +272,18 @@ export interface CAPA {
     owner_name: string;
     status: string;
     // Dynamic D1-D8 fields
-    [key: string]: any;
+    [key: string]: unknown;
+}
+
+export interface CAPACreateInput {
+    ncmr_id: number;
+    業主姓名: string;
+    判定結果?: string;
+    [key: string]: unknown;
+}
+
+export interface CAPAUpdateInput extends CAPACreateInput {
+    id: number;
 }
 
 export interface CAR {
@@ -230,7 +295,17 @@ export interface CAR {
     owner_name: string;
     status: string;
     // Dynamic D-fields
-    [key: string]: any;
+    [key: string]: unknown;
+}
+
+export interface CARCreateInput {
+    ncmr_id: number;
+    業主姓名: string;
+    [key: string]: unknown;
+}
+
+export interface CARUpdateInput extends CARCreateInput {
+    id: number;
 }
 
 export interface CA_Detail<T> {
@@ -266,6 +341,18 @@ export interface ToleranceDetailParams {
     std: number | null;
     unit: string;
     remark: string;
+}
+
+export interface ToleranceCreateInput {
+    材質: string;
+    規格: string;
+    廠商ID?: number;
+    備註?: string;
+    details: ToleranceDetailParams[];
+}
+
+export interface ToleranceUpdateInput extends ToleranceCreateInput {
+    識別碼: number;
 }
 
 // SPC Types

@@ -2,6 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import type { ToleranceCreateInput, ToleranceUpdateInput } from '../types';
 
 // Types
 export interface ToleranceData {
@@ -97,7 +98,7 @@ export const useToleranceDetail = (id: number | null) => {
 export const useCreateTolerance = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (data: any) => {
+        mutationFn: async (data: ToleranceCreateInput) => {
             const res = await api.post('/tolerance/add', data);
             return res.data;
         },
@@ -112,7 +113,7 @@ export const useCreateTolerance = () => {
 export const useUpdateTolerance = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async ({ id, data }: { id: number; data: any }) => {
+        mutationFn: async ({ id, data }: { id: number; data: ToleranceUpdateInput }) => {
             const res = await api.post(`/tolerance/update/${id}`, data);
             return res.data;
         },

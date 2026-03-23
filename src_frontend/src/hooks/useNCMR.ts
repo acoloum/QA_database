@@ -2,6 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import type { NCMR, NCMRCreateInput, NCMRUpdateInput } from '../types';
 
 // --- Queries ---
 
@@ -10,11 +11,11 @@ export const useNCMRList = (status?: string) => {
         queryKey: ['ncmrList', status],
         queryFn: async () => {
             const params = status ? { status } : {};
-            const res = await api.get<any[]>('/ncmr', { params });
+            const res = await api.get<NCMR[]>('/ncmr', { params });
             // Map the data to ensure consistent structure if needed, 
             // but for now we'll return raw data and let component map it or map it here.
             // Component mapping:
-            return res.data.map((item: any) => ({
+            return res.data.map((item: NCMR) => ({
                 id: item.識別碼,
                 no: item.單號 || String(item.識別碼),
                 date: item.日期 || item.發現日期,
@@ -65,7 +66,7 @@ export const useInspectors = () => {
 export const useCreateNCMR = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (data: any) => {
+        mutationFn: async (data: NCMRCreateInput) => {
             const res = await api.post('/ncmr/add', data);
             return res.data;
         },
@@ -79,7 +80,7 @@ export const useCreateNCMR = () => {
 export const useUpdateNCMR = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (data: any) => {
+        mutationFn: async (data: NCMRUpdateInput) => {
             // Data should contain '識別碼' (id)
             const res = await api.post('/ncmr/update', data);
             return res.data;

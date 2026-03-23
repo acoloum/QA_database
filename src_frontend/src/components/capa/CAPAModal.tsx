@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Nav, Tab, Row, Col, Alert } from 'react-bootstrap';
 import api from '../../services/api';
+import type { CAPA, Inspector } from '../../types';
 
 interface CAPAModalProps {
     show: boolean;
@@ -11,9 +12,9 @@ interface CAPAModalProps {
 
 const CAPAModal = ({ show, handleClose, onSuccess, editId }: CAPAModalProps) => {
     const [loading, setLoading] = useState(false);
-    const [ncmrInfo, setNcmrInfo] = useState<any>(null);
-    const [capaInfo, setCapaInfo] = useState<any>({});
-    const [inspectors, setInspectors] = useState<any[]>([]);
+    const [ncmrInfo, setNcmrInfo] = useState<CAPA | null>(null);
+    const [capaInfo, setCapaInfo] = useState<Partial<CAPA>>({});
+    const [inspectors, setInspectors] = useState<Inspector[]>([]);
 
     // Form fields
     const [owner, setOwner] = useState('');

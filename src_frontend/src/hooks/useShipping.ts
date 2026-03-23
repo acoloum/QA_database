@@ -2,7 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import type { ShippingInspection, Inspector, Vendor, ToleranceResult } from '../types';
+import type { ShippingInspection, Inspector, Vendor, ToleranceResult, ShippingCreateInput, ShippingUpdateInput } from '../types';
 
 export interface ShippingSearchParams {
     page: number;
@@ -105,7 +105,7 @@ export const useShippingDetail = (id: number | null) => {
 export const useCreateShipping = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (data: any) => {
+        mutationFn: async (data: ShippingCreateInput) => {
             const res = await api.post('/add', data);
             return res.data;
         },
@@ -120,7 +120,7 @@ export const useCreateShipping = () => {
 export const useUpdateShipping = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async ({ id: _id, data }: { id: number; data: any }) => {
+        mutationFn: async ({ id: _id, data }: { id: number; data: ShippingUpdateInput }) => {
             const res = await api.post('/update', data);
             return res.data;
         },

@@ -2,7 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import type { PatrolInspection } from '../types';
+import type { PatrolInspection, PatrolCreateInput, PatrolUpdateInput } from '../types';
 
 export interface PatrolSearchParams {
     page: number;
@@ -107,7 +107,7 @@ export const usePatrolStats = (params: PatrolStatsParams) => {
 export const useCreatePatrol = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (data: any) => {
+        mutationFn: async (data: PatrolCreateInput) => {
             const res = await api.post('/patrol/add', data);
             return res.data;
         },
@@ -122,7 +122,7 @@ export const useCreatePatrol = () => {
 export const useUpdatePatrol = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async ({ id: _id, data }: { id: number; data: any }) => {
+        mutationFn: async ({ id: _id, data }: { id: number; data: PatrolUpdateInput }) => {
             const res = await api.post('/patrol/update', data);
             return res.data;
         },

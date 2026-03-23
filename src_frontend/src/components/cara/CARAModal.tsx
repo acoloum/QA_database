@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Nav, Tab, Row, Col, Alert } from 'react-bootstrap';
 import api from '../../services/api';
+import type { CAR, Inspector } from '../../types';
 
 interface CARAModalProps {
     show: boolean;
@@ -11,9 +12,9 @@ interface CARAModalProps {
 
 const CARAModal = ({ show, handleClose, onSuccess, editId }: CARAModalProps) => {
     const [loading, setLoading] = useState(false);
-    const [ncmrInfo, setNcmrInfo] = useState<any>(null);
-    const [caraInfo, setCaraInfo] = useState<any>({});
-    const [inspectors, setInspectors] = useState<any[]>([]);
+    const [ncmrInfo, setNcmrInfo] = useState<CAR | null>(null);
+    const [caraInfo, setCaraInfo] = useState<Partial<CAR>>({});
+    const [inspectors, setInspectors] = useState<Inspector[]>([]);
 
     // Form fields
     const [owner, setOwner] = useState('');
