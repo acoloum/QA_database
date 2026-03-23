@@ -127,7 +127,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                 setOrderNo(detailData.訂單號碼 || '');
 
                 // Restore group count from saved data
-                const savedGroupCount = (detailData as any).組數 || DEFAULT_GROUP_COUNT;
+                const savedGroupCount = (detailData as unknown as { 組數?: number }).組數 || DEFAULT_GROUP_COUNT;
                 setGroupCount(savedGroupCount);
 
                 // Determine items based on vendor for loading measurements
@@ -355,15 +355,16 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             }
             onSuccess();
             handleClose();
-        } catch (error: any) {
-            const fieldInfo = error?.field;
+        } catch (error: unknown) {
+            const err = error as { field?: string; message?: string; _toasted?: boolean };
+            const fieldInfo = err?.field;
             if (fieldInfo) {
-                setFieldErrors({ [fieldInfo]: error.message });
+                setFieldErrors({ [fieldInfo]: err.message });
             } else {
                 setFieldErrors({});
                 // 若 api.ts 尚未顯示 toast（_toasted 不為 true），才顯示
-                if (!error?._toasted) {
-                    toast.error(error?.message || '發生未知錯誤');
+                if (!err?._toasted) {
+                    toast.error(err?.message || '發生未知錯誤');
                 }
             }
             console.error(error);

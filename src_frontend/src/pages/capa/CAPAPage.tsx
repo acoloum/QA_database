@@ -32,7 +32,7 @@ const CAPAPage = () => {
         try {
             const res = await api.get('/capa');
             console.log("CAPA API Response:", res.data); // Debug log
-            const mapped = res.data.map((item: any) => ({
+            const mapped = res.data.map((item: Record<string, unknown>) => ({
                 id: item.識別碼,
                 no: item['8D單號'] || item.識別碼,
                 ncmr_no: item.NCMR單號 || ('#' + item.NCMR_ID),

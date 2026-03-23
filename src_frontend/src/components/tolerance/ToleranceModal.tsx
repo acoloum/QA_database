@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Row, Col, Table } from 'react-bootstrap';
 import { useToleranceDetail, useCreateTolerance, useUpdateTolerance } from '../../hooks/useTolerance';
+import type { Vendor } from '../../types';
 import {
     DndContext,
     closestCenter,
@@ -25,7 +26,7 @@ interface ToleranceModalProps {
     handleClose: () => void;
     onSuccess: () => void;
     editId: number | null;
-    vendors: any[];
+    vendors: Vendor[];
 }
 
 interface DetailRow {

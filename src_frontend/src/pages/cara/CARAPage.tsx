@@ -20,7 +20,7 @@ const CARAPage = () => {
         setLoading(true);
         try {
             const res = await api.get('/cara');
-            const mapped = res.data.map((item: any) => ({
+            const mapped = res.data.map((item: Record<string, unknown>) => ({
                 id: item.識別碼,
                 no: item.單號,
                 ncmr_no: item.ncmr_number || item.ncmr_id,

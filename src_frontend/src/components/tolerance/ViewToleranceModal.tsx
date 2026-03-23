@@ -48,7 +48,7 @@ const ViewToleranceModal = ({ show, handleClose, viewId }: ViewToleranceModalPro
                 setCreatedDate(main.建立日期 || '');
 
                 if (dList && dList.length > 0) {
-                    setDetails(dList.map((d: any) => ({
+                    setDetails(dList.map((d: Record<string, unknown>) => ({
                         item: d.測量項目 || '',
                         position: d.測量位置 || '',
                         size_min: d.尺寸下限 ?? '',

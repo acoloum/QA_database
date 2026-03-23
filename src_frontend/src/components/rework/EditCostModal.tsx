@@ -74,7 +74,7 @@ const EditCostModal = ({ show, handleClose, onSuccess, cost }: EditCostModalProp
 
         setLoading(true);
         try {
-            const payload: any = {};
+            const payload: ReworkCostDetail = {} as ReworkCostDetail;
             
             if (costType) payload.成本類型 = costType;
             if (costItem) payload.成本項目 = costItem;

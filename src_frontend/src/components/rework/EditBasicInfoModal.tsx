@@ -52,7 +52,7 @@ const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditB
 
     setLoading(true);
     try {
-      const payload: any = {};
+      const payload: Partial<ReworkApplication> = {};
 
       if (department) payload.部門 = department;
       if (urgency) payload.緊急程度 = urgency;
@@ -68,9 +68,10 @@ const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditB
       alert('基本資訊已更新！');
       onSuccess();
       handleClose();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { error?: string } } };
       console.error(error);
-      alert(error.response?.data?.error || '更新失敗');
+      alert(err.response?.data?.error || '更新失敗');
     } finally {
       setLoading(false);
     }

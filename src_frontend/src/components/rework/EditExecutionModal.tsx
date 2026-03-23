@@ -98,7 +98,7 @@ const EditExecutionModal = ({ show, handleClose, onSuccess, execution }: EditExe
 
         setLoading(true);
         try {
-            const payload: any = {};
+            const payload: ReworkExecutionDetail = {} as ReworkExecutionDetail;
             
             if (responsiblePerson) payload.負責人員姓名 = responsiblePerson;
             if (department) payload.執行部門 = department;

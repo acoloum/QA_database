@@ -57,9 +57,10 @@ const ApproveModal = ({ show, handleClose, onSuccess, reworkId }: ApproveModalPr
             alert('審核完成！');
             onSuccess();
             handleClose();
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
             console.error(error);
-            alert(error.response?.data?.error || '審核失敗');
+            alert(err.response?.data?.error || '審核失敗');
         }
     };
 

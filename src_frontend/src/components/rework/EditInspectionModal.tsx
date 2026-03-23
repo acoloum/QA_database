@@ -67,7 +67,7 @@ const EditInspectionModal = ({ show, handleClose, onSuccess, inspection }: EditI
 
         setLoading(true);
         try {
-            const payload: any = {};
+            const payload: Partial<ReworkInspectionDetail> = {};
             
             if (inspector) payload.檢驗人員姓名 = inspector;
             if (inspectionItem) payload.檢驗項目 = inspectionItem;
@@ -80,9 +80,10 @@ const EditInspectionModal = ({ show, handleClose, onSuccess, inspection }: EditI
             alert('品檢記錄已更新！');
             onSuccess();
             handleClose();
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
             console.error(error);
-            alert(error.response?.data?.error || '更新失敗');
+            alert(err.response?.data?.error || '更新失敗');
         } finally {
             setLoading(false);
         }

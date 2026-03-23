@@ -36,9 +36,10 @@ const ImportModal = ({ show, handleClose, onSuccess }: ImportModalProps) => {
             handleClose();
             setFile(null);
             if (fileInputRef.current) fileInputRef.current.value = '';
-        } catch (err: any) {
+        } catch (err: unknown) {
+            const error = err as { response?: { data?: { error?: string } } };
             console.error('Import failed:', err);
-            setError(err.response?.data?.error || '匯入失敗，請檢查檔案格式');
+            setError(error.response?.data?.error || '匯入失敗，請檢查檔案格式');
         }
     };
 

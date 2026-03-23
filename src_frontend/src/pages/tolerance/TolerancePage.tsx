@@ -158,7 +158,7 @@ const TolerancePage = () => {
                             ) : data.length === 0 ? (
                                 <tr><td colSpan={6} className="text-center py-4">無資料</td></tr>
                             ) : (
-                                data.map((item: any) => (
+                                data.map((item: ToleranceStandard) => (
                                     <tr key={item.id}>
                                         <td>{item.id}</td>
                                         <td><Badge bg="primary">{item.material}</Badge></td>
