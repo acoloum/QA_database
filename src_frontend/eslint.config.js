@@ -30,6 +30,8 @@ export default defineConfig([
         varsIgnorePattern: '^_',
         caughtErrorsIgnorePattern: '^_',
       }],
+      // AuthContext 同時 export component 和 hook，允許此模式
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
   },
 ])
