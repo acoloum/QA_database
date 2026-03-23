@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Modal, Button } from 'react-bootstrap';
 import api from '../../services/api';
-import type { ReworkApplication, ReworkStatistics } from '../../types';
+import type { ReworkApplication, ReworkStatistics, ReworkExecutionDetail, ReworkInspectionDetail, ReworkCostDetail } from '../../types';
 import ApplyModal from '../../components/rework/ApplyModal';
 import ApproveModal from '../../components/rework/ApproveModal';
 import ExecutionModal from '../../components/rework/ExecutionModal';
@@ -34,14 +34,14 @@ const ReworkPage = () => {
     const [showEditBasicModal, setShowEditBasicModal] = useState(false);
     const [selectedReworkId, setSelectedReworkId] = useState<number | null>(null);
     const [selectedReworkDetail, setSelectedReworkDetail] = useState<ReworkApplication | null>(null);
-    const [selectedExecution, setSelectedExecution] = useState<any>(null);
-    const [selectedInspection, setSelectedInspection] = useState<any>(null);
-    const [selectedCost, setSelectedCost] = useState<any>(null);
+    const [selectedExecution, setSelectedExecution] = useState<ReworkExecutionDetail | null>(null);
+    const [selectedInspection, setSelectedInspection] = useState<ReworkInspectionDetail | null>(null);
+    const [selectedCost, setSelectedCost] = useState<ReworkCostDetail | null>(null);
 
     // Detail modal tabs data
-    const [executions, setExecutions] = useState<any[]>([]);
-    const [inspections, setInspections] = useState<any[]>([]);
-    const [costs, setCosts] = useState<any[]>([]);
+    const [executions, setExecutions] = useState<ReworkExecutionDetail[]>([]);
+    const [inspections, setInspections] = useState<ReworkInspectionDetail[]>([]);
+    const [costs, setCosts] = useState<ReworkCostDetail[]>([]);
     const [activeTab, setActiveTab] = useState('basic');
 
     const [initialNcmrId, setInitialNcmrId] = useState<string>('');
@@ -146,7 +146,7 @@ const ReworkPage = () => {
         }
     };
 
-    const handleEditExecution = (execution: any) => {
+    const handleEditExecution = (execution: ReworkExecutionDetail) => {
         setSelectedExecution(execution);
         setShowEditExecutionModal(true);
     };
@@ -157,12 +157,13 @@ const ReworkPage = () => {
             await api.delete(`/rework/execution/${executionId}`);
             alert('刪除成功');
             reloadDetailData();
-        } catch (error: any) {
-            alert(error.response?.data?.error || '刪除失敗');
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            alert(err.response?.data?.error || '刪除失敗');
         }
     };
 
-    const handleEditInspection = (inspection: any) => {
+    const handleEditInspection = (inspection: ReworkInspectionDetail) => {
         setSelectedInspection(inspection);
         setShowEditInspectionModal(true);
     };
@@ -173,12 +174,13 @@ const ReworkPage = () => {
             await api.delete(`/rework/inspection/${inspectionId}`);
             alert('刪除成功');
             reloadDetailData();
-        } catch (error: any) {
-            alert(error.response?.data?.error || '刪除失敗');
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            alert(err.response?.data?.error || '刪除失敗');
         }
     };
 
-    const handleEditCost = (cost: any) => {
+    const handleEditCost = (cost: ReworkCostDetail) => {
         setSelectedCost(cost);
         setShowEditCostModal(true);
     };
@@ -190,8 +192,9 @@ const ReworkPage = () => {
             alert('刪除成功');
             reloadDetailData();
             loadData();
-        } catch (error: any) {
-            alert(error.response?.data?.error || '刪除失敗');
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            alert(err.response?.data?.error || '刪除失敗');
         }
     };
 
@@ -201,8 +204,9 @@ const ReworkPage = () => {
             await api.post('/rework/close', { rework_id: reworkId });
             alert('結案成功');
             reloadDetailData();
-        } catch (error: any) {
-            alert(error.response?.data?.error || '結案失敗');
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            alert(err.response?.data?.error || '結案失敗');
         }
     };
 

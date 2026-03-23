@@ -346,3 +346,70 @@ export interface HistogramBin {
     min: number;
     max: number;
 }
+
+// Dashboard Stats Types
+export type TrendDirection = 'up' | 'down' | 'stable';
+
+export interface KpiModuleStats {
+    current: number;
+    pending: number;
+    trend: TrendDirection;
+    change_pct: number;
+    ng_rate?: number;
+    ng_count?: number;
+}
+
+export interface DashboardStats {
+    shipping: KpiModuleStats;
+    patrol: KpiModuleStats;
+    ncmr: KpiModuleStats;
+    rework: KpiModuleStats;
+    cara: KpiModuleStats;
+    capa: KpiModuleStats;
+}
+
+// Modal Selection Types (for detail modals)
+export interface ReworkExecutionDetail {
+    id?: number;
+   重工單號: number;
+    負責人員姓名: string;
+    執行部門: string;
+    協同人員?: string;
+    開始時間: string;
+    預計完成時間?: string;
+    實際完成時間?: string;
+    使用設備?: string;
+    SOP編號?: string;
+    完成數量: number;
+    不良數量: number;
+    重工方式?: string;
+    耗材記錄?: string;
+    執行狀況?: string;
+    異常狀況?: string;
+    良率?: string;
+}
+
+export interface ReworkInspectionDetail {
+    id?: number;
+    重工單號: number;
+    檢驗日期: string;
+    檢驗人員姓名: string;
+    檢驗項目?: string;
+    檢驗標準?: string;
+    檢驗結果: string;
+    不良數量: number;
+    檢驗備註?: string;
+}
+
+export interface ReworkCostDetail {
+    id?: number;
+    重工單號: number;
+    記錄日期?: string;
+    記錄人員姓名?: string;
+    成本類型: '人工' | '材料' | '設備' | '其他';
+    成本項目: string;
+    單位成本: number;
+    數量: number;
+    總成本?: number;
+    備註?: string;
+}

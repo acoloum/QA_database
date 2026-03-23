@@ -1,39 +1,60 @@
 import { memo } from 'react';
 import { useDashboardStats } from '../../hooks/useDashboard';
 import type { DatePeriod } from '../../hooks/useDashboard';
+import type { DashboardStats, TrendDirection } from '../../types';
 
 interface KPICardsProps {
     period?: DatePeriod;
     customDateRange?: { start: string; end: string };
 }
 
+type KpiGetter = (stats: DashboardStats) => number;
+type KpiTrendGetter = (stats: DashboardStats) => TrendDirection;
+type KpiChangeGetter = (stats: DashboardStats) => number;
+type KpiAnomalyGetter = (stats: DashboardStats) => boolean;
+type NgInfoGetter = (stats: DashboardStats) => { rate: number | null; count: number };
+
+interface KpiItemConfig {
+    label: string;
+    key: keyof DashboardStats;
+    icon: string;
+    getValue: KpiGetter;
+    getPending: KpiGetter;
+    getTrend: KpiTrendGetter;
+    getChange: KpiChangeGetter;
+    path: string;
+    suffix?: string;
+    isAnomaly: KpiAnomalyGetter;
+    getNgInfo?: NgInfoGetter;
+}
+
 const KPICards = ({ period = 'this_month', customDateRange }: KPICardsProps) => {
     const { stats, loading } = useDashboardStats(period, customDateRange);
 
-    const kpiItems = [
+    const kpiItems: KpiItemConfig[] = [
         {
             label: '出貨檢驗',
             key: 'shipping',
             icon: 'fa-gift',
-            getValue: (s: any) => s?.shipping?.current || 0,
-            getPending: (s: any) => s?.shipping?.pending || 0,
-            getTrend: (s: any) => s?.shipping?.trend || 'stable',
-            getChange: (s: any) => s?.shipping?.change_pct || 0,
+            getValue: (s) => s.shipping.current,
+            getPending: (s) => s.shipping.pending,
+            getTrend: (s) => s.shipping.trend,
+            getChange: (s) => s.shipping.change_pct,
             path: '/shipping',
             isAnomaly: () => false,
-            getNgInfo: (s: any) => ({
-                rate: s?.shipping?.ng_rate ?? null,
-                count: s?.shipping?.ng_count ?? 0,
+            getNgInfo: (s) => ({
+                rate: s.shipping.ng_rate ?? null,
+                count: s.shipping.ng_count ?? 0,
             }),
         },
         {
             label: '現場巡檢',
             key: 'patrol',
             icon: 'fa-wand-magic-sparkles',
-            getValue: (s: any) => s?.patrol?.current || 0,
-            getPending: (s: any) => s?.patrol?.pending || 0,
-            getTrend: (s: any) => s?.patrol?.trend || 'stable',
-            getChange: (s: any) => s?.patrol?.change_pct || 0,
+            getValue: (s) => s.patrol.current,
+            getPending: (s) => s.patrol.pending,
+            getTrend: (s) => s.patrol.trend,
+            getChange: (s) => s.patrol.change_pct,
             path: '/patrol',
             isAnomaly: () => false
         },
@@ -41,49 +62,49 @@ const KPICards = ({ period = 'this_month', customDateRange }: KPICardsProps) => 
             label: '不合格品',
             key: 'ncmr',
             icon: 'fa-triangle-exclamation',
-            getValue: (s: any) => s?.ncmr?.pending || 0,
-            getPending: (s: any) => s?.ncmr?.pending || 0,
-            getTrend: (s: any) => s?.ncmr?.trend || 'stable',
-            getChange: (s: any) => s?.ncmr?.change_pct || 0,
+            getValue: (s) => s.ncmr.pending,
+            getPending: (s) => s.ncmr.pending,
+            getTrend: (s) => s.ncmr.trend,
+            getChange: (s) => s.ncmr.change_pct,
             path: '/ncmr',
             suffix: '待處理',
-            isAnomaly: (s: any) => (s?.ncmr?.trend === 'up' && s?.ncmr?.change_pct > 20)
+            isAnomaly: (s) => (s.ncmr.trend === 'up' && s.ncmr.change_pct > 20)
         },
         {
             label: '重工申請',
             key: 'rework',
             icon: 'fa-rotate',
-            getValue: (s: any) => s?.rework?.pending || 0,
-            getPending: (s: any) => s?.rework?.pending || 0,
-            getTrend: (s: any) => s?.rework?.trend || 'stable',
-            getChange: (s: any) => s?.rework?.change_pct || 0,
+            getValue: (s) => s.rework.pending,
+            getPending: (s) => s.rework.pending,
+            getTrend: (s) => s.rework.trend,
+            getChange: (s) => s.rework.change_pct,
             path: '/rework',
             suffix: '待處理',
-            isAnomaly: (s: any) => (s?.rework?.trend === 'up' && s?.rework?.change_pct > 30)
+            isAnomaly: (s) => (s.rework.trend === 'up' && s.rework.change_pct > 30)
         },
         {
             label: 'CAR 要求',
             key: 'cara',
             icon: 'fa-bullhorn',
-            getValue: (s: any) => s?.cara?.pending || 0,
-            getPending: (s: any) => s?.cara?.pending || 0,
-            getTrend: (s: any) => s?.cara?.trend || 'stable',
-            getChange: (s: any) => s?.cara?.change_pct || 0,
+            getValue: (s) => s.cara.pending,
+            getPending: (s) => s.cara.pending,
+            getTrend: (s) => s.cara.trend,
+            getChange: (s) => s.cara.change_pct,
             path: '/cara',
             suffix: '待處理',
-            isAnomaly: (s: any) => (s?.cara?.trend === 'up' && s?.cara?.change_pct > 30)
+            isAnomaly: (s) => (s.cara.trend === 'up' && s.cara.change_pct > 30)
         },
         {
             label: '矯正措施',
             key: 'capa',
             icon: 'fa-file-signature',
-            getValue: (s: any) => s?.capa?.pending || 0,
-            getPending: (s: any) => s?.capa?.pending || 0,
-            getTrend: (s: any) => s?.capa?.trend || 'stable',
-            getChange: (s: any) => s?.capa?.change_pct || 0,
+            getValue: (s) => s.capa.pending,
+            getPending: (s) => s.capa.pending,
+            getTrend: (s) => s.capa.trend,
+            getChange: (s) => s.capa.change_pct,
             path: '/capa',
             suffix: '進行中',
-            isAnomaly: (s: any) => (s?.capa?.trend === 'up' && s?.capa?.change_pct > 30)
+            isAnomaly: (s) => (s.capa.trend === 'up' && s.capa.change_pct > 30)
         }
     ];
 
@@ -156,9 +177,9 @@ const KPICards = ({ period = 'this_month', customDateRange }: KPICardsProps) => 
                                     </div>
                                     <div className="kpi-label">{item.label}</div>
                                     <div className="kpi-trend">
-                                        {(item as any).getNgInfo ? (
+                                        {item.getNgInfo ? (
                                             (() => {
-                                                const { rate, count } = (item as any).getNgInfo(stats);
+                                                const { rate, count } = item.getNgInfo(stats);
                                                 if (rate === null) {
                                                     return <span style={{ color: '#94a3b8' }}>—</span>;
                                                 }

@@ -23,8 +23,10 @@ import {
     formatPPM,
     getPpmGrade
 } from '../../utils/spcAnalysis';
+import type { SpcViolation } from '../../types';
 import { Alert, Badge, Button, Card, Col, Row, Form } from 'react-bootstrap';
 import { useShippingStats, useExportSpcReport } from '../../hooks/useShipping';
+import type { ChartData } from 'chart.js';
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
@@ -170,7 +172,7 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
         });
 
         // X-bar chart datasets
-        const xBarDatasets: any[] = [
+        const xBarDatasets: ChartData<'line'>['datasets'] = [
             {
                 label: '平均值',
                 data: data.avgs,
@@ -291,14 +293,14 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
     const getViolationReasons = (idx: number): string => {
         if (!analysis || !analysis.violations) return '';
         const label = chartData?.xBar?.labels?.[idx];
-        const violation = analysis.violations.find((v: any) => v.label === label);
+        const violation = analysis.violations.find((v: SpcViolation) => v.label === label);
         return violation ? violation.reasons.join(', ') : '';
     };
 
     const getRViolationReasons = (idx: number): string => {
         if (!rAnalysis || !rAnalysis.violations) return '';
         const label = chartData?.rChart?.labels?.[idx];
-        const violation = rAnalysis.violations.find((v: any) => v.label === label);
+        const violation = rAnalysis.violations.find((v: SpcViolation) => v.label === label);
         return violation ? violation.reasons.join(', ') : '';
     };
 
@@ -319,9 +321,9 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
     const ppmGrade = ppmData ? getPpmGrade(ppmData.total) : null;
 
     // Combine X-bar and R-chart violations for alert
-    const allViolations = [
+    const allViolations: SpcViolation[] = [
         ...(analysis?.violations || []),
-        ...(rAnalysis?.violations || []).map((v: any) => ({ ...v, label: `[R] ${v.label}` }))
+        ...(rAnalysis?.violations || []).map((v: SpcViolation) => ({ ...v, label: `[R] ${v.label}` }))
     ];
 
     return (
@@ -369,7 +371,7 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                             </div>
                             {showWeco && (
                                 <ul className="mb-0 mt-3">
-                                    {allViolations.map((v: any, idx: number) => (
+                                    {allViolations.map((v: SpcViolation, idx: number) => (
                                         <li key={idx}><strong>{v.label}</strong>: {v.reasons.join(', ')}</li>
                                     ))}
                                 </ul>
