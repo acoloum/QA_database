@@ -89,12 +89,12 @@ def create_user():
         if User.query.filter_by(username=username).first():
             return jsonify({"error": "使用者名稱已存在"}), 400
 
-        new_user = User(
-            username=username,
-            password=hash_password(password),
-            is_active=True
+        from sqlalchemy import text as _text
+        hashed_pw = hash_password(password)
+        db.session.execute(
+            _text('INSERT INTO "使用者" ("使用者名稱", "密碼", "是否啟用") VALUES (:u, :p, TRUE)'),
+            {'u': username, 'p': hashed_pw}
         )
-        db.session.add(new_user)
         db.session.commit()
         return jsonify({"success": True, "message": "使用者建立成功"})
     except Exception as e:

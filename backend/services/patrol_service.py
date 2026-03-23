@@ -3,8 +3,10 @@ import pandas as pd
 import numpy as np
 from io import BytesIO
 from datetime import datetime
+from collections import defaultdict
 from typing import List, Dict, Any, Optional, Union
 from sqlalchemy import func, text
+from scipy import stats as scipy_stats
 from ..extensions import db
 from ..models import PatrolMain, PatrolDetail, Machine, Operator, Inspector, Vendor
 from ..utils import (
@@ -12,6 +14,20 @@ from ..utils import (
     validate_patrol_data,
     handle_db_error
 )
+
+# SPC 常數查表 (依子群體大小 n)
+# Keys: n, Values: (A2, D3, D4, d2)
+SPC_CONSTANTS = {
+    2: (1.880, 0.000, 3.267, 1.128),
+    3: (1.023, 0.000, 2.574, 1.693),
+    4: (0.729, 0.000, 2.282, 2.059),
+    5: (0.577, 0.000, 2.114, 2.326),
+    6: (0.483, 0.000, 2.004, 2.534),
+    7: (0.419, 0.076, 1.924, 2.704),
+    8: (0.373, 0.136, 1.864, 2.847),
+    9: (0.337, 0.184, 1.816, 2.970),
+    10: (0.308, 0.223, 1.777, 3.078),
+}
 
 class PatrolService:
     @staticmethod
@@ -34,77 +50,290 @@ class PatrolService:
 
     @staticmethod
     def get_spc(args: Dict[str, Any]) -> Dict[str, Any]:
-        """獲取巡檢 SPC 統計數據"""
+        """獲取巡檢 SPC 統計數據（含公差界限、製程能力、分佈統計）"""
         item = args.get('item', '厚度')
         pos = args.get('pos', '')
-        
-        query = db.session.query(PatrolMain.date, PatrolDetail.main_id, PatrolDetail.group, PatrolDetail.min_val, PatrolDetail.max_val)\
-            .join(PatrolDetail)\
-            .filter(PatrolDetail.item == item)
+        material = args.get('mat', '')
+        spec = args.get('spec', '')
 
-        if pos: 
+        # --- 1. 公差查詢 ---
+        tolerance_limits = {"USL": None, "LSL": None, "found": False}
+        if material:
+            try:
+                from ..services.tolerance_service import ToleranceService
+
+                # 解析 vendor_id
+                vendor_id = None
+                # 巡檢的 customer_id 對應 Vendor 表
+                # 這裡使用篩選條件中的材質/規格來查公差
+
+                tol_result = ToleranceService.check_tolerance({
+                    'material': material,
+                    'spec': spec or '',
+                    'vendor_id': ''
+                })
+
+                if tol_result.get('found'):
+                    tolerance_limits["found"] = True
+                    # 從規格解析名義值 (e.g. '31.9*2.2*589')
+                    nominal_from_spec = {}
+                    if spec:
+                        s = str(spec).strip().replace('×', '*').replace('x', '*').replace('X', '*')
+                        while '**' in s: s = s.replace('**', '*')
+                        parts = s.split('*')
+                        try:
+                            nums = [float(p.strip()) for p in parts if p.strip()]
+                            if len(nums) >= 2:
+                                nominal_from_spec['外徑'] = nums[0]
+                                val2 = nums[1]
+                                if val2 < (nums[0] / 2):
+                                    nominal_from_spec['厚度'] = val2
+                                    nominal_from_spec['內徑'] = nums[0] - (val2 * 2)
+                                else:
+                                    nominal_from_spec['內徑'] = val2
+                                    nominal_from_spec['厚度'] = (nums[0] - val2) / 2
+                                if len(nums) >= 3:
+                                    nominal_from_spec['長度'] = nums[2]
+                            elif len(nums) == 1:
+                                nominal_from_spec['外徑'] = nums[0]
+                        except (ValueError, TypeError):
+                            pass
+
+                    for t in tol_result.get('tolerances', []):
+                        if t.get('項目') == item:
+                            tolerance_limits["公差下限"] = t.get('公差下限')
+                            tolerance_limits["公差上限"] = t.get('公差上限')
+                            tolerance_limits["尺寸下限"] = t.get('尺寸下限')
+                            tolerance_limits["尺寸上限"] = t.get('尺寸上限')
+
+                            dim_min = t.get('尺寸下限')
+                            dim_max = t.get('尺寸上限')
+                            if dim_min is not None and dim_max is not None:
+                                tolerance_limits["LSL"] = dim_min
+                                tolerance_limits["USL"] = dim_max
+                            else:
+                                tol_min = t.get('公差下限')
+                                tol_max = t.get('公差上限')
+                                std = t.get('標準值')
+                                if std is None and item in nominal_from_spec:
+                                    std = nominal_from_spec[item]
+                                if tol_min is not None and tol_max is not None and std is not None:
+                                    tolerance_limits["LSL"] = std - abs(tol_min)
+                                    tolerance_limits["USL"] = std + abs(tol_max)
+                            break
+            except Exception:
+                pass
+
+        # --- 2. 資料查詢 ---
+        query = db.session.query(
+            PatrolMain.date, PatrolDetail.main_id, PatrolDetail.group,
+            PatrolDetail.min_val, PatrolDetail.max_val
+        ).join(PatrolDetail).filter(PatrolDetail.item == item)
+
+        if pos:
             query = query.filter(PatrolDetail.position == pos)
-        if args.get('s_date'): 
+        if args.get('s_date'):
             query = query.filter(PatrolMain.date >= args['s_date'])
-        if args.get('e_date'): 
+        if args.get('e_date'):
             query = query.filter(PatrolMain.date <= args['e_date'])
-        if args.get('m_id'):   
+        if args.get('m_id'):
             query = query.filter(PatrolMain.machine_id == args['m_id'])
-        if args.get('op_id'):  
+        if args.get('op_id'):
             query = query.filter(PatrolMain.operator_id == args['op_id'])
-        if args.get('mat'):    
-            query = query.filter(PatrolMain.material.like(f"%{args['mat']}%"))
-        if args.get('spec'):   
-            query = query.filter(PatrolMain.spec.like(f"%{args['spec']}%"))
+        if material:
+            query = query.filter(PatrolMain.material.like(f"%{material}%"))
+        if spec:
+            query = query.filter(PatrolMain.spec.like(f"%{spec}%"))
 
         query = query.order_by(PatrolMain.date.asc(), PatrolDetail.group.asc())
-        
         rows = query.all()
 
         if not rows:
             return {"labels": [], "avgs": [], "ranges": []}
 
-        groups: Dict[str, List[float]] = {}
+        # --- 3. 分組聚合 ---
+        from collections import OrderedDict
+        groups: Dict[str, List[float]] = OrderedDict()
+        group_dates: Dict[str, str] = {}  # key -> full date string
+        group_ids: Dict[str, int] = {}    # key -> main_id
+
         for r in rows:
-            # r is a tuple: (date, main_id, group, min_val, max_val)
             val1 = r[3]
             val2 = r[4]
             if val1 is None or val2 is None:
                 continue
-            
-            # Format date key
+
             date_str = r[0].strftime('%m/%d') if hasattr(r[0], 'strftime') else str(r[0])
+            full_date = r[0].strftime('%Y-%m-%d') if hasattr(r[0], 'strftime') else str(r[0])
             key = f"{date_str}-#{r[1]}-G{r[2]}"
-            
+
             try:
-                groups.setdefault(key, []).extend([float(val1), float(val2)])
+                fv1, fv2 = float(val1), float(val2)
+                groups.setdefault(key, []).extend([fv1, fv2])
+                group_dates[key] = full_date
+                group_ids[key] = r[1]
             except ValueError:
                 continue
 
         labels = list(groups.keys())
-        avgs = [np.mean(groups[k]) for k in labels]
-        ranges = [np.ptp(groups[k]) for k in labels]
+        avgs = []
+        ranges_list = []
+        subgroup_sizes = []
+        all_values = []
+        ids_valid = []
+        dates_valid = []
 
-        A2, D4, D3 = 0.483, 2.004, 0
-        if avgs:
-            x_cl, r_cl = float(np.mean(avgs)), float(np.mean(ranges))
+        for k in labels:
+            vals = groups[k]
+            avgs.append(float(np.mean(vals)))
+            ranges_list.append(float(np.ptp(vals)))
+            subgroup_sizes.append(len(vals))
+            all_values.extend(vals)
+            ids_valid.append(str(group_ids[k]))
+            dates_valid.append(group_dates[k])
+
+        # --- 4. 控制限計算（動態 SPC 常數）---
+        BASELINE_COUNT = 25
+        if len(avgs) >= 5:
+            baseline_count = min(BASELINE_COUNT, len(avgs))
+            base_avgs = avgs[:baseline_count]
+            base_ranges = ranges_list[:baseline_count]
+            base_ns = subgroup_sizes[:baseline_count]
+
+            avg_n = round(float(np.mean(base_ns)))
+            avg_n = max(2, min(10, avg_n))
+            A2, D3, D4, d2 = SPC_CONSTANTS[avg_n]
+
+            x_cl = float(np.mean(base_avgs))
+            r_cl = float(np.mean(base_ranges))
             x_ucl = x_cl + A2 * r_cl
             x_lcl = x_cl - A2 * r_cl
             r_ucl = D4 * r_cl
             r_lcl = D3 * r_cl
+            x_lcl = max(x_lcl, 0)
         else:
-            x_cl = r_cl = x_ucl = x_lcl = r_ucl = r_lcl = 0.0
+            x_cl = x_ucl = x_lcl = r_cl = r_ucl = r_lcl = 0.0
+            d2 = 2.326
+            avg_n = 5
+            baseline_count = 0
+
+        # --- 5. 製程能力指標 (Cp/Cpk/Pp/Ppk) ---
+        process_capability = {"available": False}
+        usl = tolerance_limits.get("USL")
+        lsl = tolerance_limits.get("LSL")
+
+        if usl is not None and lsl is not None and len(avgs) >= 5:
+            x_bar = float(np.mean(avgs))
+            sigma_within = r_cl / d2 if r_cl > 0 else 0
+
+            if len(all_values) >= 2:
+                sigma_overall = float(np.std(all_values, ddof=1))
+            else:
+                sigma_overall = 0
+
+            process_capability["available"] = True
+            process_capability["usl"] = float(usl)
+            process_capability["lsl"] = float(lsl)
+
+            if sigma_within > 0:
+                cp = (float(usl) - float(lsl)) / (6 * sigma_within)
+                cpu = (float(usl) - x_bar) / (3 * sigma_within)
+                cpl = (x_bar - float(lsl)) / (3 * sigma_within)
+                cpk = min(cpu, cpl)
+                process_capability.update({
+                    "cp": round(cp, 3), "cpk": round(cpk, 3),
+                    "cpu": round(cpu, 3), "cpl": round(cpl, 3)
+                })
+            else:
+                process_capability.update({"cp": None, "cpk": None, "cpu": None, "cpl": None})
+
+            if sigma_overall > 0:
+                pp = (float(usl) - float(lsl)) / (6 * sigma_overall)
+                ppu = (float(usl) - x_bar) / (3 * sigma_overall)
+                ppl = (x_bar - float(lsl)) / (3 * sigma_overall)
+                ppk = min(ppu, ppl)
+                process_capability.update({
+                    "pp": round(pp, 3), "ppk": round(ppk, 3),
+                    "ppu": round(ppu, 3), "ppl": round(ppl, 3)
+                })
+            else:
+                process_capability.update({"pp": None, "ppk": None, "ppu": None, "ppl": None})
+
+            process_capability["sigma_within"] = round(sigma_within, 6)
+            process_capability["sigma_overall"] = round(sigma_overall, 6)
+
+            # PPM 估算
+            if sigma_overall > 0:
+                z_upper = (float(usl) - x_bar) / sigma_overall
+                z_lower = (x_bar - float(lsl)) / sigma_overall
+                ppm_upper = round(float(scipy_stats.norm.sf(z_upper) * 1_000_000), 1)
+                ppm_lower = round(float(scipy_stats.norm.sf(z_lower) * 1_000_000), 1)
+                ppm_total = round(ppm_upper + ppm_lower, 1)
+                process_capability["ppm"] = {"upper": ppm_upper, "lower": ppm_lower, "total": ppm_total}
+            else:
+                process_capability["ppm"] = {"upper": 0, "lower": 0, "total": 0}
+
+        # --- 6. 偏態 / 峰態 ---
+        distribution_stats = {}
+        if len(all_values) >= 4:
+            arr = np.array(all_values, dtype=float)
+            distribution_stats["skewness"] = round(float(scipy_stats.skew(arr)), 3)
+            distribution_stats["kurtosis"] = round(float(scipy_stats.kurtosis(arr)), 3)
+            sk = abs(distribution_stats["skewness"])
+            ku = abs(distribution_stats["kurtosis"])
+            if sk < 0.5 and ku < 1.0:
+                distribution_stats["normality"] = "good"
+                distribution_stats["normality_label"] = "分佈接近常態"
+            elif sk < 1.0 and ku < 2.0:
+                distribution_stats["normality"] = "moderate"
+                distribution_stats["normality_label"] = "分佈略偏，Cpk 僅供參考"
+            else:
+                distribution_stats["normality"] = "poor"
+                distribution_stats["normality_label"] = "分佈明顯非常態，Cpk 可能不準確"
+
+        # --- 7. 月度 Cpk 趨勢 ---
+        cpk_trend = []
+        if usl is not None and lsl is not None and len(avgs) >= 5:
+            monthly_values = defaultdict(list)
+            val_idx = 0
+            for i in range(len(avgs)):
+                month_key = dates_valid[i][:7] if dates_valid[i] else 'unknown'
+                n_raw = subgroup_sizes[i]
+                for j in range(n_raw):
+                    if val_idx < len(all_values):
+                        monthly_values[month_key].append(all_values[val_idx])
+                        val_idx += 1
+
+            for month_key in sorted(monthly_values.keys()):
+                vals = monthly_values[month_key]
+                if len(vals) >= 5:
+                    m_mean = float(np.mean(vals))
+                    m_std = float(np.std(vals, ddof=1))
+                    if m_std > 0:
+                        m_cpu = (float(usl) - m_mean) / (3 * m_std)
+                        m_cpl = (m_mean - float(lsl)) / (3 * m_std)
+                        m_cpk = round(min(m_cpu, m_cpl), 3)
+                        cpk_trend.append({"month": month_key, "cpk": m_cpk, "count": len(vals)})
 
         return {
             "labels": labels,
+            "ids": ids_valid,
+            "dates": dates_valid,
             "avgs": [float(x) for x in avgs],
-            "ranges": [float(x) for x in ranges],
+            "ranges": [float(x) for x in ranges_list],
+            "subgroup_sizes": subgroup_sizes,
+            "all_values": [round(v, 4) for v in all_values],
             "x_cl": x_cl,
             "x_ucl": x_ucl,
             "x_lcl": x_lcl,
             "r_cl": r_cl,
             "r_ucl": r_ucl,
-            "r_lcl": r_lcl
+            "r_lcl": r_lcl,
+            "avg_subgroup_size": avg_n if len(avgs) >= 5 else 5,
+            "tolerance": tolerance_limits,
+            "process_capability": process_capability,
+            "distribution_stats": distribution_stats,
+            "cpk_trend": cpk_trend
         }
 
     @staticmethod

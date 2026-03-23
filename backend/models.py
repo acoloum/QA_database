@@ -8,7 +8,7 @@ class User(db.Model):
     id = db.Column('識別碼', db.Integer, primary_key=True)
     username = db.Column('使用者名稱', db.String, unique=True, nullable=False)
     password = db.Column('密碼', db.String, nullable=False)
-    is_active = db.Column('是否啟用', db.Integer, default=1)
+    is_active = db.Column('是否啟用', db.Boolean, default=True)
 
     def __repr__(self):
         return f'<User {self.username}>'
