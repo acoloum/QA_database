@@ -23,9 +23,10 @@ const LoginPage = () => {
             } else {
                 setError(res.data.error || '登入失敗');
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
+            const error = err as { response?: { data?: { error?: string } } };
             console.error(err);
-            setError(err.response?.data?.error || '連線錯誤，請稍後再試');
+            setError(error.response?.data?.error || '連線錯誤，請稍後再試');
         }
     };
 

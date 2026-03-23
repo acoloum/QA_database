@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react';
 import { Button, Card, Table, Badge } from 'react-bootstrap';
 import api from '../../services/api';
 import CARAModal from '../../components/cara/CARAModal';
-
+import type { CAR } from '../../types';
 import { useNavigate } from 'react-router-dom';
 
 const CARAPage = () => {
     const navigate = useNavigate();
-    const [data, setData] = useState<any[]>([]);
+    const [data, setData] = useState<CAR[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [editId, setEditId] = useState<number | null>(null);

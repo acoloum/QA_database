@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react';
 import { Button, Card, Table, Badge } from 'react-bootstrap';
 import api from '../../services/api';
 import CAPAModal from '../../components/capa/CAPAModal';
-
+import type { CAPA } from '../../types';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 
 const CAPAPage = () => {
     const navigate = useNavigate();
-    const [data, setData] = useState<any[]>([]);
+    const [data, setData] = useState<CAPA[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [editId, setEditId] = useState<number | null>(null);

@@ -1,0 +1,60 @@
+<h2>設計方案：出貨檢驗卡片改為超差率</h2>
+<p class="subtitle">以下是完整的變更範圍，請確認每個部分是否符合預期</p>
+
+<div class="section">
+  <h3>後端變更 — <code>admin.py</code></h3>
+  <div style="background:#0f172a;border-radius:8px;padding:16px;font-family:monospace;font-size:13px;color:#e2e8f0;margin-top:8px;">
+    <div style="color:#64748b;">// get_stats_for_period() 的 shipping 區塊新增：</div>
+    <div style="color:#86efac;">"shipping": {</div>
+    <div style="padding-left:16px;">
+      <div>"current": <span style="color:#93c5fd;">count</span>,</div>
+      <div>"previous": <span style="color:#93c5fd;">count</span>,</div>
+      <div style="color:#fbbf24;">"ng_count": <span style="color:#93c5fd;">count where is_ng = True</span>,  <span style="color:#64748b;">← 新增</span></div>
+      <div style="color:#fbbf24;">"ng_rate": <span style="color:#93c5fd;">ng_count / current × 100</span>,   <span style="color:#64748b;">← 新增</span></div>
+      <div>"pending": 0</div>
+    </div>
+    <div style="color:#86efac;">}</div>
+    <div style="margin-top:8px;color:#64748b;">// change_pct / trend 欄位保留（其他卡片仍使用）</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>前端變更 — <code>KPICards.tsx</code></h3>
+  <div style="display:flex;gap:16px;margin-top:8px;">
+    <div style="flex:1;background:#0f172a;border-radius:8px;padding:14px;">
+      <div style="color:#ef4444;font-size:11px;font-weight:600;margin-bottom:8px;">修改前</div>
+      <div style="font-family:monospace;font-size:12px;color:#e2e8f0;">
+        <div>↑ <span style="color:#f97316;">169.6%</span> 較上期</div>
+        <div style="color:#64748b;margin-top:4px;">（環比變化率）</div>
+      </div>
+    </div>
+    <div style="flex:1;background:#0f172a;border-radius:8px;padding:14px;">
+      <div style="color:#22c55e;font-size:11px;font-weight:600;margin-bottom:8px;">修改後</div>
+      <div style="font-family:monospace;font-size:12px;color:#e2e8f0;">
+        <div>⚠ <span style="color:#ef4444;">超差率 8.3%</span>（13 筆）</div>
+        <div style="color:#64748b;margin-top:4px;">超差率 &gt; 5% 顯示紅色警示</div>
+        <div style="color:#22c55e;margin-top:2px;">超差率 ≤ 5% 顯示綠色正常</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>TypeScript 型別 — <code>types/index.ts</code></h3>
+  <div style="background:#0f172a;border-radius:8px;padding:14px;font-family:monospace;font-size:12px;color:#e2e8f0;margin-top:8px;">
+    <div><span style="color:#86efac;">DomainStat</span> 介面新增：</div>
+    <div style="padding-left:12px;color:#fbbf24;">ng_count?: number</div>
+    <div style="padding-left:12px;color:#fbbf24;">ng_rate?: number</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>不在本次範圍內</h3>
+  <ul style="color:#94a3b8;font-size:14px;">
+    <li>其他卡片（巡邏、NCMR、CAPA、CAR、重工）維持現狀</li>
+    <li>趨勢圖不變</li>
+    <li>change_pct 欄位保留在 API 回應中（不刪除）</li>
+  </ul>
+</div>
+
+<p class="subtitle" style="margin-top:16px;">這個設計方向是否符合你的預期？請在終端機告知。</p>

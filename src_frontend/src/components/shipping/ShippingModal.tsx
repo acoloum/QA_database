@@ -139,10 +139,10 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                 const m: Record<string, string> = {};
                 loadItems.forEach(item => {
                     for (let g = 1; g <= 10; g++) {
-                        const rawVal = (detailData as any)[`${item.key}${g}`];
+                        const rawVal = (detailData as unknown as Record<string, unknown>)[`${item.key}${g}`];
                         if (item.type === 'minmax') {
-                            m[`${item.key}${g}-min`] = (detailData as any)[`${item.key}${g}-min`] == null ? '' : String((detailData as any)[`${item.key}${g}-min`]);
-                            m[`${item.key}${g}-max`] = (detailData as any)[`${item.key}${g}-max`] == null ? '' : String((detailData as any)[`${item.key}${g}-max`]);
+                            m[`${item.key}${g}-min`] = (detailData as unknown as Record<string, unknown>)[`${item.key}${g}-min`] == null ? '' : String((detailData as unknown as Record<string, unknown>)[`${item.key}${g}-min`]);
+                            m[`${item.key}${g}-max`] = (detailData as unknown as Record<string, unknown>)[`${item.key}${g}-max`] == null ? '' : String((detailData as unknown as Record<string, unknown>)[`${item.key}${g}-max`]);
                         } else {
                             m[`${item.key}${g}`] = rawVal == null ? '' : String(rawVal);
                         }
@@ -334,7 +334,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             return;
         }
 
-        const payload: any = {
+        const payload: ShippingCreateInput = {
             "檢驗日期": date,
             "檢驗人員姓名": inspectorName,
             "廠商中文名稱": vendorName,
@@ -343,7 +343,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             "訂單號碼": orderNo,
             "組數": groupCount,
             ...measurements
-        };
+        } as ShippingCreateInput;
 
         if (editId) payload['識別碼'] = editId;
 

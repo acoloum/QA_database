@@ -1,0 +1,91 @@
+<h2>出貨檢驗卡片：指標顯示方式</h2>
+<p class="subtitle">目前卡片顯示「環比變化率」，考慮改為「超差率」或其他指標。你偏好哪種？</p>
+
+<div class="cards">
+
+  <!-- Option A: 現狀 -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#1e293b;border-radius:12px;padding:20px;font-family:sans-serif;color:#fff;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div>
+            <div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">出貨檢驗</div>
+            <div style="font-size:32px;font-weight:700;">156</div>
+            <div style="font-size:12px;color:#94a3b8;margin-top:4px;">本期筆數</div>
+          </div>
+          <div style="background:#3b82f620;border-radius:8px;padding:8px;">
+            <span style="font-size:20px;">🎁</span>
+          </div>
+        </div>
+        <div style="margin-top:16px;padding-top:12px;border-top:1px solid #334155;display:flex;align-items:center;gap:6px;">
+          <span style="color:#f97316;font-size:13px;font-weight:600;">↑ 169.6%</span>
+          <span style="color:#64748b;font-size:12px;">較上期</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — 現狀：環比變化率</h3>
+      <p>顯示本期與上期的筆數增減百分比。反映「檢驗量」的波動，但與品質無直接關聯。</p>
+    </div>
+  </div>
+
+  <!-- Option B: 超差率 -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#1e293b;border-radius:12px;padding:20px;font-family:sans-serif;color:#fff;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div>
+            <div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">出貨檢驗</div>
+            <div style="font-size:32px;font-weight:700;">156</div>
+            <div style="font-size:12px;color:#94a3b8;margin-top:4px;">本期筆數</div>
+          </div>
+          <div style="background:#3b82f620;border-radius:8px;padding:8px;">
+            <span style="font-size:20px;">🎁</span>
+          </div>
+        </div>
+        <div style="margin-top:16px;padding-top:12px;border-top:1px solid #334155;display:flex;align-items:center;gap:8px;">
+          <span style="color:#ef4444;font-size:13px;font-weight:600;">⚠ 超差率 8.3%</span>
+          <span style="color:#64748b;font-size:12px;">（13 筆 NG）</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — 改為：超差率（NG 率）</h3>
+      <p>顯示本期超差筆數佔總筆數的百分比。直接反映品質狀況，數值越低越好。</p>
+    </div>
+  </div>
+
+  <!-- Option C: 兩者都顯示 -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#1e293b;border-radius:12px;padding:20px;font-family:sans-serif;color:#fff;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div>
+            <div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">出貨檢驗</div>
+            <div style="font-size:32px;font-weight:700;">156</div>
+            <div style="font-size:12px;color:#94a3b8;margin-top:4px;">本期筆數</div>
+          </div>
+          <div style="background:#3b82f620;border-radius:8px;padding:8px;">
+            <span style="font-size:20px;">🎁</span>
+          </div>
+        </div>
+        <div style="margin-top:16px;padding-top:12px;border-top:1px solid #334155;display:flex;justify-content:space-between;align-items:center;">
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="color:#ef4444;font-size:12px;font-weight:600;">⚠ 超差率 8.3%</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="color:#94a3b8;font-size:11px;">較上期</span>
+            <span style="color:#f97316;font-size:12px;font-weight:600;">↑ 169.6%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — 兩者並存：超差率 ＋ 環比變化</h3>
+      <p>主要突出超差率，右下角保留環比變化。資訊最完整，但卡片略顯擁擠。</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:24px;">點選你偏好的方案，或在終端機直接告訴我你的想法。</p>

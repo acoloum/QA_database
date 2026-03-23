@@ -27,8 +27,9 @@ const UserManagementPage = () => {
                 setPassword('');
                 setConfirmPassword('');
             }
-        } catch (error: any) {
-            let errorMsg = error.response?.data?.error || '建立失敗';
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            let errorMsg = err.response?.data?.error || '建立失敗';
             if (errorMsg.includes('UNIQUE') || errorMsg.includes('已存在')) {
                 errorMsg = '使用者名稱已存在';
             }

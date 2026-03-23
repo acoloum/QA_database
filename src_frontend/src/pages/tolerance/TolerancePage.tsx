@@ -4,6 +4,7 @@ import api from '../../services/api';
 import ToleranceModal from '../../components/tolerance/ToleranceModal';
 import ViewToleranceModal from '../../components/tolerance/ViewToleranceModal';
 import { useToleranceSearch, useToleranceOptions, useDeleteTolerance, useImportTolerance } from '../../hooks/useTolerance';
+import type { ToleranceStandard, Vendor } from '../../types';
 import { useNavigate } from 'react-router-dom';
 
 const TolerancePage = () => {
@@ -87,13 +88,13 @@ const TolerancePage = () => {
         e.target.value = ''; // Reset input
     };
 
-    const data = searchResult?.data?.map((item: any) => ({
-        id: item.識別碼,
-        material: item.材質,
-        spec: item.規格,
-        vendor_name: item.廠商名稱,
-        create_date: item.建立日期,
-        remark: item.備註
+    const data = searchResult?.data?.map((item: ToleranceStandard) => ({
+        id: item.id,
+        material: item.material,
+        spec: item.spec,
+        vendor_name: item.vendor_name,
+        create_date: item.create_date,
+        remark: item.remark
     })) || [];
 
     const totalPages = searchResult?.total_pages || 1;
@@ -124,7 +125,7 @@ const TolerancePage = () => {
                             <Form.Label>廠商</Form.Label>
                             <Form.Select value={vendor} onChange={e => setVendor(e.target.value)}>
                                 <option value="">-- 全部廠商 --</option>
-                                {vendors.map((v: any) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                {vendors.map((v: Vendor) => <option key={v.id} value={v.id}>{v.name}</option>)}
                             </Form.Select>
                         </Col>
                         <Col md={3}>

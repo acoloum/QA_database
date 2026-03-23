@@ -285,8 +285,9 @@ const PatrolImportModal = ({ show, handleClose, onSuccess }: { show: boolean, ha
             handleClose();
             setFile(null);
             if (fileInputRef.current) fileInputRef.current.value = '';
-        } catch (err: any) {
-            setError(err.response?.data?.error || '匯入失敗');
+        } catch (err: unknown) {
+            const error = err as { response?: { data?: { error?: string } } };
+            setError(error.response?.data?.error || '匯入失敗');
         }
     };
 

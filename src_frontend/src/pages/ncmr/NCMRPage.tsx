@@ -33,7 +33,7 @@ const NCMRPage = () => {
     useEffect(() => {
         if (printItem && printDetail) {
             const d = printDetail;
-            const formatQty = (val: any) => val ? Math.floor(Number(val)).toString() : '';
+            const formatQty = (val: unknown) => val ? Math.floor(Number(val)).toString() : '';
             const ncmrNo = d.NCMR單號 || d.單號 || (d.識別碼 ? `NCMR-${d.識別碼}` : '');
             const printContent = `
 <!DOCTYPE html>
@@ -250,7 +250,7 @@ const NCMRPage = () => {
                             ) : ncmrList.length === 0 ? (
                                 <tr><td colSpan={13} className="text-center py-4">無資料</td></tr>
                             ) : (
-                                ncmrList.map((item: any) => (
+                                ncmrList.map((item: NCMR) => (
                                     <tr key={item.id}>
                                         <td>{item.no || item.id}</td>
                                         <td>{item.date}</td>
