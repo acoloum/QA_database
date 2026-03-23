@@ -198,7 +198,7 @@ export interface ShippingInspection {
     材質: string;
     訂單號碼?: string;
     // Dynamic measurement fields
-    [key: string]: any;
+    [key: string]: unknown;
 }
 
 export interface ToleranceItem {

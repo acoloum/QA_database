@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
-import type { ShippingInspection } from '../../types';
+import type { ShippingInspection, ToleranceStandard } from '../../types';
 import ShippingModal from '../../components/shipping/ShippingModal';
 import ImportModal from '../../components/shipping/ImportModal';
 import ShippingCharts from '../../components/shipping/ShippingCharts';
@@ -25,7 +25,7 @@ const ShippingPage = () => {
     const [spec, setSpec] = useState('');
 
     // Tolerance Standards for the current page
-    const [tolerances, setTolerances] = useState<Record<string, any>>({});
+    const [tolerances, setTolerances] = useState<Record<string, ToleranceStandard>>({});
 
     // Hooks
     const searchParams = {
@@ -55,7 +55,7 @@ const ShippingPage = () => {
             }
         });
 
-        const newTolerances: Record<string, any> = { ...tolerances };
+        const newTolerances: Record<string, ToleranceStandard> = { ...tolerances };
 
         // This part needs vendors list, we could use useVendors hook but we need it here imperatively or just fetch once
         // For simplicity, let's just fetch it as before or optimistically assume we have IDs if backend provided them.
@@ -63,8 +63,8 @@ const ShippingPage = () => {
         // Let's rely on cached vendors if possible, or just fetch.
 
         try {
-            const vendorsRes = await api.get<any[]>('/vendors');
-            const vendorMap: Record<string, string> = {};
+            const vendorsRes = await api.get<Vendor[]>('/vendors');
+            const vendorMap: Record<string, number> = {};
             vendorsRes.data.forEach(v => vendorMap[v.name] = v.id);
 
             await Promise.all(Array.from(uniqueCombos).map(async (combo) => {
@@ -133,7 +133,7 @@ const ShippingPage = () => {
         if (!std) return { hasViolation: false, found: false };
 
         const items = ["外徑", "內徑", "真圓度", "厚度", "同心度", "長度", "硬度", "真直度"];
-        const gc = (item as any).組數 || 5;
+        const gc = (item as unknown as { 組數?: number }).組數 || 5;
         let hasViolation = false;
 
         for (const it of items) {

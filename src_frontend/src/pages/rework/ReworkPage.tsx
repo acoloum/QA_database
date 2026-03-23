@@ -216,8 +216,9 @@ const ReworkPage = () => {
             await api.post('/rework/delete', { rework_id: reworkId });
             alert('刪除成功');
             loadData();
-        } catch (error: any) {
-            alert(error.response?.data?.error || '刪除失敗');
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            alert(err.response?.data?.error || '刪除失敗');
         }
     };
 
@@ -519,7 +520,7 @@ const ReworkPage = () => {
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {executions.map((exec: any, idx: number) => (
+                                                    {executions.map((exec: ReworkExecutionDetail, idx: number) => (
                                                         <tr key={idx}>
                                                             <td>{exec.負責人員姓名 || '-'}</td>
                                                             <td>{exec.執行部門 || '-'}</td>
@@ -563,7 +564,7 @@ const ReworkPage = () => {
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {inspections.map((insp: any, idx: number) => (
+                                                    {inspections.map((insp: ReworkInspectionDetail, idx: number) => (
                                                         <tr key={idx}>
                                                             <td>{insp.檢驗項目 || '-'}</td>
                                                             <td>{insp.檢驗結果 || '-'}</td>
@@ -608,8 +609,8 @@ const ReworkPage = () => {
                                                             <th style={{ width: '100px' }}>操作</th>
                                                         </tr>
                                                     </thead>
-                                                    <tbody>
-                                                        {costs.map((cost: any, idx: number) => (
+                                                <tbody>
+                                                    {costs.map((cost: ReworkCostDetail, idx: number) => (
                                                             <tr key={idx}>
                                                                 <td>{cost.成本類型 || '-'}</td>
                                                                 <td>{cost.成本項目 || '-'}</td>
