@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import api from '../../services/api';
 
@@ -57,18 +57,18 @@ const EditExecutionModal = ({ show, handleClose, onSuccess, execution }: EditExe
             loadInspectors();
             loadExecutionData();
         }
-    }, [show, execution]);
+    }, [show, execution, loadInspectors, loadExecutionData]);
 
-    const loadInspectors = async () => {
+    const loadInspectors = useCallback(async () => {
         try {
             const res = await api.get<Inspector[]>('/inspectors');
             setInspectors(res.data);
         } catch (error) {
             console.error('Failed to load inspectors', error);
         }
-    };
+    }, []);
 
-    const loadExecutionData = () => {
+    const loadExecutionData = useCallback(() => {
         if (!execution) return;
         setResponsiblePerson(execution.負責人員姓名 || '');
         setDepartment(execution.執行部門 || '製造部');
@@ -84,7 +84,7 @@ const EditExecutionModal = ({ show, handleClose, onSuccess, execution }: EditExe
         setDefectQty(execution.不良數量?.toString() || '');
         setStatus(execution.執行狀況 || '');
         setAbnormalStatus(execution.異常狀況 || '');
-    };
+    }, [execution]);
 
     const formatDateTimeLocal = (dateStr: string) => {
         if (!dateStr) return '';

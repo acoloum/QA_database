@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import api from '../../services/api';
 
@@ -41,18 +41,18 @@ const EditInspectionModal = ({ show, handleClose, onSuccess, inspection }: EditI
             loadInspectors();
             loadInspectionData();
         }
-    }, [show, inspection]);
+    }, [show, inspection, loadInspectors, loadInspectionData]);
 
-    const loadInspectors = async () => {
+    const loadInspectors = useCallback(async () => {
         try {
             const res = await api.get<Inspector[]>('/inspectors');
             setInspectors(res.data);
         } catch (error) {
             console.error('Failed to load inspectors', error);
         }
-    };
+    }, []);
 
-    const loadInspectionData = () => {
+    const loadInspectionData = useCallback(() => {
         if (!inspection) return;
         setInspector(inspection.檢驗人員姓名 || '');
         setInspectionItem(inspection.檢驗項目 || '');
@@ -60,7 +60,7 @@ const EditInspectionModal = ({ show, handleClose, onSuccess, inspection }: EditI
         setDefectQty(inspection.不良數量?.toString() || '0');
         setInspectionDate(inspection.檢驗日期 ? inspection.檢驗日期.split(' ')[0] : '');
         setRemark(inspection.檢驗備註 || '');
-    };
+    }, [inspection]);
 
     const handleSubmit = async () => {
         if (!inspection) return;

@@ -40,12 +40,17 @@ const ApplyModal = ({ show, handleClose, onSuccess, initialNcmrId, initialNcmrNo
 
     useEffect(() => {
         if (show) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             loadInspectors();
             if (initialNcmrId) {
+                 
                 setNcmrId(initialNcmrId);
+                 
                 setNcmrInfo(`從 NCMR #${initialNcmrNo || initialNcmrId} 開立重工`);
             } else {
+                 
                 setNcmrId('');
+                 
                 setNcmrInfo('');
             }
         }

@@ -124,6 +124,7 @@ const NCMRPage = () => {
                 printWindow.document.write(printContent);
                 printWindow.document.close();
             }
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setPrintItem(null);
         }
     }, [printItem, printDetail]);

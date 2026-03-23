@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Nav, Tab, Row, Col, Alert } from 'react-bootstrap';
 import api from '../../services/api';
 import type { CAR, Inspector } from '../../types';
@@ -21,23 +21,16 @@ const CARAModal = ({ show, handleClose, onSuccess, editId }: CARAModalProps) => 
     const [dContent, setDContent] = useState<Record<string, string>>({});
     const [isClosed, setIsClosed] = useState(false);
 
-    useEffect(() => {
-        if (show && editId) {
-            loadDetail(editId);
-            fetchInspectors();
-        }
-    }, [show, editId]);
-
-    const fetchInspectors = async () => {
+    const fetchInspectors = useCallback(async () => {
         try {
             const res = await api.get('/inspectors');
             setInspectors(res.data);
         } catch (error) {
             console.error("Failed to load inspectors", error);
         }
-    };
+    }, []);
 
-    const loadDetail = async (id: number) => {
+    const loadDetail = useCallback(async (id: number) => {
         setLoading(true);
         try {
             const res = await api.get(`/cara/detail/${id}`);
@@ -60,7 +53,14 @@ const CARAModal = ({ show, handleClose, onSuccess, editId }: CARAModalProps) => 
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        if (show && editId) {
+            loadDetail(editId);
+            fetchInspectors();
+        }
+    }, [show, editId, loadDetail, fetchInspectors]);
 
     const getDName = (i: number) => {
         const map: Record<number, string> = { 2: '問題描述', 3: '暫時對策', 4: '真因分析', 6: '成效驗證', 7: '預防再發', 8: '結案確認' };

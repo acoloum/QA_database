@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import api from '../../services/api';
 import type { ReworkApplication } from '../../types';
@@ -23,13 +23,7 @@ const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditB
   const [reason, setReason] = useState('');
   const [expectedDate, setExpectedDate] = useState('');
 
-  useEffect(() => {
-    if (show && application) {
-      loadApplicationData();
-    }
-  }, [show, application]);
-
-  const loadApplicationData = () => {
+  const loadApplicationData = useCallback(() => {
     if (!application) return;
     setDepartment(application.部門 || '製造部');
     setUrgency(application.緊急程度 || '普通');
@@ -45,7 +39,13 @@ const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditB
     } else {
       setExpectedDate('');
     }
-  };
+  }, [application]);
+
+  useEffect(() => {
+    if (show && application) {
+      loadApplicationData();
+    }
+  }, [show, application, loadApplicationData]);
 
   const handleSubmit = async () => {
     if (!application) return;

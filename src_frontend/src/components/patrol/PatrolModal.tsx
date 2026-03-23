@@ -1,5 +1,5 @@
 
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { Modal, Button, Form, Row, Col, Table } from 'react-bootstrap';
 import {
     usePatrolOptions,
@@ -51,7 +51,8 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     const [details, setDetails] = useState<PatrolDetailInput[]>([]);
     const [showInner, setShowInner] = useState(false);
 
-    const resetForm = () => {
+    const resetForm = useCallback(() => {
+         
         console.log('resetForm called');
         setDate(new Date().toISOString().split('T')[0]);
         setMachine('');
@@ -64,23 +65,30 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         setGroupCount(1);
         setDetails([]);
         setShowInner(false);
-    };
+    }, []);
 
     // Populate form when detailData loads or when modal opens
     useEffect(() => {
-        console.log('useEffect triggered', { show, editId, detailData, hasDetails: details.length > 0 });
+         
+        console.log('useEffect triggered', { show, editId, detailData });
         if (show) {
             if (editId && detailData) {
                 const d = detailData;
-                // ... (detail population logic - truncated for brevity if not strictly needed to change, but keeping cleaner to just add log)
-                // Actually I need to keep the logic.
+                // eslint-disable-next-line react-hooks/set-state-in-effect
                 setDate(d.main.檢驗日期);
+                 
                 setMachine(d.main.機台);
+                 
                 setOperator(d.main.主機手);
+                 
                 setInspector(d.main.檢驗人員);
+                 
                 setCustomer(d.main.客戶名稱);
+                 
                 setMaterial(d.main.材質);
+                 
                 setBatch(d.main.原料批號);
+                 
                 setSpec(d.main.擠壓規格);
 
                 // Parse details to state
@@ -91,17 +99,20 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                     min: item.min?.toString() || '',
                     max: item.max?.toString() || ''
                 }));
+                 
                 setDetails(newDetails);
 
                 // Determine group count
                 const groups = new Set(newDetails.map(d => d.group));
+                 
                 setGroupCount(groups.size || 1);
             } else if (!editId) {
+                 
                 console.log('Calling resetForm from useEffect');
                 resetForm();
             }
         }
-    }, [show, editId, detailData]);
+    }, [show, editId, detailData, resetForm]);
 
     const handleDetailChange = (group: string, pos: string, item: string, type: 'min' | 'max', value: string) => {
         // console.log(`Change: ${group} ${pos} ${item} ${type} = ${value}`);

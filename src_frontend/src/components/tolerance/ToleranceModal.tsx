@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col, Table } from 'react-bootstrap';
 import { useToleranceDetail, useCreateTolerance, useUpdateTolerance } from '../../hooks/useTolerance';
 import type { Vendor } from '../../types';
@@ -101,19 +101,19 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
     // 產生唯一 ID 用於拖曳排序
     const generateId = () => Math.random().toString(36).substring(2, 11);
 
-    const createEmptyRow = (): DetailRow => ({
+    const createEmptyRow = useCallback((): DetailRow => ({
         id: generateId(),
         item: '', position: '', size_min: '', size_max: '', tol_min: '', tol_max: '', std: '', unit: 'mm', remark: ''
-    });
+    }), []);
 
-    const resetForm = () => {
+    const resetForm = useCallback(() => {
         setDate(new Date().toISOString().split('T')[0]);
         setMaterial('');
         setSpec('');
         setVendorId('');
         setRemark('');
         setDetails([createEmptyRow()]);
-    };
+    }, [createEmptyRow]);
 
     // 設定拖曳感測器
     const sensors = useSensors(
@@ -145,19 +145,27 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
     const createMutation = useCreateTolerance();
     const updateMutation = useUpdateTolerance();
 
+     
+     
     useEffect(() => {
         if (show) {
             if (editId) {
                 // Wait for data to load
                 if (detailData) {
                     const { main, details: dList } = detailData;
+                    // eslint-disable-next-line react-hooks/set-state-in-effect
                     setDate(main.建立日期 ? main.建立日期.split('T')[0] : '');
+                     
                     setMaterial(main.材質 || '');
+                     
                     setSpec(main.規格 || '');
+                     
                     setVendorId(main.廠商ID?.toString() || '');
+                     
                     setRemark(main.備註 || '');
 
                     if (dList && dList.length > 0) {
+                         
                         setDetails(dList.map((d: Record<string, unknown>, idx: number) => ({
                             id: d.id || `existing-${idx}`,
                             item: d.測量項目 || '',
@@ -171,6 +179,7 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
                             remark: d.備註 || ''
                         })));
                     } else {
+                         
                         setDetails([createEmptyRow()]);
                     }
                 }
@@ -178,7 +187,7 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
                 resetForm();
             }
         }
-    }, [show, editId, detailData]);
+    }, [show, editId, detailData, createEmptyRow, resetForm]);
 
     const handleDetailChange = (index: number, field: keyof DetailRow, value: string) => {
         const newDetails = [...details];

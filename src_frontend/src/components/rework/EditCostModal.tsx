@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import api from '../../services/api';
 
@@ -43,18 +43,18 @@ const EditCostModal = ({ show, handleClose, onSuccess, cost }: EditCostModalProp
             loadInspectors();
             loadCostData();
         }
-    }, [show, cost]);
+    }, [show, cost, loadInspectors, loadCostData]);
 
-    const loadInspectors = async () => {
+    const loadInspectors = useCallback(async () => {
         try {
             const res = await api.get<Inspector[]>('/inspectors');
             setInspectors(res.data);
         } catch (error) {
             console.error('Failed to load inspectors', error);
         }
-    };
+    }, []);
 
-    const loadCostData = () => {
+    const loadCostData = useCallback(() => {
         if (!cost) return;
         setCostType(cost.成本類型 || '人工成本');
         setCostItem(cost.成本項目 || '');
@@ -63,7 +63,7 @@ const EditCostModal = ({ show, handleClose, onSuccess, cost }: EditCostModalProp
         setCurrency(cost.成本幣別 || 'TWD');
         setRecorder(cost.記錄人員姓名 || '');
         setRemark(cost.備註 || '');
-    };
+    }, [cost]);
 
     const handleSubmit = async () => {
         if (!cost) return;

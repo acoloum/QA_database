@@ -20,6 +20,7 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
 
     useEffect(() => {
         if (show && item) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setResult(item.result || '特採');
             setStatus(item.status || '待處理');
         }

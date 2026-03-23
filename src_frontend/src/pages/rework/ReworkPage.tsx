@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Modal, Button } from 'react-bootstrap';
 import api from '../../services/api';
@@ -52,7 +52,7 @@ const ReworkPage = () => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         setLoading(true);
         try {
             // Load List
@@ -73,11 +73,11 @@ const ReworkPage = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [statusFilter, startDate, endDate]);
 
     useEffect(() => {
         loadData();
-    }, [statusFilter, startDate, endDate]);
+    }, [loadData]);
 
     useEffect(() => {
         const ncmrId = searchParams.get('ncmr_id');

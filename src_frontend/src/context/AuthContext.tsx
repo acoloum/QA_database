@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import api from '../services/api';
 import type { AuthState, User, VerifyTokenResponse } from '../types';
@@ -30,7 +30,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setIsAuthenticated(false);
     };
 
-    const checkAuth = async () => {
+    const checkAuth = useCallback(async () => {
         const token = localStorage.getItem('authToken');
         if (!token) {
             setIsLoading(false);
@@ -55,23 +55,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } finally {
             setIsLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         checkAuth();
-    }, []);
+    }, [checkAuth]);
 
     return (
         <AuthContext.Provider value={{ user, isAuthenticated, isLoading, login, logout, checkAuth }}>
             {children}
         </AuthContext.Provider>
     );
-};
-
-export const useAuth = () => {
-    const context = useContext(AuthContext);
-    if (context === undefined) {
-        throw new Error('useAuth must be used within an AuthProvider');
-    }
-    return context;
 };

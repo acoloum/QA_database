@@ -119,15 +119,22 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     useEffect(() => {
         if (show) {
             if (editId && detailData) {
+                // eslint-disable-next-line react-hooks/set-state-in-effect
                 setDate(detailData.檢驗日期);
+                 
                 setInspectorName(detailData.檢驗人員 || detailData.檢驗人員姓名 || '');
+                 
                 setVendorName(detailData.廠商中文名稱);
+                 
                 setMaterial(detailData.材質);
+                 
                 setSpec(detailData.檢驗規格);
+                 
                 setOrderNo(detailData.訂單號碼 || '');
 
                 // Restore group count from saved data
                 const savedGroupCount = (detailData as unknown as { 組數?: number }).組數 || DEFAULT_GROUP_COUNT;
+                 
                 setGroupCount(savedGroupCount);
 
                 // Determine items based on vendor for loading measurements
@@ -148,6 +155,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                         }
                     }
                 });
+                 
                 setMeasurements(m);
             } else if (!editId) {
                 resetForm();
@@ -161,6 +169,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             if (vendorName === ANTAI_VENDOR_NAME) {
                 // Keep current groupCount or default — user can change via dropdown
             } else {
+                // eslint-disable-next-line react-hooks/set-state-in-effect
                 setGroupCount(DEFAULT_GROUP_COUNT);
             }
         }
@@ -170,6 +179,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     useEffect(() => {
         const checkTolerance = async () => {
             if (!material || !spec || !vendorName) {
+                 
                 setTolerance(null);
                 return;
             }
@@ -185,23 +195,27 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                 });
 
                 if (result.success && result.found) {
+                     
                     setTolerance(result);
                 } else {
+                     
                     setTolerance(null);
                 }
             } catch (e) {
                 console.error(e);
+                 
                 setTolerance(null);
             }
         };
 
         const timeout = setTimeout(checkTolerance, 500);
         return () => clearTimeout(timeout);
-    }, [material, spec, vendorName, vendors]);
+    }, [material, spec, vendorName, vendors, checkToleranceMutation]);
 
     // Validate measurements against tolerance
     useEffect(() => {
         if (!tolerance) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setViolations({});
             return;
         }
@@ -254,6 +268,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             }
         });
 
+         
         setViolations(newViolations);
 
     }, [measurements, tolerance, spec, groupIndices, ITEMS]);
