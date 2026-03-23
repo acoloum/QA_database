@@ -23,10 +23,10 @@ import {
     formatPPM,
     getPpmGrade
 } from '../../utils/spcAnalysis';
-import type { SpcViolation } from '../../types';
+import type { SpcViolation, HistogramBin } from '../../types';
 import { Alert, Badge, Button, Card, Col, Row, Form } from 'react-bootstrap';
 import { useShippingStats, useExportSpcReport } from '../../hooks/useShipping';
-import type { ChartData } from 'chart.js';
+import type { ChartData, TooltipItem, ActiveDataPoint } from 'chart.js';
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
@@ -543,7 +543,7 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                                     },
                                                     tooltip: {
                                                         callbacks: {
-                                                            afterLabel: (ctx: any) => {
+                                                            afterLabel: (ctx: TooltipItem<'line'>) => {
                                                                 if (ctx.datasetIndex !== 0) return '';
                                                                 const reasons = getViolationReasons(ctx.dataIndex);
                                                                 return reasons ? `⚠️ ${reasons}` : '';
@@ -551,14 +551,14 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                                         }
                                                     }
                                                 },
-                                                onClick: (_event: any, elements: any[]) => {
+                                                onClick: (_event: unknown, elements: ActiveDataPoint<'line'>[]) => {
                                                     if (elements.length > 0 && ids.length > 0) {
                                                         const index = elements[0].index;
                                                         const id = ids[index];
                                                         if (id && onPointClick) onPointClick(Number(id));
                                                     }
                                                 },
-                                                onHover: (event: any, elements: any[]) => {
+                                                onHover: (event: unknown, elements: ActiveDataPoint<'line'>[]) => {
                                                     if (event?.native?.target) {
                                                         event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
                                                     }
@@ -590,7 +590,7 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                                     },
                                                     tooltip: {
                                                         callbacks: {
-                                                            afterLabel: (ctx: any) => {
+                                                            afterLabel: (ctx: TooltipItem<'line'>) => {
                                                                 if (ctx.datasetIndex !== 0) return '';
                                                                 const reasons = getRViolationReasons(ctx.dataIndex);
                                                                 return reasons ? `⚠️ ${reasons}` : '';
@@ -598,14 +598,14 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                                         }
                                                     }
                                                 },
-                                                onClick: (_event: any, elements: any[]) => {
+                                                onClick: (_event: unknown, elements: ActiveDataPoint<'line'>[]) => {
                                                     if (elements.length > 0 && ids.length > 0) {
                                                         const index = elements[0].index;
                                                         const id = ids[index];
                                                         if (id && onPointClick) onPointClick(Number(id));
                                                     }
                                                 },
-                                                onHover: (event: any, elements: any[]) => {
+                                                onHover: (event: unknown, elements: ActiveDataPoint<'line'>[]) => {
                                                     if (event?.native?.target) {
                                                         event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
                                                     }
@@ -629,12 +629,12 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                             <Chart
                                                 type="bar"
                                                 data={{
-                                                    labels: histogramData.bins.map((b: any) => b.label),
+                                                    labels: histogramData.bins.map((b: HistogramBin) => b.label),
                                                     datasets: [
                                                         {
                                                             type: 'bar' as const,
                                                             label: '頻次',
-                                                            data: histogramData.bins.map((b: any) => b.count),
+                                                            data: histogramData.bins.map((b: HistogramBin) => b.count),
                                                             backgroundColor: 'rgba(13, 110, 253, 0.5)',
                                                             borderColor: '#0d6efd',
                                                             borderWidth: 1,
@@ -656,12 +656,12 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                                         ...(histogramData.usl != null ? [{
                                                             type: 'line' as const,
                                                             label: `USL (${histogramData.usl.toFixed(2)})`,
-                                                            data: histogramData.bins.map((b: any) => {
+                                                            data: histogramData.bins.map((b: HistogramBin) => {
                                                                 const dist = Math.abs(b.midpoint - histogramData.usl);
                                                                 const binW = histogramData.bins.length > 1
                                                                     ? histogramData.bins[1].midpoint - histogramData.bins[0].midpoint
                                                                     : 1;
-                                                                return dist < binW / 2 ? Math.max(...histogramData.bins.map((bb: any) => bb.count)) * 1.1 : null;
+                                                                return dist < binW / 2 ? Math.max(...histogramData.bins.map((bb: HistogramBin) => bb.count)) * 1.1 : null;
                                                             }),
                                                             borderColor: '#e83e8c',
                                                             borderDash: [5, 5],
@@ -674,12 +674,12 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                                         ...(histogramData.lsl != null ? [{
                                                             type: 'line' as const,
                                                             label: `LSL (${histogramData.lsl.toFixed(2)})`,
-                                                            data: histogramData.bins.map((b: any) => {
+                                                            data: histogramData.bins.map((b: HistogramBin) => {
                                                                 const dist = Math.abs(b.midpoint - histogramData.lsl);
                                                                 const binW = histogramData.bins.length > 1
                                                                     ? histogramData.bins[1].midpoint - histogramData.bins[0].midpoint
                                                                     : 1;
-                                                                return dist < binW / 2 ? Math.max(...histogramData.bins.map((bb: any) => bb.count)) * 1.1 : null;
+                                                                return dist < binW / 2 ? Math.max(...histogramData.bins.map((bb: HistogramBin) => bb.count)) * 1.1 : null;
                                                             }),
                                                             borderColor: '#e83e8c',
                                                             borderDash: [5, 5],
@@ -688,7 +688,7 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                                             spanGaps: false,
                                                             order: 0
                                                         }] : [])
-                                                    ] as any[]
+                                                    ] as ChartData<'bar'>['datasets']
                                                 }}
                                                 options={{
                                                     maintainAspectRatio: false,
@@ -700,11 +700,11 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                                         },
                                                         tooltip: {
                                                             callbacks: {
-                                                                title: (items: any[]) => items[0]?.label || '',
-                                                                label: (ctx: any) => {
+                                                                title: (items: TooltipItem<'bar'>[]) => items[0]?.label || '',
+                                                                label: (ctx: TooltipItem<'bar'>) => {
                                                                     if (ctx.dataset.label === '頻次') return `數量: ${ctx.raw}`;
                                                                     if (ctx.dataset.label === '常態分佈') return `期望值: ${ctx.raw?.toFixed(1)}`;
-                                                                    return ctx.dataset.label;
+                                                                    return ctx.dataset.label || '';
                                                                 }
                                                             }
                                                         }
