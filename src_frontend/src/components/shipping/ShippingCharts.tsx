@@ -23,7 +23,7 @@ import {
     formatPPM,
     getPpmGrade
 } from '../../utils/spcAnalysis';
-import type { SpcViolation, HistogramBin } from '../../types';
+import type { SpcViolation, HistogramBin, CpkTrend } from '../../types';
 import { Alert, Badge, Button, Card, Col, Row, Form } from 'react-bootstrap';
 import { useShippingStats, useExportSpcReport } from '../../hooks/useShipping';
 import type { ChartData, TooltipItem, ActiveDataPoint } from 'chart.js';
@@ -735,13 +735,13 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                         <div style={{ height: '280px' }}>
                                             <Line
                                                 data={{
-                                                    labels: cpkTrend.map((t: any) => t.month),
+                                                    labels: cpkTrend.map((t: CpkTrend) => t.month),
                                                     datasets: [
                                                         {
                                                             label: 'Cpk',
-                                                            data: cpkTrend.map((t: any) => t.cpk),
+                                                            data: cpkTrend.map((t: CpkTrend) => t.cpk),
                                                             borderColor: '#0d6efd',
-                                                            backgroundColor: cpkTrend.map((t: any) => {
+                                                            backgroundColor: cpkTrend.map((t: CpkTrend) => {
                                                                 if (t.cpk >= 1.33) return '#28a745';
                                                                 if (t.cpk >= 1.0) return '#ffc107';
                                                                 return '#dc3545';
@@ -782,7 +782,7 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                                         },
                                                         tooltip: {
                                                             callbacks: {
-                                                                afterLabel: (ctx: any) => {
+                                                                afterLabel: (ctx: TooltipItem<'line'>) => {
                                                                     if (ctx.datasetIndex !== 0) return '';
                                                                     const t = cpkTrend[ctx.dataIndex];
                                                                     return t ? `樣本數: ${t.count}` : '';
