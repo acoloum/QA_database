@@ -119,9 +119,10 @@ const EditExecutionModal = ({ show, handleClose, onSuccess, execution }: EditExe
             alert('執行記錄已更新！');
             onSuccess();
             handleClose();
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
             console.error(error);
-            alert(error.response?.data?.error || '更新失敗');
+            alert(err.response?.data?.error || '更新失敗');
         } finally {
             setLoading(false);
         }

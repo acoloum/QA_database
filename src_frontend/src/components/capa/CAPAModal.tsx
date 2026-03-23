@@ -68,7 +68,7 @@ const CAPAModal = ({ show, handleClose, onSuccess, editId }: CAPAModalProps) => 
     };
 
     const handleSave = async () => {
-        const payload: any = {
+        const payload: Partial<CAPA> = {
             "識別碼": editId,
             "負責人員姓名": owner,
             "狀態": isClosed ? '已結案' : '進行中'
@@ -83,8 +83,9 @@ const CAPAModal = ({ show, handleClose, onSuccess, editId }: CAPAModalProps) => 
             alert('儲存成功');
             onSuccess();
             handleClose();
-        } catch (error: any) {
-            alert('儲存失敗: ' + (error.response?.data?.error || error.message));
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } }; message?: string };
+            alert('儲存失敗: ' + (err.response?.data?.error || err.message));
         }
     };
 
@@ -156,7 +157,7 @@ const CAPAModal = ({ show, handleClose, onSuccess, editId }: CAPAModalProps) => 
                     <Form.Label className="me-2 mb-0">負責人員:</Form.Label>
                     <Form.Select value={owner} onChange={e => setOwner(e.target.value)} style={{ width: '150px' }}>
                         <option value="">請選擇</option>
-                        {inspectors.map((insp: any) => <option key={insp.id} value={insp.name}>{insp.name}</option>)}
+                        {inspectors.map((insp: Inspector) => <option key={insp.id} value={insp.name}>{insp.name}</option>)}
                     </Form.Select>
                 </div>
                 <Button variant="secondary" onClick={handleClose}>取消</Button>

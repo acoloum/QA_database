@@ -158,7 +158,7 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
                     setRemark(main.備註 || '');
 
                     if (dList && dList.length > 0) {
-                        setDetails(dList.map((d: any, idx: number) => ({
+                        setDetails(dList.map((d: Record<string, unknown>, idx: number) => ({
                             id: d.id || `existing-${idx}`,
                             item: d.測量項目 || '',
                             position: d.測量位置 || '',

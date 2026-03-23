@@ -72,9 +72,10 @@ const InspectionModal = ({ show, handleClose, onSuccess, reworkNumber }: Inspect
             alert('品檢記錄已新增！');
             onSuccess();
             handleClose();
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
             console.error(error);
-            alert(error.response?.data?.error || '新增失敗');
+            alert(err.response?.data?.error || '新增失敗');
         } finally {
             setLoading(false);
         }

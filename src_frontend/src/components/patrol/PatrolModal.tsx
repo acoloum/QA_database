@@ -84,7 +84,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                 setSpec(d.main.擠壓規格);
 
                 // Parse details to state
-                const newDetails: PatrolDetailInput[] = d.details.map((item: any) => ({
+                const newDetails: PatrolDetailInput[] = d.details.map((item: Record<string, unknown>) => ({
                     group: item.group,
                     item: item.item,
                     pos: item.pos,

@@ -90,9 +90,10 @@ const ApplyModal = ({ show, handleClose, onSuccess, initialNcmrId, initialNcmrNo
             setQuantity('');
             setReason('');
             setExpectedDate('');
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
             console.error(error);
-            alert(error.response?.data?.error || '申請失敗');
+            alert(err.response?.data?.error || '申請失敗');
         }
     };
 

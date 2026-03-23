@@ -35,7 +35,7 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
             });
             onSuccess();
             handleClose();
-        } catch (error: any) {
+        } catch (error: unknown) {
             // Global error handler handles toast
             console.error(error);
         }
@@ -68,7 +68,7 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
                 // but if 200 OK with success: false (unlikely for this backend), we handle it.
                 alert('建立失敗');
             }
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error(error);
         }
     };
