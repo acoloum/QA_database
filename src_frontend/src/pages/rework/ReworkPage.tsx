@@ -631,7 +631,7 @@ const ReworkPage = () => {
                                                         <tr className="table-secondary">
                                                             <td colSpan={4}><strong>總成本</strong></td>
                                                             <td colSpan={3}>
-                                                                <strong>${costs.reduce((sum: number, c: any) => sum + parseFloat(c.總成本 || 0), 0).toFixed(2)}</strong>
+                                                                <strong>${costs.reduce((sum: number, c: ReworkCostDetail) => sum + parseFloat(String(c.總成本 || 0)), 0).toFixed(2)}</strong>
                                                             </td>
                                                         </tr>
                                                     </tfoot>

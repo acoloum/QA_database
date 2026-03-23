@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
-import type { ShippingInspection, ToleranceStandard } from '../../types';
+import type { ShippingInspection, ToleranceStandard, ToleranceItem, ToleranceResult, Vendor } from '../../types';
 import ShippingModal from '../../components/shipping/ShippingModal';
 import ImportModal from '../../components/shipping/ImportModal';
 import ShippingCharts from '../../components/shipping/ShippingCharts';
@@ -74,11 +74,11 @@ const ShippingPage = () => {
                 const vId = vendorMap[vName] || '';
 
                 try {
-                    const res = await api.get<any>(`/tolerance/check?material=${encodeURIComponent(mat)}&spec=${encodeURIComponent(sp)}&vendor_id=${vId}`);
+                    const res = await api.get<ToleranceResult>(`/tolerance/check?material=${encodeURIComponent(mat)}&spec=${encodeURIComponent(sp)}&vendor_id=${vId}`);
                     if (res.data.success && res.data.found) {
                         const specValues = parseSpec(sp);
                         const std: Record<string, { lsl: number, usl: number }> = {};
-                        res.data.tolerances.forEach((t: any) => {
+                        res.data.tolerances.forEach((t: ToleranceItem) => {
                             let lsl = -Infinity, usl = Infinity;
                             if (t.尺寸下限 !== null && t.尺寸上限 !== null) {
                                 lsl = t.尺寸下限;
@@ -146,7 +146,7 @@ const ShippingPage = () => {
                     : [`${it}${g}`];
 
                 for (const k of keys) {
-                    const val = parseFloat((item as any)[k]);
+                    const val = parseFloat((item as unknown as Record<string, string>)[k]);
                     if (!isNaN(val) && (val < tol.lsl || val > tol.usl)) {
                         hasViolation = true;
                         break;
