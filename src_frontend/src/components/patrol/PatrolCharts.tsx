@@ -25,6 +25,8 @@ import {
 } from '../../utils/spcAnalysis';
 import { Alert, Badge, Card, Col, Row, Form } from 'react-bootstrap';
 import { usePatrolStats } from '../../hooks/usePatrol';
+import type { SpcViolation, CpkTrend, HistogramBin } from '../../types';
+import type { ChartData, TooltipItem, ActiveDataPoint } from 'chart.js';
 
 // 註冊 ChartJS 元件
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
@@ -168,7 +170,7 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
         });
 
         // X-bar 圖 datasets
-        const xBarDatasets: any[] = [
+        const xBarDatasets: ChartData<'line'>['datasets'] = [
             {
                 label: '平均值',
                 data: data.avgs,
@@ -289,14 +291,14 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
     const getViolationReasons = (idx: number): string => {
         if (!analysis || !analysis.violations) return '';
         const label = chartData?.xBar?.labels?.[idx];
-        const violation = analysis.violations.find((v: any) => v.label === label);
+        const violation = analysis.violations.find((v: SpcViolation) => v.label === label);
         return violation ? violation.reasons.join(', ') : '';
     };
 
     const getRViolationReasons = (idx: number): string => {
         if (!rAnalysis || !rAnalysis.violations) return '';
         const label = chartData?.rChart?.labels?.[idx];
-        const violation = rAnalysis.violations.find((v: any) => v.label === label);
+        const violation = rAnalysis.violations.find((v: SpcViolation) => v.label === label);
         return violation ? violation.reasons.join(', ') : '';
     };
 
@@ -306,9 +308,9 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
     const ppmGrade = ppmData ? getPpmGrade(ppmData.total) : null;
 
     // 合併 X-bar 和 R 圖的違規
-    const allViolations = [
+    const allViolations: SpcViolation[] = [
         ...(analysis?.violations || []),
-        ...(rAnalysis?.violations || []).map((v: any) => ({ ...v, label: `[R] ${v.label}` }))
+        ...(rAnalysis?.violations || []).map((v: SpcViolation) => ({ ...v, label: `[R] ${v.label}` }))
     ];
 
     return (
@@ -356,7 +358,7 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                             </div>
                             {showWeco && (
                                 <ul className="mb-0 mt-3">
-                                    {allViolations.map((v: any, idx: number) => (
+                                    {allViolations.map((v: SpcViolation, idx: number) => (
                                         <li key={idx}><strong>{v.label}</strong>: {v.reasons.join(', ')}</li>
                                     ))}
                                 </ul>
@@ -528,7 +530,7 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                                                     },
                                                     tooltip: {
                                                         callbacks: {
-                                                            afterLabel: (ctx: any) => {
+                                                            afterLabel: (ctx: TooltipItem<'line'>) => {
                                                                 if (ctx.datasetIndex !== 0) return '';
                                                                 const reasons = getViolationReasons(ctx.dataIndex);
                                                                 return reasons ? `\u26a0\ufe0f ${reasons}` : '';
@@ -536,14 +538,14 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                                                         }
                                                     }
                                                 },
-                                                onClick: (_event: any, elements: any[]) => {
+                                                onClick: (_event: unknown, elements: ActiveDataPoint<'line'>[]) => {
                                                     if (elements.length > 0 && ids.length > 0 && onEditPoint) {
                                                         const index = elements[0].index;
                                                         const id = ids[index];
                                                         if (id) onEditPoint(Number(id));
                                                     }
                                                 },
-                                                onHover: (event: any, elements: any[]) => {
+                                                onHover: (event: unknown, elements: ActiveDataPoint<'line'>[]) => {
                                                     if (event?.native?.target) {
                                                         event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
                                                     }
@@ -575,7 +577,7 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                                                     },
                                                     tooltip: {
                                                         callbacks: {
-                                                            afterLabel: (ctx: any) => {
+                                                            afterLabel: (ctx: TooltipItem<'line'>) => {
                                                                 if (ctx.datasetIndex !== 0) return '';
                                                                 const reasons = getRViolationReasons(ctx.dataIndex);
                                                                 return reasons ? `\u26a0\ufe0f ${reasons}` : '';
@@ -583,14 +585,14 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                                                         }
                                                     }
                                                 },
-                                                onClick: (_event: any, elements: any[]) => {
+                                                onClick: (_event: unknown, elements: ActiveDataPoint<'line'>[]) => {
                                                     if (elements.length > 0 && ids.length > 0 && onEditPoint) {
                                                         const index = elements[0].index;
                                                         const id = ids[index];
                                                         if (id) onEditPoint(Number(id));
                                                     }
                                                 },
-                                                onHover: (event: any, elements: any[]) => {
+                                                onHover: (event: unknown, elements: ActiveDataPoint<'line'>[]) => {
                                                     if (event?.native?.target) {
                                                         event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
                                                     }
@@ -614,12 +616,12 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                                             <Chart
                                                 type="bar"
                                                 data={{
-                                                    labels: histogramData.bins.map((b: any) => b.label),
+                                                    labels: histogramData.bins.map((b: HistogramBin) => b.label),
                                                     datasets: [
                                                         {
                                                             type: 'bar' as const,
                                                             label: '頻次',
-                                                            data: histogramData.bins.map((b: any) => b.count),
+                                                            data: histogramData.bins.map((b: HistogramBin) => b.count),
                                                             backgroundColor: 'rgba(13, 110, 253, 0.5)',
                                                             borderColor: '#0d6efd',
                                                             borderWidth: 1,
@@ -641,12 +643,12 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                                                         ...(histogramData.usl != null ? [{
                                                             type: 'line' as const,
                                                             label: `USL (${histogramData.usl.toFixed(2)})`,
-                                                            data: histogramData.bins.map((b: any) => {
+                                                            data: histogramData.bins.map((b: HistogramBin) => {
                                                                 const dist = Math.abs(b.midpoint - histogramData.usl);
                                                                 const binW = histogramData.bins.length > 1
                                                                     ? histogramData.bins[1].midpoint - histogramData.bins[0].midpoint
                                                                     : 1;
-                                                                return dist < binW / 2 ? Math.max(...histogramData.bins.map((bb: any) => bb.count)) * 1.1 : null;
+                                                                return dist < binW / 2 ? Math.max(...histogramData.bins.map((bb: HistogramBin) => bb.count)) * 1.1 : null;
                                                             }),
                                                             borderColor: '#e83e8c',
                                                             borderDash: [5, 5],
@@ -659,12 +661,12 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                                                         ...(histogramData.lsl != null ? [{
                                                             type: 'line' as const,
                                                             label: `LSL (${histogramData.lsl.toFixed(2)})`,
-                                                            data: histogramData.bins.map((b: any) => {
+                                                            data: histogramData.bins.map((b: HistogramBin) => {
                                                                 const dist = Math.abs(b.midpoint - histogramData.lsl);
                                                                 const binW = histogramData.bins.length > 1
                                                                     ? histogramData.bins[1].midpoint - histogramData.bins[0].midpoint
                                                                     : 1;
-                                                                return dist < binW / 2 ? Math.max(...histogramData.bins.map((bb: any) => bb.count)) * 1.1 : null;
+                                                                return dist < binW / 2 ? Math.max(...histogramData.bins.map((bb: HistogramBin) => bb.count)) * 1.1 : null;
                                                             }),
                                                             borderColor: '#e83e8c',
                                                             borderDash: [5, 5],
@@ -673,7 +675,7 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                                                             spanGaps: false,
                                                             order: 0
                                                         }] : [])
-                                                    ] as any[]
+                                                    ] as ChartData<'bar'>['datasets']
                                                 }}
                                                 options={{
                                                     maintainAspectRatio: false,
@@ -685,11 +687,11 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                                                         },
                                                         tooltip: {
                                                             callbacks: {
-                                                                title: (items: any[]) => items[0]?.label || '',
-                                                                label: (ctx: any) => {
+                                                                title: (items: TooltipItem<'bar'>[]) => items[0]?.label || '',
+                                                                label: (ctx: TooltipItem<'bar'>) => {
                                                                     if (ctx.dataset.label === '頻次') return `數量: ${ctx.raw}`;
                                                                     if (ctx.dataset.label === '常態分佈') return `期望值: ${ctx.raw?.toFixed(1)}`;
-                                                                    return ctx.dataset.label;
+                                                                    return ctx.dataset.label || '';
                                                                 }
                                                             }
                                                         }
@@ -720,13 +722,13 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                                         <div style={{ height: '280px' }}>
                                             <Line
                                                 data={{
-                                                    labels: cpkTrend.map((t: any) => t.month),
+                                                    labels: cpkTrend.map((t: CpkTrend) => t.month),
                                                     datasets: [
                                                         {
                                                             label: 'Cpk',
-                                                            data: cpkTrend.map((t: any) => t.cpk),
+                                                            data: cpkTrend.map((t: CpkTrend) => t.cpk),
                                                             borderColor: '#0d6efd',
-                                                            backgroundColor: cpkTrend.map((t: any) => {
+                                                            backgroundColor: cpkTrend.map((t: CpkTrend) => {
                                                                 if (t.cpk >= 1.33) return '#28a745';
                                                                 if (t.cpk >= 1.0) return '#ffc107';
                                                                 return '#dc3545';
@@ -767,7 +769,7 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                                                         },
                                                         tooltip: {
                                                             callbacks: {
-                                                                afterLabel: (ctx: any) => {
+                                                                afterLabel: (ctx: TooltipItem<'line'>) => {
                                                                     if (ctx.datasetIndex !== 0) return '';
                                                                     const t = cpkTrend[ctx.dataIndex];
                                                                     return t ? `樣本數: ${t.count}` : '';
