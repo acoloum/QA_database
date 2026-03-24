@@ -79,8 +79,7 @@ const PatrolPage = () => {
 
     const handleExport = () => {
         const token = localStorage.getItem('authToken');
-        // 位置：空字串代表全段，後端會合併前段/中段/後段
-        const position = statsPos || '全段';
+        // 僅匯出原始檢驗數據，不含 SPC 分析
         const qs = new URLSearchParams({
             s_date: startDate,
             e_date: endDate,
@@ -89,8 +88,6 @@ const PatrolPage = () => {
             cust_id: customer,
             mat: material,
             spec: spec,
-            item: statsItem,
-            position: position,
             token: token || ''
         });
         window.location.href = `${api.defaults.baseURL}/patrol/export?${qs.toString()}`;

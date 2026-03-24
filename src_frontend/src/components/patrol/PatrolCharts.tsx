@@ -23,8 +23,9 @@ import {
     formatPPM,
     getPpmGrade
 } from '../../utils/spcAnalysis';
-import { Alert, Badge, Card, Col, Row, Form } from 'react-bootstrap';
+import { Alert, Badge, Button, Card, Col, Row, Form } from 'react-bootstrap';
 import { usePatrolStats } from '../../hooks/usePatrol';
+import api from '../../services/api';
 import type { SpcViolation, CpkTrend, HistogramBin } from '../../types';
 import type { ChartData, TooltipItem, ActiveDataPoint } from 'chart.js';
 
@@ -56,6 +57,25 @@ const POSITIONS = ['前段', '中段', '後段'];
 
 const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, endDate, onEditPoint, statsItem, statsPos, onItemChange, onPosChange }: PatrolChartsProps) => {
     const [showWeco, setShowWeco] = useState(false);
+
+    // 匯出 SPC 報告（含原始數據 + SPC 統計與圖表）
+    const handleExportSpc = () => {
+        const token = localStorage.getItem('authToken');
+        const position = statsPos || '全段';
+        const qs = new URLSearchParams({
+            s_date: startDate,
+            e_date: endDate,
+            m_id: machine,
+            op_id: operator,
+            cust_id: customer,
+            mat: material,
+            spec: spec,
+            item: statsItem,
+            position: position,
+            token: token || ''
+        });
+        window.location.href = `${api.defaults.baseURL}/patrol/export?${qs.toString()}`;
+    };
 
     const { data: statsData } = usePatrolStats({
         item: statsItem,
@@ -339,6 +359,9 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
                         {ITEMS.map(i => <option key={i.key} value={i.key}>{i.label}</option>)}
                     </Form.Select>
                 </div>
+                <Button variant="outline-success" onClick={handleExportSpc}>
+                    <i className="bi bi-file-earmark-bar-graph"></i> 匯出 SPC 報告
+                </Button>
             </div>
 
             {!chartData ? (

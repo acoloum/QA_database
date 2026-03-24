@@ -44,7 +44,15 @@
       "Bash(venv/Scripts/python -c \"import sqlalchemy; import psycopg2; print\\(''SQLAlchemy:'', sqlalchemy.__version__\\); print\\(''psycopg2:'', psycopg2.__version__\\)\")",
       "Bash(venv/Scripts/python -c \":*)",
       "Skill(commit-commands:commit-push-pr)",
-      "Skill(commit-commands:commit-push-pr:*)"
+      "Skill(commit-commands:commit-push-pr:*)",
+      "Bash(npm outdated:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(where npm:*)",
+      "Bash(where python:*)",
+      "Read(//c/Program Files/nodejs/**)",
+      "Read(//c/QC_Database/venv/Scripts/**)",
+      "Bash(where node:*)",
+      "Bash(npx eslint:*)"
     ]
   }
 }
