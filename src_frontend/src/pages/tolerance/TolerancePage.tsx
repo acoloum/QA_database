@@ -88,13 +88,14 @@ const TolerancePage = () => {
         e.target.value = ''; // Reset input
     };
 
-    const data = searchResult?.data?.map((item: ToleranceStandard) => ({
-        id: item.id,
-        material: item.material,
-        spec: item.spec,
-        vendor_name: item.vendor_name,
-        create_date: item.create_date,
-        remark: item.remark
+    // 後端回傳中文欄位名，需轉換為前端使用的英文欄位
+    const data = searchResult?.data?.map((item: Record<string, unknown>) => ({
+        id: item['識別碼'] as number,
+        material: item['材質'] as string,
+        spec: item['規格'] as string,
+        vendor_name: item['廠商名稱'] as string,
+        create_date: item['建立日期'] as string,
+        remark: item['備註'] as string
     })) || [];
 
     const totalPages = searchResult?.total_pages || 1;
