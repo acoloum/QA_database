@@ -74,8 +74,8 @@ class SpcReportService:
         ws['B3'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         ws['A4'] = "檢驗項目："
         ws['B4'] = field
-        ws['A5'] = "廠商："
-        ws['B5'] = filters.get('vendor', '全部')
+        ws['A5'] = "客戶名稱："
+        ws['B5'] = filters.get('customer', filters.get('vendor', '全部'))
         ws['A6'] = "材質："
         ws['B6'] = filters.get('material', '全部')
         ws['A7'] = "規格："

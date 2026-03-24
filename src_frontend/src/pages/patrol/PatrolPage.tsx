@@ -16,6 +16,7 @@ const PatrolPage = () => {
     const [endDate, setEndDate] = useState('');
     const [machine, setMachine] = useState('');
     const [operator, setOperator] = useState('');
+    const [customer, setCustomer] = useState('');
     const [material, setMaterial] = useState('');
     const [spec, setSpec] = useState('');
 
@@ -23,6 +24,7 @@ const PatrolPage = () => {
     const { data: optionsData } = usePatrolOptions();
     const machines = optionsData?.machines || [];
     const operators = optionsData?.operators || [];
+    const customers = optionsData?.customers || [];
 
     const { data: patrolData, isLoading } = usePatrolList({
         page,
@@ -31,6 +33,7 @@ const PatrolPage = () => {
         e_date: endDate,
         m_id: machine,
         op_id: operator,
+        cust_id: customer,
         mat: material,
         spec: spec
     });
@@ -62,24 +65,32 @@ const PatrolPage = () => {
     // Since I can't easily change the shared one without checking all usages (ShippingPage uses it), 
     // and I just hardcoded `useImportShipping` in it, I should definitely NOT use `components/shipping/ImportModal` for Patrol.
 
+    // SPC 圖表的測量項目與位置（與匯出共用）
+    const [statsItem, setStatsItem] = useState('外徑');
+    const [statsPos, setStatsPos] = useState('前段');
+
     const [showModal, setShowModal] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
     const [editId, setEditId] = useState<number | null>(null);
 
     const handleSearch = () => {
         setPage(1);
-        // React Query handles refetching when params change
     };
 
     const handleExport = () => {
         const token = localStorage.getItem('authToken');
+        // 位置：空字串代表全段，後端會合併前段/中段/後段
+        const position = statsPos || '全段';
         const qs = new URLSearchParams({
             s_date: startDate,
             e_date: endDate,
             m_id: machine,
             op_id: operator,
+            cust_id: customer,
             mat: material,
             spec: spec,
+            item: statsItem,
+            position: position,
             token: token || ''
         });
         window.location.href = `${api.defaults.baseURL}/patrol/export?${qs.toString()}`;
@@ -151,6 +162,13 @@ const PatrolPage = () => {
                             </Form.Select>
                         </Col>
                         <Col md={2}>
+                            <Form.Label>客戶名稱</Form.Label>
+                            <Form.Select value={customer} onChange={e => setCustomer(e.target.value)}>
+                                <option value="">所有客戶</option>
+                                {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </Form.Select>
+                        </Col>
+                        <Col md={2}>
                             <Form.Label>材質</Form.Label>
                             <Form.Control type="text" placeholder="材質" value={material} onChange={e => setMaterial(e.target.value)} />
                         </Col>
@@ -171,11 +189,16 @@ const PatrolPage = () => {
             <PatrolCharts
                 machine={machine}
                 operator={operator}
+                customer={customer}
                 material={material}
                 spec={spec}
                 startDate={startDate}
                 endDate={endDate}
                 onEditPoint={handleEdit}
+                statsItem={statsItem}
+                statsPos={statsPos}
+                onItemChange={setStatsItem}
+                onPosChange={setStatsPos}
             />
 
             {/* Data Table */}
@@ -188,6 +211,7 @@ const PatrolPage = () => {
                                 <th>日期</th>
                                 <th>機台</th>
                                 <th>主機手</th>
+                                <th>客戶</th>
                                 <th>材質</th>
                                 <th>規格</th>
                                 <th>操作</th>
@@ -195,9 +219,9 @@ const PatrolPage = () => {
                         </thead>
                         <tbody>
                             {isLoading ? (
-                                <tr><td colSpan={7} className="text-center py-4">載入中...</td></tr>
+                                <tr><td colSpan={8} className="text-center py-4">載入中...</td></tr>
                             ) : data.length === 0 ? (
-                                <tr><td colSpan={7} className="text-center py-4">無資料</td></tr>
+                                <tr><td colSpan={8} className="text-center py-4">無資料</td></tr>
                             ) : (
                                 data.map(item => (
                                     <tr key={item.id}>
@@ -205,6 +229,7 @@ const PatrolPage = () => {
                                         <td>{item.date}</td>
                                         <td><Badge bg="info">{item.m_name || item.machine_name || '-'}</Badge></td>
                                         <td>{item.op_name || item.operator_name || '-'}</td>
+                                        <td>{item.cust_name || '-'}</td>
                                         <td>{item.mat || item.material || '-'}</td>
                                         <td>{item.spec}</td>
                                         <td>
@@ -252,6 +277,7 @@ const PatrolPage = () => {
                 handleClose={() => setShowImportModal(false)}
                 onSuccess={() => { }} // React Query handles invalidation
             />
+
         </div>
     );
 };

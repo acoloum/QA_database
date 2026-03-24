@@ -80,10 +80,17 @@ def patrol_history():
 def patrol_export():
     try:
         output = PatrolService.export_excel(request.args)
+        # 動態檔名：包含測量項目與位置資訊
+        item = request.args.get('item', '')
+        position = request.args.get('position', '')
+        if item:
+            filename = f'巡檢數據_SPC_{item}_{position or "全段"}.xlsx'
+        else:
+            filename = '巡檢數據.xlsx'
         return send_file(
-            output, 
-            as_attachment=True, 
-            download_name='巡檢數據.xlsx', 
+            output,
+            as_attachment=True,
+            download_name=filename,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
     except Exception as e:

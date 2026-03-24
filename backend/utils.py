@@ -128,6 +128,9 @@ def auth_required(f: Any) -> Any:
     def decorated(*args, **kwargs):
         token = request.headers.get('Authorization')
         if not token:
+            # 支援從 query string 取得 token（用於檔案下載等無法帶 header 的場景）
+            token = request.args.get('token')
+        if not token:
             return jsonify({'error': '缺少認證 Token'}), 401
         if token.startswith('Bearer '):
             token = token[7:]

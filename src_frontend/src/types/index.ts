@@ -76,6 +76,7 @@ export interface PatrolInspection {
     inspector_name?: string;
     customer_id?: number;
     customer_name?: string;
+    cust_name?: string;
     material?: string;
     mat?: string;
     batch?: string;

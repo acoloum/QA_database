@@ -34,11 +34,16 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarEleme
 interface PatrolChartsProps {
     machine: string;
     operator: string;
+    customer: string;
     material: string;
     spec: string;
     startDate: string;
     endDate: string;
     onEditPoint?: (id: number) => void;
+    statsItem: string;
+    statsPos: string;
+    onItemChange: (val: string) => void;
+    onPosChange: (val: string) => void;
 }
 
 const ITEMS = [
@@ -49,9 +54,7 @@ const ITEMS = [
 
 const POSITIONS = ['前段', '中段', '後段'];
 
-const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, onEditPoint }: PatrolChartsProps) => {
-    const [statsItem, setStatsItem] = useState('外徑');
-    const [statsPos, setStatsPos] = useState('前段');
+const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, endDate, onEditPoint, statsItem, statsPos, onItemChange, onPosChange }: PatrolChartsProps) => {
     const [showWeco, setShowWeco] = useState(false);
 
     const { data: statsData } = usePatrolStats({
@@ -59,6 +62,7 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
         pos: statsPos,
         m_id: machine,
         op_id: operator,
+        cust_id: customer,
         mat: material,
         spec: spec,
         s_date: startDate,
@@ -322,7 +326,7 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                         className="me-2"
                         style={{ width: 'auto' }}
                         value={statsPos}
-                        onChange={e => setStatsPos(e.target.value)}
+                        onChange={e => onPosChange(e.target.value)}
                     >
                         <option value="">全段</option>
                         {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
@@ -330,7 +334,7 @@ const PatrolCharts = ({ machine, operator, material, spec, startDate, endDate, o
                     <Form.Select
                         style={{ width: 'auto' }}
                         value={statsItem}
-                        onChange={e => setStatsItem(e.target.value)}
+                        onChange={e => onItemChange(e.target.value)}
                     >
                         {ITEMS.map(i => <option key={i.key} value={i.key}>{i.label}</option>)}
                     </Form.Select>

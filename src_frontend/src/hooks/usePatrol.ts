@@ -11,6 +11,7 @@ export interface PatrolSearchParams {
     e_date?: string;
     m_id?: string;
     op_id?: string;
+    cust_id?: string;
     mat?: string;
     spec?: string;
 }
@@ -20,6 +21,7 @@ export interface PatrolStatsParams {
     pos: string;
     m_id?: string;
     op_id?: string;
+    cust_id?: string;
     mat?: string;
     spec?: string;
     s_date?: string;
@@ -57,6 +59,7 @@ export const usePatrolList = (params: PatrolSearchParams) => {
             if (params.e_date) queryParams.append('e_date', params.e_date);
             if (params.m_id) queryParams.append('m_id', params.m_id);
             if (params.op_id) queryParams.append('op_id', params.op_id);
+            if (params.cust_id) queryParams.append('cust_id', params.cust_id);
             if (params.mat) queryParams.append('mat', params.mat);
             if (params.spec) queryParams.append('spec', params.spec);
 
@@ -89,6 +92,7 @@ export const usePatrolStats = (params: PatrolStatsParams) => {
             queryParams.append('pos', params.pos);
             if (params.m_id) queryParams.append('m_id', params.m_id);
             if (params.op_id) queryParams.append('op_id', params.op_id);
+            if (params.cust_id) queryParams.append('cust_id', params.cust_id);
             if (params.mat) queryParams.append('mat', params.mat);
             if (params.spec) queryParams.append('spec', params.spec);
             if (params.s_date) queryParams.append('s_date', params.s_date);

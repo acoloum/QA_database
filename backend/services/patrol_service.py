@@ -29,6 +29,16 @@ SPC_CONSTANTS = {
     10: (0.308, 0.223, 1.777, 3.078),
 }
 
+
+def _remap_sheet_ref(formula: str, name_map: dict) -> str:
+    """將圖表公式中的工作表參考（如 '管制圖數據'!A1:A10）替換為新名稱"""
+    for old_name, new_name in name_map.items():
+        # Excel 公式中的工作表名稱可能用單引號包裹
+        formula = formula.replace(f"'{old_name}'!", f"'{new_name}'!")
+        formula = formula.replace(f"{old_name}!", f"'{new_name}'!")
+    return formula
+
+
 class PatrolService:
     @staticmethod
     def get_options() -> Dict[str, List[Dict[str, Any]]]:
@@ -140,6 +150,8 @@ class PatrolService:
             query = query.filter(PatrolMain.machine_id == args['m_id'])
         if args.get('op_id'):
             query = query.filter(PatrolMain.operator_id == args['op_id'])
+        if args.get('cust_id'):
+            query = query.filter(PatrolMain.customer_id == args['cust_id'])
         if material:
             query = query.filter(PatrolMain.material.like(f"%{material}%"))
         if spec:
@@ -519,14 +531,21 @@ class PatrolService:
     def get_history(args: Dict[str, Any]) -> Dict[str, Any]:
         """獲取巡檢歷史列表（分頁）"""
         try:
-            query = db.session.query(PatrolMain, Machine.name.label('m_name'), Operator.name.label('op_name'))\
+            query = db.session.query(
+                PatrolMain,
+                Machine.name.label('m_name'),
+                Operator.name.label('op_name'),
+                Vendor.name.label('cust_name')
+            )\
                 .outerjoin(Machine, PatrolMain.machine_id == Machine.id)\
-                .outerjoin(Operator, PatrolMain.operator_id == Operator.id)
+                .outerjoin(Operator, PatrolMain.operator_id == Operator.id)\
+                .outerjoin(Vendor, PatrolMain.customer_id == Vendor.id)
 
             if args.get('s_date'): query = query.filter(PatrolMain.date >= args['s_date'])
             if args.get('e_date'): query = query.filter(PatrolMain.date <= args['e_date'])
             if args.get('m_id'):   query = query.filter(PatrolMain.machine_id == args['m_id'])
             if args.get('op_id'):  query = query.filter(PatrolMain.operator_id == args['op_id'])
+            if args.get('cust_id'): query = query.filter(PatrolMain.customer_id == args['cust_id'])
             if args.get('mat'):    query = query.filter(PatrolMain.material.like(f"%{args['mat']}%"))
             if args.get('spec'):   query = query.filter(PatrolMain.spec.like(f"%{args['spec']}%"))
 
@@ -534,18 +553,19 @@ class PatrolService:
 
             page = int(args.get('page', 1))
             per_page = int(args.get('per_page', 20))
-            
+
             pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-            
+
             data = []
             for item in pagination.items:
-                patrol, m_name, op_name = item
+                patrol, m_name, op_name, cust_name = item
                 date_str = patrol.date.strftime('%Y-%m-%d') if patrol.date else ''
                 data.append({
                     'id': patrol.id,
                     'date': date_str,
                     'm_name': m_name.strip() if m_name else '',
                     'op_name': op_name.strip() if op_name else '',
+                    'cust_name': cust_name.strip() if cust_name else '',
                     'mat': patrol.material,
                     'spec': patrol.spec
                 })
@@ -560,12 +580,18 @@ class PatrolService:
 
     @staticmethod
     def export_excel(args: Dict[str, Any]) -> BytesIO:
-        """匯出巡檢資料 Excel"""
+        """匯出巡檢資料 Excel（含 SPC 統計與圖表，按規格+材質分組）"""
+        from ..services.spc_report import SpcReportService
+        from openpyxl import load_workbook
+
+        spc_item = args.get('item', '')      # 測量項目（外徑/內徑/厚度）
+        spc_position = args.get('position', '')  # 測量位置（前段/中段/後段/全段）
+
         try:
-            # Query Logic
+            # === 1. 查詢原始資料 ===
             query = db.session.query(
-                PatrolMain, 
-                Machine.name.label('m_name'), 
+                PatrolMain,
+                Machine.name.label('m_name'),
                 Operator.name.label('op_name'),
                 Inspector.name.label('i_name'),
                 Vendor.name.label('v_name')
@@ -579,11 +605,11 @@ class PatrolService:
             if args.get('e_date'): query = query.filter(PatrolMain.date <= args['e_date'])
             if args.get('m_id'):   query = query.filter(PatrolMain.machine_id == args['m_id'])
             if args.get('op_id'):  query = query.filter(PatrolMain.operator_id == args['op_id'])
+            if args.get('cust_id'): query = query.filter(PatrolMain.customer_id == args['cust_id'])
             if args.get('mat'):    query = query.filter(PatrolMain.material.like(f"%{args['mat']}%"))
             if args.get('spec'):   query = query.filter(PatrolMain.spec.like(f"%{args['spec']}%"))
 
             query = query.order_by(PatrolMain.id.desc())
-            
             rows = query.all()
 
             if not rows:
@@ -594,27 +620,20 @@ class PatrolService:
 
                 for row in rows:
                     patrol, m_name, op_name, i_name, v_name = row
-                    
-                    # Get details using relationship
-                    # Sort details
                     details = sorted(patrol.details, key=lambda x: (x.group, x.item, x.position))
-                    
+
                     measurements = {}
                     current_groups = []
 
                     for d in details:
                         group_val = str(d.group)
                         group_name = group_val if "組" in group_val else f"第{group_val}組"
-                        
                         item = d.item.strip() if d.item else ""
                         pos = d.position.strip() if d.position else ""
-                        
                         min_val = float(d.min_val) if d.min_val else ""
                         max_val = float(d.max_val) if d.max_val else ""
-
                         key = f"{group_name}_{item}_{pos}"
                         measurements[key] = {"min": min_val, "max": max_val}
-                        
                         if group_name not in current_groups:
                             current_groups.append(group_name)
 
@@ -647,14 +666,143 @@ class PatrolService:
                                 max_val = measurements.get(key, {}).get("max", "")
                                 row_dict[f"{group}{item}{pos}最小"] = min_val
                                 row_dict[f"{group}{item}{pos}最大"] = max_val
-                    
+
                     export_data.append(row_dict)
-                
+
                 df = pd.DataFrame(export_data)
 
+            # 先產生原始數據工作表
             output = BytesIO()
-            df.to_excel(output, index=False, engine='openpyxl')
+            df.to_excel(output, index=False, engine='openpyxl', sheet_name='原始數據')
             output.seek(0)
+
+            # === 2. 如果有選擇 SPC 項目，按規格+材質分組產生 SPC 報表 ===
+            if spc_item and rows:
+                wb = load_workbook(output)
+
+                # 收集所有不重複的「規格+材質」組合
+                spec_mat_set: Dict[str, Dict[str, Any]] = {}
+                for row in rows:
+                    patrol = row[0]
+                    v_name = row[4]  # Vendor.name
+                    mat = (patrol.material or '').strip()
+                    spec_val = (patrol.spec or '').strip()
+                    cust = (v_name.strip() if v_name else '')
+                    if mat or spec_val:
+                        group_key = f"{spec_val}_{mat}"
+                        if group_key not in spec_mat_set:
+                            spec_mat_set[group_key] = {'spec': spec_val, 'material': mat, 'customers': set()}
+                        if cust:
+                            spec_mat_set[group_key]['customers'].add(cust)
+
+                for group_key, group_info in spec_mat_set.items():
+                    # 為每個組合呼叫 get_spc 取得統計數據
+                    spc_args = {
+                        'item': spc_item,
+                        'pos': spc_position if spc_position != '全段' else '',
+                        'mat': group_info['material'],
+                        'spec': group_info['spec'],
+                        's_date': args.get('s_date', ''),
+                        'e_date': args.get('e_date', ''),
+                        'm_id': args.get('m_id', ''),
+                        'op_id': args.get('op_id', ''),
+                    }
+                    stats_data = PatrolService.get_spc(spc_args)
+
+                    # 跳過無數據的組合
+                    if not stats_data.get('avgs'):
+                        continue
+
+                    # 產生 SPC 報表（獨立 Workbook）
+                    pos_label = spc_position if spc_position else '全段'
+                    field_label = f"{spc_item}-{pos_label}"
+                    # 從該分組的實際資料中取得客戶名稱
+                    group_customers = group_info.get('customers', set())
+                    cust_display = '、'.join(sorted(group_customers)) if group_customers else '無'
+                    filters = {
+                        'material': group_info['material'] or '全部',
+                        'spec': group_info['spec'] or '全部',
+                        'customer': cust_display,
+                        'start_date': args.get('s_date', '不限'),
+                        'end_date': args.get('e_date', '不限'),
+                    }
+                    spc_output = SpcReportService.generate_report(stats_data, field_label, filters)
+
+                    # 把 SPC workbook 的工作表複製到主 workbook
+                    spc_wb = load_workbook(spc_output)
+                    # 建立工作表名稱前綴（截斷以避免超過 31 字元限制）
+                    # 清除 Excel 工作表名稱不允許的字元: * ? / \ [ ] :
+                    def sanitize_sheet_name(name: str) -> str:
+                        # * 以 X 代替，其餘不允許字元直接移除
+                        name = name.replace('*', 'X')
+                        for ch in ['?', '/', '\\', '[', ']', ':']:
+                            name = name.replace(ch, '')
+                        return name.strip()
+
+                    spec_short = sanitize_sheet_name(group_info['spec'][:8]) if group_info['spec'] else '無規格'
+                    mat_short = sanitize_sheet_name(group_info['material'][:6]) if group_info['material'] else '無材質'
+                    prefix = f"{spec_short}-{mat_short}"
+
+                    # 建立舊工作表名稱 → 新工作表名稱的對照表
+                    sheet_name_map = {}
+                    for spc_sheet in spc_wb.sheetnames:
+                        new_name = sanitize_sheet_name(f"{prefix} {spc_sheet}")
+                        if len(new_name) > 31:
+                            new_name = new_name[:31]
+                        base_name = new_name
+                        counter = 1
+                        while new_name in wb.sheetnames:
+                            suffix = f"_{counter}"
+                            new_name = base_name[:31 - len(suffix)] + suffix
+                            counter += 1
+                        sheet_name_map[spc_sheet] = new_name
+
+                    for spc_sheet in spc_wb.sheetnames:
+                        new_name = sheet_name_map[spc_sheet]
+                        source_ws = spc_wb[spc_sheet]
+                        target_ws = wb.create_sheet(title=new_name)
+
+                        # 複製儲存格內容、樣式
+                        for row_cells in source_ws.iter_rows():
+                            for cell in row_cells:
+                                new_cell = target_ws.cell(
+                                    row=cell.row, column=cell.column, value=cell.value
+                                )
+                                if cell.has_style:
+                                    new_cell.font = cell.font.copy()
+                                    new_cell.fill = cell.fill.copy()
+                                    new_cell.border = cell.border.copy()
+                                    new_cell.alignment = cell.alignment.copy()
+                                    new_cell.number_format = cell.number_format
+
+                        # 複製合併儲存格
+                        for merged_range in source_ws.merged_cells.ranges:
+                            target_ws.merge_cells(str(merged_range))
+
+                        # 複製欄寬
+                        for col_letter, dim in source_ws.column_dimensions.items():
+                            target_ws.column_dimensions[col_letter].width = dim.width
+
+                        # 複製圖表，並更新數據參考的工作表名稱
+                        for chart in source_ws._charts:
+                            # 更新圖表 series 中的工作表參考
+                            for series in chart.series:
+                                if series.val and hasattr(series.val, 'numRef') and series.val.numRef:
+                                    series.val.numRef.f = _remap_sheet_ref(
+                                        series.val.numRef.f, sheet_name_map)
+                                if series.cat and hasattr(series.cat, 'numRef') and series.cat.numRef:
+                                    series.cat.numRef.f = _remap_sheet_ref(
+                                        series.cat.numRef.f, sheet_name_map)
+                                if series.cat and hasattr(series.cat, 'strRef') and series.cat.strRef:
+                                    series.cat.strRef.f = _remap_sheet_ref(
+                                        series.cat.strRef.f, sheet_name_map)
+                            target_ws.add_chart(chart)
+
+                # 輸出最終結果
+                output = BytesIO()
+                wb.save(output)
+                output.seek(0)
+
             return output
         except Exception as e:
             raise e
