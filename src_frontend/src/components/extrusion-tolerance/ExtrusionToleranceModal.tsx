@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col, Table } from 'react-bootstrap';
 import {
     useExtrusionToleranceDetail,
-    useExtrusionToleranceOptions,
     useAddExtrusionTolerance,
     useUpdateExtrusionTolerance,
 } from '../../hooks/useExtrusionTolerance';
+import { useToleranceOptions } from '../../hooks/useTolerance';
+import type { Vendor } from '../../types';
 
 interface DetailRow {
     測量項目: string;
@@ -32,14 +33,13 @@ interface Props {
 
 const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) => {
     const { data: detail, isLoading } = useExtrusionToleranceDetail(editId);
-    const { data: options } = useExtrusionToleranceOptions();
+    const { data: vendors = [] } = useToleranceOptions();
     const addMutation = useAddExtrusionTolerance();
     const updateMutation = useUpdateExtrusionTolerance();
 
     const [material, setMaterial] = useState('');
     const [spec, setSpec] = useState('');
     const [vendor, setVendor] = useState('');
-    const [vendorCustom, setVendorCustom] = useState(false);
     const [note, setNote] = useState('');
     const [createdAt, setCreatedAt] = useState(new Date().toISOString().split('T')[0]);
     const [rows, setRows] = useState<DetailRow[]>([emptyRow()]);
@@ -48,7 +48,6 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
         setMaterial('');
         setSpec('');
         setVendor('');
-        setVendorCustom(false);
         setNote('');
         setCreatedAt(new Date().toISOString().split('T')[0]);
         setRows([emptyRow()]);
@@ -61,9 +60,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
         const m = detail.main;
         setMaterial(m.材質);
         setSpec(m.規格 || '');
-        const v = m.廠商 || '';
-        setVendor(v);
-        setVendorCustom(v !== '' && !(options?.vendors ?? []).includes(v));
+        setVendor(m.廠商 || '');
         setNote(m.備註 || '');
         setCreatedAt(m.建立日期?.split('T')[0] || new Date().toISOString().split('T')[0]);
         setRows(
@@ -131,41 +128,12 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                             <Col md={2}>
                                 <Form.Group>
                                     <Form.Label>廠商</Form.Label>
-                                    {vendorCustom ? (
-                                        <Form.Control
-                                            value={vendor}
-                                            onChange={(e) => setVendor(e.target.value)}
-                                            placeholder="輸入廠商名稱"
-                                            autoFocus
-                                        />
-                                    ) : (
-                                        <Form.Select
-                                            value={vendor}
-                                            onChange={(e) => {
-                                                if (e.target.value === '__new__') {
-                                                    setVendor('');
-                                                    setVendorCustom(true);
-                                                } else {
-                                                    setVendor(e.target.value);
-                                                }
-                                            }}
-                                        >
-                                            <option value="">（未指定）</option>
-                                            {(options?.vendors ?? []).map((v) => (
-                                                <option key={v} value={v}>{v}</option>
-                                            ))}
-                                            <option value="__new__">＋ 輸入新廠商</option>
-                                        </Form.Select>
-                                    )}
-                                    {vendorCustom && (
-                                        <Form.Text
-                                            className="text-primary"
-                                            style={{ cursor: 'pointer' }}
-                                            onClick={() => { setVendor(''); setVendorCustom(false); }}
-                                        >
-                                            ← 從清單選取
-                                        </Form.Text>
-                                    )}
+                                    <Form.Select value={vendor} onChange={(e) => setVendor(e.target.value)}>
+                                        <option value="">-- 請選擇 --</option>
+                                        {vendors.map((v: Vendor) => (
+                                            <option key={v.id} value={v.name}>{v.name}</option>
+                                        ))}
+                                    </Form.Select>
                                 </Form.Group>
                             </Col>
                             <Col md={2}>
