@@ -7,6 +7,7 @@ import {
     useCreatePatrol,
     useUpdatePatrol
 } from '../../hooks/usePatrol';
+import type { PatrolCreateInput, PatrolUpdateInput } from '../../types';
 
 interface PatrolModalProps {
     show: boolean;
@@ -181,9 +182,11 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
 
         try {
             if (editId) {
-                await updateMutation.mutateAsync({ id: editId, data: payload });
+                // PatrolModal 使用舊欄位格式（機台/主機手），後端仍可接受
+                // 需透過 unknown 才能轉型，因為兩種型別沒有足夠的重疊
+                await updateMutation.mutateAsync({ id: editId, data: payload as unknown as PatrolUpdateInput });
             } else {
-                await createMutation.mutateAsync(payload);
+                await createMutation.mutateAsync(payload as PatrolCreateInput);
             }
             onSuccess();
             handleClose();

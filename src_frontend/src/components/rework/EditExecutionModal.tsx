@@ -1,36 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import api from '../../services/api';
+import type { ReworkExecutionDetail } from '../../types';
 
 interface Inspector {
     id: number;
     name: string;
 }
 
-interface Execution {
-    識別碼: number;
-    重工單號: string;
-    執行部門: string;
-    負責人員姓名: string;
-    協同人員: string;
-    開始時間: string;
-    預計完成時間: string;
-    實際完成時間: string;
-    使用設備: string;
-    重工方式: string;
-    SOP編號: string;
-    耗材記錄: string;
-    完成數量: number;
-    不良數量: number;
-    執行狀況: string;
-    異常狀況: string;
-}
-
+// 使用 types/index.ts 的 ReworkExecutionDetail 取代本地 interface，保持型別一致
 interface EditExecutionModalProps {
     show: boolean;
     handleClose: () => void;
     onSuccess: () => void;
-    execution: Execution | null;
+    execution: ReworkExecutionDetail | null;
 }
 
 const EditExecutionModal = ({ show, handleClose, onSuccess, execution }: EditExecutionModalProps) => {
@@ -52,13 +35,7 @@ const EditExecutionModal = ({ show, handleClose, onSuccess, execution }: EditExe
     const [status, setStatus] = useState('');
     const [abnormalStatus, setAbnormalStatus] = useState('');
 
-    useEffect(() => {
-        if (show && execution) {
-            loadInspectors();
-            loadExecutionData();
-        }
-    }, [show, execution, loadInspectors, loadExecutionData]);
-
+    // 先宣告 useCallback 函數以避免「宣告前使用」的 TypeScript 錯誤
     const loadInspectors = useCallback(async () => {
         try {
             const res = await api.get<Inspector[]>('/inspectors');
@@ -73,9 +50,9 @@ const EditExecutionModal = ({ show, handleClose, onSuccess, execution }: EditExe
         setResponsiblePerson(execution.負責人員姓名 || '');
         setDepartment(execution.執行部門 || '製造部');
         setCollaborators(execution.協同人員 || '');
-        setStartTime(formatDateTimeLocal(execution.開始時間));
-        setExpectedEndTime(formatDateTimeLocal(execution.預計完成時間));
-        setActualEndTime(formatDateTimeLocal(execution.實際完成時間));
+        setStartTime(formatDateTimeLocal(execution.開始時間 || ''));
+        setExpectedEndTime(formatDateTimeLocal(execution.預計完成時間 || ''));
+        setActualEndTime(formatDateTimeLocal(execution.實際完成時間 || ''));
         setEquipment(execution.使用設備 || '');
         setMethod(execution.重工方式 || '');
         setSopNo(execution.SOP編號 || '');
@@ -85,6 +62,14 @@ const EditExecutionModal = ({ show, handleClose, onSuccess, execution }: EditExe
         setStatus(execution.執行狀況 || '');
         setAbnormalStatus(execution.異常狀況 || '');
     }, [execution]);
+
+    // useEffect 放在 useCallback 宣告後，確保函數已初始化
+    useEffect(() => {
+        if (show && execution) {
+            loadInspectors();
+            loadExecutionData();
+        }
+    }, [show, execution, loadInspectors, loadExecutionData]);
 
     const formatDateTimeLocal = (dateStr: string) => {
         if (!dateStr) return '';

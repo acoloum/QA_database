@@ -87,17 +87,17 @@ const CARAPage = () => {
                                 <tr><td colSpan={9} className="text-center py-4">無資料</td></tr>
                             ) : (
                                 data.map(item => (
-                                    <tr key={item.id}>
-                                        <td className="fw-bold">{item.no}</td>
-                                        <td>#{item.ncmr_no} ({item.source})</td>
-                                        <td>{item.vendor || '-'}</td>
-                                        <td>{item.material || '-'}</td>
-                                        <td>{item.product || '-'}</td>
-                                        <td>{item.create_date?.substring(0, 10) || '-'}</td>
-                                        <td>{item.owner || '-'}</td>
+                                    <tr key={Number(item.id)}>
+                                        <td className="fw-bold">{String(item.no ?? '')}</td>
+                                        <td>#{String(item.ncmr_no ?? '')} ({String(item.source ?? '')})</td>
+                                        <td>{String(item.vendor ?? '') || '-'}</td>
+                                        <td>{String(item.material ?? '') || '-'}</td>
+                                        <td>{String(item.product ?? '') || '-'}</td>
+                                        <td>{String(item.create_date ?? '').substring(0, 10) || '-'}</td>
+                                        <td>{String(item.owner ?? '') || '-'}</td>
                                         <td>
                                             <Badge bg={item.status === '已結案' ? 'success' : 'primary'}>
-                                                {item.status}
+                                                {String(item.status ?? '')}
                                             </Badge>
                                         </td>
                                         <td>

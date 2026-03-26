@@ -1,28 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import api from '../../services/api';
+import type { ReworkInspectionDetail } from '../../types';
 
 interface Inspector {
     id: number;
     name: string;
 }
 
-interface Inspection {
-    識別碼: number;
-    重工單號: string;
-    檢驗項目: string;
-    檢驗結果: string;
-    不良數量: number;
-    檢驗人員姓名: string;
-    檢驗日期: string;
-    檢驗備註: string;
-}
-
+// 使用 types/index.ts 的 ReworkInspectionDetail 取代本地 interface，保持型別一致
 interface EditInspectionModalProps {
     show: boolean;
     handleClose: () => void;
     onSuccess: () => void;
-    inspection: Inspection | null;
+    inspection: ReworkInspectionDetail | null;
 }
 
 const EditInspectionModal = ({ show, handleClose, onSuccess, inspection }: EditInspectionModalProps) => {
@@ -36,13 +27,7 @@ const EditInspectionModal = ({ show, handleClose, onSuccess, inspection }: EditI
     const [inspectionDate, setInspectionDate] = useState('');
     const [remark, setRemark] = useState('');
 
-    useEffect(() => {
-        if (show && inspection) {
-            loadInspectors();
-            loadInspectionData();
-        }
-    }, [show, inspection, loadInspectors, loadInspectionData]);
-
+    // 先宣告 useCallback 函數以避免「宣告前使用」的 TypeScript 錯誤
     const loadInspectors = useCallback(async () => {
         try {
             const res = await api.get<Inspector[]>('/inspectors');
@@ -61,6 +46,14 @@ const EditInspectionModal = ({ show, handleClose, onSuccess, inspection }: EditI
         setInspectionDate(inspection.檢驗日期 ? inspection.檢驗日期.split(' ')[0] : '');
         setRemark(inspection.檢驗備註 || '');
     }, [inspection]);
+
+    // useEffect 放在 useCallback 宣告後，確保函數已初始化
+    useEffect(() => {
+        if (show && inspection) {
+            loadInspectors();
+            loadInspectionData();
+        }
+    }, [show, inspection, loadInspectors, loadInspectionData]);
 
     const handleSubmit = async () => {
         if (!inspection) return;

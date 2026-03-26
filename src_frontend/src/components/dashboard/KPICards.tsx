@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { useDashboardStats } from '../../hooks/useDashboard';
 import type { DatePeriod } from '../../hooks/useDashboard';
-import type { DashboardStats, TrendDirection } from '../../types';
+import type { DashboardStats } from '../../types';
 
 interface KPICardsProps {
     period?: DatePeriod;
@@ -9,7 +9,8 @@ interface KPICardsProps {
 }
 
 type KpiGetter = (stats: DashboardStats) => number;
-type KpiTrendGetter = (stats: DashboardStats) => TrendDirection;
+// trend 實際上是 string（API 回傳），使用 string 型別避免不必要的斷言
+type KpiTrendGetter = (stats: DashboardStats) => string;
 type KpiChangeGetter = (stats: DashboardStats) => number;
 type KpiAnomalyGetter = (stats: DashboardStats) => boolean;
 type NgInfoGetter = (stats: DashboardStats) => { rate: number | null; count: number };

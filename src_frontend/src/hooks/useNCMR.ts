@@ -15,25 +15,26 @@ export const useNCMRList = (status?: string) => {
             // Map the data to ensure consistent structure if needed, 
             // but for now we'll return raw data and let component map it or map it here.
             // Component mapping:
+            // 將 API 回傳的中文欄位映射為英文欄位，確保與 NCMR interface 相符
             return res.data.map((item: NCMR) => ({
-                id: item.識別碼,
-                no: item.單號 || String(item.識別碼),
-                date: item.日期 || item.發現日期,
-                source: item.來源,
-                vendor: item.廠商,
-                material: item.材質,
-                product_info: item.產品資訊,
-                product_qty: item.產品數量,
-                defect_desc: item.不良描述,
-                defect_category: item.不良原因大類,
-                defect_reason: item.不良原因細項,
-                result: item.判定結果,
-                status: item.狀態,
-                car_status: item.CAR狀態 || item.car狀態,
-                capa_status: item.CAPA狀態 || item.capa狀態,
-                rework_status: item.重工狀態,
-                rework_count: item.重工執行次數
-            }));
+                id: item.識別碼 ?? item.id, // 確保 id 為 number（不為 undefined）
+                no: item.單號 || item.no,
+                date: item.日期 || item.發現日期 || item.date,
+                source: item.來源 || item.source,
+                vendor: item.廠商 || item.vendor,
+                material: item.材質 || item.material,
+                product_info: item.產品資訊 || item.product_info,
+                product_qty: item.產品數量 || item.product_qty,
+                defect_desc: item.不良描述 || item.defect_desc,
+                defect_category: item.不良原因大類 || item.defect_category,
+                defect_reason: item.不良原因細項 || item.defect_reason,
+                result: item.判定結果 || item.result,
+                status: item.狀態 || item.status,
+                car_status: item.CAR狀態 || item.car狀態 || item.car_status,
+                capa_status: item.CAPA狀態 || item.capa狀態 || item.capa_status,
+                rework_status: item.重工狀態 || item.rework_status,
+                rework_count: item.重工執行次數 || item.rework_count
+            } as NCMR));
         },
     });
 };

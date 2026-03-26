@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Modal, Button, Form, Table, Alert } from 'react-bootstrap';
 import toast from 'react-hot-toast';
-import type { ToleranceResult } from '../../types';
+import type { ToleranceResult, ShippingCreateInput } from '../../types';
 import {
     useInspectors,
     useVendors,
@@ -132,13 +132,13 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                 // eslint-disable-next-line react-hooks/set-state-in-effect
                 setDate(detailData.檢驗日期);
                  
-                setInspectorName(detailData.檢驗人員 || detailData.檢驗人員姓名 || '');
-                 
-                setVendorName(detailData.廠商中文名稱);
-                 
-                setMaterial(detailData.材質);
-                 
-                setSpec(detailData.檢驗規格);
+                setInspectorName(String(detailData.檢驗人員 ?? '') || String(detailData.檢驗人員姓名 ?? '') || '');
+
+                setVendorName(String(detailData.廠商中文名稱 ?? ''));
+
+                setMaterial(String(detailData.材質 ?? ''));
+
+                setSpec(String(detailData.檢驗規格 ?? ''));
                  
                 setOrderNo(detailData.訂單號碼 || '');
 
@@ -359,7 +359,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             return;
         }
 
-        const payload: ShippingCreateInput = {
+        const basePayload: ShippingCreateInput = {
             "檢驗日期": date,
             "檢驗人員姓名": inspectorName,
             "廠商中文名稱": vendorName,
@@ -368,15 +368,15 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             "訂單號碼": orderNo,
             "組數": groupCount,
             ...measurements
-        } as ShippingCreateInput;
-
-        if (editId) payload['識別碼'] = editId;
+        };
 
         try {
             if (editId) {
-                await updateMutation.mutateAsync({ id: editId, data: payload });
+                // 更新時加入識別碼以符合 ShippingUpdateInput 要求
+                const updatePayload = { ...basePayload, 識別碼: editId };
+                await updateMutation.mutateAsync({ id: editId, data: updatePayload });
             } else {
-                await createMutation.mutateAsync(payload);
+                await createMutation.mutateAsync(basePayload);
             }
             onSuccess();
             handleClose();
@@ -384,7 +384,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             const err = error as { field?: string; message?: string; _toasted?: boolean };
             const fieldInfo = err?.field;
             if (fieldInfo) {
-                setFieldErrors({ [fieldInfo]: err.message });
+                setFieldErrors({ [fieldInfo]: err.message ?? '欄位驗證失敗' });
             } else {
                 setFieldErrors({});
                 // 若 api.ts 尚未顯示 toast（_toasted 不為 true），才顯示

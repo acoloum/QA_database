@@ -165,18 +165,18 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
                     setRemark(main.備註 || '');
 
                     if (dList && dList.length > 0) {
-                         
-                        setDetails(dList.map((d: Record<string, unknown>, idx: number) => ({
-                            id: d.id || `existing-${idx}`,
-                            item: d.測量項目 || '',
-                            position: d.測量位置 || '',
-                            size_min: d.尺寸下限 ?? '',
-                            size_max: d.尺寸上限 ?? '',
-                            tol_min: d.公差下限 ?? '',
-                            tol_max: d.公差上限 ?? '',
-                            std: d.標準值 ?? '',
-                            unit: d.單位 || 'mm',
-                            remark: d.備註 || ''
+                        // 將 ToleranceDetailItem 映射為 DetailRow（表單使用的 string 格式）
+                        setDetails(dList.map((d, idx: number) => ({
+                            id: String(idx),
+                            item: d.測量項目 ?? '',
+                            position: d.測量位置 ?? '',
+                            size_min: d.尺寸下限 != null ? String(d.尺寸下限) : '',
+                            size_max: d.尺寸上限 != null ? String(d.尺寸上限) : '',
+                            tol_min: d.公差下限 != null ? String(d.公差下限) : '',
+                            tol_max: d.公差上限 != null ? String(d.公差上限) : '',
+                            std: d.標準值 != null ? String(d.標準值) : '',
+                            unit: d.單位 ?? 'mm',
+                            remark: d.備註 ?? ''
                         })));
                     } else {
                          
@@ -240,7 +240,8 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
         };
 
         if (editId) {
-            updateMutation.mutate({ id: editId, data: payload }, {
+            // ToleranceUpdateInput 需要 識別碼 欄位，這裡加入以符合型別要求
+            updateMutation.mutate({ id: editId, data: { ...payload, 識別碼: editId } }, {
                 onSuccess: () => {
                     onSuccess();
                     handleClose();

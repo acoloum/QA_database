@@ -96,7 +96,8 @@ const CARAModal = ({ show, handleClose, onSuccess, editId }: CARAModalProps) => 
     return (
         <Modal show={show} onHide={handleClose} size="xl" backdrop="static">
             <Modal.Header closeButton>
-                <Modal.Title>CAR 單號: {caraInfo.單號}</Modal.Title>
+                {/* caraInfo 屬性型別為 unknown，需轉為 string 才能在 JSX 中顯示 */}
+                <Modal.Title>CAR 單號: {String(caraInfo.單號 ?? '')}</Modal.Title>
             </Modal.Header>
             <Modal.Body>
                 {loading ? <div className="text-center">載入中...</div> : (
@@ -105,11 +106,12 @@ const CARAModal = ({ show, handleClose, onSuccess, editId }: CARAModalProps) => 
                             <Alert variant="info">
                                 <h6 className="fw-bold"><i className="bi bi-info-circle"></i> 異常資訊摘要</h6>
                                 <Row className="small">
-                                    <Col md={3}><strong>日期:</strong> {ncmrInfo.發現日期?.substring(0, 10)}</Col>
-                                    <Col md={3}><strong>廠商:</strong> {ncmrInfo.廠商}</Col>
-                                    <Col md={3}><strong>材質:</strong> {ncmrInfo.材質}</Col>
-                                    <Col md={3}><strong>規格:</strong> {ncmrInfo.產品資訊}</Col>
-                                    <Col md={12} className="mt-2"><strong>不良描述:</strong> {ncmrInfo.不良描述}</Col>
+                                    {/* ncmrInfo 屬性型別為 unknown，需轉為 string */}
+                                    <Col md={3}><strong>日期:</strong> {String(ncmrInfo.發現日期 ?? '').substring(0, 10)}</Col>
+                                    <Col md={3}><strong>廠商:</strong> {String(ncmrInfo.廠商 ?? '')}</Col>
+                                    <Col md={3}><strong>材質:</strong> {String(ncmrInfo.材質 ?? '')}</Col>
+                                    <Col md={3}><strong>規格:</strong> {String(ncmrInfo.產品資訊 ?? '')}</Col>
+                                    <Col md={12} className="mt-2"><strong>不良描述:</strong> {String(ncmrInfo.不良描述 ?? '')}</Col>
                                 </Row>
                             </Alert>
                         )}

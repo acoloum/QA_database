@@ -86,23 +86,30 @@ export interface PatrolInspection {
 
 export interface PatrolCreateInput {
     檢驗日期: string;
-    機台ID: number;
+    機台ID?: number; // PatrolModal 舊版本可能傳入機台名稱而非 ID
+    機台?: string; // PatrolModal 中使用的舊欄位名稱
     機台名稱?: string;
-    作業員ID: number;
+    作業員ID?: number; // PatrolModal 舊版本可能傳入人員名稱而非 ID
+    主機手?: string; // PatrolModal 中使用的舊欄位名稱
     作業員姓名?: string;
-    檢驗人員ID: number;
+    客戶名稱?: string; // PatrolModal 中使用的欄位
+    檢驗人員ID?: number; // PatrolModal 舊版本可能傳入人員名稱而非 ID
+    檢驗人員?: string; // PatrolModal 中使用的舊欄位名稱
     檢驗人員姓名?: string;
     材質?: string;
+    原料批號?: string; // PatrolModal 中使用的欄位
     批號?: string;
+    擠壓規格?: string; // PatrolModal 中使用的欄位
     規格?: string;
     details: PatrolDetail[];
 }
 
 export interface PatrolUpdateInput extends PatrolCreateInput {
-    識別碼: number;
+    識別碼: number; // 更新時必須提供識別碼
 }
 
 // NCMR Types
+// API 回傳中文欄位，前端 hook 會將其映射為英文欄位後回傳給元件
 export interface NCMR {
     id: number;
     no?: string; // 單號
@@ -124,33 +131,58 @@ export interface NCMR {
     capa_status?: string;
     rework_status?: string;
     rework_count?: number;
-}
-
-export interface NCMRCreateInput {
-    日期: string;
-    來源: string;
+    // API 回傳的中文欄位（useNCMR hook 映射前的原始結構）
+    識別碼?: number;
+    單號?: string;
+    日期?: string;
+    發現日期?: string;
+    來源?: string;
     廠商?: string;
     材質?: string;
     產品資訊?: string;
     產品數量?: number;
-    批號?: string;
     不良描述?: string;
     不良原因大類?: string;
     不良原因細項?: string;
     判定結果?: string;
+    狀態?: string;
+    CAR狀態?: string;
+    car狀態?: string;
+    CAPA狀態?: string;
+    capa狀態?: string;
+    重工狀態?: string;
+    重工執行次數?: number;
+}
+
+export interface NCMRCreateInput {
+    日期?: string;
+    建立日期?: string;
+    來源?: string; // 部分更新時（如 DispositionModal）不需要來源欄位
+    廠商?: string;
+    材質?: string;
+    產品資訊?: string;
+    產品數量?: number | string;
+    批號?: string;
+    不良描述?: string;
+    不合格數量?: number | string; // NCMRModal 中使用的欄位
+    不良原因大類?: string;
+    不良原因細項?: string;
+    判定結果?: string;
     檢驗人員姓名?: string;
+    發現人員姓名?: string; // NCMRModal 中使用的欄位
 }
 
 export interface NCMRUpdateInput extends NCMRCreateInput {
-    識別碼: number;
+    識別碼: number | null;
+    狀態?: string; // DispositionModal 中使用的欄位
 }
 
 // Shipping Types
 export interface ShippingCreateInput {
     檢驗日期: string;
-    檢驗人員ID: number;
+    檢驗人員ID?: number; // ShippingModal 使用人員名稱而非 ID
     檢驗人員姓名?: string;
-    廠商ID: number;
+    廠商ID?: number; // ShippingModal 使用廠商名稱而非 ID
     廠商中文名稱?: string;
     檢驗規格: string;
     材質: string;
@@ -333,21 +365,33 @@ export interface ToleranceStandard {
 }
 
 export interface ToleranceDetailParams {
-    item: string;
-    position: string;
-    size_min: number | null;
-    size_max: number | null;
-    tol_min: number | null;
-    tol_max: number | null;
-    std: number | null;
-    unit: string;
-    remark: string;
+    // 英文欄位（舊格式，保留相容性）
+    item?: string;
+    position?: string;
+    size_min?: number | null;
+    size_max?: number | null;
+    tol_min?: number | null;
+    tol_max?: number | null;
+    std?: number | null;
+    unit?: string;
+    remark?: string;
+    // 中文欄位（後端 API 實際接受的格式）
+    測量項目?: string;
+    測量位置?: string;
+    尺寸下限?: number | null;
+    尺寸上限?: number | null;
+    公差下限?: number | null;
+    公差上限?: number | null;
+    標準值?: number | null;
+    單位?: string;
+    備註?: string;
 }
 
 export interface ToleranceCreateInput {
+    建立日期?: string; // ToleranceModal 中傳入的日期欄位
     材質: string;
     規格: string;
-    廠商ID?: number;
+    廠商ID?: number | null;
     備註?: string;
     details: ToleranceDetailParams[];
 }
@@ -433,17 +477,20 @@ export interface HistogramBin {
     count: number;
     min: number;
     max: number;
+    midpoint: number; // 區間中點，用於直方圖 USL/LSL 位置計算
 }
 
 // Dashboard Stats Types
 export type TrendDirection = 'up' | 'down' | 'stable';
 
+// KPI 模組統計資料，trend 使用 string 相容 useDashboard hook 回傳的任意字串
 export interface KpiModuleStats {
     current: number;
+    previous?: number;
     pending: number;
-    trend: TrendDirection;
+    trend: string; // useDashboard hook 回傳 string，非嚴格限定 TrendDirection
     change_pct: number;
-    ng_rate?: number;
+    ng_rate?: number | null;
     ng_count?: number;
 }
 
@@ -459,7 +506,8 @@ export interface DashboardStats {
 // Modal Selection Types (for detail modals)
 export interface ReworkExecutionDetail {
     id?: number;
-   重工單號: number;
+    識別碼?: number; // API 回傳時使用識別碼，前端刪除操作需要此欄位
+    重工單號: number;
     負責人員姓名: string;
     執行部門: string;
     協同人員?: string;
@@ -479,8 +527,10 @@ export interface ReworkExecutionDetail {
 
 export interface ReworkInspectionDetail {
     id?: number;
+    識別碼?: number; // API 回傳時使用識別碼，前端刪除操作需要此欄位
     重工單號: number;
     檢驗日期: string;
+    檢驗人員?: string; // ReworkPage 中表格顯示使用的欄位
     檢驗人員姓名: string;
     檢驗項目?: string;
     檢驗標準?: string;
@@ -491,10 +541,12 @@ export interface ReworkInspectionDetail {
 
 export interface ReworkCostDetail {
     id?: number;
+    識別碼?: number; // API 回傳時使用識別碼，前端刪除操作需要此欄位
     重工單號: number;
     記錄日期?: string;
     記錄人員姓名?: string;
-    成本類型: '人工' | '材料' | '設備' | '其他';
+    成本類型: string; // 實際值可能超出聯合型別範圍，使用 string 較寬鬆
+    成本幣別?: string; // EditCostModal 中使用的欄位
     成本項目: string;
     單位成本: number;
     數量: number;

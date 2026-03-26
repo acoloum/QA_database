@@ -106,8 +106,8 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
     }, [show, editId, detailData]);
 
     const handleSubmit = async () => {
-        const payload = {
-            "識別碼": editId,
+        // 共用的欄位
+        const basePayload = {
             "日期": date,
             "建立日期": createDate,
             "來源": source,
@@ -126,9 +126,10 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
 
         try {
             if (editId) {
-                await updateMutation.mutateAsync(payload);
+                // 更新時加入識別碼
+                await updateMutation.mutateAsync({ ...basePayload, "識別碼": editId });
             } else {
-                await createMutation.mutateAsync(payload);
+                await createMutation.mutateAsync(basePayload);
             }
             onSuccess();
             handleClose();

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
-import type { ShippingInspection, ToleranceStandard, ToleranceItem, ToleranceResult, Vendor } from '../../types';
+import type { ShippingInspection, ToleranceItem, ToleranceResult, Vendor } from '../../types';
 import ShippingModal from '../../components/shipping/ShippingModal';
 import ImportModal from '../../components/shipping/ImportModal';
 import ShippingCharts from '../../components/shipping/ShippingCharts';
@@ -24,8 +24,9 @@ const ShippingPage = () => {
     const [material, setMaterial] = useState('');
     const [spec, setSpec] = useState('');
 
-    // Tolerance Standards for the current page
-    const [tolerances, setTolerances] = useState<Record<string, ToleranceStandard>>({});
+    // 公差標準快取：key 為 "材質|||規格|||廠商" 組合，value 為各量測項目的 LSL/USL 映射（null 表示查無資料）
+    type ToleranceMap = Record<string, Record<string, { lsl: number; usl: number }> | null>;
+    const [tolerances, setTolerances] = useState<ToleranceMap>({});
 
     // Hooks
     const searchParams = {
@@ -55,7 +56,9 @@ const ShippingPage = () => {
             }
         });
 
-        const newTolerances: Record<string, ToleranceStandard> = { ...tolerances };
+        // 使用與 state 相同的型別，value 可為量測映射或 null（查無資料）
+        type ToleranceMap = Record<string, Record<string, { lsl: number; usl: number }> | null>;
+        const newTolerances: ToleranceMap = { ...tolerances };
 
         // This part needs vendors list, we could use useVendors hook but we need it here imperatively or just fetch once
         // For simplicity, let's just fetch it as before or optimistically assume we have IDs if backend provided them.
@@ -84,7 +87,7 @@ const ShippingPage = () => {
                                 lsl = t.尺寸下限;
                                 usl = t.尺寸上限;
                             } else if (t.公差下限 !== null && t.公差上限 !== null) {
-                                let standardValue = specValues[t.項目];
+                                let standardValue: number | null | undefined = specValues[t.項目];
                                 if (standardValue === undefined || standardValue === 0) {
                                     standardValue = t.標準值;
                                 }

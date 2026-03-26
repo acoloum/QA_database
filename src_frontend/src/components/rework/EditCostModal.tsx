@@ -1,29 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import api from '../../services/api';
+import type { ReworkCostDetail } from '../../types';
 
 interface Inspector {
     id: number;
     name: string;
 }
 
-interface Cost {
-    識別碼: number;
-    重工單號: string;
-    成本類型: string;
-    成本項目: string;
-    單位成本: number;
-    數量: number;
-    成本幣別: string;
-    記錄人員姓名: string;
-    備註: string;
-}
-
+// 使用 types/index.ts 的 ReworkCostDetail 取代本地 interface，保持型別一致
 interface EditCostModalProps {
     show: boolean;
     handleClose: () => void;
     onSuccess: () => void;
-    cost: Cost | null;
+    cost: ReworkCostDetail | null;
 }
 
 const EditCostModal = ({ show, handleClose, onSuccess, cost }: EditCostModalProps) => {
@@ -38,13 +28,7 @@ const EditCostModal = ({ show, handleClose, onSuccess, cost }: EditCostModalProp
     const [recorder, setRecorder] = useState('');
     const [remark, setRemark] = useState('');
 
-    useEffect(() => {
-        if (show && cost) {
-            loadInspectors();
-            loadCostData();
-        }
-    }, [show, cost, loadInspectors, loadCostData]);
-
+    // 先宣告 useCallback 函數以避免「宣告前使用」的 TypeScript 錯誤
     const loadInspectors = useCallback(async () => {
         try {
             const res = await api.get<Inspector[]>('/inspectors');
@@ -64,6 +48,14 @@ const EditCostModal = ({ show, handleClose, onSuccess, cost }: EditCostModalProp
         setRecorder(cost.記錄人員姓名 || '');
         setRemark(cost.備註 || '');
     }, [cost]);
+
+    // useEffect 放在 useCallback 宣告後，確保函數已初始化
+    useEffect(() => {
+        if (show && cost) {
+            loadInspectors();
+            loadCostData();
+        }
+    }, [show, cost, loadInspectors, loadCostData]);
 
     const handleSubmit = async () => {
         if (!cost) return;

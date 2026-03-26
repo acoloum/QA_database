@@ -14,7 +14,8 @@ const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditB
   const [loading, setLoading] = useState(false);
 
   const [department, setDepartment] = useState('製造部');
-  const [urgency, setUrgency] = useState('普通');
+  // 明確型別以確保與 ReworkApplication.緊急程度 聯合型別相符
+  const [urgency, setUrgency] = useState<'普通' | '重要' | '緊急'>('普通');
   const [vendor, setVendor] = useState('');
   const [material, setMaterial] = useState('');
   const [spec, setSpec] = useState('');
@@ -107,7 +108,7 @@ const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditB
             <Col md={6}>
               <Form.Group className="mb-3">
                 <Form.Label>緊急程度</Form.Label>
-                <Form.Select value={urgency} onChange={(e) => setUrgency(e.target.value)}>
+                <Form.Select value={urgency} onChange={(e) => setUrgency(e.target.value as '普通' | '重要' | '緊急')}>
                   <option value="普通">普通</option>
                   <option value="緊急">緊急</option>
                   <option value="特緊急">特緊急</option>

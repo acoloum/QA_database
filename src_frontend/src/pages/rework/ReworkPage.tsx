@@ -530,7 +530,7 @@ const ReworkPage = () => {
                                                             <td>
                                                                 <div className="btn-group btn-group-sm">
                                                                     <button className="btn btn-outline-primary" onClick={() => handleEditExecution(exec)}>編輯</button>
-                                                                    <button className="btn btn-outline-danger" onClick={() => handleDeleteExecution(exec.識別碼)}>刪除</button>
+                                                                    <button className="btn btn-outline-danger" onClick={() => exec.識別碼 && handleDeleteExecution(exec.識別碼)}>刪除</button>
                                                                 </div>
                                                             </td>
                                                         </tr>
@@ -574,7 +574,7 @@ const ReworkPage = () => {
                                                             <td>
                                                                 <div className="btn-group btn-group-sm">
                                                                     <button className="btn btn-outline-primary" onClick={() => handleEditInspection(insp)}>編輯</button>
-                                                                    <button className="btn btn-outline-danger" onClick={() => handleDeleteInspection(insp.識別碼)}>刪除</button>
+                                                                    <button className="btn btn-outline-danger" onClick={() => insp.識別碼 && handleDeleteInspection(insp.識別碼)}>刪除</button>
                                                                 </div>
                                                             </td>
                                                         </tr>
@@ -614,14 +614,14 @@ const ReworkPage = () => {
                                                             <tr key={idx}>
                                                                 <td>{cost.成本類型 || '-'}</td>
                                                                 <td>{cost.成本項目 || '-'}</td>
-                                                                <td>${parseFloat(cost.單位成本 || 0).toFixed(2)}</td>
+                                                                <td>${(Number(cost.單位成本) || 0).toFixed(2)}</td>
                                                                 <td>{cost.數量 || '0'}</td>
-                                                                <td>${parseFloat(cost.總成本 || 0).toFixed(2)}</td>
+                                                                <td>${(Number(cost.總成本) || 0).toFixed(2)}</td>
                                                                 <td>{cost.記錄日期 || '-'}</td>
                                                                 <td>
                                                                     <div className="btn-group btn-group-sm">
                                                                         <button className="btn btn-outline-primary" onClick={() => handleEditCost(cost)}>編輯</button>
-                                                                        <button className="btn btn-outline-danger" onClick={() => handleDeleteCost(cost.識別碼)}>刪除</button>
+                                                                        <button className="btn btn-outline-danger" onClick={() => cost.識別碼 && handleDeleteCost(cost.識別碼)}>刪除</button>
                                                                     </div>
                                                                 </td>
                                                             </tr>

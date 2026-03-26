@@ -86,11 +86,19 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
         const ids = data.ids || [];
         const count = data.avgs.length;
 
-        // Analyze WECO for X-bar
-        const weco = analyzeWECO(data.avgs, data.x_cl, data.x_ucl, data.x_lcl, data.labels);
+        // Analyze WECO for X-bar，並加入 type 欄位以符合 SpcViolation 型別
+        const wecoRaw = analyzeWECO(data.avgs, data.x_cl, data.x_ucl, data.x_lcl, data.labels);
+        const weco = {
+            ...wecoRaw,
+            violations: wecoRaw.violations.map(v => ({ ...v, type: 'xbar' as const }))
+        };
 
-        // Analyze WECO for R chart
-        const rWeco = analyzeRChartWECO(data.ranges, data.r_cl, data.r_ucl, data.labels);
+        // Analyze WECO for R chart，並加入 type 欄位以符合 SpcViolation 型別
+        const rWecoRaw = analyzeRChartWECO(data.ranges, data.r_cl, data.r_ucl, data.labels);
+        const rWeco = {
+            ...rWecoRaw,
+            violations: rWecoRaw.violations.map(v => ({ ...v, type: 'r' as const }))
+        };
 
         // Calculate Summary Stats locally (using sample stdDev: N-1)
         const mean = data.avgs.reduce((a: number, b: number) => a + b, 0) / count;
@@ -562,16 +570,18 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                                         }
                                                     }
                                                 },
-                                                onClick: (_event: unknown, elements: ActiveDataPoint<'line'>[]) => {
+                                                onClick: (_event: unknown, elements: ActiveDataPoint[]) => {
                                                     if (elements.length > 0 && ids.length > 0) {
                                                         const index = elements[0].index;
                                                         const id = ids[index];
                                                         if (id && onPointClick) onPointClick(Number(id));
                                                     }
                                                 },
-                                                onHover: (event: unknown, elements: ActiveDataPoint<'line'>[]) => {
-                                                    if (event?.native?.target) {
-                                                        event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+                                                onHover: (event: unknown, elements: ActiveDataPoint[]) => {
+                                                    // 透過 as 斷言存取原生事件目標，以修改游標樣式
+                                                    const nativeEvent = (event as { native?: { target?: HTMLElement } })?.native;
+                                                    if (nativeEvent?.target) {
+                                                        (nativeEvent.target as HTMLElement).style.cursor = elements.length > 0 ? 'pointer' : 'default';
                                                     }
                                                 }
                                             }}
@@ -609,16 +619,18 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                                         }
                                                     }
                                                 },
-                                                onClick: (_event: unknown, elements: ActiveDataPoint<'line'>[]) => {
+                                                onClick: (_event: unknown, elements: ActiveDataPoint[]) => {
                                                     if (elements.length > 0 && ids.length > 0) {
                                                         const index = elements[0].index;
                                                         const id = ids[index];
                                                         if (id && onPointClick) onPointClick(Number(id));
                                                     }
                                                 },
-                                                onHover: (event: unknown, elements: ActiveDataPoint<'line'>[]) => {
-                                                    if (event?.native?.target) {
-                                                        event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+                                                onHover: (event: unknown, elements: ActiveDataPoint[]) => {
+                                                    // 透過 as 斷言存取原生事件目標，以修改游標樣式
+                                                    const nativeEvent = (event as { native?: { target?: HTMLElement } })?.native;
+                                                    if (nativeEvent?.target) {
+                                                        (nativeEvent.target as HTMLElement).style.cursor = elements.length > 0 ? 'pointer' : 'default';
                                                     }
                                                 }
                                             }}
@@ -714,7 +726,8 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                                                 title: (items: TooltipItem<'bar'>[]) => items[0]?.label || '',
                                                                 label: (ctx: TooltipItem<'bar'>) => {
                                                                     if (ctx.dataset.label === '頻次') return `數量: ${ctx.raw}`;
-                                                                    if (ctx.dataset.label === '常態分佈') return `期望值: ${ctx.raw?.toFixed(1)}`;
+                                                                    // ctx.raw 型別為 unknown，需斷言為 number 才能呼叫 toFixed
+                                                                    if (ctx.dataset.label === '常態分佈') return `期望值: ${(ctx.raw as number)?.toFixed(1)}`;
                                                                     return ctx.dataset.label || '';
                                                                 }
                                                             }

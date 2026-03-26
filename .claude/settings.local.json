@@ -52,7 +52,11 @@
       "Read(//c/Program Files/nodejs/**)",
       "Read(//c/QC_Database/venv/Scripts/**)",
       "Bash(where node:*)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(npm run:*)",
+      "Read(//c/QC_Database/**)",
+      "Bash(grep -r \"admin\\\\|INSERT.*user\" /c/QC_Database/backend/ --include=*.sql)",
+      "Bash(grep -r \"admin\\\\|create_user\\\\|add_user\" /c/QC_Database/backend/ --include=*.py)"
     ]
   }
 }
