@@ -23,6 +23,8 @@ interface ItemConfig {
     label: string;
     key: string;
     type: 'minmax' | 'single';
+    /** 公差比對用的測量項目名稱，不設則與 key 相同 */
+    toleranceKey?: string;
 }
 
 // Base items for all vendors
@@ -84,10 +86,10 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         const items = [...BASE_ITEMS];
         // 真圓度插在內徑後面（index 2）
         items.splice(2, 0, ROUNDNESS_ITEM);
-        // 將硬度改標示為洛氏硬度(HRB)（key 不變，仍對應後端 硬度 欄位）
+        // 將硬度改標示為洛氏硬度(HRB)，並設 toleranceKey 對應公差表中的「洛氏硬度」
         const hardnessIdx = items.findIndex(item => item.key === '硬度');
         if (hardnessIdx !== -1) {
-            items[hardnessIdx] = { ...items[hardnessIdx], label: '洛氏硬度(HRB)' };
+            items[hardnessIdx] = { ...items[hardnessIdx], label: '洛氏硬度(HRB)', toleranceKey: '洛氏硬度' };
             // 韋伯氏硬度(HW) 插在洛氏硬度後面
             items.splice(hardnessIdx + 1, 0, VICKERS_HARDNESS_ITEM);
         }
@@ -234,7 +236,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         const specValues = parseSpec(spec);
 
         ITEMS.forEach(item => {
-            const tolItem = tolerance.tolerances.find(t => t.項目 === item.key);
+            const tolItem = tolerance.tolerances.find(t => t.項目 === (item.toleranceKey ?? item.key));
             if (!tolItem) return;
 
             let lsl = -Infinity, usl = Infinity;

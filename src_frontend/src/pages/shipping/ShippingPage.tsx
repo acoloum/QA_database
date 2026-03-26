@@ -105,6 +105,11 @@ const ShippingPage = () => {
                                 return;
                             }
                             std[t.項目] = { lsl, usl };
+                            // 安泰廠商：洛氏硬度公差同時以「硬度」key 對應，
+                            // 因量測資料欄位仍儲存為硬度{i}
+                            if (vName === '安泰' && t.項目 === '洛氏硬度') {
+                                std['硬度'] = { lsl, usl };
+                            }
                         });
                         newTolerances[combo] = std;
                     } else {
