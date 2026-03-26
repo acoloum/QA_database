@@ -196,6 +196,22 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         }
     };
 
+    // 取得擠壓公差（有 material 就查，spec 空字串表示通用）
+    const { data: toleranceResult } = useExtrusionToleranceCheck(material, spec);
+    const tolerances = toleranceResult?.found ? (toleranceResult.tolerances ?? []) : [];
+
+    // 判斷單一儲存格是否 NG（雙側比對：同時檢查上下限）
+    const isCellNG = (pos: string, item: string, type: 'min' | 'max', gName: string): boolean => {
+        const tol = tolerances.find((t) => t.項目 === item && t.位置 === pos);
+        if (!tol) return false;
+        const valStr = getDetailValue(gName, pos, item, type);
+        if (valStr === '') return false;
+        const val = parseFloat(valStr);
+        if (tol.公差下限 != null && val < tol.公差下限) return true;
+        if (tol.公差上限 != null && val > tol.公差上限) return true;
+        return false;
+    };
+
     // Render helper
     const renderTableRows = () => {
         const rows = [];
@@ -242,22 +258,6 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
             );
         }
         return rows;
-    };
-
-    // 取得擠壓公差（有 material 就查，spec 空字串表示通用）
-    const { data: toleranceResult } = useExtrusionToleranceCheck(material, spec);
-    const tolerances = toleranceResult?.found ? (toleranceResult.tolerances ?? []) : [];
-
-    // 判斷單一儲存格是否 NG
-    const isCellNG = (pos: string, item: string, type: 'min' | 'max', gName: string): boolean => {
-        const tol = tolerances.find((t) => t.項目 === item && t.位置 === pos);
-        if (!tol) return false;
-        const valStr = getDetailValue(gName, pos, item, type);
-        if (valStr === '') return false;
-        const val = parseFloat(valStr);
-        if (type === 'min' && tol.公差下限 != null && val < tol.公差下限) return true;
-        if (type === 'max' && tol.公差上限 != null && val > tol.公差上限) return true;
-        return false;
     };
 
     const isSaving = createMutation.isPending || updateMutation.isPending;
