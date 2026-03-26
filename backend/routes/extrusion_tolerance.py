@@ -10,7 +10,10 @@ extrusion_tolerance_bp = Blueprint('extrusion_tolerance', __name__)
 @auth_required
 def search():
     """查詢擠壓公差列表"""
-    return jsonify(ExtrusionToleranceService.search(request.args))
+    try:
+        return jsonify(ExtrusionToleranceService.search(request.args))
+    except Exception as e:
+        return jsonify({"error": handle_db_error(e)}), 500
 
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/<int:id>', methods=['GET'])
