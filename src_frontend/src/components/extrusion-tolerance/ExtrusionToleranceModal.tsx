@@ -11,7 +11,6 @@ interface DetailRow {
     公差下限: string;
     公差上限: string;
     標準值: string;
-    單位: string;
 }
 
 const ITEMS = ['外徑', '內徑', '厚度'];
@@ -21,7 +20,6 @@ const emptyRow = (): DetailRow => ({
     公差下限: '',
     公差上限: '',
     標準值: '',
-    單位: 'mm',
 });
 
 interface Props {
@@ -66,7 +64,6 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                       公差下限: d.公差下限 != null ? String(d.公差下限) : '',
                       公差上限: d.公差上限 != null ? String(d.公差上限) : '',
                       標準值: d.標準值 != null ? String(d.標準值) : '',
-                      單位: d.單位 || 'mm',
                   }))
                 : [emptyRow()]
         );
@@ -88,7 +85,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                 公差下限: r.公差下限 !== '' ? parseFloat(r.公差下限) : null,
                 公差上限: r.公差上限 !== '' ? parseFloat(r.公差上限) : null,
                 標準值: r.標準值 !== '' ? parseFloat(r.標準值) : null,
-                單位: r.單位 || 'mm',
+                單位: 'mm',
             })),
         };
         try {
@@ -148,7 +145,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                                     <th>公差下限</th>
                                     <th>公差上限</th>
                                     <th>標準值</th>
-                                    <th>單位</th>
+                                    <th style={{ minWidth: '60px' }}>單位</th>
                                     <th></th>
                                 </tr>
                             </thead>
@@ -163,11 +160,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                                         <td><Form.Control size="sm" type="number" value={r.公差下限} onChange={(e) => updateRow(i, '公差下限', e.target.value)} /></td>
                                         <td><Form.Control size="sm" type="number" value={r.公差上限} onChange={(e) => updateRow(i, '公差上限', e.target.value)} /></td>
                                         <td><Form.Control size="sm" type="number" value={r.標準值} onChange={(e) => updateRow(i, '標準值', e.target.value)} /></td>
-                                        <td>
-                                            <Form.Select size="sm" value={r.單位} onChange={(e) => updateRow(i, '單位', e.target.value)}>
-                                                <option>mm</option>
-                                            </Form.Select>
-                                        </td>
+                                        <td className="text-center align-middle">mm</td>
                                         <td>
                                             <Button size="sm" variant="outline-danger" onClick={() => setRows((prev) => prev.filter((_, j) => j !== i))}>✕</Button>
                                         </td>
