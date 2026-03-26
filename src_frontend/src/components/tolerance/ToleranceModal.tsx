@@ -305,7 +305,8 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
                             collisionDetection={closestCenter}
                             onDragEnd={handleDragEnd}
                         >
-                        <div style={{ overflowX: 'auto' }}>
+                        {/* overflowX + overflowY 合一，讓 sticky header 相對此容器定位 */}
+                        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(80vh - 230px)' }}>
                             <Table bordered hover size="sm" style={{ minWidth: '760px' }}>
                                 <thead className="table-light text-center sticky-header">
                                     <tr>
