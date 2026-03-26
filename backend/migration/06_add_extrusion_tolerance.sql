@@ -7,8 +7,8 @@ CREATE TABLE IF NOT EXISTS "擠壓公差主檔" (
     "建立日期" DATE DEFAULT CURRENT_DATE
 );
 
--- 建立擠壓公差明細
-CREATE TABLE IF NOT EXISTS "擠壓公差明細" (
+-- 建立擠壓公差明細檔
+CREATE TABLE IF NOT EXISTS "擠壓公差明細檔" (
     "識別碼"   SERIAL PRIMARY KEY,
     "主檔ID"   INTEGER NOT NULL REFERENCES "擠壓公差主檔"("識別碼") ON DELETE CASCADE,
     "測量項目" VARCHAR NOT NULL,
