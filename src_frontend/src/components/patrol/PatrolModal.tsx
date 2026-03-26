@@ -8,6 +8,7 @@ import {
     useUpdatePatrol
 } from '../../hooks/usePatrol';
 import type { PatrolCreateInput, PatrolUpdateInput } from '../../types';
+import { useExtrusionToleranceCheck } from '../../hooks/useExtrusionTolerance';
 
 interface PatrolModalProps {
     show: boolean;
@@ -211,7 +212,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                             if (item === '內徑' && !showInner) return null;
                             return (
                                 <Fragment key={`${pos}-${item}`}>
-                                    <td style={{ padding: '2px' }}>
+                                    <td style={{ padding: '2px', backgroundColor: isCellNG(pos, item, 'min', gName) ? '#ffcccc' : undefined }}>
                                         <Form.Control
                                             size="sm"
                                             type="number"
@@ -219,9 +220,10 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                                             value={getDetailValue(gName, pos, item, 'min')}
                                             onChange={e => handleDetailChange(gName, pos, item, 'min', e.target.value)}
                                             className="patrol-input"
+                                            style={{ backgroundColor: isCellNG(pos, item, 'min', gName) ? '#ffcccc' : undefined }}
                                         />
                                     </td>
-                                    <td style={{ padding: '2px' }}>
+                                    <td style={{ padding: '2px', backgroundColor: isCellNG(pos, item, 'max', gName) ? '#ffcccc' : undefined }}>
                                         <Form.Control
                                             size="sm"
                                             type="number"
@@ -229,6 +231,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                                             value={getDetailValue(gName, pos, item, 'max')}
                                             onChange={e => handleDetailChange(gName, pos, item, 'max', e.target.value)}
                                             className="patrol-input"
+                                            style={{ backgroundColor: isCellNG(pos, item, 'max', gName) ? '#ffcccc' : undefined }}
                                         />
                                     </td>
                                 </Fragment>
@@ -239,6 +242,22 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
             );
         }
         return rows;
+    };
+
+    // 取得擠壓公差（有 material 就查，spec 空字串表示通用）
+    const { data: toleranceResult } = useExtrusionToleranceCheck(material, spec);
+    const tolerances = toleranceResult?.found ? (toleranceResult.tolerances ?? []) : [];
+
+    // 判斷單一儲存格是否 NG
+    const isCellNG = (pos: string, item: string, type: 'min' | 'max', gName: string): boolean => {
+        const tol = tolerances.find((t) => t.項目 === item && t.位置 === pos);
+        if (!tol) return false;
+        const valStr = getDetailValue(gName, pos, item, type);
+        if (valStr === '') return false;
+        const val = parseFloat(valStr);
+        if (type === 'min' && tol.公差下限 != null && val < tol.公差下限) return true;
+        if (type === 'max' && tol.公差上限 != null && val > tol.公差上限) return true;
+        return false;
     };
 
     const isSaving = createMutation.isPending || updateMutation.isPending;
