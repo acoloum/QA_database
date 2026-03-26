@@ -39,6 +39,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
     const [material, setMaterial] = useState('');
     const [spec, setSpec] = useState('');
     const [vendor, setVendor] = useState('');
+    const [vendorCustom, setVendorCustom] = useState(false);
     const [note, setNote] = useState('');
     const [createdAt, setCreatedAt] = useState(new Date().toISOString().split('T')[0]);
     const [rows, setRows] = useState<DetailRow[]>([emptyRow()]);
@@ -47,6 +48,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
         setMaterial('');
         setSpec('');
         setVendor('');
+        setVendorCustom(false);
         setNote('');
         setCreatedAt(new Date().toISOString().split('T')[0]);
         setRows([emptyRow()]);
@@ -59,7 +61,9 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
         const m = detail.main;
         setMaterial(m.材質);
         setSpec(m.規格 || '');
-        setVendor(m.廠商 || '');
+        const v = m.廠商 || '';
+        setVendor(v);
+        setVendorCustom(v !== '' && !(options?.vendors ?? []).includes(v));
         setNote(m.備註 || '');
         setCreatedAt(m.建立日期?.split('T')[0] || new Date().toISOString().split('T')[0]);
         setRows(
@@ -127,15 +131,41 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                             <Col md={2}>
                                 <Form.Group>
                                     <Form.Label>廠商</Form.Label>
-                                    <Form.Control
-                                        list="vendor-options"
-                                        value={vendor}
-                                        onChange={(e) => setVendor(e.target.value)}
-                                        placeholder="輸入或選擇"
-                                    />
-                                    <datalist id="vendor-options">
-                                        {(options?.vendors ?? []).map((v) => <option key={v} value={v} />)}
-                                    </datalist>
+                                    {vendorCustom ? (
+                                        <Form.Control
+                                            value={vendor}
+                                            onChange={(e) => setVendor(e.target.value)}
+                                            placeholder="輸入廠商名稱"
+                                            autoFocus
+                                        />
+                                    ) : (
+                                        <Form.Select
+                                            value={vendor}
+                                            onChange={(e) => {
+                                                if (e.target.value === '__new__') {
+                                                    setVendor('');
+                                                    setVendorCustom(true);
+                                                } else {
+                                                    setVendor(e.target.value);
+                                                }
+                                            }}
+                                        >
+                                            <option value="">（未指定）</option>
+                                            {(options?.vendors ?? []).map((v) => (
+                                                <option key={v} value={v}>{v}</option>
+                                            ))}
+                                            <option value="__new__">＋ 輸入新廠商</option>
+                                        </Form.Select>
+                                    )}
+                                    {vendorCustom && (
+                                        <Form.Text
+                                            className="text-primary"
+                                            style={{ cursor: 'pointer' }}
+                                            onClick={() => { setVendor(''); setVendorCustom(false); }}
+                                        >
+                                            ← 從清單選取
+                                        </Form.Text>
+                                    )}
                                 </Form.Group>
                             </Col>
                             <Col md={2}>
