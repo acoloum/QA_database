@@ -25,6 +25,8 @@ class ExtrusionToleranceService:
             query = query.filter(ExtrusionToleranceMain.material.like(f"%{args['material']}%"))
         if args.get('spec'):
             query = query.filter(ExtrusionToleranceMain.spec.like(f"%{args['spec']}%"))
+        if args.get('vendor'):
+            query = query.filter(ExtrusionToleranceMain.vendor.like(f"%{args['vendor']}%"))
 
         page = int(args.get('page', 1))
         page_size = int(args.get('page_size', 20))
@@ -38,6 +40,7 @@ class ExtrusionToleranceService:
                 "識別碼": t.id,
                 "材質": t.material,
                 "規格": t.spec or '',
+                "廠商": t.vendor or '',
                 "備註": t.note or '',
                 "建立日期": format_value(t.created_at),
             }
@@ -59,6 +62,7 @@ class ExtrusionToleranceService:
             "識別碼": t.id,
             "材質": t.material,
             "規格": t.spec or '',
+            "廠商": t.vendor or '',
             "備註": t.note or '',
             "建立日期": format_value(t.created_at),
         }
@@ -83,6 +87,7 @@ class ExtrusionToleranceService:
             main = ExtrusionToleranceMain(
                 material=data.get('材質'),
                 spec=data.get('規格') or None,
+                vendor=data.get('廠商') or None,
                 note=data.get('備註') or None,
                 created_at=data.get('建立日期') or None,
             )
@@ -115,6 +120,7 @@ class ExtrusionToleranceService:
 
             t.material = data.get('材質')
             t.spec = data.get('規格') or None
+            t.vendor = data.get('廠商') or None
             t.note = data.get('備註') or None
             t.created_at = data.get('建立日期') or None
 

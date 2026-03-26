@@ -24,8 +24,10 @@ const ViewExtrusionToleranceModal = ({ show, id, onClose }: Props) => {
                             <dd className="col-sm-4">{data.main.材質}</dd>
                             <dt className="col-sm-2">規格</dt>
                             <dd className="col-sm-4">{data.main.規格 || '（通用）'}</dd>
+                            <dt className="col-sm-2">廠商</dt>
+                            <dd className="col-sm-4">{data.main.廠商 || '-'}</dd>
                             <dt className="col-sm-2">備註</dt>
-                            <dd className="col-sm-10">{data.main.備註}</dd>
+                            <dd className="col-sm-4">{data.main.備註 || '-'}</dd>
                         </dl>
                         <Table bordered size="sm">
                             <thead className="table-secondary">

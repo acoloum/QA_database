@@ -36,6 +36,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
 
     const [material, setMaterial] = useState('');
     const [spec, setSpec] = useState('');
+    const [vendor, setVendor] = useState('');
     const [note, setNote] = useState('');
     const [createdAt, setCreatedAt] = useState(new Date().toISOString().split('T')[0]);
     const [rows, setRows] = useState<DetailRow[]>([emptyRow()]);
@@ -43,6 +44,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
     const reset = useCallback(() => {
         setMaterial('');
         setSpec('');
+        setVendor('');
         setNote('');
         setCreatedAt(new Date().toISOString().split('T')[0]);
         setRows([emptyRow()]);
@@ -55,6 +57,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
         const m = detail.main;
         setMaterial(m.材質);
         setSpec(m.規格 || '');
+        setVendor(m.廠商 || '');
         setNote(m.備註 || '');
         setCreatedAt(m.建立日期?.split('T')[0] || new Date().toISOString().split('T')[0]);
         setRows(
@@ -78,6 +81,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
         const payload = {
             材質: material.trim(),
             規格: spec.trim() || null,
+            廠商: vendor.trim() || null,
             備註: note.trim() || null,
             建立日期: createdAt,
             details: rows.map((r) => ({
@@ -126,14 +130,22 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                             </Col>
                             <Col md={3}>
                                 <Form.Group>
-                                    <Form.Label>建立日期</Form.Label>
-                                    <Form.Control type="date" value={createdAt} onChange={(e) => setCreatedAt(e.target.value)} />
+                                    <Form.Label>廠商</Form.Label>
+                                    <Form.Control value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="如 台鋁" />
                                 </Form.Group>
                             </Col>
                             <Col md={3}>
                                 <Form.Group>
                                     <Form.Label>備註</Form.Label>
                                     <Form.Control value={note} onChange={(e) => setNote(e.target.value)} />
+                                </Form.Group>
+                            </Col>
+                        </Row>
+                        <Row className="mb-2">
+                            <Col md={3}>
+                                <Form.Group>
+                                    <Form.Label>建立日期</Form.Label>
+                                    <Form.Control type="date" value={createdAt} onChange={(e) => setCreatedAt(e.target.value)} />
                                 </Form.Group>
                             </Col>
                         </Row>

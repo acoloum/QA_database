@@ -8,6 +8,7 @@ export interface ExtrusionToleranceItem {
     識別碼: number;
     材質: string;
     規格: string;
+    廠商: string;
     備註: string;
     建立日期: string;
 }
@@ -51,6 +52,7 @@ export const useExtrusionToleranceList = (params: {
     page_size: number;
     material?: string;
     spec?: string;
+    vendor?: string;
 }) =>
     useQuery({
         queryKey: ['extrusionToleranceList', params],
@@ -58,6 +60,7 @@ export const useExtrusionToleranceList = (params: {
             const p = new URLSearchParams();
             if (params.material) p.append('material', params.material);
             if (params.spec) p.append('spec', params.spec);
+            if (params.vendor) p.append('vendor', params.vendor);
             p.append('page', params.page.toString());
             p.append('page_size', params.page_size.toString());
             const res = await api.get(`/extrusion-tolerance/search?${p}`);

@@ -12,9 +12,10 @@ const ExtrusionTolerancePage = () => {
     const [page, setPage] = useState(1);
     const [material, setMaterial] = useState('');
     const [spec, setSpec] = useState('');
+    const [vendor, setVendor] = useState('');
 
     const { data: result, isLoading, refetch } = useExtrusionToleranceList({
-        page, page_size: 20, material, spec,
+        page, page_size: 20, material, spec, vendor,
     });
     const deleteMutation = useDeleteExtrusionTolerance();
 
@@ -53,6 +54,10 @@ const ExtrusionTolerancePage = () => {
                             <Form.Label>規格</Form.Label>
                             <Form.Control size="sm" value={spec} onChange={(e) => setSpec(e.target.value)} placeholder="如 62.5*2.3" />
                         </Col>
+                        <Col md={3}>
+                            <Form.Label>廠商</Form.Label>
+                            <Form.Control size="sm" value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="模糊搜尋" />
+                        </Col>
                         <Col md={2}>
                             <Button size="sm" onClick={handleSearch}>查詢</Button>
                         </Col>
@@ -70,6 +75,7 @@ const ExtrusionTolerancePage = () => {
                                 <tr>
                                     <th>材質</th>
                                     <th>規格</th>
+                                    <th>廠商</th>
                                     <th>備註</th>
                                     <th>建立日期</th>
                                     <th>操作</th>
@@ -77,11 +83,12 @@ const ExtrusionTolerancePage = () => {
                             </thead>
                             <tbody>
                                 {rows.length === 0 ? (
-                                    <tr><td colSpan={5} className="text-center text-muted">無資料</td></tr>
+                                    <tr><td colSpan={6} className="text-center text-muted">無資料</td></tr>
                                 ) : rows.map((r) => (
                                     <tr key={r.識別碼}>
                                         <td>{r.材質}</td>
                                         <td>{r.規格 || <span className="text-muted">（通用）</span>}</td>
+                                        <td>{r.廠商}</td>
                                         <td>{r.備註}</td>
                                         <td>{r.建立日期}</td>
                                         <td>

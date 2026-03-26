@@ -213,6 +213,7 @@ class ExtrusionToleranceMain(db.Model):
     id = db.Column('識別碼', db.Integer, primary_key=True)
     material = db.Column('材質', db.String, nullable=False)
     spec = db.Column('規格', db.String)
+    vendor = db.Column('廠商', db.String)
     note = db.Column('備註', db.String)
     created_at = db.Column('建立日期', db.Date, default=date.today)
 
