@@ -99,6 +99,9 @@ export const useAddExtrusionTolerance = () => {
             qc.invalidateQueries({ queryKey: ['extrusionToleranceList'] });
             qc.invalidateQueries({ queryKey: ['extrusionToleranceOptions'] });
         },
+        onError: () => {
+            toast.error('新增失敗，請稍後再試');
+        },
     });
 };
 
@@ -114,6 +117,9 @@ export const useUpdateExtrusionTolerance = () => {
             qc.invalidateQueries({ queryKey: ['extrusionToleranceList'] });
             qc.invalidateQueries({ queryKey: ['extrusionToleranceDetail', vars.id] });
         },
+        onError: () => {
+            toast.error('更新失敗，請稍後再試');
+        },
     });
 };
 
@@ -127,6 +133,9 @@ export const useDeleteExtrusionTolerance = () => {
         onSuccess: () => {
             toast.success('刪除成功');
             qc.invalidateQueries({ queryKey: ['extrusionToleranceList'] });
+        },
+        onError: () => {
+            toast.error('刪除失敗，請稍後再試');
         },
     });
 };

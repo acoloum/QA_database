@@ -57,6 +57,8 @@ def delete(id):
     try:
         ExtrusionToleranceService.delete(id)
         return jsonify({"success": True})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
     except Exception as e:
         return jsonify({"error": handle_db_error(e)}), 500
 

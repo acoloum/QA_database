@@ -142,10 +142,13 @@ class ExtrusionToleranceService:
         """刪除（CASCADE 自動刪明細）"""
         try:
             t = ExtrusionToleranceMain.query.get(tolerance_id)
-            if t:
-                db.session.delete(t)
-                db.session.commit()
+            if not t:
+                raise ValueError("找不到擠壓公差資料")
+            db.session.delete(t)
+            db.session.commit()
             return True
+        except ValueError:
+            raise
         except Exception as e:
             db.session.rollback()
             raise e
