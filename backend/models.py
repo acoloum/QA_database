@@ -1,5 +1,5 @@
 
-from datetime import datetime
+from datetime import date, datetime
 from .extensions import db
 from sqlalchemy.orm import relationship
 
@@ -214,7 +214,7 @@ class ExtrusionToleranceMain(db.Model):
     material = db.Column('材質', db.String, nullable=False)
     spec = db.Column('規格', db.String)
     note = db.Column('備註', db.String)
-    created_at = db.Column('建立日期', db.Date)
+    created_at = db.Column('建立日期', db.Date, default=date.today)
 
     details = db.relationship('ExtrusionToleranceDetail', backref='main', cascade="all, delete-orphan")
 
