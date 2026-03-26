@@ -31,6 +31,7 @@ const Sidebar = () => {
                 { title: 'CAR 要求', path: '/cara', icon: 'fa-bullhorn' },
                 { title: '矯正措施', path: '/capa', icon: 'fa-file-signature' },
                 { title: '公差管理', path: '/tolerance', icon: 'fa-ruler-combined' },
+                { title: '擠壓公差', path: '/extrusion-tolerance', icon: 'fa-compress-alt' },
             ]
         },
         {
