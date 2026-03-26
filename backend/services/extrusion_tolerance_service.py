@@ -93,7 +93,6 @@ class ExtrusionToleranceService:
                 db.session.add(ExtrusionToleranceDetail(
                     main_id=main.id,
                     item=d.get('測量項目'),
-                    position=d.get('測量位置') or None,
                     tolerance_min=d.get('公差下限') or None,
                     tolerance_max=d.get('公差上限') or None,
                     std_val=d.get('標準值') or None,
@@ -124,7 +123,6 @@ class ExtrusionToleranceService:
                 db.session.add(ExtrusionToleranceDetail(
                     main_id=t.id,
                     item=d.get('測量項目'),
-                    position=d.get('測量位置') or None,
                     tolerance_min=d.get('公差下限') or None,
                     tolerance_max=d.get('公差上限') or None,
                     std_val=d.get('標準值') or None,
@@ -228,7 +226,6 @@ class ExtrusionToleranceService:
             "tolerances": [
                 {
                     "項目": d.item,
-                    "位置": d.position or '',
                     "公差下限": float(d.tolerance_min) if d.tolerance_min is not None else None,
                     "公差上限": float(d.tolerance_max) if d.tolerance_max is not None else None,
                     "標準值": float(d.std_val) if d.std_val is not None else None,

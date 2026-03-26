@@ -31,7 +31,6 @@ const ViewExtrusionToleranceModal = ({ show, id, onClose }: Props) => {
                             <thead className="table-secondary">
                                 <tr>
                                     <th>測量項目</th>
-                                    <th>測量位置</th>
                                     <th>公差下限</th>
                                     <th>公差上限</th>
                                     <th>標準值</th>
@@ -42,7 +41,6 @@ const ViewExtrusionToleranceModal = ({ show, id, onClose }: Props) => {
                                 {data.details.map((d, i) => (
                                     <tr key={i}>
                                         <td>{d.測量項目}</td>
-                                        <td>{d.測量位置}</td>
                                         <td>{d.公差下限 ?? '-'}</td>
                                         <td>{d.公差上限 ?? '-'}</td>
                                         <td>{d.標準值 ?? '-'}</td>

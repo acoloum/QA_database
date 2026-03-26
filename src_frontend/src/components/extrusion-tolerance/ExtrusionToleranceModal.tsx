@@ -8,7 +8,6 @@ import {
 
 interface DetailRow {
     測量項目: string;
-    測量位置: string;
     公差下限: string;
     公差上限: string;
     標準值: string;
@@ -16,11 +15,9 @@ interface DetailRow {
 }
 
 const ITEMS = ['外徑', '內徑', '厚度'];
-const POSITIONS = ['前段', '中段', '後段'];
 
 const emptyRow = (): DetailRow => ({
     測量項目: '外徑',
-    測量位置: '前段',
     公差下限: '',
     公差上限: '',
     標準值: '',
@@ -66,7 +63,6 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
             detail.details.length > 0
                 ? detail.details.map((d) => ({
                       測量項目: d.測量項目,
-                      測量位置: d.測量位置,
                       公差下限: d.公差下限 != null ? String(d.公差下限) : '',
                       公差上限: d.公差上限 != null ? String(d.公差上限) : '',
                       標準值: d.標準值 != null ? String(d.標準值) : '',
@@ -89,7 +85,6 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
             建立日期: createdAt,
             details: rows.map((r) => ({
                 測量項目: r.測量項目,
-                測量位置: r.測量位置,
                 公差下限: r.公差下限 !== '' ? parseFloat(r.公差下限) : null,
                 公差上限: r.公差上限 !== '' ? parseFloat(r.公差上限) : null,
                 標準值: r.標準值 !== '' ? parseFloat(r.標準值) : null,
@@ -149,8 +144,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                         <Table bordered size="sm" className="mt-3">
                             <thead className="table-secondary">
                                 <tr>
-                                    <th>測量項目</th>
-                                    <th>測量位置</th>
+                                    <th style={{ minWidth: '110px' }}>測量項目</th>
                                     <th>公差下限</th>
                                     <th>公差上限</th>
                                     <th>標準值</th>
@@ -164,11 +158,6 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                                         <td>
                                             <Form.Select size="sm" value={r.測量項目} onChange={(e) => updateRow(i, '測量項目', e.target.value)}>
                                                 {ITEMS.map((it) => <option key={it}>{it}</option>)}
-                                            </Form.Select>
-                                        </td>
-                                        <td>
-                                            <Form.Select size="sm" value={r.測量位置} onChange={(e) => updateRow(i, '測量位置', e.target.value)}>
-                                                {POSITIONS.map((p) => <option key={p}>{p}</option>)}
                                             </Form.Select>
                                         </td>
                                         <td><Form.Control size="sm" type="number" value={r.公差下限} onChange={(e) => updateRow(i, '公差下限', e.target.value)} /></td>

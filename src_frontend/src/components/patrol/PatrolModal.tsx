@@ -202,7 +202,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
 
     // 判斷單一儲存格是否 NG（雙側比對：同時檢查上下限）
     const isCellNG = (pos: string, item: string, type: 'min' | 'max', gName: string): boolean => {
-        const tol = tolerances.find((t) => t.項目 === item && t.位置 === pos);
+        const tol = tolerances.find((t) => t.項目 === item);
         if (!tol) return false;
         const valStr = getDetailValue(gName, pos, item, type);
         if (valStr === '') return false;
