@@ -15,7 +15,7 @@ interface DetailRow {
     標準值: string;
 }
 
-const ITEMS = ['外徑', '內徑', '厚度'];
+const ITEMS = ['外徑', '內徑', '厚度', '同心度'];
 
 const emptyRow = (): DetailRow => ({
     測量項目: '外徑',
