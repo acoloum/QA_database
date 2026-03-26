@@ -198,7 +198,7 @@ class VendorToleranceDetail(db.Model):
     main_id = db.Column('主檔ID', db.Integer, db.ForeignKey('廠商公差主檔.識別碼'))
     item = db.Column('測量項目', db.String)
     position = db.Column('測量位置', db.String)
-    
+
     tolerance_min = db.Column('公差下限', db.Float)
     tolerance_max = db.Column('公差上限', db.Float)
     dim_min = db.Column('尺寸下限', db.Float)
@@ -206,6 +206,30 @@ class VendorToleranceDetail(db.Model):
     std_val = db.Column('標準值', db.Float)
     unit = db.Column('單位', db.String)
     note = db.Column('備註', db.String)
+
+class ExtrusionToleranceMain(db.Model):
+    """擠壓公差主檔"""
+    __tablename__ = '擠壓公差主檔'
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    material = db.Column('材質', db.String, nullable=False)
+    spec = db.Column('規格', db.String)
+    note = db.Column('備註', db.String)
+    created_at = db.Column('建立日期', db.Date)
+
+    details = db.relationship('ExtrusionToleranceDetail', backref='main', cascade="all, delete-orphan")
+
+
+class ExtrusionToleranceDetail(db.Model):
+    """擠壓公差明細檔"""
+    __tablename__ = '擠壓公差明細檔'
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    main_id = db.Column('主檔ID', db.Integer, db.ForeignKey('擠壓公差主檔.識別碼'), nullable=False)
+    item = db.Column('測量項目', db.String, nullable=False)
+    position = db.Column('測量位置', db.String)
+    tolerance_min = db.Column('公差下限', db.Numeric)
+    tolerance_max = db.Column('公差上限', db.Numeric)
+    std_val = db.Column('標準值', db.Numeric)
+    unit = db.Column('單位', db.String, default='mm')
 
 class NCMR(db.Model):
     __tablename__ = '不合格品單'
