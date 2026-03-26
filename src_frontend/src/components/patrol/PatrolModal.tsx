@@ -212,6 +212,19 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         return false;
     };
 
+    // 判斷同心度是否 NG（同心度 = 最大厚度 - 最小厚度）
+    const isConcentricityNG = (pos: string, gName: string): boolean => {
+        const tol = tolerances.find((t) => t.項目 === '同心度');
+        if (!tol) return false;
+        const minStr = getDetailValue(gName, pos, '厚度', 'min');
+        const maxStr = getDetailValue(gName, pos, '厚度', 'max');
+        if (minStr === '' || maxStr === '') return false;
+        const concentricity = parseFloat(maxStr) - parseFloat(minStr);
+        if (tol.公差下限 != null && concentricity < tol.公差下限) return true;
+        if (tol.公差上限 != null && concentricity > tol.公差上限) return true;
+        return false;
+    };
+
     // Render helper
     const renderTableRows = () => {
         const rows = [];
@@ -228,7 +241,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                             if (item === '內徑' && !showInner) return null;
                             return (
                                 <Fragment key={`${pos}-${item}`}>
-                                    <td style={{ padding: '2px', backgroundColor: isCellNG(pos, item, 'min', gName) ? '#ffcccc' : undefined }}>
+                                    <td style={{ padding: '2px', backgroundColor: (isCellNG(pos, item, 'min', gName) || (item === '厚度' && isConcentricityNG(pos, gName))) ? '#ffcccc' : undefined }}>
                                         <Form.Control
                                             size="sm"
                                             type="number"
@@ -236,10 +249,10 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                                             value={getDetailValue(gName, pos, item, 'min')}
                                             onChange={e => handleDetailChange(gName, pos, item, 'min', e.target.value)}
                                             className="patrol-input"
-                                            style={{ backgroundColor: isCellNG(pos, item, 'min', gName) ? '#ffcccc' : undefined }}
+                                            style={{ backgroundColor: (isCellNG(pos, item, 'min', gName) || (item === '厚度' && isConcentricityNG(pos, gName))) ? '#ffcccc' : undefined }}
                                         />
                                     </td>
-                                    <td style={{ padding: '2px', backgroundColor: isCellNG(pos, item, 'max', gName) ? '#ffcccc' : undefined }}>
+                                    <td style={{ padding: '2px', backgroundColor: (isCellNG(pos, item, 'max', gName) || (item === '厚度' && isConcentricityNG(pos, gName))) ? '#ffcccc' : undefined }}>
                                         <Form.Control
                                             size="sm"
                                             type="number"
@@ -247,7 +260,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                                             value={getDetailValue(gName, pos, item, 'max')}
                                             onChange={e => handleDetailChange(gName, pos, item, 'max', e.target.value)}
                                             className="patrol-input"
-                                            style={{ backgroundColor: isCellNG(pos, item, 'max', gName) ? '#ffcccc' : undefined }}
+                                            style={{ backgroundColor: (isCellNG(pos, item, 'max', gName) || (item === '厚度' && isConcentricityNG(pos, gName))) ? '#ffcccc' : undefined }}
                                         />
                                     </td>
                                 </Fragment>
