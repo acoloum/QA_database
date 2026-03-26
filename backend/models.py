@@ -79,6 +79,7 @@ class ShippingData(db.Model):
         locals()[f'concentricity{i}'] = db.Column(f'同心度{i}', db.String)
         locals()[f'length{i}'] = db.Column(f'長度{i}', db.String)
         locals()[f'hardness{i}'] = db.Column(f'硬度{i}', db.String)
+        locals()[f'vickers{i}'] = db.Column(f'韋伯氏硬度{i}', db.String)
         locals()[f'straightness{i}'] = db.Column(f'真直度{i}', db.String)
         locals()[f'roundness{i}'] = db.Column(f'真圓度{i}', db.String)
     

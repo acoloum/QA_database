@@ -261,7 +261,7 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
             <Modal.Header closeButton>
                 <Modal.Title>{editId ? '編輯公差資料' : '新增公差資料'}</Modal.Title>
             </Modal.Header>
-            <Modal.Body style={{ maxHeight: '80vh', overflowY: 'auto', overflowX: 'auto' }}>
+            <Modal.Body style={{ maxHeight: '80vh', overflowY: 'auto' }}>
                 <style type="text/css">
                     {`
                         .modal-90w {
@@ -304,7 +304,8 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
                             collisionDetection={closestCenter}
                             onDragEnd={handleDragEnd}
                         >
-                            <Table bordered hover size="sm">
+                        <div style={{ overflowX: 'auto' }}>
+                            <Table bordered hover size="sm" style={{ minWidth: '760px' }}>
                                 <thead className="table-light text-center sticky-header">
                                     <tr>
                                         <th style={{ width: '40px' }}></th>
@@ -336,6 +337,7 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
                                     </SortableContext>
                                 </tbody>
                             </Table>
+                        </div>
                         </DndContext>
                     </>
                 )}

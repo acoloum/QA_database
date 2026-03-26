@@ -36,8 +36,9 @@ const BASE_ITEMS: ItemConfig[] = [
     { label: "真直度", key: "真直度", type: "single" }
 ];
 
-// Additional item for 安泰 vendor (placed after 內徑)
+// Additional items for 安泰 vendor
 const ROUNDNESS_ITEM: ItemConfig = { label: "真圓度", key: "真圓度", type: "single" };
+const VICKERS_HARDNESS_ITEM: ItemConfig = { label: "韋伯氏硬度(HW)", key: "韋伯氏硬度", type: "single" };
 
 // Vendor name that requires extra features
 const ANTAI_VENDOR_NAME = "安泰";
@@ -76,11 +77,20 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     // Determine if current vendor is 安泰
     const isAntai = vendorName === ANTAI_VENDOR_NAME;
 
-    // Active items based on vendor — 真圓度 inserted after 內徑 (index 2)
+    // Active items based on vendor
+    // 安泰：真圓度插入內徑後、硬度改標示為洛氏硬度(HRB)、新增韋伯氏硬度(HW)
     const ITEMS = useMemo(() => {
         if (!isAntai) return BASE_ITEMS;
         const items = [...BASE_ITEMS];
-        items.splice(2, 0, ROUNDNESS_ITEM); // Insert after 內徑 (index 1)
+        // 真圓度插在內徑後面（index 2）
+        items.splice(2, 0, ROUNDNESS_ITEM);
+        // 將硬度改標示為洛氏硬度(HRB)（key 不變，仍對應後端 硬度 欄位）
+        const hardnessIdx = items.findIndex(item => item.key === '硬度');
+        if (hardnessIdx !== -1) {
+            items[hardnessIdx] = { ...items[hardnessIdx], label: '洛氏硬度(HRB)' };
+            // 韋伯氏硬度(HW) 插在洛氏硬度後面
+            items.splice(hardnessIdx + 1, 0, VICKERS_HARDNESS_ITEM);
+        }
         return items;
     }, [isAntai]);
 
@@ -140,7 +150,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                 // Determine items based on vendor for loading measurements
                 const loadVendor = detailData.廠商中文名稱;
                 const loadItems = loadVendor === ANTAI_VENDOR_NAME
-                    ? [...BASE_ITEMS, ROUNDNESS_ITEM]
+                    ? [...BASE_ITEMS, ROUNDNESS_ITEM, VICKERS_HARDNESS_ITEM]
                     : BASE_ITEMS;
 
                 const m: Record<string, string> = {};

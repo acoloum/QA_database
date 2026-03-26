@@ -67,6 +67,7 @@ class ShippingService:
             res[f"同心度{i}"] = format_value(getattr(item, f"concentricity{i}"))
             res[f"長度{i}"] = format_value(getattr(item, f"length{i}"))
             res[f"硬度{i}"] = format_value(getattr(item, f"hardness{i}"))
+            res[f"韋伯氏硬度{i}"] = format_value(getattr(item, f"vickers{i}"))
             res[f"真直度{i}"] = format_value(getattr(item, f"straightness{i}"))
 
         return res
@@ -208,6 +209,7 @@ class ShippingService:
                 '同心度': 'concentricity',
                 '長度': 'length',
                 '硬度': 'hardness',
+                '韋伯氏硬度': 'vickers',
                 '真直度': 'straightness',
                 '真圓度': 'roundness'
             }
@@ -526,6 +528,7 @@ class ShippingService:
                 setattr(shipping_data, f"concentricity{i}", get_val(f'同心度{i}'))
                 setattr(shipping_data, f"length{i}", get_val(f'長度{i}'))
                 setattr(shipping_data, f"hardness{i}", get_val(f'硬度{i}'))
+                setattr(shipping_data, f"vickers{i}", get_val(f'韋伯氏硬度{i}'))
                 setattr(shipping_data, f"straightness{i}", get_val(f'真直度{i}'))
                 setattr(shipping_data, f"roundness{i}", get_val(f'真圓度{i}'))
 

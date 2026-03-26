@@ -40,7 +40,7 @@ interface ShippingChartsProps {
     onPointClick?: (id: number) => void;
 }
 
-const ITEMS = [
+const BASE_CHART_ITEMS = [
     { label: "外徑", key: "外徑" },
     { label: "內徑", key: "內徑" },
     { label: "真圓度", key: "真圓度" },
@@ -51,9 +51,20 @@ const ITEMS = [
     { label: "真直度", key: "真直度" }
 ];
 
+const ANTAI_VENDOR_NAME = "安泰";
+
 const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointClick }: ShippingChartsProps) => {
     const [statsField, setStatsField] = useState('外徑');
     const [showWeco, setShowWeco] = useState(false);
+
+    // 安泰廠商：硬度改標示為洛氏硬度(HRB)，並新增韋伯氏硬度(HW)
+    const isAntai = vendor.includes(ANTAI_VENDOR_NAME);
+    const ITEMS = useMemo(() => {
+        if (!isAntai) return BASE_CHART_ITEMS;
+        return BASE_CHART_ITEMS.map(item =>
+            item.key === '硬度' ? { ...item, label: '洛氏硬度(HRB)' } : item
+        ).concat([{ label: '韋伯氏硬度(HW)', key: '韋伯氏硬度' }]);
+    }, [isAntai]);
 
     const { data: statsData } = useShippingStats({
         field: statsField,
