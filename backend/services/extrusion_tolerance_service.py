@@ -79,64 +79,76 @@ class ExtrusionToleranceService:
     @staticmethod
     def add(data: Dict[str, Any]) -> int:
         """新增主檔 + 明細"""
-        main = ExtrusionToleranceMain(
-            material=data.get('材質'),
-            spec=data.get('規格') or None,
-            note=data.get('備註') or None,
-            created_at=data.get('建立日期') or None,
-        )
-        db.session.add(main)
-        db.session.flush()
+        try:
+            main = ExtrusionToleranceMain(
+                material=data.get('材質'),
+                spec=data.get('規格') or None,
+                note=data.get('備註') or None,
+                created_at=data.get('建立日期') or None,
+            )
+            db.session.add(main)
+            db.session.flush()
 
-        for d in data.get('details', []):
-            db.session.add(ExtrusionToleranceDetail(
-                main_id=main.id,
-                item=d.get('測量項目'),
-                position=d.get('測量位置') or None,
-                tolerance_min=d.get('公差下限') or None,
-                tolerance_max=d.get('公差上限') or None,
-                std_val=d.get('標準值') or None,
-                unit=d.get('單位', 'mm'),
-            ))
+            for d in data.get('details', []):
+                db.session.add(ExtrusionToleranceDetail(
+                    main_id=main.id,
+                    item=d.get('測量項目'),
+                    position=d.get('測量位置') or None,
+                    tolerance_min=d.get('公差下限') or None,
+                    tolerance_max=d.get('公差上限') or None,
+                    std_val=d.get('標準值') or None,
+                    unit=d.get('單位', 'mm'),
+                ))
 
-        db.session.commit()
-        return main.id
+            db.session.commit()
+            return main.id
+        except Exception as e:
+            db.session.rollback()
+            raise e
 
     @staticmethod
     def update(tolerance_id: int, data: Dict[str, Any]) -> bool:
         """更新主檔 + 明細（刪除重建明細）"""
-        t = ExtrusionToleranceMain.query.get(tolerance_id)
-        if not t:
-            raise ValueError("找不到擠壓公差資料")
+        try:
+            t = ExtrusionToleranceMain.query.get(tolerance_id)
+            if not t:
+                raise ValueError("找不到擠壓公差資料")
 
-        t.material = data.get('材質')
-        t.spec = data.get('規格') or None
-        t.note = data.get('備註') or None
-        t.created_at = data.get('建立日期') or None
+            t.material = data.get('材質')
+            t.spec = data.get('規格') or None
+            t.note = data.get('備註') or None
+            t.created_at = data.get('建立日期') or None
 
-        ExtrusionToleranceDetail.query.filter_by(main_id=tolerance_id).delete()
-        for d in data.get('details', []):
-            db.session.add(ExtrusionToleranceDetail(
-                main_id=t.id,
-                item=d.get('測量項目'),
-                position=d.get('測量位置') or None,
-                tolerance_min=d.get('公差下限') or None,
-                tolerance_max=d.get('公差上限') or None,
-                std_val=d.get('標準值') or None,
-                unit=d.get('單位', 'mm'),
-            ))
+            ExtrusionToleranceDetail.query.filter_by(main_id=tolerance_id).delete()
+            for d in data.get('details', []):
+                db.session.add(ExtrusionToleranceDetail(
+                    main_id=t.id,
+                    item=d.get('測量項目'),
+                    position=d.get('測量位置') or None,
+                    tolerance_min=d.get('公差下限') or None,
+                    tolerance_max=d.get('公差上限') or None,
+                    std_val=d.get('標準值') or None,
+                    unit=d.get('單位', 'mm'),
+                ))
 
-        db.session.commit()
-        return True
+            db.session.commit()
+            return True
+        except Exception as e:
+            db.session.rollback()
+            raise e
 
     @staticmethod
     def delete(tolerance_id: int) -> bool:
         """刪除（CASCADE 自動刪明細）"""
-        t = ExtrusionToleranceMain.query.get(tolerance_id)
-        if t:
-            db.session.delete(t)
-            db.session.commit()
-        return True
+        try:
+            t = ExtrusionToleranceMain.query.get(tolerance_id)
+            if t:
+                db.session.delete(t)
+                db.session.commit()
+            return True
+        except Exception as e:
+            db.session.rollback()
+            raise e
 
     @staticmethod
     def get_options() -> Dict[str, Any]:
@@ -219,7 +231,7 @@ class ExtrusionToleranceService:
                     "標準值": float(d.std_val) if d.std_val is not None else None,
                     "單位": d.unit or 'mm',
                 }
-                for d in matched.details
+                for d in sorted(matched.details, key=lambda x: x.id)
             ],
             "matched_priority": priority,
             "priority_name": p_names[priority],
