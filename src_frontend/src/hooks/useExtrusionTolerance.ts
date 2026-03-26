@@ -85,7 +85,7 @@ export const useExtrusionToleranceOptions = () =>
         queryKey: ['extrusionToleranceOptions'],
         queryFn: async () => {
             const res = await api.get('/extrusion-tolerance/options');
-            return res.data as { materials: string[]; specs: string[] };
+            return res.data as { materials: string[]; specs: string[]; vendors: string[] };
         },
         staleTime: 5 * 60 * 1000,
     });

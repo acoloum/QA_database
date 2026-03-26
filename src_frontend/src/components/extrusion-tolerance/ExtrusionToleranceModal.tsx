@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col, Table } from 'react-bootstrap';
 import {
     useExtrusionToleranceDetail,
+    useExtrusionToleranceOptions,
     useAddExtrusionTolerance,
     useUpdateExtrusionTolerance,
 } from '../../hooks/useExtrusionTolerance';
@@ -31,6 +32,7 @@ interface Props {
 
 const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) => {
     const { data: detail, isLoading } = useExtrusionToleranceDetail(editId);
+    const { data: options } = useExtrusionToleranceOptions();
     const addMutation = useAddExtrusionTolerance();
     const updateMutation = useUpdateExtrusionTolerance();
 
@@ -115,8 +117,28 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                     <p>載入中…</p>
                 ) : (
                     <>
-                        <Row className="mb-2">
-                            <Col md={3}>
+                        <Row className="mb-3 g-2">
+                            <Col md={2}>
+                                <Form.Group>
+                                    <Form.Label>建立日期</Form.Label>
+                                    <Form.Control type="date" value={createdAt} onChange={(e) => setCreatedAt(e.target.value)} />
+                                </Form.Group>
+                            </Col>
+                            <Col md={2}>
+                                <Form.Group>
+                                    <Form.Label>廠商</Form.Label>
+                                    <Form.Control
+                                        list="vendor-options"
+                                        value={vendor}
+                                        onChange={(e) => setVendor(e.target.value)}
+                                        placeholder="輸入或選擇"
+                                    />
+                                    <datalist id="vendor-options">
+                                        {(options?.vendors ?? []).map((v) => <option key={v} value={v} />)}
+                                    </datalist>
+                                </Form.Group>
+                            </Col>
+                            <Col md={2}>
                                 <Form.Group>
                                     <Form.Label>材質 <span className="text-danger">*</span></Form.Label>
                                     <Form.Control value={material} onChange={(e) => setMaterial(e.target.value)} placeholder="如 6063" />
@@ -130,22 +152,8 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                             </Col>
                             <Col md={3}>
                                 <Form.Group>
-                                    <Form.Label>廠商</Form.Label>
-                                    <Form.Control value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="如 台鋁" />
-                                </Form.Group>
-                            </Col>
-                            <Col md={3}>
-                                <Form.Group>
                                     <Form.Label>備註</Form.Label>
                                     <Form.Control value={note} onChange={(e) => setNote(e.target.value)} />
-                                </Form.Group>
-                            </Col>
-                        </Row>
-                        <Row className="mb-2">
-                            <Col md={3}>
-                                <Form.Group>
-                                    <Form.Label>建立日期</Form.Label>
-                                    <Form.Control type="date" value={createdAt} onChange={(e) => setCreatedAt(e.target.value)} />
                                 </Form.Group>
                             </Col>
                         </Row>

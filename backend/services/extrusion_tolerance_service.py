@@ -159,14 +159,18 @@ class ExtrusionToleranceService:
 
     @staticmethod
     def get_options() -> Dict[str, Any]:
-        """取得篩選選項（材質、規格清單）"""
+        """取得篩選選項（材質、規格、廠商清單）"""
         materials = [r[0] for r in db.session.query(ExtrusionToleranceMain.material)
                      .distinct().order_by(ExtrusionToleranceMain.material).all() if r[0]]
         specs = [r[0] for r in db.session.query(ExtrusionToleranceMain.spec)
                  .distinct().filter(ExtrusionToleranceMain.spec != None,
                                     ExtrusionToleranceMain.spec != '')
                  .order_by(ExtrusionToleranceMain.spec).all()]
-        return {"materials": materials, "specs": specs}
+        vendors = [r[0] for r in db.session.query(ExtrusionToleranceMain.vendor)
+                   .distinct().filter(ExtrusionToleranceMain.vendor != None,
+                                      ExtrusionToleranceMain.vendor != '')
+                   .order_by(ExtrusionToleranceMain.vendor).all()]
+        return {"materials": materials, "specs": specs, "vendors": vendors}
 
     @staticmethod
     def check(args: Dict[str, Any]) -> Dict[str, Any]:

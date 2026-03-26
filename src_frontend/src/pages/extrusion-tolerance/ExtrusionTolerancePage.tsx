@@ -73,11 +73,11 @@ const ExtrusionTolerancePage = () => {
                         <Table bordered hover size="sm">
                             <thead className="table-secondary">
                                 <tr>
+                                    <th>建立日期</th>
+                                    <th>廠商</th>
                                     <th>材質</th>
                                     <th>規格</th>
-                                    <th>廠商</th>
                                     <th>備註</th>
-                                    <th>建立日期</th>
                                     <th>操作</th>
                                 </tr>
                             </thead>
@@ -86,11 +86,11 @@ const ExtrusionTolerancePage = () => {
                                     <tr><td colSpan={6} className="text-center text-muted">無資料</td></tr>
                                 ) : rows.map((r) => (
                                     <tr key={r.識別碼}>
+                                        <td>{r.建立日期}</td>
+                                        <td>{r.廠商}</td>
                                         <td>{r.材質}</td>
                                         <td>{r.規格 || <span className="text-muted">（通用）</span>}</td>
-                                        <td>{r.廠商}</td>
                                         <td>{r.備註}</td>
-                                        <td>{r.建立日期}</td>
                                         <td>
                                             <Button size="sm" variant="outline-info" className="me-1" onClick={() => handleView(r.識別碼)}>查看</Button>
                                             <Button size="sm" variant="outline-primary" className="me-1" onClick={() => handleEdit(r.識別碼)}>編輯</Button>
