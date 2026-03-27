@@ -588,16 +588,30 @@ class PatrolService:
                 is_ng = False
 
                 if tol_found:
+                    # 從規格字串解析標準值（如 "85*2.8" → {'外徑': 85.0, '厚度': 2.8}）
+                    # 供無標準值的相對公差記錄使用
+                    spec_nominal: dict = {}
+                    if sp:
+                        parts = sp.replace('×', '*').replace('x', '*').replace('X', '*').split('*')
+                        try:
+                            if len(parts) >= 1:
+                                spec_nominal['外徑'] = float(parts[0])
+                            if len(parts) >= 2:
+                                spec_nominal['厚度'] = float(parts[1])
+                        except ValueError:
+                            pass
+
                     for d in patrol.details:
                         tol = tol_map.get(d.item)
                         if tol:
                             # 優先使用尺寸下限/尺寸上限（絕對限制），其次使用公差下限/公差上限（相對限制）
                             dim_min = tol.get('尺寸下限')
                             dim_max = tol.get('尺寸上限')
-                            
+
                             # 如果沒有尺寸下限/上限，則從標準值和公差計算
+                            # 標準值優先使用公差記錄本身，否則 fallback 到規格解析值
                             if dim_min is None and dim_max is None:
-                                std_val = tol.get('標準值')
+                                std_val = tol.get('標準值') or spec_nominal.get(d.item)
                                 tol_min = tol.get('公差下限')
                                 tol_max = tol.get('公差上限')
                                 if std_val is not None:
@@ -605,7 +619,7 @@ class PatrolService:
                                         dim_min = std_val - abs(tol_min)
                                     if tol_max is not None:
                                         dim_max = std_val + abs(tol_max)
-                            
+
                             # 進行 NG 判斷
                             for val in [
                                 float(d.min_val) if d.min_val is not None else None,
@@ -625,7 +639,7 @@ class PatrolService:
                                 # 優先使用尺寸下限/尺寸上限
                                 conc_dim_min = conc_tol.get('尺寸下限')
                                 conc_dim_max = conc_tol.get('尺寸上限')
-                                
+
                                 if conc_dim_min is None and conc_dim_max is None:
                                     std_val = conc_tol.get('標準值')
                                     tol_min = conc_tol.get('公差下限')
@@ -635,6 +649,10 @@ class PatrolService:
                                             conc_dim_min = std_val - abs(tol_min)
                                         if tol_max is not None:
                                             conc_dim_max = std_val + abs(tol_max)
+                                    elif tol_min == 0.0 and tol_max is not None:
+                                        # 同心度：tolerance_min=0 表示「最小值=0」，tolerance_max 為絕對上限
+                                        conc_dim_min = 0.0
+                                        conc_dim_max = float(tol_max)
                                 
                                 concentricity = float(d.max_val) - float(d.min_val)
                                 if conc_dim_min is not None and concentricity < conc_dim_min:

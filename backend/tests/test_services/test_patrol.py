@@ -9,22 +9,24 @@ from backend.models import (
 
 
 def test_get_history_is_ng_true(app, db_session):
-    """量測值超出押出公差時，is_ng 應為 True"""
+    """量測值超出押出公差時，is_ng 應為 True（標準值從規格 10*2 解析 → 外徑=10）"""
     with app.app_context():
-        et_main = ExtrusionToleranceMain(material='SUS304', spec='10*10*100')
+        et_main = ExtrusionToleranceMain(material='SUS304', spec='10*2')
         db_session.add(et_main)
         db_session.flush()
+        # 相對公差 ±0.5，無 std_val；標準值由規格解析 → 10.0
+        # 絕對界限：[9.5, 10.5]
         db_session.add(ExtrusionToleranceDetail(
             main_id=et_main.id, item='外徑',
-            tolerance_min=0.5, tolerance_max=1.5
+            tolerance_min=0.5, tolerance_max=0.5
         ))
 
-        patrol = PatrolMain(date=date(2026, 1, 1), material='SUS304', spec='10*10*100')
+        patrol = PatrolMain(date=date(2026, 1, 1), material='SUS304', spec='10*2')
         db_session.add(patrol)
         db_session.flush()
         db_session.add(PatrolDetail(
             main_id=patrol.id, group=1, item='外徑', position='前段',
-            min_val=0.8, max_val=2.0  # 2.0 超出上限 1.5
+            min_val=9.0, max_val=10.2  # 9.0 < 9.5 → NG
         ))
         db_session.commit()
 
@@ -36,22 +38,24 @@ def test_get_history_is_ng_true(app, db_session):
 
 
 def test_get_history_is_ng_false(app, db_session):
-    """量測值在公差範圍內時，is_ng 應為 False"""
+    """量測值在公差範圍內時，is_ng 應為 False（標準值從規格 10*2 解析 → 外徑=10）"""
     with app.app_context():
-        et_main = ExtrusionToleranceMain(material='SUS304', spec='10*10*100')
+        et_main = ExtrusionToleranceMain(material='SUS304', spec='10*2')
         db_session.add(et_main)
         db_session.flush()
+        # 相對公差 ±0.5，無 std_val；標準值由規格解析 → 10.0
+        # 絕對界限：[9.5, 10.5]
         db_session.add(ExtrusionToleranceDetail(
             main_id=et_main.id, item='外徑',
-            tolerance_min=0.5, tolerance_max=1.5
+            tolerance_min=0.5, tolerance_max=0.5
         ))
 
-        patrol = PatrolMain(date=date(2026, 1, 1), material='SUS304', spec='10*10*100')
+        patrol = PatrolMain(date=date(2026, 1, 1), material='SUS304', spec='10*2')
         db_session.add(patrol)
         db_session.flush()
         db_session.add(PatrolDetail(
             main_id=patrol.id, group=1, item='外徑', position='前段',
-            min_val=0.8, max_val=1.2  # 在範圍內
+            min_val=9.6, max_val=10.4  # 在 [9.5, 10.5] 內 → 合格
         ))
         db_session.commit()
 
@@ -75,20 +79,23 @@ def test_get_history_tol_not_found(app, db_session):
 
 
 def test_get_history_concentricity_ng(app, db_session):
-    """同心度（厚度 max_val - min_val）超差時，is_ng 應為 True"""
+    """同心度（厚度 max_val - min_val）超差時，is_ng 應為 True
+    tolerance_min=0, tolerance_max=0.3 → 同心度允許範圍 [0, 0.3]
+    """
     with app.app_context():
-        et_main = ExtrusionToleranceMain(material='SUS304', spec='10*10*100')
+        et_main = ExtrusionToleranceMain(material='SUS304', spec='10*2')
         db_session.add(et_main)
         db_session.flush()
+        # tolerance_min=0 代表同心度下限=0，tolerance_max=0.3 代表絕對上限
         db_session.add(ExtrusionToleranceDetail(
             main_id=et_main.id, item='同心度',
             tolerance_min=0.0, tolerance_max=0.3
         ))
 
-        patrol = PatrolMain(date=date(2026, 1, 1), material='SUS304', spec='10*10*100')
+        patrol = PatrolMain(date=date(2026, 1, 1), material='SUS304', spec='10*2')
         db_session.add(patrol)
         db_session.flush()
-        # 同心度 = 1.5 - 0.8 = 0.7，超出上限 0.3
+        # 同心度 = 1.5 - 0.8 = 0.7，超出上限 0.3 → NG
         db_session.add(PatrolDetail(
             main_id=patrol.id, group=1, item='厚度', position='前段',
             min_val=0.8, max_val=1.5
