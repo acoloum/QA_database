@@ -286,26 +286,27 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     }, [measurements, tolerance, spec, groupIndices, ITEMS]);
 
     // 呼吸動畫：每 750ms 切換 breathing-active class（JS 驅動，繞過 CSS animation 屬性衝突）
+    // 依賴 hasViolations 而非 violations 物件，避免每次 keystroke 重啟 interval 導致 class 永遠是 active
+    const hasViolations = Object.keys(violations).length > 0;
     useEffect(() => {
-        const hasViolations = Object.keys(violations).length > 0;
-        if (!hasViolations) return;
+        if (!hasViolations) {
+            document.querySelectorAll<HTMLInputElement>('.shipping-input.is-invalid-breathing')
+                .forEach(el => el.classList.remove('breathing-active'));
+            return;
+        }
 
         let active = false;
         const interval = setInterval(() => {
             active = !active;
-            // 找所有帶有 is-invalid-breathing 的輸入框
             const els = document.querySelectorAll<HTMLInputElement>('.shipping-input.is-invalid-breathing');
             els.forEach(el => {
-                if (active) {
-                    el.classList.add('breathing-active');
-                } else {
-                    el.classList.remove('breathing-active');
-                }
+                if (active) el.classList.add('breathing-active');
+                else el.classList.remove('breathing-active');
             });
         }, 750);
 
         return () => clearInterval(interval);
-    }, [violations]);
+    }, [hasViolations]);
 
     const handleMeasurementChange = (key: string, val: string) => {
         setMeasurements(prev => ({ ...prev, [key]: val }));
