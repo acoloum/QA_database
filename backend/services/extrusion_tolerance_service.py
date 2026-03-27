@@ -1,8 +1,9 @@
 from typing import Dict, Any
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import selectinload, joinedload
 from ..extensions import db
-from ..models import ExtrusionToleranceMain, ExtrusionToleranceDetail
+from ..models import ExtrusionToleranceMain, ExtrusionToleranceDetail, VendorToleranceMain
 from ..utils import format_value
+from .tolerance_service import ToleranceService
 
 
 class ExtrusionToleranceService:
@@ -16,6 +17,44 @@ class ExtrusionToleranceService:
         while '**' in s:
             s = s.replace('**', '*')
         return s.strip()
+
+    @staticmethod
+    def _match_material(material: str, candidate_material: str) -> bool:
+        """
+        判斷材質是否匹配（相近材質視為相同，例如 6061-T651 與 6061）
+        """
+        if not material or not candidate_material:
+            return False
+        # 移除空白並轉小寫比較
+        m1 = material.strip().lower()
+        m2 = candidate_material.strip().lower()
+        # 完全匹配
+        if m1 == m2:
+            return True
+        # 包含匹配：例如 "6061-T651" 包含 "6061"
+        if m1 in m2 or m2 in m1:
+            return True
+        return False
+
+    @staticmethod
+    def _match_spec(input_spec: str, candidate_spec: str) -> bool:
+        """
+        判斷規格是否匹配（規格前兩段相同視為相近，例如 a*b*c 與 a*b）
+        """
+        if not input_spec or not candidate_spec:
+            return False
+        norm_input = ExtrusionToleranceService._normalize_spec(input_spec)
+        norm_candidate = ExtrusionToleranceService._normalize_spec(candidate_spec)
+        # 完全匹配
+        if norm_input == norm_candidate:
+            return True
+        # 前兩段匹配：例如 "62.5*2.3*450" 與 "62.5*2.3"
+        p_input = norm_input.split('*')
+        p_candidate = norm_candidate.split('*')
+        if len(p_input) >= 2 and len(p_candidate) >= 2:
+            if p_input[0] == p_candidate[0] and p_input[1] == p_candidate[1]:
+                return True
+        return False
 
     @staticmethod
     def search(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -176,45 +215,77 @@ class ExtrusionToleranceService:
     def check(args: Dict[str, Any]) -> Dict[str, Any]:
         """
         依材質+規格查詢對應擠壓公差。
-        優先等級：
-          1. 材質 + 規格完全匹配
-          2. 材質 + 規格前兩段匹配（OD*壁厚 相同，長度不同）
-          3. 材質 + 無規格（通用）
+        優先順序：
+          1. 廠商公差（相同廠商+相近材質+相近規格）
+          2. 擠壓公差（相同材質+相同/相近規格）
+          3. 擠壓公差通用（相同材質+無規格）
         """
         material = args.get('material')
+        spec = args.get('spec', '')
+        vendor_id = args.get('vendor_id')  # 可選的廠商ID
+
         if not material:
             return {"success": False, "error": "材質為必填參數"}
 
         normalize = ExtrusionToleranceService._normalize_spec
-        input_spec = normalize(args.get('spec', ''))
+        input_spec = normalize(spec)
 
+        # ===== 第一優先：嘗試從廠商公差取得 =====
+        # 移除 vendor_id 的條件，嘗試所有廠商公差，使用相似材質和相近規格匹配
+        # 這樣當沒有明確的 vendor_id 時，也能找到最適配的廠商公差
+        vendor_tolerance_result = ToleranceService.check_tolerance({
+            'material': material,
+            'spec': spec,
+            'vendor_id': str(vendor_id) if vendor_id else None
+        })
+        if vendor_tolerance_result.get('found'):
+            # 轉換廠商公差格式以匹配擠壓公差格式
+            return {
+                "success": True,
+                "found": True,
+                "tolerance_id": vendor_tolerance_result.get('tolerance_id'),
+                "material": vendor_tolerance_result.get('material'),
+                "spec": vendor_tolerance_result.get('spec'),
+                "vendor_id": vendor_tolerance_result.get('vendor_id'),
+                "vendor_name": vendor_tolerance_result.get('vendor_name'),
+                "tolerances": vendor_tolerance_result.get('tolerances', []),
+                "matched_priority": 1,
+                "priority_name": "廠商公差（相同廠商+相近材質+相近規格）",
+                "source": "vendor"
+            }
+
+        # ===== 第二優先：從擠壓公差取得 =====
+        # 使用相似材質匹配
         candidates = ExtrusionToleranceMain.query.options(
-            joinedload(ExtrusionToleranceMain.details)
-        ).filter_by(material=material).all()
+            selectinload(ExtrusionToleranceMain.details)
+        ).all()
 
-        buckets: Dict[int, list] = {1: [], 2: [], 3: []}
+        extrusion_buckets: Dict[int, list] = {1: [], 2: [], 3: []}
 
         for t in candidates:
+            # 使用相似材質匹配
+            if not ExtrusionToleranceService._match_material(material, t.material or ''):
+                continue
+
             t_spec = normalize(t.spec or '')
             has_spec = t_spec != ''
 
             if has_spec:
-                if t_spec == input_spec:
-                    buckets[1].append(t)
-                else:
-                    p_in = input_spec.split('*')
-                    p_t = t_spec.split('*')
-                    if (len(p_in) >= 2 and len(p_t) >= 2
-                            and p_in[0] == p_t[0] and p_in[1] == p_t[1]):
-                        buckets[2].append(t)
+                # 完全匹配
+                if input_spec == t_spec:
+                    extrusion_buckets[1].append(t)
+                # 相近規格匹配（前兩段相同）
+                elif ExtrusionToleranceService._match_spec(input_spec, t_spec):
+                    extrusion_buckets[2].append(t)
             else:
-                buckets[3].append(t)
+                # 無規格（通用）
+                extrusion_buckets[3].append(t)
 
         matched = None
-        priority = None
+        priority: int = 3  # 預設為通用
         for p in (1, 2, 3):
-            if buckets[p]:
-                matched = buckets[p][0]
+            if extrusion_buckets[p]:
+                matched = extrusion_buckets[p][0]
                 priority = p
                 break
 
@@ -222,9 +293,9 @@ class ExtrusionToleranceService:
             return {"success": True, "found": False, "message": "找不到對應的擠壓公差標準"}
 
         p_names = {
-            1: "材質+規格完全匹配",
-            2: "材質+規格前兩段匹配",
-            3: "材質+無規格（通用）",
+            1: "擠壓公差（相同材質+相同規格）",
+            2: "擠壓公差（相近材質+相近規格）",
+            3: "擠壓公差通用（相同材質+無規格）",
         }
 
         return {
@@ -245,4 +316,5 @@ class ExtrusionToleranceService:
             ],
             "matched_priority": priority,
             "priority_name": p_names[priority],
+            "source": "extrusion"
         }
