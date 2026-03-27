@@ -225,6 +225,41 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         return false;
     };
 
+    // 判斷是否有任何 NG 格（供呼吸動畫 useEffect 使用）
+    const hasNgCells = (() => {
+        const positions = ['前段', '中段', '後段'];
+        const items = ['外徑', ...(showInner ? ['內徑'] : []), '厚度'];
+        for (let i = 1; i <= groupCount; i++) {
+            const gName = `第${i}組`;
+            for (const pos of positions) {
+                for (const item of items) {
+                    if (isCellNG(pos, item, 'min', gName) || isCellNG(pos, item, 'max', gName)) return true;
+                    if (item === '厚度' && isConcentricityNG(pos, gName)) return true;
+                }
+            }
+        }
+        return false;
+    })();
+
+    // 呼吸動畫：與出貨檢驗相同機制
+    useEffect(() => {
+        if (!hasNgCells) {
+            document.querySelectorAll<HTMLInputElement>('.patrol-input.is-invalid-breathing')
+                .forEach(el => el.classList.remove('breathing-active'));
+            return;
+        }
+        let active = false;
+        const interval = setInterval(() => {
+            active = !active;
+            const els = document.querySelectorAll<HTMLInputElement>('.patrol-input.is-invalid-breathing');
+            els.forEach(el => {
+                if (active) el.classList.add('breathing-active');
+                else el.classList.remove('breathing-active');
+            });
+        }, 750);
+        return () => clearInterval(interval);
+    }, [hasNgCells]);
+
     // Render helper
     const renderTableRows = () => {
         const rows = [];
@@ -239,28 +274,28 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                     {positions.map(pos =>
                         items.map(item => {
                             if (item === '內徑' && !showInner) return null;
+                            const minNG = isCellNG(pos, item, 'min', gName) || (item === '厚度' && isConcentricityNG(pos, gName));
+                            const maxNG = isCellNG(pos, item, 'max', gName) || (item === '厚度' && isConcentricityNG(pos, gName));
                             return (
                                 <Fragment key={`${pos}-${item}`}>
-                                    <td style={{ padding: '2px', backgroundColor: (isCellNG(pos, item, 'min', gName) || (item === '厚度' && isConcentricityNG(pos, gName))) ? '#ffcccc' : undefined }}>
+                                    <td style={{ padding: '2px' }}>
                                         <Form.Control
                                             size="sm"
                                             type="number"
                                             step="0.01"
                                             value={getDetailValue(gName, pos, item, 'min')}
                                             onChange={e => handleDetailChange(gName, pos, item, 'min', e.target.value)}
-                                            className="patrol-input"
-                                            style={{ backgroundColor: (isCellNG(pos, item, 'min', gName) || (item === '厚度' && isConcentricityNG(pos, gName))) ? '#ffcccc' : undefined }}
+                                            className={`patrol-input${minNG ? ' is-invalid-breathing' : ''}`}
                                         />
                                     </td>
-                                    <td style={{ padding: '2px', backgroundColor: (isCellNG(pos, item, 'max', gName) || (item === '厚度' && isConcentricityNG(pos, gName))) ? '#ffcccc' : undefined }}>
+                                    <td style={{ padding: '2px' }}>
                                         <Form.Control
                                             size="sm"
                                             type="number"
                                             step="0.01"
                                             value={getDetailValue(gName, pos, item, 'max')}
                                             onChange={e => handleDetailChange(gName, pos, item, 'max', e.target.value)}
-                                            className="patrol-input"
-                                            style={{ backgroundColor: (isCellNG(pos, item, 'max', gName) || (item === '厚度' && isConcentricityNG(pos, gName))) ? '#ffcccc' : undefined }}
+                                            className={`patrol-input${maxNG ? ' is-invalid-breathing' : ''}`}
                                         />
                                     </td>
                                 </Fragment>

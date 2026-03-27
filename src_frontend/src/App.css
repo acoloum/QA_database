@@ -298,6 +298,18 @@ h6 {
     max-width: 90px !important;
 }
 
+/* 現場巡檢 NG：字與外框紅色，呼吸動畫（與出貨檢驗一致） */
+.patrol-input.is-invalid-breathing {
+    border: 2px solid #dc3545 !important;
+    color: #dc3545 !important;
+    font-weight: bold !important;
+    transition: border-color 0.3s ease-in-out, box-shadow 0.3s ease-in-out !important;
+}
+.patrol-input.is-invalid-breathing.breathing-active {
+    border-color: #ff6b6b !important;
+    box-shadow: 0 0 8px 3px rgba(220, 53, 69, 0.6) !important;
+}
+
 /* SPC Stats Card Gradient */
 .bg-stats-gradient {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
