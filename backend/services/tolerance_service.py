@@ -294,8 +294,10 @@ class ToleranceService:
         input_spec = normalize_spec(spec)
 
         try:
-            # Fetch candidates (Same material)
-            candidates = VendorToleranceMain.query.filter_by(material=material).all()
+            # Fetch candidates (使用模糊材質匹配)
+            candidates = VendorToleranceMain.query.filter(
+                VendorToleranceMain.material.like(f"%{material}%")
+            ).all()
             
             # Classification logic (Same as legacy)
             priority_buckets = {i: [] for i in range(1, 9)}
