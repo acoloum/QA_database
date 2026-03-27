@@ -6,6 +6,10 @@ import os
 import backend.config
 backend.config.SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
 backend.config.SQLALCHEMY_TRACK_MODIFICATIONS = False
+# SQLite 不支援 pool_size / max_overflow，測試時改用最小設定
+backend.config.SQLALCHEMY_ENGINE_OPTIONS = {
+    'pool_pre_ping': True,
+}
 
 from backend.app import app as flask_app
 from backend.extensions import db

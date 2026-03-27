@@ -6,6 +6,7 @@ from datetime import datetime
 from collections import defaultdict
 from typing import List, Dict, Any, Optional, Union
 from sqlalchemy import func, text
+from sqlalchemy.orm import selectinload
 from scipy import stats as scipy_stats
 from ..extensions import db
 from ..models import PatrolMain, PatrolDetail, Machine, Operator, Inspector, Vendor
@@ -539,7 +540,8 @@ class PatrolService:
             )\
                 .outerjoin(Machine, PatrolMain.machine_id == Machine.id)\
                 .outerjoin(Operator, PatrolMain.operator_id == Operator.id)\
-                .outerjoin(Vendor, PatrolMain.customer_id == Vendor.id)
+                .outerjoin(Vendor, PatrolMain.customer_id == Vendor.id)\
+                .options(selectinload(PatrolMain.details))
 
             if args.get('s_date'): query = query.filter(PatrolMain.date >= args['s_date'])
             if args.get('e_date'): query = query.filter(PatrolMain.date <= args['e_date'])
@@ -556,9 +558,62 @@ class PatrolService:
 
             pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
+            # --- 批次查詢押出公差（以避免 N+1） ---
+            from ..services.extrusion_tolerance_service import ExtrusionToleranceService
+
+            unique_combos = {
+                (patrol_item.material or '', patrol_item.spec or '')
+                for patrol_item, *_ in pagination.items
+                if patrol_item.material
+            }
+
+            tol_cache: dict = {}
+            for mat, sp in unique_combos:
+                result = ExtrusionToleranceService.check({'material': mat, 'spec': sp})
+                if result.get('found'):
+                    tol_cache[(mat, sp)] = {t['項目']: t for t in result.get('tolerances', [])}
+                else:
+                    tol_cache[(mat, sp)] = None
+
             data = []
             for item in pagination.items:
                 patrol, m_name, op_name, cust_name = item
+
+                # --- NG 計算 ---
+                mat = patrol.material or ''
+                sp = patrol.spec or ''
+                tol_map = tol_cache.get((mat, sp)) if mat else None
+                tol_found = tol_map is not None
+                is_ng = False
+
+                if tol_found:
+                    for d in patrol.details:
+                        tol = tol_map.get(d.item)
+                        if tol:
+                            for val in [
+                                float(d.min_val) if d.min_val is not None else None,
+                                float(d.max_val) if d.max_val is not None else None,
+                            ]:
+                                if val is None:
+                                    continue
+                                if tol.get('公差下限') is not None and val < tol['公差下限']:
+                                    is_ng = True
+                                if tol.get('公差上限') is not None and val > tol['公差上限']:
+                                    is_ng = True
+
+                        # 同心度：厚度行的 max_val - min_val 與同心度公差比對
+                        if not is_ng and d.item == '厚度' and d.min_val is not None and d.max_val is not None:
+                            conc_tol = tol_map.get('同心度')
+                            if conc_tol:
+                                concentricity = float(d.max_val) - float(d.min_val)
+                                if conc_tol.get('公差下限') is not None and concentricity < conc_tol['公差下限']:
+                                    is_ng = True
+                                if conc_tol.get('公差上限') is not None and concentricity > conc_tol['公差上限']:
+                                    is_ng = True
+
+                        if is_ng:
+                            break
+
                 date_str = patrol.date.strftime('%Y-%m-%d') if patrol.date else ''
                 data.append({
                     'id': patrol.id,
@@ -567,7 +622,9 @@ class PatrolService:
                     'op_name': op_name.strip() if op_name else '',
                     'cust_name': cust_name.strip() if cust_name else '',
                     'mat': patrol.material,
-                    'spec': patrol.spec
+                    'spec': patrol.spec,
+                    'is_ng': is_ng,
+                    'tol_found': tol_found,
                 })
 
             return {
