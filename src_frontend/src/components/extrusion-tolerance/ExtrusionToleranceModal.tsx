@@ -119,7 +119,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                 ) : (
                     <>
                         <Row className="mb-3 g-2">
-                            <Col md={2}>
+                            <Col md={3}>
                                 <Form.Group>
                                     <Form.Label>建立日期</Form.Label>
                                     <Form.Control type="date" value={createdAt} onChange={(e) => setCreatedAt(e.target.value)} />
@@ -148,7 +148,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                                     <Form.Control value={spec} onChange={(e) => setSpec(e.target.value)} placeholder="如 62.5*2.3（留空=通用）" />
                                 </Form.Group>
                             </Col>
-                            <Col md={3}>
+                            <Col md={2}>
                                 <Form.Group>
                                     <Form.Label>備註</Form.Label>
                                     <Form.Control value={note} onChange={(e) => setNote(e.target.value)} />
