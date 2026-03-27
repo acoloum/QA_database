@@ -245,6 +245,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     };
 
     // 判斷同心度是否 NG（同心度 = 最大厚度 - 最小厚度）
+    // 同心度是差值（絕對值），calcLimits 無法算出界限時直接用公差值作為絕對界限
     const isConcentricityNG = (pos: string, gName: string): boolean => {
         const tol = tolerances.find((t) => t.項目 === '同心度');
         if (!tol) return false;
@@ -253,8 +254,11 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         if (minStr === '' || maxStr === '') return false;
         const concentricity = parseFloat(maxStr) - parseFloat(minStr);
         const { lsl, usl } = calcLimits(tol, '同心度');
-        if (lsl != null && concentricity < lsl) return true;
-        if (usl != null && concentricity > usl) return true;
+        // calcLimits 三條路都失敗時，公差值本身即為絕對界限
+        const effectiveLsl = lsl ?? (tol.公差下限 != null ? tol.公差下限 : null);
+        const effectiveUsl = usl ?? (tol.公差上限 != null ? tol.公差上限 : null);
+        if (effectiveLsl != null && concentricity < effectiveLsl) return true;
+        if (effectiveUsl != null && concentricity > effectiveUsl) return true;
         return false;
     };
 

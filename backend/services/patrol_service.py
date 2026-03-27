@@ -478,6 +478,9 @@ class PatrolService:
                         elif tol_min == 0.0 and tol_max is not None:
                             conc_dim_min = 0.0
                             conc_dim_max = float(tol_max)
+                        elif tol_max is not None:
+                            # 同心度：僅有公差上限時，直接作為絕對上限
+                            conc_dim_max = float(tol_max)
                     concentricity = float(d.max_val) - float(d.min_val)
                     if conc_dim_min is not None and concentricity < conc_dim_min:
                         return True
@@ -750,6 +753,9 @@ class PatrolService:
                                     elif tol_min == 0.0 and tol_max is not None:
                                         # 同心度：tolerance_min=0 表示「最小值=0」，tolerance_max 為絕對上限
                                         conc_dim_min = 0.0
+                                        conc_dim_max = float(tol_max)
+                                    elif tol_max is not None:
+                                        # 同心度：僅有公差上限時，直接作為絕對上限
                                         conc_dim_max = float(tol_max)
                                 
                                 concentricity = float(d.max_val) - float(d.min_val)
