@@ -1,7 +1,7 @@
 from typing import Dict, Any
 from sqlalchemy.orm import selectinload, joinedload
 from ..extensions import db
-from ..models import ExtrusionToleranceMain, ExtrusionToleranceDetail, VendorToleranceMain
+from ..models import ExtrusionToleranceMain, ExtrusionToleranceDetail, VendorToleranceMain, Vendor
 from ..utils import format_value
 from .tolerance_service import ToleranceService
 
@@ -231,6 +231,16 @@ class ExtrusionToleranceService:
         input_spec = normalize(spec)
 
         # ===== 第一優先：從擠壓公差取得 =====
+        # 若有 vendor_id，先查出廠商名稱，只允許：
+        #   ① 無廠商（通用）紀錄，或
+        #   ② 廠商名稱完全匹配本廠商的紀錄
+        # 防止其他廠商的擠壓公差紀錄被誤套用
+        vendor_name: str | None = None
+        if vendor_id:
+            v = db.session.get(Vendor, vendor_id)
+            if v:
+                vendor_name = v.name.strip()
+
         candidates = ExtrusionToleranceMain.query.options(
             selectinload(ExtrusionToleranceMain.details)
         ).all()
@@ -238,6 +248,13 @@ class ExtrusionToleranceService:
         extrusion_buckets: Dict[int, list] = {1: [], 2: [], 3: []}
 
         for t in candidates:
+            # 廠商過濾：擠壓公差有填廠商時，只允許匹配同廠商或通用（無廠商）
+            t_vendor = (t.vendor or '').strip()
+            if t_vendor:
+                # 此紀錄屬於特定廠商，必須與查詢廠商相同才能使用
+                if not vendor_name or t_vendor.lower() != vendor_name.lower():
+                    continue
+
             # 使用相似材質匹配
             if not ExtrusionToleranceService._match_material(material, t.material or ''):
                 continue
