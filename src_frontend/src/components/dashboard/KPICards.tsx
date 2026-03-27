@@ -57,7 +57,11 @@ const KPICards = ({ period = 'this_month', customDateRange }: KPICardsProps) => 
             getTrend: (s) => s.patrol.trend,
             getChange: (s) => s.patrol.change_pct,
             path: '/patrol',
-            isAnomaly: () => false
+            isAnomaly: () => false,
+            getNgInfo: (s) => ({
+                rate: s.patrol.ng_rate ?? null,
+                count: s.patrol.ng_count ?? 0,
+            }),
         },
         {
             label: '不合格品',

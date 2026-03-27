@@ -73,6 +73,26 @@ const TrendChart = () => {
                 tension: 0.4,
                 pointRadius: 4,
                 pointHoverRadius: 6
+            },
+            {
+                label: '現場巡檢 (合格)',
+                data: (trends.patrol_ok_by_month ?? []).map(item => item.count),
+                borderColor: '#8b5cf6',
+                backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                fill: true,
+                tension: 0.4,
+                pointRadius: 4,
+                pointHoverRadius: 6
+            },
+            {
+                label: '現場巡檢 (超差)',
+                data: (trends.patrol_ng_by_month ?? []).map(item => item.count),
+                borderColor: '#ec4899',
+                backgroundColor: 'rgba(236, 72, 153, 0.1)',
+                fill: true,
+                tension: 0.4,
+                pointRadius: 4,
+                pointHoverRadius: 6
             }
         ]
         };

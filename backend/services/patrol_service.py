@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from scipy import stats as scipy_stats
 from ..extensions import db
 from ..models import PatrolMain, PatrolDetail, Machine, Operator, Inspector, Vendor
+from .extrusion_tolerance_service import ExtrusionToleranceService
 from ..utils import (
     format_value,
     validate_patrol_data,
@@ -406,6 +407,85 @@ class PatrolService:
             return None
 
     @staticmethod
+    def _compute_is_ng(details: list, material: str, spec: str, customer_id) -> bool:
+        """
+        依量測明細與擠壓公差計算是否超差。
+        複用 get_history 內的判斷邏輯，於新增/更新時即時儲存結果。
+        """
+        if not material:
+            return False
+        result = ExtrusionToleranceService.check({
+            'material': material,
+            'spec': spec or '',
+            'vendor_id': customer_id
+        })
+        if not result.get('found'):
+            return False
+        tol_map = {t['項目']: t for t in result.get('tolerances', [])}
+
+        # 從規格解析標準值（如 "85*2.8" → {外徑:85, 厚度:2.8}）
+        spec_nominal: dict = {}
+        if spec:
+            parts = (spec or '').replace('×', '*').replace('x', '*').replace('X', '*').split('*')
+            try:
+                if len(parts) >= 1:
+                    spec_nominal['外徑'] = float(parts[0])
+                if len(parts) >= 2:
+                    spec_nominal['厚度'] = float(parts[1])
+            except ValueError:
+                pass
+
+        for d in details:
+            tol = tol_map.get(d.item)
+            if tol:
+                dim_min = tol.get('尺寸下限')
+                dim_max = tol.get('尺寸上限')
+                if dim_min is None and dim_max is None:
+                    std_val = tol.get('標準值') or spec_nominal.get(d.item)
+                    tol_min = tol.get('公差下限')
+                    tol_max = tol.get('公差上限')
+                    if std_val is not None:
+                        if tol_min is not None:
+                            dim_min = std_val - abs(tol_min)
+                        if tol_max is not None:
+                            dim_max = std_val + abs(tol_max)
+                for val in [
+                    float(d.min_val) if d.min_val is not None else None,
+                    float(d.max_val) if d.max_val is not None else None,
+                ]:
+                    if val is None:
+                        continue
+                    if dim_min is not None and val < dim_min:
+                        return True
+                    if dim_max is not None and val > dim_max:
+                        return True
+
+            # 同心度判斷
+            if d.item == '厚度' and d.min_val is not None and d.max_val is not None:
+                conc_tol = tol_map.get('同心度')
+                if conc_tol:
+                    conc_dim_min = conc_tol.get('尺寸下限')
+                    conc_dim_max = conc_tol.get('尺寸上限')
+                    if conc_dim_min is None and conc_dim_max is None:
+                        std_val = conc_tol.get('標準值')
+                        tol_min = conc_tol.get('公差下限')
+                        tol_max = conc_tol.get('公差上限')
+                        if std_val is not None:
+                            if tol_min is not None:
+                                conc_dim_min = std_val - abs(tol_min)
+                            if tol_max is not None:
+                                conc_dim_max = std_val + abs(tol_max)
+                        elif tol_min == 0.0 and tol_max is not None:
+                            conc_dim_min = 0.0
+                            conc_dim_max = float(tol_max)
+                    concentricity = float(d.max_val) - float(d.min_val)
+                    if conc_dim_min is not None and concentricity < conc_dim_min:
+                        return True
+                    if conc_dim_max is not None and concentricity > conc_dim_max:
+                        return True
+        return False
+
+    @staticmethod
     def add_patrol(data: Dict[str, Any]) -> int:
         """新增巡檢資料"""
         errors = validate_patrol_data(data)
@@ -443,6 +523,15 @@ class PatrolService:
                     max_val=max_val
                 )
                 db.session.add(new_detail)
+
+            # 計算並儲存 is_ng
+            db.session.flush()
+            new_patrol.is_ng = PatrolService._compute_is_ng(
+                new_patrol.details,
+                new_patrol.material or '',
+                new_patrol.spec or '',
+                new_patrol.customer_id
+            )
 
             db.session.commit()
             return new_patrol.id
@@ -504,6 +593,15 @@ class PatrolService:
                     max_val=max_val
                 )
                 db.session.add(new_detail)
+
+            # 重新計算並儲存 is_ng
+            db.session.flush()
+            patrol.is_ng = PatrolService._compute_is_ng(
+                patrol.details,
+                patrol.material or '',
+                patrol.spec or '',
+                patrol.customer_id
+            )
 
             db.session.commit()
             return True

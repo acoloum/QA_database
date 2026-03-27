@@ -44,6 +44,7 @@ class PatrolMain(db.Model):
     spec = db.Column('擠壓規格', db.String)
     customer_id = db.Column('客戶名稱', db.Integer, db.ForeignKey('廠商資料.識別碼'))
     batch_num = db.Column('原料批號', db.String)
+    is_ng = db.Column('是否超差', db.Boolean, default=False, nullable=True, index=True)
 
     details = db.relationship('PatrolDetail', backref='main', cascade="all, delete-orphan")
 

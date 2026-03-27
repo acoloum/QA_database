@@ -54,6 +54,11 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
         ShippingData, ShippingData.date, start_date, end_date,
         ShippingData.is_ng == True
     )
+    _patrol_current = count_for_model(PatrolMain, PatrolMain.date, start_date, end_date)
+    _patrol_ng = count_for_model(
+        PatrolMain, PatrolMain.date, start_date, end_date,
+        PatrolMain.is_ng == True
+    )
 
     stats = {
         "shipping": {
@@ -64,8 +69,10 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
             "pending": 0
         },
         "patrol": {
-            "current": count_for_model(PatrolMain, PatrolMain.date, start_date, end_date),
+            "current": _patrol_current,
             "previous": count_for_model(PatrolMain, PatrolMain.date, compare_start, compare_end),
+            "ng_count": _patrol_ng,
+            "ng_rate": round((_patrol_ng / _patrol_current * 100), 1) if _patrol_current > 0 else None,
             "pending": 0
         },
         "ncmr": {
@@ -249,6 +256,8 @@ def get_dashboard_trends():
             "ncmr_by_month": [],
             "shipping_ok_by_month": [],
             "shipping_ng_by_month": [],
+            "patrol_ok_by_month": [],
+            "patrol_ng_by_month": [],
             "rework_by_month": []
         }
         
@@ -289,11 +298,25 @@ def get_dashboard_trends():
                 ReworkRequest.created_at >= month_start,
                 ReworkRequest.created_at <= month_end
             ).count()
-            
+
+            patrol_ok_count = PatrolMain.query.filter(
+                PatrolMain.date >= month_start,
+                PatrolMain.date <= month_end,
+                or_(PatrolMain.is_ng == False, PatrolMain.is_ng == None)
+            ).count()
+
+            patrol_ng_count = PatrolMain.query.filter(
+                PatrolMain.date >= month_start,
+                PatrolMain.date <= month_end,
+                PatrolMain.is_ng == True
+            ).count()
+
             month_label = month_start.strftime("%Y-%m")
             trends["ncmr_by_month"].append({"month": month_label, "count": ncmr_count})
             trends["shipping_ok_by_month"].append({"month": month_label, "count": ok_count})
             trends["shipping_ng_by_month"].append({"month": month_label, "count": ng_count})
+            trends["patrol_ok_by_month"].append({"month": month_label, "count": patrol_ok_count})
+            trends["patrol_ng_by_month"].append({"month": month_label, "count": patrol_ng_count})
             trends["rework_by_month"].append({"month": month_label, "count": rework_count})
         
         return jsonify(trends)
