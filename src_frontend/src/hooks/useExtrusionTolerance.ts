@@ -37,6 +37,8 @@ export interface ExtrusionToleranceCheckResult {
     tolerances?: {
         項目: string;
         位置: string;
+        尺寸下限: number | null;
+        尺寸上限: number | null;
         公差下限: number | null;
         公差上限: number | null;
         標準值: number | null;
@@ -143,11 +145,14 @@ export const useDeleteExtrusionTolerance = () => {
     });
 };
 
-export const useExtrusionToleranceCheck = (material: string, spec: string) =>
+export const useExtrusionToleranceCheck = (material: string, spec: string, vendorId?: number) =>
     useQuery({
-        queryKey: ['extrusionToleranceCheck', material, spec],
+        queryKey: ['extrusionToleranceCheck', material, spec, vendorId],
         queryFn: async () => {
             const p = new URLSearchParams({ material, spec });
+            if (vendorId !== undefined) {
+                p.append('vendor_id', vendorId.toString());
+            }
             const res = await api.get(`/extrusion-tolerance/check?${p}`);
             return res.data as { success: boolean } & ExtrusionToleranceCheckResult;
         },

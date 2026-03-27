@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useCallback, Fragment } from 'react';
-import { Modal, Button, Form, Row, Col, Table } from 'react-bootstrap';
+import { Modal, Button, Form, Row, Col, Table, Alert } from 'react-bootstrap';
 import {
     usePatrolOptions,
     usePatrolDetail,
@@ -197,8 +197,23 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     };
 
     // 取得擠壓公差（有 material 就查，spec 空字串表示通用）
-    const { data: toleranceResult } = useExtrusionToleranceCheck(material, spec);
+    // 傳入 vendorId（customer）以優先查詢廠商公差
+    const { data: toleranceResult } = useExtrusionToleranceCheck(material, spec, customer ? parseInt(customer) : undefined);
     const tolerances = toleranceResult?.found ? (toleranceResult.tolerances ?? []) : [];
+
+    // 從公差資料計算絕對界限（優先使用尺寸下限/上限，fallback 到標準值 ± 公差）
+    const calcLimits = (tol: { 尺寸下限?: number | null; 尺寸上限?: number | null; 公差下限: number | null; 公差上限: number | null; 標準值: number | null }) => {
+        if (tol.尺寸下限 != null || tol.尺寸上限 != null) {
+            return { lsl: tol.尺寸下限 ?? null, usl: tol.尺寸上限 ?? null };
+        }
+        if (tol.標準值 != null) {
+            return {
+                lsl: tol.公差下限 != null ? tol.標準值 - Math.abs(tol.公差下限) : null,
+                usl: tol.公差上限 != null ? tol.標準值 + Math.abs(tol.公差上限) : null,
+            };
+        }
+        return { lsl: null, usl: null };
+    };
 
     // 判斷單一儲存格是否 NG（雙側比對：同時檢查上下限）
     const isCellNG = (pos: string, item: string, type: 'min' | 'max', gName: string): boolean => {
@@ -207,8 +222,9 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         const valStr = getDetailValue(gName, pos, item, type);
         if (valStr === '') return false;
         const val = parseFloat(valStr);
-        if (tol.公差下限 != null && val < tol.公差下限) return true;
-        if (tol.公差上限 != null && val > tol.公差上限) return true;
+        const { lsl, usl } = calcLimits(tol);
+        if (lsl != null && val < lsl) return true;
+        if (usl != null && val > usl) return true;
         return false;
     };
 
@@ -220,8 +236,9 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         const maxStr = getDetailValue(gName, pos, '厚度', 'max');
         if (minStr === '' || maxStr === '') return false;
         const concentricity = parseFloat(maxStr) - parseFloat(minStr);
-        if (tol.公差下限 != null && concentricity < tol.公差下限) return true;
-        if (tol.公差上限 != null && concentricity > tol.公差上限) return true;
+        const { lsl, usl } = calcLimits(tol);
+        if (lsl != null && concentricity < lsl) return true;
+        if (usl != null && concentricity > usl) return true;
         return false;
     };
 
@@ -361,6 +378,67 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                                         <Col md={4}><Form.Label>原料批號</Form.Label><Form.Control value={batch} onChange={e => setBatch(e.target.value)} style={{ width: '100%' }} /></Col>
                                         <Col md={12}><Form.Label>擠壓規格</Form.Label><Form.Control value={spec} onChange={e => setSpec(e.target.value)} style={{ width: '100%' }} /></Col>
                                     </Row>
+
+                                    {/* 公差標準顯示區塊 */}
+                                    {tolerances.length > 0 && (
+                                        <Alert variant="info" className="mb-4">
+                                            <h6 className="alert-heading">📐 公差標準已載入</h6>
+                                            <div className="d-flex flex-wrap gap-3">
+                                                {tolerances.map((t, idx) => {
+                                                    let rangeDisplay = '';
+                                                    // 檢查是否存在這些屬性（避免 undefined 問題）
+                                                    const hasSizeLimits = '尺寸下限' in t && '尺寸上限' in t;
+                                                    const hasTolLimits = '公差上限' in t && '公差下限' in t;
+
+                                                    // 同心度專用邏輯：
+                                                    // 1. 優先使用標準值（最大厚度-最小厚度的最大允許值）
+                                                    // 2. 沒有標準值時，使用公差上限（當公差下限=0 時）
+                                                    const isConcentricity = t.項目 === '同心度';
+                                                    if (isConcentricity) {
+                                                        if ('標準值' in t && t.標準值 != null) {
+                                                            rangeDisplay = `最大${t.標準值}`;
+                                                        } else if (hasTolLimits && t.公差上限 != null && t.公差下限 === 0) {
+                                                            rangeDisplay = `最大${t.公差上限}`;
+                                                        } else if (hasTolLimits && t.公差上限 != null) {
+                                                            rangeDisplay = `最大${t.公差上限}`;
+                                                        } else if (hasTolLimits && t.公差下限 != null) {
+                                                            rangeDisplay = `最小${t.公差下限}`;
+                                                        }
+                                                    } else if (hasSizeLimits && t.尺寸下限 != null && t.尺寸上限 != null) {
+                                                        rangeDisplay = `${t.尺寸下限}~${t.尺寸上限}`;
+                                                    } else if (hasTolLimits && t.公差上限 != null && t.公差下限 != null) {
+                                                        const max = t.公差上限;
+                                                        const min = t.公差下限;
+                                                        if (max === min) {
+                                                            rangeDisplay = `±${max}`;
+                                                        } else if (min === 0 && max > 0) {
+                                                            rangeDisplay = `+${max}/-${min}`;
+                                                        } else if (max === 0 && min < 0) {
+                                                            rangeDisplay = `+${max}/${min}`;
+                                                        } else {
+                                                            rangeDisplay = `+${max}/${min}`;
+                                                        }
+                                                    } else if ('尺寸上限' in t && t.尺寸上限 != null) {
+                                                        rangeDisplay = `最大${t.尺寸上限}`;
+                                                    } else if ('尺寸下限' in t && t.尺寸下限 != null) {
+                                                        rangeDisplay = `最小${t.尺寸下限}`;
+                                                    } else if ('公差上限' in t && t.公差上限 != null) {
+                                                        rangeDisplay = `±${t.公差上限}`;
+                                                    } else if ('公差下限' in t && t.公差下限 != null) {
+                                                        rangeDisplay = `${t.公差下限}`;
+                                                    } else if ('標準值' in t && t.標準值 != null) {
+                                                        // 同心度專用：最大厚度-最小厚度 <= 標準值
+                                                        rangeDisplay = `最大${t.標準值}`;
+                                                    }
+                                                    return (
+                                                        <span key={idx} className="badge bg-primary">
+                                                            {t.項目}: {rangeDisplay} {t.單位}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        </Alert>
+                                    )}
 
                                     <div className="table-responsive" style={{ overflow: 'auto', maxHeight: '50vh', display: 'block' }}>
                                         <Table bordered size="sm" className="text-center align-middle" style={{ minWidth: showInner ? '1550px' : '1050px', tableLayout: 'fixed' }}>
