@@ -201,15 +201,31 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     const { data: toleranceResult } = useExtrusionToleranceCheck(material, spec, customer ? parseInt(customer) : undefined);
     const tolerances = toleranceResult?.found ? (toleranceResult.tolerances ?? []) : [];
 
-    // 從公差資料計算絕對界限（優先使用尺寸下限/上限，fallback 到標準值 ± 公差）
-    const calcLimits = (tol: { 尺寸下限?: number | null; 尺寸上限?: number | null; 公差下限: number | null; 公差上限: number | null; 標準值: number | null }) => {
+    // 從擠壓規格字串解析各量測項目的標準值
+    // 例：「85*2.8」→ { 外徑: 85, 厚度: 2.8 }
+    const specStdValues: Record<string, number> = (() => {
+        const parts = spec.replace(/[×Xx]/g, '*').split('*').map((p) => parseFloat(p.trim()));
+        const result: Record<string, number> = {};
+        if (parts.length >= 1 && !isNaN(parts[0])) result['外徑'] = parts[0];
+        if (parts.length >= 2 && !isNaN(parts[1])) result['厚度'] = parts[1];
+        return result;
+    })();
+
+    // 從公差資料計算絕對界限
+    // 優先順序：① 尺寸下/上限 → ② 標準值 ± 公差 → ③ 從規格解析標準值 ± 公差
+    const calcLimits = (
+        tol: { 尺寸下限?: number | null; 尺寸上限?: number | null; 公差下限: number | null; 公差上限: number | null; 標準值: number | null },
+        item?: string
+    ) => {
         if (tol.尺寸下限 != null || tol.尺寸上限 != null) {
             return { lsl: tol.尺寸下限 ?? null, usl: tol.尺寸上限 ?? null };
         }
-        if (tol.標準值 != null) {
+        // 標準值：優先使用公差記錄中的值，否則從規格字串推算
+        const stdVal = tol.標準值 ?? (item != null ? (specStdValues[item] ?? null) : null);
+        if (stdVal != null) {
             return {
-                lsl: tol.公差下限 != null ? tol.標準值 - Math.abs(tol.公差下限) : null,
-                usl: tol.公差上限 != null ? tol.標準值 + Math.abs(tol.公差上限) : null,
+                lsl: tol.公差下限 != null ? stdVal - Math.abs(tol.公差下限) : null,
+                usl: tol.公差上限 != null ? stdVal + Math.abs(tol.公差上限) : null,
             };
         }
         return { lsl: null, usl: null };
@@ -222,7 +238,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         const valStr = getDetailValue(gName, pos, item, type);
         if (valStr === '') return false;
         const val = parseFloat(valStr);
-        const { lsl, usl } = calcLimits(tol);
+        const { lsl, usl } = calcLimits(tol, item);
         if (lsl != null && val < lsl) return true;
         if (usl != null && val > usl) return true;
         return false;
@@ -236,7 +252,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         const maxStr = getDetailValue(gName, pos, '厚度', 'max');
         if (minStr === '' || maxStr === '') return false;
         const concentricity = parseFloat(maxStr) - parseFloat(minStr);
-        const { lsl, usl } = calcLimits(tol);
+        const { lsl, usl } = calcLimits(tol, '同心度');
         if (lsl != null && concentricity < lsl) return true;
         if (usl != null && concentricity > usl) return true;
         return false;
