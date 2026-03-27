@@ -563,18 +563,18 @@ class PatrolService:
             from ..services.extrusion_tolerance_service import ExtrusionToleranceService
 
             unique_combos = {
-                (patrol_item.material or '', patrol_item.spec or '')
+                (patrol_item.material or '', patrol_item.spec or '', patrol_item.customer_id)
                 for patrol_item, *_ in pagination.items
                 if patrol_item.material
             }
 
             tol_cache: dict = {}
-            for mat, sp in unique_combos:
-                result = ExtrusionToleranceService.check({'material': mat, 'spec': sp})
+            for mat, sp, vid in unique_combos:
+                result = ExtrusionToleranceService.check({'material': mat, 'spec': sp, 'vendor_id': vid})
                 if result.get('found'):
-                    tol_cache[(mat, sp)] = {t['項目']: t for t in result.get('tolerances', [])}
+                    tol_cache[(mat, sp, vid)] = {t['項目']: t for t in result.get('tolerances', [])}
                 else:
-                    tol_cache[(mat, sp)] = None
+                    tol_cache[(mat, sp, vid)] = None
 
             data = []
             for item in pagination.items:
@@ -583,7 +583,7 @@ class PatrolService:
                 # --- NG 計算 ---
                 mat = patrol.material or ''
                 sp = patrol.spec or ''
-                tol_map = tol_cache.get((mat, sp)) if mat else None
+                tol_map = tol_cache.get((mat, sp, patrol.customer_id)) if mat else None
                 tol_found = tol_map is not None
                 is_ng = False
 
@@ -591,25 +591,55 @@ class PatrolService:
                     for d in patrol.details:
                         tol = tol_map.get(d.item)
                         if tol:
+                            # 優先使用尺寸下限/尺寸上限（絕對限制），其次使用公差下限/公差上限（相對限制）
+                            dim_min = tol.get('尺寸下限')
+                            dim_max = tol.get('尺寸上限')
+                            
+                            # 如果沒有尺寸下限/上限，則從標準值和公差計算
+                            if dim_min is None and dim_max is None:
+                                std_val = tol.get('標準值')
+                                tol_min = tol.get('公差下限')
+                                tol_max = tol.get('公差上限')
+                                if std_val is not None:
+                                    if tol_min is not None:
+                                        dim_min = std_val - abs(tol_min)
+                                    if tol_max is not None:
+                                        dim_max = std_val + abs(tol_max)
+                            
+                            # 進行 NG 判斷
                             for val in [
                                 float(d.min_val) if d.min_val is not None else None,
                                 float(d.max_val) if d.max_val is not None else None,
                             ]:
                                 if val is None:
                                     continue
-                                if tol.get('公差下限') is not None and val < tol['公差下限']:
+                                if dim_min is not None and val < dim_min:
                                     is_ng = True
-                                if tol.get('公差上限') is not None and val > tol['公差上限']:
+                                if dim_max is not None and val > dim_max:
                                     is_ng = True
 
                         # 同心度：厚度行的 max_val - min_val 與同心度公差比對
                         if d.item == '厚度' and d.min_val is not None and d.max_val is not None:
                             conc_tol = tol_map.get('同心度')
                             if conc_tol:
+                                # 優先使用尺寸下限/尺寸上限
+                                conc_dim_min = conc_tol.get('尺寸下限')
+                                conc_dim_max = conc_tol.get('尺寸上限')
+                                
+                                if conc_dim_min is None and conc_dim_max is None:
+                                    std_val = conc_tol.get('標準值')
+                                    tol_min = conc_tol.get('公差下限')
+                                    tol_max = conc_tol.get('公差上限')
+                                    if std_val is not None:
+                                        if tol_min is not None:
+                                            conc_dim_min = std_val - abs(tol_min)
+                                        if tol_max is not None:
+                                            conc_dim_max = std_val + abs(tol_max)
+                                
                                 concentricity = float(d.max_val) - float(d.min_val)
-                                if conc_tol.get('公差下限') is not None and concentricity < conc_tol['公差下限']:
+                                if conc_dim_min is not None and concentricity < conc_dim_min:
                                     is_ng = True
-                                if conc_tol.get('公差上限') is not None and concentricity > conc_tol['公差上限']:
+                                if conc_dim_max is not None and concentricity > conc_dim_max:
                                     is_ng = True
 
                         if is_ng:
