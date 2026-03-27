@@ -82,6 +82,8 @@ export interface PatrolInspection {
     batch?: string;
     spec?: string;
     details?: PatrolDetail[];
+    is_ng?: boolean;
+    tol_found?: boolean;
 }
 
 export interface PatrolCreateInput {

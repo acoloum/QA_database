@@ -211,14 +211,15 @@ const PatrolPage = () => {
                                 <th>客戶</th>
                                 <th>材質</th>
                                 <th>規格</th>
+                                <th className="text-center">狀態</th>
                                 <th>操作</th>
                             </tr>
                         </thead>
                         <tbody>
                             {isLoading ? (
-                                <tr><td colSpan={8} className="text-center py-4">載入中...</td></tr>
+                                <tr><td colSpan={9} className="text-center py-4">載入中...</td></tr>
                             ) : data.length === 0 ? (
-                                <tr><td colSpan={8} className="text-center py-4">無資料</td></tr>
+                                <tr><td colSpan={9} className="text-center py-4">無資料</td></tr>
                             ) : (
                                 data.map(item => (
                                     <tr key={item.id}>
@@ -229,6 +230,15 @@ const PatrolPage = () => {
                                         <td>{item.cust_name || '-'}</td>
                                         <td>{item.mat || item.material || '-'}</td>
                                         <td>{item.spec}</td>
+                                        <td className="text-center">
+                                            {!item.tol_found ? (
+                                                <span className="badge bg-secondary">-</span>
+                                            ) : item.is_ng ? (
+                                                <span className="badge bg-danger">⚠️ 超差</span>
+                                            ) : (
+                                                <span className="badge bg-success">✓ 合格</span>
+                                            )}
+                                        </td>
                                         <td>
                                             <Button variant="outline-primary" size="sm" className="me-2" onClick={() => handleEdit(item.id)}>
                                                 <i className="bi bi-pencil"></i> 編輯
