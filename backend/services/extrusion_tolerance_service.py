@@ -216,9 +216,9 @@ class ExtrusionToleranceService:
         """
         依材質+規格查詢對應擠壓公差。
         優先順序：
-          1. 廠商公差（相同廠商+相近材質+相近規格）
-          2. 擠壓公差（相同材質+相同/相近規格）
-          3. 擠壓公差通用（相同材質+無規格）
+          1. 擠壓公差（相同材質+相同/相近規格）
+          2. 廠商公差（廠商專屬紀錄，需有 vendor_id，桶 1-4）
+             ※ 不使用無廠商綁定的通用廠商公差（桶 5-8）
         """
         material = args.get('material')
         spec = args.get('spec', '')
@@ -230,32 +230,7 @@ class ExtrusionToleranceService:
         normalize = ExtrusionToleranceService._normalize_spec
         input_spec = normalize(spec)
 
-        # ===== 第一優先：嘗試從廠商公差取得 =====
-        # 移除 vendor_id 的條件，嘗試所有廠商公差，使用相似材質和相近規格匹配
-        # 這樣當沒有明確的 vendor_id 時，也能找到最適配的廠商公差
-        vendor_tolerance_result = ToleranceService.check_tolerance({
-            'material': material,
-            'spec': spec,
-            'vendor_id': str(vendor_id) if vendor_id else None
-        })
-        if vendor_tolerance_result.get('found'):
-            # 轉換廠商公差格式以匹配擠壓公差格式
-            return {
-                "success": True,
-                "found": True,
-                "tolerance_id": vendor_tolerance_result.get('tolerance_id'),
-                "material": vendor_tolerance_result.get('material'),
-                "spec": vendor_tolerance_result.get('spec'),
-                "vendor_id": vendor_tolerance_result.get('vendor_id'),
-                "vendor_name": vendor_tolerance_result.get('vendor_name'),
-                "tolerances": vendor_tolerance_result.get('tolerances', []),
-                "matched_priority": 1,
-                "priority_name": "廠商公差（相同廠商+相近材質+相近規格）",
-                "source": "vendor"
-            }
-
-        # ===== 第二優先：從擠壓公差取得 =====
-        # 使用相似材質匹配
+        # ===== 第一優先：從擠壓公差取得 =====
         candidates = ExtrusionToleranceMain.query.options(
             selectinload(ExtrusionToleranceMain.details)
         ).all()
@@ -289,32 +264,55 @@ class ExtrusionToleranceService:
                 priority = p
                 break
 
-        if not matched:
-            return {"success": True, "found": False, "message": "找不到對應的擠壓公差標準"}
+        if matched:
+            p_names = {
+                1: "擠壓公差（相同材質+相同規格）",
+                2: "擠壓公差（相近材質+相近規格）",
+                3: "擠壓公差通用（相同材質+無規格）",
+            }
+            return {
+                "success": True,
+                "found": True,
+                "tolerance_id": matched.id,
+                "material": matched.material,
+                "spec": matched.spec or '',
+                "tolerances": [
+                    {
+                        "項目": d.item,
+                        "公差下限": float(d.tolerance_min) if d.tolerance_min is not None else None,
+                        "公差上限": float(d.tolerance_max) if d.tolerance_max is not None else None,
+                        "標準值": float(d.std_val) if d.std_val is not None else None,
+                        "單位": d.unit or 'mm',
+                    }
+                    for d in sorted(matched.details, key=lambda x: x.id)
+                ],
+                "matched_priority": priority,
+                "priority_name": p_names[priority],
+                "source": "extrusion"
+            }
 
-        p_names = {
-            1: "擠壓公差（相同材質+相同規格）",
-            2: "擠壓公差（相近材質+相近規格）",
-            3: "擠壓公差通用（相同材質+無規格）",
-        }
-
-        return {
-            "success": True,
-            "found": True,
-            "tolerance_id": matched.id,
-            "material": matched.material,
-            "spec": matched.spec or '',
-            "tolerances": [
-                {
-                    "項目": d.item,
-                    "公差下限": float(d.tolerance_min) if d.tolerance_min is not None else None,
-                    "公差上限": float(d.tolerance_max) if d.tolerance_max is not None else None,
-                    "標準值": float(d.std_val) if d.std_val is not None else None,
-                    "單位": d.unit or 'mm',
+        # ===== 第二優先：廠商公差（僅廠商專屬紀錄，桶 1-4）=====
+        # 需有 vendor_id；不使用無廠商綁定的通用紀錄（桶 5-8）
+        if vendor_id:
+            vendor_result = ToleranceService.check_tolerance({
+                'material': material,
+                'spec': spec,
+                'vendor_id': str(vendor_id)
+            })
+            # matched_priority <= 4 代表廠商專屬紀錄
+            if vendor_result.get('found') and vendor_result.get('matched_priority', 9) <= 4:
+                return {
+                    "success": True,
+                    "found": True,
+                    "tolerance_id": vendor_result.get('tolerance_id'),
+                    "material": vendor_result.get('material'),
+                    "spec": vendor_result.get('spec'),
+                    "vendor_id": vendor_result.get('vendor_id'),
+                    "vendor_name": vendor_result.get('vendor_name'),
+                    "tolerances": vendor_result.get('tolerances', []),
+                    "matched_priority": vendor_result.get('matched_priority'),
+                    "priority_name": vendor_result.get('priority_name'),
+                    "source": "vendor"
                 }
-                for d in sorted(matched.details, key=lambda x: x.id)
-            ],
-            "matched_priority": priority,
-            "priority_name": p_names[priority],
-            "source": "extrusion"
-        }
+
+        return {"success": True, "found": False, "message": "找不到對應的擠壓公差標準"}

@@ -137,14 +137,14 @@ def test_get_history_no_material(app, db_session):
         assert row['is_ng'] is False
 
 
-def test_get_history_prefers_vendor_tolerance(app, db_session):
-    """廠商+材質+規格三者相近時，優先套用廠商公差，而非押出公差"""
+def test_get_history_prefers_extrusion_over_vendor(app, db_session):
+    """擠壓公差優先於廠商公差：兩者同時存在時，套用擠壓公差"""
     with app.app_context():
         vendor = Vendor(name='廠商甲')
         db_session.add(vendor)
         db_session.flush()
 
-        # 廠商公差：外徑標準值 10.0，公差 ±0.1（允許 9.9–10.1）
+        # 廠商公差：外徑標準值 10.0，公差 ±0.1（嚴，允許 9.9–10.1）
         vt_main = VendorToleranceMain(
             vendor_id=vendor.id, material='6061', spec='10*2'
         )
@@ -155,7 +155,7 @@ def test_get_history_prefers_vendor_tolerance(app, db_session):
             std_val=10.0, tolerance_min=0.1, tolerance_max=0.1
         ))
 
-        # 押出公差：外徑標準值 10.0，公差 ±1.0（允許 9.0–11.0，更寬鬆）
+        # 擠壓公差：外徑標準值 10.0，公差 ±1.0（寬鬆，允許 9.0–11.0）
         et_main = ExtrusionToleranceMain(material='6061', spec='10*2*100')
         db_session.add(et_main)
         db_session.flush()
@@ -164,7 +164,7 @@ def test_get_history_prefers_vendor_tolerance(app, db_session):
             std_val=10.0, tolerance_min=1.0, tolerance_max=1.0
         ))
 
-        # 巡檢紀錄：外徑 = 10.5（超出廠商公差 ±0.1，但在押出公差 ±1.0 內）
+        # 巡檢紀錄：外徑 = 10.5（超出廠商公差 ±0.1，但在擠壓公差 ±1.0 內）
         patrol = PatrolMain(
             date=date(2026, 1, 1),
             material='6061', spec='10*2*100',
@@ -180,7 +180,46 @@ def test_get_history_prefers_vendor_tolerance(app, db_session):
 
         result = PatrolService.get_history({'page': 1, 'per_page': 20})
         row = result['data'][0]
-        # 若正確套用廠商公差（±0.1），10.5 超差 → is_ng=True
+        # 擠壓公差優先（±1.0），10.5 在 9.0–11.0 內 → is_ng=False
+        assert row['is_ng'] is False
+        assert row['tol_found'] is True
+
+
+def test_get_history_fallback_to_vendor_when_no_extrusion(app, db_session):
+    """無擠壓公差時，fallback 使用廠商專屬公差（桶 1-4）"""
+    with app.app_context():
+        vendor = Vendor(name='廠商乙')
+        db_session.add(vendor)
+        db_session.flush()
+
+        # 只有廠商公差，無擠壓公差
+        vt_main = VendorToleranceMain(
+            vendor_id=vendor.id, material='6061', spec='10*2'
+        )
+        db_session.add(vt_main)
+        db_session.flush()
+        db_session.add(VendorToleranceDetail(
+            main_id=vt_main.id, item='外徑',
+            std_val=10.0, tolerance_min=0.1, tolerance_max=0.1
+        ))
+
+        # 巡檢紀錄：外徑 = 10.5（超出廠商公差 ±0.1 → NG）
+        patrol = PatrolMain(
+            date=date(2026, 1, 1),
+            material='6061', spec='10*2*100',
+            customer_id=vendor.id
+        )
+        db_session.add(patrol)
+        db_session.flush()
+        db_session.add(PatrolDetail(
+            main_id=patrol.id, group=1, item='外徑', position='前段',
+            min_val=10.5, max_val=10.5
+        ))
+        db_session.commit()
+
+        result = PatrolService.get_history({'page': 1, 'per_page': 20})
+        row = result['data'][0]
+        # 無擠壓公差，fallback 廠商公差（±0.1），10.5 > 10.1 → is_ng=True
         assert row['is_ng'] is True
         assert row['tol_found'] is True
 
