@@ -121,3 +121,16 @@ def test_get_history_tol_cache_called_once_per_combo(app, db_session, monkeypatc
         PatrolService.get_history({'page': 1, 'per_page': 20})
         # 3 筆記錄，相同 combo，只應呼叫 1 次
         assert call_count['n'] == 1
+
+
+def test_get_history_no_material(app, db_session):
+    """記錄無材質時，tol_found 應為 False，is_ng 應為 False"""
+    with app.app_context():
+        patrol = PatrolMain(date=date(2026, 1, 1), material=None, spec=None)
+        db_session.add(patrol)
+        db_session.commit()
+
+        result = PatrolService.get_history({'page': 1, 'per_page': 20})
+        row = result['data'][0]
+        assert row['tol_found'] is False
+        assert row['is_ng'] is False

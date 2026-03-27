@@ -559,6 +559,7 @@ class PatrolService:
             pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
             # --- 批次查詢押出公差（以避免 N+1） ---
+            # 延遲匯入以避免循環依賴（patrol_service ↔ extrusion_tolerance_service）
             from ..services.extrusion_tolerance_service import ExtrusionToleranceService
 
             unique_combos = {
@@ -602,7 +603,7 @@ class PatrolService:
                                     is_ng = True
 
                         # 同心度：厚度行的 max_val - min_val 與同心度公差比對
-                        if not is_ng and d.item == '厚度' and d.min_val is not None and d.max_val is not None:
+                        if d.item == '厚度' and d.min_val is not None and d.max_val is not None:
                             conc_tol = tol_map.get('同心度')
                             if conc_tol:
                                 concentricity = float(d.max_val) - float(d.min_val)
