@@ -222,7 +222,7 @@ const PatrolPage = () => {
                                 <tr><td colSpan={9} className="text-center py-4">無資料</td></tr>
                             ) : (
                                 data.map(item => (
-                                    <tr key={item.id}>
+                                    <tr key={item.id} className={item.tol_found && item.is_ng ? 'table-danger-subtle' : ''}>
                                         <td>{item.id}</td>
                                         <td>{item.date}</td>
                                         <td><Badge bg="info">{item.m_name || item.machine_name || '-'}</Badge></td>
