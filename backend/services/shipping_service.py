@@ -174,9 +174,16 @@ class ShippingService:
                         except (ValueError, TypeError):
                             pass
 
+                    # 欄位別名：公差明細可能用不同名稱儲存同一量測項目
+                    FIELD_ALIASES = {
+                        '硬度': {'硬度', '洛氏硬度'},
+                        '韋伯氏硬度': {'韋伯氏硬度', '維氏硬度'},
+                    }
+                    field_match_set = FIELD_ALIASES.get(field, {field})
+
                     # Find the matching detail for the current field
                     for t in tol_result.get('tolerances', []):
-                        if t.get('項目') == field:
+                        if t.get('項目') in field_match_set:
 
                             tolerance_limits["公差下限"] = t.get('公差下限')
                             tolerance_limits["公差上限"] = t.get('公差上限')
@@ -192,6 +199,11 @@ class ShippingService:
                                 # 單側上限尺寸規格（同心度、真圓度等），下限視為 0
                                 tolerance_limits["LSL"] = 0
                                 tolerance_limits["USL"] = dim_max
+                            elif dim_min is not None and dim_max is None:
+                                # 單側下限規格（硬度等），記錄 LSL，USL 留空
+                                # Cp/Cpk 需雙側才能計算，此情形 available 不開啟
+                                tolerance_limits["LSL"] = dim_min
+                                tolerance_limits["one_sided"] = "lower"
                             else:
                                 tol_min = t.get('公差下限')
                                 tol_max = t.get('公差上限')
@@ -357,6 +369,28 @@ class ShippingService:
             if usl is not None and lsl is not None and len(avgs) < 5:
                 process_capability["reason"] = "insufficient_data"
                 process_capability["valid_count"] = len(avgs)
+
+            # 單側下限規格（如硬度）：計算 CPL / PPL
+            if tolerance_limits.get("one_sided") == "lower" and lsl is not None and len(avgs) >= 5:
+                x_bar = float(np.mean(avgs))
+                sigma_within = r_cl / d2 if r_cl > 0 else 0
+                sigma_overall = float(np.std(all_values, ddof=1)) if len(all_values) >= 2 else 0
+                process_capability["available"] = True
+                process_capability["one_sided"] = "lower"
+                process_capability["lsl"] = float(lsl)
+                process_capability["usl"] = None
+                if sigma_within > 0:
+                    cpl = (x_bar - float(lsl)) / (3 * sigma_within)
+                    process_capability.update({"cp": None, "cpk": round(cpl, 3), "cpu": None, "cpl": round(cpl, 3)})
+                else:
+                    process_capability.update({"cp": None, "cpk": None, "cpu": None, "cpl": None})
+                if sigma_overall > 0:
+                    ppl = (x_bar - float(lsl)) / (3 * sigma_overall)
+                    process_capability.update({"pp": None, "ppk": round(ppl, 3), "ppu": None, "ppl": round(ppl, 3)})
+                else:
+                    process_capability.update({"pp": None, "ppk": None, "ppu": None, "ppl": None})
+                process_capability["sigma_within"] = round(sigma_within, 6)
+                process_capability["sigma_overall"] = round(sigma_overall, 6)
 
             if usl is not None and lsl is not None and len(avgs) >= 5:
                 x_bar = float(np.mean(avgs))

@@ -455,14 +455,19 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                             <h5 className="mb-3">🎯 製程能力指標</h5>
                             {processCapability?.available ? (
                                 <>
+                                    {processCapability.one_sided === 'lower' && (
+                                        <div className="alert alert-info py-1 px-2 mb-2 small">
+                                            單側下限規格（僅 LSL），顯示 CPL / PPL 作為製程能力指標
+                                        </div>
+                                    )}
                                     <Row className="text-center">
                                         <Col>
-                                            <div className="text-muted small">Cp</div>
-                                            <div className="h4">{processCapability.cp?.toFixed(3) ?? 'N/A'}</div>
+                                            <div className="text-muted small">{processCapability.one_sided === 'lower' ? 'CPL' : 'Cp'}</div>
+                                            <div className="h4">{processCapability.one_sided === 'lower' ? (processCapability.cpl?.toFixed(3) ?? 'N/A') : (processCapability.cp?.toFixed(3) ?? 'N/A')}</div>
                                             <div className="text-muted small">製程能力</div>
                                         </Col>
                                         <Col>
-                                            <div className="text-muted small">Cpk</div>
+                                            <div className="text-muted small">{processCapability.one_sided === 'lower' ? 'CPL' : 'Cpk'}</div>
                                             <div className="h3 mb-1">{processCapability.cpk?.toFixed(3) ?? 'N/A'}</div>
                                             {cpkGrade && (
                                                 <Badge style={{ backgroundColor: cpkGrade.bgColor, color: cpkGrade.color, fontSize: '0.85rem' }}>
@@ -471,12 +476,12 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                             )}
                                         </Col>
                                         <Col>
-                                            <div className="text-muted small">Pp</div>
-                                            <div className="h4">{processCapability.pp?.toFixed(3) ?? 'N/A'}</div>
+                                            <div className="text-muted small">{processCapability.one_sided === 'lower' ? 'PPL' : 'Pp'}</div>
+                                            <div className="h4">{processCapability.one_sided === 'lower' ? (processCapability.ppl?.toFixed(3) ?? 'N/A') : (processCapability.pp?.toFixed(3) ?? 'N/A')}</div>
                                             <div className="text-muted small">製程績效</div>
                                         </Col>
                                         <Col>
-                                            <div className="text-muted small">Ppk</div>
+                                            <div className="text-muted small">{processCapability.one_sided === 'lower' ? 'PPL' : 'Ppk'}</div>
                                             <div className="h3 mb-1">{processCapability.ppk?.toFixed(3) ?? 'N/A'}</div>
                                             {ppkGrade && (
                                                 <Badge style={{ backgroundColor: ppkGrade.bgColor, color: ppkGrade.color, fontSize: '0.85rem' }}>
@@ -486,7 +491,7 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                         </Col>
                                         <Col>
                                             <div className="text-muted small">USL</div>
-                                            <div className="h5" style={{ color: '#e83e8c' }}>{processCapability.usl?.toFixed(3) ?? 'N/A'}</div>
+                                            <div className="h5" style={{ color: '#e83e8c' }}>{processCapability.usl != null ? processCapability.usl.toFixed(3) : '—'}</div>
                                         </Col>
                                         <Col>
                                             <div className="text-muted small">LSL</div>
