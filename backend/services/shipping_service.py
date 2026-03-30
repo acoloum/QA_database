@@ -188,6 +188,10 @@ class ShippingService:
                             if dim_min is not None and dim_max is not None:
                                 tolerance_limits["LSL"] = dim_min
                                 tolerance_limits["USL"] = dim_max
+                            elif dim_min is None and dim_max is not None:
+                                # 單側上限尺寸規格（同心度、真圓度等），下限視為 0
+                                tolerance_limits["LSL"] = 0
+                                tolerance_limits["USL"] = dim_max
                             else:
                                 tol_min = t.get('公差下限')
                                 tol_max = t.get('公差上限')
@@ -198,6 +202,11 @@ class ShippingService:
                                 if tol_min is not None and tol_max is not None and std is not None:
                                     tolerance_limits["LSL"] = std - abs(tol_min)
                                     tolerance_limits["USL"] = std + abs(tol_max)
+                                elif tol_min is None and tol_max is not None:
+                                    # 單側上限規格（同心度、真圓度、真直度等不可為負的項目）
+                                    # LSL 視為 0，USL 為公差上限絕對值
+                                    tolerance_limits["LSL"] = 0
+                                    tolerance_limits["USL"] = abs(tol_max)
                             break
 
             # 2. Data Query (ORM)
@@ -341,9 +350,13 @@ class ShippingService:
                 baseline_count = 0
 
             # --- Process Capability Indices (Cp/Cpk/Pp/Ppk) ---
-            process_capability = {"available": False}
+            process_capability = {"available": False, "reason": "no_tolerance"}
             usl = tolerance_limits.get("USL")
             lsl = tolerance_limits.get("LSL")
+
+            if usl is not None and lsl is not None and len(avgs) < 5:
+                process_capability["reason"] = "insufficient_data"
+                process_capability["valid_count"] = len(avgs)
 
             if usl is not None and lsl is not None and len(avgs) >= 5:
                 x_bar = float(np.mean(avgs))

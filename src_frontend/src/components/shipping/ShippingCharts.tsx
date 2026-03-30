@@ -525,6 +525,12 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                         </div>
                                     )}
                                 </>
+                            ) : processCapability?.reason === 'insufficient_data' ? (
+                                <Alert variant="warning" className="mb-0">
+                                    <i className="bi bi-exclamation-triangle me-2"></i>
+                                    資料筆數不足，無法計算 Cp/Cpk — 目前「<strong>{statsField}</strong>」僅有 <strong>{processCapability.valid_count}</strong> 筆有效數據，
+                                    需要至少 <strong>5 筆</strong>才能進行製程能力分析。
+                                </Alert>
                             ) : (
                                 <Alert variant="info" className="mb-0">
                                     <i className="bi bi-info-circle me-2"></i>
