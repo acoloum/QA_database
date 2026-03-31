@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useState } from 'react';
+import { useAuth } from '../context/useAuth';
 
 interface MenuItem {
     title: string;
@@ -10,10 +11,13 @@ interface MenuItem {
 interface MenuGroup {
     title?: string;
     items: MenuItem[];
+    adminOnly?: boolean;
 }
 
 const Sidebar = () => {
     const [isCollapsed, setIsCollapsed] = useState(false);
+    const { user } = useAuth();
+    const isAdmin = user?.role === 'admin';
 
     const menuGroups: MenuGroup[] = [
         {
@@ -36,6 +40,7 @@ const Sidebar = () => {
         },
         {
             title: '系統管理',
+            adminOnly: true,
             items: [
                 { title: '使用者管理', path: '/admin/users', icon: 'fa-users-gear' },
             ]
@@ -75,7 +80,7 @@ const Sidebar = () => {
                 </div>
 
                 <nav className="sidebar-nav">
-                    {menuGroups.map((group, groupIndex) => (
+                    {menuGroups.filter(g => !g.adminOnly || isAdmin).map((group, groupIndex) => (
                         <div key={groupIndex} className="nav-group">
                             {group.title && !isCollapsed && (
                                 <div className="nav-group-title">{group.title}</div>

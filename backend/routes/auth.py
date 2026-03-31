@@ -81,6 +81,85 @@ def get_csrf_token_api():
     token = generate_csrf_token()
     return jsonify({'csrf_token': token})
 
+@auth_bp.route('/api/users', methods=['GET'])
+@auth_required
+@require_admin
+def list_users():
+    """列出所有使用者（需管理員角色）"""
+    try:
+        users = User.query.order_by(User.id).all()
+        return jsonify([
+            {
+                'id': u.id,
+                'username': u.username,
+                'role': u.role,
+                'is_active': u.is_active
+            }
+            for u in users
+        ])
+    except Exception as e:
+        current_app.logger.exception("List users error: %s", str(e))
+        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+
+
+@auth_bp.route('/api/users/<int:user_id>/role', methods=['PUT'])
+@auth_required
+@require_admin
+def update_user_role(user_id):
+    """修改使用者角色（需管理員角色）"""
+    data = request.json
+    if not data:
+        return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
+
+    new_role = data.get('role')
+    if new_role not in ('user', 'admin'):
+        return jsonify({"error": "角色值無效，僅允許 'user' 或 'admin'"}), 400
+
+    # 禁止管理員修改自己的角色，避免意外失去管理員權限
+    current_user = getattr(request, 'user', {})
+    if current_user.get('user_id') == user_id:
+        return jsonify({"error": "無法修改自己的角色"}), 400
+
+    try:
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({"error": "找不到使用者"}), 404
+        user.role = new_role
+        db.session.commit()
+        return jsonify({"success": True, "message": f"角色已更新為 {new_role}"})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("Update user role error: %s", str(e))
+        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+
+
+@auth_bp.route('/api/users/<int:user_id>/active', methods=['PUT'])
+@auth_required
+@require_admin
+def update_user_active(user_id):
+    """啟用／停用使用者帳號（需管理員角色）"""
+    data = request.json
+    if not data or 'is_active' not in data:
+        return jsonify({"error": "請求格式錯誤，需要 is_active 欄位"}), 400
+
+    current_user = getattr(request, 'user', {})
+    if current_user.get('user_id') == user_id:
+        return jsonify({"error": "無法停用自己的帳號"}), 400
+
+    try:
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({"error": "找不到使用者"}), 404
+        user.is_active = bool(data['is_active'])
+        db.session.commit()
+        status_text = '啟用' if user.is_active else '停用'
+        return jsonify({"success": True, "message": f"帳號已{status_text}"})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("Update user active error: %s", str(e))
+        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+
+
 @auth_bp.route('/api/users', methods=['POST'])
 @auth_required
 @require_admin
