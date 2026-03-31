@@ -1,11 +1,12 @@
 import logging
+import os
 from logging.handlers import RotatingFileHandler
 from flask import Flask, jsonify
 from flask_cors import CORS
 from flasgger import Swagger
 from datetime import datetime
-from .config import SECRET_KEY, SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS, SQLALCHEMY_ENGINE_OPTIONS
-from .extensions import db
+from .config import SECRET_KEY, SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS, SQLALCHEMY_ENGINE_OPTIONS, ALLOWED_ORIGINS
+from .extensions import db, limiter
 from .routes.auth import auth_bp
 from .routes.admin import admin_bp
 from .routes.shipping import shipping_bp
@@ -20,7 +21,6 @@ app.secret_key = SECRET_KEY
 app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = SQLALCHEMY_TRACK_MODIFICATIONS
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = SQLALCHEMY_ENGINE_OPTIONS
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = SQLALCHEMY_TRACK_MODIFICATIONS
 app.config['SWAGGER'] = {
     'title': 'QA Database API',
     'uiversion': 3,
@@ -31,18 +31,22 @@ app.config['SWAGGER'] = {
 
 Swagger(app)
 
-# Configure rotating file handler for error logging
-file_handler = RotatingFileHandler('error.log', maxBytes=5*1024*1024, backupCount=5)
-file_handler.setLevel(logging.ERROR)
-file_handler.setFormatter(logging.Formatter(
-    '[%(asctime)s] %(levelname)s: %(message)s\n%(pathname)s:%(lineno)d\n'
-))
-app.logger.addHandler(file_handler)
+# 非 debug 模式才啟用 rotating file handler（dev 環境直接看 console）
+if not app.debug:
+    os.makedirs('logs', exist_ok=True)
+    file_handler = RotatingFileHandler('logs/error.log', maxBytes=10 * 1024 * 1024, backupCount=10)
+    file_handler.setLevel(logging.ERROR)
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+    ))
+    app.logger.addHandler(file_handler)
+    app.logger.setLevel(logging.ERROR)
 
 db.init_app(app)
+limiter.init_app(app)
 
-# Configure CORS
-CORS(app, supports_credentials=True)
+# Configure CORS — 明確指定允許來源，避免任意來源攜帶憑證
+CORS(app, supports_credentials=True, origins=ALLOWED_ORIGINS)
 
 # Register Blueprints
 app.register_blueprint(auth_bp)

@@ -1,5 +1,6 @@
-from flask import Blueprint, jsonify, request
-from sqlalchemy import text, func, or_
+from flask import Blueprint, jsonify, request, current_app
+from sqlalchemy import text, func, or_, case, and_
+from dateutil.relativedelta import relativedelta
 from datetime import datetime, timedelta, date
 from ..extensions import db
 from ..models import Inspector, Vendor, Machine, Operator, ShippingData, PatrolMain, NCMR, CorrectiveAction, ReworkRequest
@@ -8,107 +9,190 @@ from ..utils import auth_required
 admin_bp = Blueprint('admin', __name__)
 
 def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=None):
-    """取得指定期間的統計數據"""
-    
+    """取得指定期間的統計數據（P-2：每個模型一次查詢同時取得 current / previous 計數）"""
+
     prev_period_days = (end_date - start_date).days + 1
-    
+
     if compare_start and compare_end:
-        compare_prev = True
+        pass
     else:
-        compare_prev = False
         compare_start = start_date - timedelta(days=prev_period_days)
         compare_end = start_date - timedelta(days=1)
-    
-    def count_for_model(model, date_field, start, end, extra_filter=None):
-        query = model.query.filter(date_field >= start, date_field <= end)
-        if extra_filter is not None:
-            query = query.filter(extra_filter)
-        return query.count()
-    
+
+    # ---------- 待處理計數（點時間，無法合併，保留原本四個函式）----------
+
     def count_pending_ncmr():
-        # Count all NCMR not yet fully resolved
         return NCMR.query.filter(
             NCMR.status.notin_(['已結案', 'CAR已完成'])
         ).count()
-    
+
     def count_pending_capa():
         return CorrectiveAction.query.filter(
             CorrectiveAction.eight_d_number != None,
             CorrectiveAction.status.in_(['待處理', '進行中'])
         ).count()
-    
+
     def count_pending_cara():
         return CorrectiveAction.query.filter(
             CorrectiveAction.car_number != None,
             CorrectiveAction.status.in_(['待處理', '進行中'])
         ).count()
-    
+
     def count_pending_rework():
-        # Count all rework not yet completed (includes 申請中, 待審核, 已核准, 執行中, etc.)
         return ReworkRequest.query.filter(
             ReworkRequest.status.notin_(['已完成', '已拒絕'])
         ).count()
-    
-    _shipping_current = count_for_model(ShippingData, ShippingData.date, start_date, end_date)
-    _shipping_ng = count_for_model(
-        ShippingData, ShippingData.date, start_date, end_date,
-        ShippingData.is_ng == True
-    )
-    _patrol_current = count_for_model(PatrolMain, PatrolMain.date, start_date, end_date)
-    _patrol_ng = count_for_model(
-        PatrolMain, PatrolMain.date, start_date, end_date,
-        PatrolMain.is_ng == True
-    )
 
+    # ---------- ShippingData：一次查詢同時取得 current / previous ----------
+    shipping_row = db.session.query(
+        func.sum(case(
+            (and_(ShippingData.date >= start_date, ShippingData.date <= end_date), 1),
+            else_=0
+        )).label('current'),
+        func.sum(case(
+            (and_(ShippingData.date >= compare_start, ShippingData.date <= compare_end), 1),
+            else_=0
+        )).label('previous'),
+    ).first()
+    _shipping_current = int(shipping_row.current or 0)
+    _shipping_previous = int(shipping_row.previous or 0)
+
+    # ShippingData NG：只需 current 期間的 NG 數（rate 僅對當期計算）
+    _shipping_ng = db.session.query(
+        func.sum(case(
+            (and_(ShippingData.date >= start_date, ShippingData.date <= end_date,
+                  ShippingData.is_ng == True), 1),
+            else_=0
+        ))
+    ).scalar() or 0
+    _shipping_ng = int(_shipping_ng)
+
+    # ---------- PatrolMain：一次查詢同時取得 current / previous ----------
+    patrol_row = db.session.query(
+        func.sum(case(
+            (and_(PatrolMain.date >= start_date, PatrolMain.date <= end_date), 1),
+            else_=0
+        )).label('current'),
+        func.sum(case(
+            (and_(PatrolMain.date >= compare_start, PatrolMain.date <= compare_end), 1),
+            else_=0
+        )).label('previous'),
+    ).first()
+    _patrol_current = int(patrol_row.current or 0)
+    _patrol_previous = int(patrol_row.previous or 0)
+
+    _patrol_ng = db.session.query(
+        func.sum(case(
+            (and_(PatrolMain.date >= start_date, PatrolMain.date <= end_date,
+                  PatrolMain.is_ng == True), 1),
+            else_=0
+        ))
+    ).scalar() or 0
+    _patrol_ng = int(_patrol_ng)
+
+    # ---------- NCMR：一次查詢同時取得 current / previous ----------
+    ncmr_row = db.session.query(
+        func.sum(case(
+            (and_(NCMR.date >= start_date, NCMR.date <= end_date), 1),
+            else_=0
+        )).label('current'),
+        func.sum(case(
+            (and_(NCMR.date >= compare_start, NCMR.date <= compare_end), 1),
+            else_=0
+        )).label('previous'),
+    ).first()
+    _ncmr_current = int(ncmr_row.current or 0)
+    _ncmr_previous = int(ncmr_row.previous or 0)
+
+    # ---------- CorrectiveAction（CAPA / CAR）：一次查詢各取兩期 ----------
+    capa_row = db.session.query(
+        func.sum(case(
+            (and_(CorrectiveAction.created_at >= start_date,
+                  CorrectiveAction.created_at <= end_date,
+                  CorrectiveAction.eight_d_number != None), 1),
+            else_=0
+        )).label('current'),
+        func.sum(case(
+            (and_(CorrectiveAction.created_at >= compare_start,
+                  CorrectiveAction.created_at <= compare_end,
+                  CorrectiveAction.eight_d_number != None), 1),
+            else_=0
+        )).label('previous'),
+    ).first()
+    _capa_current = int(capa_row.current or 0)
+    _capa_previous = int(capa_row.previous or 0)
+
+    cara_row = db.session.query(
+        func.sum(case(
+            (and_(CorrectiveAction.created_at >= start_date,
+                  CorrectiveAction.created_at <= end_date,
+                  CorrectiveAction.car_number != None), 1),
+            else_=0
+        )).label('current'),
+        func.sum(case(
+            (and_(CorrectiveAction.created_at >= compare_start,
+                  CorrectiveAction.created_at <= compare_end,
+                  CorrectiveAction.car_number != None), 1),
+            else_=0
+        )).label('previous'),
+    ).first()
+    _cara_current = int(cara_row.current or 0)
+    _cara_previous = int(cara_row.previous or 0)
+
+    # ---------- ReworkRequest：一次查詢同時取得 current / previous ----------
+    rework_row = db.session.query(
+        func.sum(case(
+            (and_(ReworkRequest.created_at >= start_date,
+                  ReworkRequest.created_at <= end_date), 1),
+            else_=0
+        )).label('current'),
+        func.sum(case(
+            (and_(ReworkRequest.created_at >= compare_start,
+                  ReworkRequest.created_at <= compare_end), 1),
+            else_=0
+        )).label('previous'),
+    ).first()
+    _rework_current = int(rework_row.current or 0)
+    _rework_previous = int(rework_row.previous or 0)
+
+    # ---------- 組裝回應 ----------
     stats = {
         "shipping": {
             "current": _shipping_current,
-            "previous": count_for_model(ShippingData, ShippingData.date, compare_start, compare_end),
+            "previous": _shipping_previous,
             "ng_count": _shipping_ng,
             "ng_rate": round((_shipping_ng / _shipping_current * 100), 1) if _shipping_current > 0 else None,
             "pending": 0
         },
         "patrol": {
             "current": _patrol_current,
-            "previous": count_for_model(PatrolMain, PatrolMain.date, compare_start, compare_end),
+            "previous": _patrol_previous,
             "ng_count": _patrol_ng,
             "ng_rate": round((_patrol_ng / _patrol_current * 100), 1) if _patrol_current > 0 else None,
             "pending": 0
         },
         "ncmr": {
-            "current": count_for_model(NCMR, NCMR.date, start_date, end_date),
-            "previous": count_for_model(NCMR, NCMR.date, compare_start, compare_end),
+            "current": _ncmr_current,
+            "previous": _ncmr_previous,
             "pending": count_pending_ncmr()
         },
         "capa": {
-            "current": count_for_model(
-                CorrectiveAction, CorrectiveAction.created_at, start_date, end_date,
-                CorrectiveAction.eight_d_number != None
-            ),
-            "previous": count_for_model(
-                CorrectiveAction, CorrectiveAction.created_at, compare_start, compare_end,
-                CorrectiveAction.eight_d_number != None
-            ),
+            "current": _capa_current,
+            "previous": _capa_previous,
             "pending": count_pending_capa()
         },
         "rework": {
-            "current": count_for_model(ReworkRequest, ReworkRequest.created_at, start_date, end_date),
-            "previous": count_for_model(ReworkRequest, ReworkRequest.created_at, compare_start, compare_end),
+            "current": _rework_current,
+            "previous": _rework_previous,
             "pending": count_pending_rework()
         },
         "cara": {
-            "current": count_for_model(
-                CorrectiveAction, CorrectiveAction.created_at, start_date, end_date,
-                CorrectiveAction.car_number != None
-            ),
-            "previous": count_for_model(
-                CorrectiveAction, CorrectiveAction.created_at, compare_start, compare_end,
-                CorrectiveAction.car_number != None
-            ),
+            "current": _cara_current,
+            "previous": _cara_previous,
             "pending": count_pending_cara()
         }
     }
-    
+
     # 計算趨勢
     for key in stats:
         curr = stats[key]['current']
@@ -125,8 +209,9 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
                 stats[key]['trend'] = 'down'
             else:
                 stats[key]['trend'] = 'stable'
-    
+
     return stats
+
 
 @admin_bp.route('/api/dashboard/stats')
 @auth_required
@@ -134,16 +219,16 @@ def get_dashboard_stats():
     period = request.args.get('period', 'this_month')
     start_date = request.args.get('start')
     end_date = request.args.get('end')
-    
+
     today = date.today()
-    
+
     try:
         if start_date and end_date:
             # 自訂日期範圍
             start = datetime.strptime(start_date, '%Y-%m-%d').date()
             end = datetime.strptime(end_date, '%Y-%m-%d').date()
         elif period == 'this_week':
-            # 本週 (週一至週日)
+            # 本週（週一至週日）
             start = today - timedelta(days=today.weekday())
             end = start + timedelta(days=6)
         elif period == 'last_week':
@@ -159,9 +244,9 @@ def get_dashboard_stats():
             # 預設：本月
             start = today.replace(day=1)
             end = today
-        
+
         stats = get_stats_for_period(start, end)
-        
+
         return jsonify({
             "period": period,
             "start_date": start.isoformat(),
@@ -169,19 +254,18 @@ def get_dashboard_stats():
             "stats": stats
         })
     except Exception as e:
-        from flask import current_app
-        current_app.logger.exception("Error loading dashboard stats")
-        return jsonify({"error": str(e)}), 500
+        current_app.logger.exception("載入儀表板統計時發生錯誤: %s", str(e))
+        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+
 
 @admin_bp.route('/api/dashboard/todos')
 @auth_required
 def get_dashboard_todos():
     today = date.today()
-    week_ago = today - timedelta(days=7)
-    
+
     try:
         todos = []
-        
+
         pending_ncmrs = NCMR.query.filter(NCMR.status == '待處理').order_by(NCMR.date.desc()).limit(5).all()
         for n in pending_ncmrs:
             todos.append({
@@ -193,8 +277,8 @@ def get_dashboard_todos():
                 "priority": "high",
                 "path": "/ncmr"
             })
-        
-        # CAR items (car_number exists)
+
+        # CAR 項目（car_number 存在）
         pending_cars = CorrectiveAction.query.filter(
             CorrectiveAction.car_number != None,
             CorrectiveAction.status.in_(['待處理', '進行中'])
@@ -209,8 +293,8 @@ def get_dashboard_todos():
                 "priority": "medium",
                 "path": "/cara"
             })
-        
-        # CAPA items (8D number exists)
+
+        # CAPA 項目（8D 編號存在）
         pending_capas = CorrectiveAction.query.filter(
             CorrectiveAction.eight_d_number != None,
             CorrectiveAction.status.in_(['待處理', '進行中'])
@@ -225,7 +309,7 @@ def get_dashboard_todos():
                 "priority": "medium",
                 "path": "/capa"
             })
-        
+
         pending_reworks = ReworkRequest.query.filter(
             ReworkRequest.status.in_(['待審核', '已通過', '進行中'])
         ).order_by(ReworkRequest.created_at.desc()).limit(5).all()
@@ -239,123 +323,181 @@ def get_dashboard_todos():
                 "priority": "medium",
                 "path": "/rework"
             })
-        
+
         todos.sort(key=lambda x: x['date'] if x['date'] else '', reverse=True)
-        
+
         return jsonify(todos[:10])
     except Exception as e:
-        from flask import current_app
-        current_app.logger.exception("Error loading dashboard todos")
-        return jsonify({"error": str(e)}), 500
+        current_app.logger.exception("載入儀表板待辦事項時發生錯誤: %s", str(e))
+        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+
 
 @admin_bp.route('/api/dashboard/trends')
 @auth_required
 def get_dashboard_trends():
+    """P-1：從 36 次查詢降為 6 次 GROUP BY 聚合查詢"""
     try:
-        trends = {
-            "ncmr_by_month": [],
-            "shipping_ok_by_month": [],
-            "shipping_ng_by_month": [],
-            "patrol_ok_by_month": [],
-            "patrol_ng_by_month": [],
-            "rework_by_month": []
-        }
-        
         today = date.today()
-        current_month_start = today.replace(day=1)
-        
+
+        # 安全的跨年月份計算（使用 relativedelta）
+        months = []
         for i in range(5, -1, -1):
-            year = current_month_start.year
-            month = current_month_start.month - i
-            while month <= 0:
-                month += 12
-                year -= 1
-            month_start = date(year, month, 1)
-            
-            if month == 12:
-                month_end = date(year + 1, 1, 1) - timedelta(days=1)
-            else:
-                month_end = date(year, month + 1, 1) - timedelta(days=1)
-            
-            ncmr_count = NCMR.query.filter(
-                NCMR.date >= month_start,
-                NCMR.date <= month_end
-            ).count()
-            
-            ok_count = ShippingData.query.filter(
-                ShippingData.date >= month_start,
-                ShippingData.date <= month_end,
-                or_(ShippingData.is_ng == False, ShippingData.is_ng == None)
-            ).count()
-            
-            ng_count = ShippingData.query.filter(
-                ShippingData.date >= month_start,
-                ShippingData.date <= month_end,
-                ShippingData.is_ng == True
-            ).count()
-            
-            rework_count = ReworkRequest.query.filter(
-                ReworkRequest.created_at >= month_start,
-                ReworkRequest.created_at <= month_end
-            ).count()
+            m = today.replace(day=1) - relativedelta(months=i)
+            months.append(m.strftime('%Y-%m'))
 
-            patrol_ok_count = PatrolMain.query.filter(
-                PatrolMain.date >= month_start,
-                PatrolMain.date <= month_end,
-                or_(PatrolMain.is_ng == False, PatrolMain.is_ng == None)
-            ).count()
+        six_months_ago = today.replace(day=1) - relativedelta(months=5)
 
-            patrol_ng_count = PatrolMain.query.filter(
-                PatrolMain.date >= month_start,
-                PatrolMain.date <= month_end,
-                PatrolMain.is_ng == True
-            ).count()
+        # --- NCMR 按月聚合（1 次查詢）---
+        ncmr_rows = db.session.query(
+            func.to_char(NCMR.date, 'YYYY-MM').label('month'),
+            func.count().label('cnt')
+        ).filter(
+            NCMR.date >= six_months_ago
+        ).group_by(
+            func.to_char(NCMR.date, 'YYYY-MM')
+        ).all()
+        ncmr_dict = {row.month: row.cnt for row in ncmr_rows}
 
-            month_label = month_start.strftime("%Y-%m")
-            trends["ncmr_by_month"].append({"month": month_label, "count": ncmr_count})
-            trends["shipping_ok_by_month"].append({"month": month_label, "count": ok_count})
-            trends["shipping_ng_by_month"].append({"month": month_label, "count": ng_count})
-            trends["patrol_ok_by_month"].append({"month": month_label, "count": patrol_ok_count})
-            trends["patrol_ng_by_month"].append({"month": month_label, "count": patrol_ng_count})
-            trends["rework_by_month"].append({"month": month_label, "count": rework_count})
-        
+        # --- ShippingData OK 按月聚合（1 次查詢）---
+        shipping_ok_rows = db.session.query(
+            func.to_char(ShippingData.date, 'YYYY-MM').label('month'),
+            func.count().label('cnt')
+        ).filter(
+            ShippingData.date >= six_months_ago,
+            or_(ShippingData.is_ng == False, ShippingData.is_ng == None)
+        ).group_by(
+            func.to_char(ShippingData.date, 'YYYY-MM')
+        ).all()
+        shipping_ok_dict = {row.month: row.cnt for row in shipping_ok_rows}
+
+        # --- ShippingData NG 按月聚合（1 次查詢）---
+        shipping_ng_rows = db.session.query(
+            func.to_char(ShippingData.date, 'YYYY-MM').label('month'),
+            func.count().label('cnt')
+        ).filter(
+            ShippingData.date >= six_months_ago,
+            ShippingData.is_ng == True
+        ).group_by(
+            func.to_char(ShippingData.date, 'YYYY-MM')
+        ).all()
+        shipping_ng_dict = {row.month: row.cnt for row in shipping_ng_rows}
+
+        # --- PatrolMain OK 按月聚合（1 次查詢）---
+        patrol_ok_rows = db.session.query(
+            func.to_char(PatrolMain.date, 'YYYY-MM').label('month'),
+            func.count().label('cnt')
+        ).filter(
+            PatrolMain.date >= six_months_ago,
+            or_(PatrolMain.is_ng == False, PatrolMain.is_ng == None)
+        ).group_by(
+            func.to_char(PatrolMain.date, 'YYYY-MM')
+        ).all()
+        patrol_ok_dict = {row.month: row.cnt for row in patrol_ok_rows}
+
+        # --- PatrolMain NG 按月聚合（1 次查詢）---
+        patrol_ng_rows = db.session.query(
+            func.to_char(PatrolMain.date, 'YYYY-MM').label('month'),
+            func.count().label('cnt')
+        ).filter(
+            PatrolMain.date >= six_months_ago,
+            PatrolMain.is_ng == True
+        ).group_by(
+            func.to_char(PatrolMain.date, 'YYYY-MM')
+        ).all()
+        patrol_ng_dict = {row.month: row.cnt for row in patrol_ng_rows}
+
+        # --- ReworkRequest 按月聚合（1 次查詢）---
+        rework_rows = db.session.query(
+            func.to_char(func.cast(ReworkRequest.created_at, db.Date), 'YYYY-MM').label('month'),
+            func.count().label('cnt')
+        ).filter(
+            func.cast(ReworkRequest.created_at, db.Date) >= six_months_ago
+        ).group_by(
+            func.to_char(func.cast(ReworkRequest.created_at, db.Date), 'YYYY-MM')
+        ).all()
+        rework_dict = {row.month: row.cnt for row in rework_rows}
+
+        # 補零並組裝既有回應格式
+        trends = {
+            "ncmr_by_month": [{"month": m, "count": ncmr_dict.get(m, 0)} for m in months],
+            "shipping_ok_by_month": [{"month": m, "count": shipping_ok_dict.get(m, 0)} for m in months],
+            "shipping_ng_by_month": [{"month": m, "count": shipping_ng_dict.get(m, 0)} for m in months],
+            "patrol_ok_by_month": [{"month": m, "count": patrol_ok_dict.get(m, 0)} for m in months],
+            "patrol_ng_by_month": [{"month": m, "count": patrol_ng_dict.get(m, 0)} for m in months],
+            "rework_by_month": [{"month": m, "count": rework_dict.get(m, 0)} for m in months],
+        }
+
         return jsonify(trends)
     except Exception as e:
-        from flask import current_app
-        current_app.logger.exception("Error loading dashboard trends")
-        return jsonify({"error": str(e)}), 500
+        current_app.logger.exception("載入儀表板趨勢時發生錯誤: %s", str(e))
+        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+
+
+# S-6：以下六個端點加上 @auth_required
 
 @admin_bp.route('/api/inspectors')
+@auth_required
 def get_inspectors():
-    inspectors = Inspector.query.all()
-    # ORM objects needs to be serialized manually or use marshmallows later
-    return jsonify([{"id": i.id, "name": i.name.strip() if i.name else ""} for i in inspectors])
+    try:
+        inspectors = Inspector.query.all()
+        return jsonify([{"id": i.id, "name": i.name.strip() if i.name else ""} for i in inspectors])
+    except Exception as e:
+        current_app.logger.exception("查詢檢驗人員清單時發生錯誤: %s", str(e))
+        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+
 
 @admin_bp.route('/api/vendors')
+@auth_required
 def get_vendors():
-    vendors = Vendor.query.all()
-    return jsonify([{"id": v.id, "name": v.name.strip() if v.name else ""} for v in vendors])
+    try:
+        vendors = Vendor.query.all()
+        return jsonify([{"id": v.id, "name": v.name.strip() if v.name else ""} for v in vendors])
+    except Exception as e:
+        current_app.logger.exception("查詢廠商清單時發生錯誤: %s", str(e))
+        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+
 
 @admin_bp.route('/api/machines')
+@auth_required
 def get_machines():
-    machines = Machine.query.all()
-    return jsonify([{"id": m.id, "name": m.name.strip() if m.name else ""} for m in machines])
+    try:
+        machines = Machine.query.all()
+        return jsonify([{"id": m.id, "name": m.name.strip() if m.name else ""} for m in machines])
+    except Exception as e:
+        current_app.logger.exception("查詢機台清單時發生錯誤: %s", str(e))
+        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+
 
 @admin_bp.route('/api/operators')
+@auth_required
 def get_operators():
-    operators = Operator.query.all()
-    return jsonify([{"id": o.id, "name": o.name.strip() if o.name else ""} for o in operators])
+    try:
+        operators = Operator.query.all()
+        return jsonify([{"id": o.id, "name": o.name.strip() if o.name else ""} for o in operators])
+    except Exception as e:
+        current_app.logger.exception("查詢操作員清單時發生錯誤: %s", str(e))
+        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+
 
 @admin_bp.route('/api/materials')
+@auth_required
 def get_materials():
-    # Temporary raw SQL until ShippingData model is created
-    result = db.session.execute(text('SELECT DISTINCT "材質" FROM "出貨檢驗數據" WHERE "材質" IS NOT NULL'))
-    materials = [row[0].strip() for row in result]
-    return jsonify(materials)
+    try:
+        result = db.session.execute(text('SELECT DISTINCT "材質" FROM "出貨檢驗數據" WHERE "材質" IS NOT NULL'))
+        materials = [row[0].strip() for row in result]
+        return jsonify(materials)
+    except Exception as e:
+        current_app.logger.exception("查詢材質清單時發生錯誤: %s", str(e))
+        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+
 
 @admin_bp.route('/api/specs')
+@auth_required
 def get_specs():
-    # Temporary raw SQL until ShippingData model is created
-    result = db.session.execute(text('SELECT DISTINCT "檢驗規格" FROM "出貨檢驗數據" WHERE "檢驗規格" IS NOT NULL'))
-    specs = [row[0].strip() for row in result]
-    return jsonify(specs)
+    try:
+        result = db.session.execute(text('SELECT DISTINCT "檢驗規格" FROM "出貨檢驗數據" WHERE "檢驗規格" IS NOT NULL'))
+        specs = [row[0].strip() for row in result]
+        return jsonify(specs)
+    except Exception as e:
+        current_app.logger.exception("查詢檢驗規格清單時發生錯誤: %s", str(e))
+        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500

@@ -58,7 +58,7 @@ export const useInspectors = () => {
             const res = await api.get<{ name: string }[]>('/inspectors');
             return res.data;
         },
-        staleTime: 1000 * 60 * 60, // 1 hour
+        staleTime: 1000 * 60 * 10, // 10 分鐘
     });
 };
 

@@ -12,22 +12,11 @@ from ..models import ShippingData, Inspector, Vendor, VendorToleranceMain, Vendo
 from ..utils import (
     format_value,
     validate_inspection_data,
-    handle_db_error
+    handle_db_error,
+    parse_spec_nominals
 )
 
-# SPC constants lookup table by subgroup size n
-# Keys: n (subgroup size), Values: (A2, D3, D4, d2)
-SPC_CONSTANTS = {
-    2: (1.880, 0.000, 3.267, 1.128),
-    3: (1.023, 0.000, 2.574, 1.693),
-    4: (0.729, 0.000, 2.282, 2.059),
-    5: (0.577, 0.000, 2.114, 2.326),
-    6: (0.483, 0.000, 2.004, 2.534),
-    7: (0.419, 0.076, 1.924, 2.704),
-    8: (0.373, 0.136, 1.864, 2.847),
-    9: (0.337, 0.184, 1.816, 2.970),
-    10: (0.308, 0.223, 1.777, 3.078),
-}
+from .spc_constants import SPC_CONSTANTS
 
 
 class ShippingService:

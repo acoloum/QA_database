@@ -1,8 +1,22 @@
 from flask import Blueprint, jsonify, request
+from marshmallow import Schema, fields, validate, ValidationError
 from ..services.ncmr_service import NCMRService
 from ..utils import auth_required
 
 ncmr_bp = Blueprint('ncmr', __name__)
+
+class NCMRCreateSchema(Schema):
+    發現日期 = fields.Date(required=True)
+    來源 = fields.String(required=True, validate=validate.Length(min=1, max=100))
+    廠商 = fields.String(load_default=None, validate=validate.Length(max=200))
+    材質 = fields.String(load_default=None, validate=validate.Length(max=100))
+    批號 = fields.String(load_default=None, validate=validate.Length(max=100))
+    產品資訊 = fields.String(load_default=None, validate=validate.Length(max=500))
+    產品數量 = fields.Integer(load_default=None, validate=validate.Range(min=0))
+    不良描述 = fields.String(load_default=None, validate=validate.Length(max=1000))
+    不合格數量 = fields.Integer(load_default=None, validate=validate.Range(min=0))
+
+_ncmr_create_schema = NCMRCreateSchema()
 
 # ==================================================
 # 【不合格品管理】NCMR API
@@ -20,6 +34,10 @@ def get_ncmr_list():
 @ncmr_bp.route('/api/ncmr/add', methods=['POST'])
 @auth_required
 def add_ncmr():
+    try:
+        _ncmr_create_schema.load(request.json or {})
+    except ValidationError as err:
+        return jsonify({"error": "資料驗證失敗", "details": err.messages}), 400
     try:
         ncmr_number = NCMRService.add_ncmr(request.json)
         return jsonify({"success": True, "ncmr_number": ncmr_number})

@@ -31,6 +31,12 @@ if not SECRET_KEY:
     )
 TOKEN_EXPIRATION_HOURS = int(os.getenv('TOKEN_EXPIRATION_HOURS', '24'))
 
+# CORS 白名單：以逗號分隔的允許來源清單（可透過環境變數覆寫）
+ALLOWED_ORIGINS = os.getenv(
+    'ALLOWED_ORIGINS',
+    'http://localhost:5173,http://localhost:8080'
+).split(',')
+
 
 # SQLAlchemy Configuration
 SQLALCHEMY_DATABASE_URI = f"postgresql://{POSTGRESQL_CONFIG['user']}:{POSTGRESQL_CONFIG['password']}@{POSTGRESQL_CONFIG['host']}:{POSTGRESQL_CONFIG['port']}/{POSTGRESQL_CONFIG['database']}"
