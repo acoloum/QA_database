@@ -5,6 +5,7 @@ from ..utils import auth_required, handle_db_error
 patrol_bp = Blueprint('patrol', __name__)
 
 @patrol_bp.route('/api/patrol/options')
+@auth_required
 def patrol_options():
     try:
         options = PatrolService.get_options()
@@ -13,6 +14,7 @@ def patrol_options():
         return jsonify({"error": str(e)}), 500
 
 @patrol_bp.route('/api/patrol/spc')
+@auth_required
 def patrol_spc():
     try:
         data = PatrolService.get_spc(request.args)
@@ -21,6 +23,7 @@ def patrol_spc():
         return jsonify({"error": str(e)}), 500
 
 @patrol_bp.route('/api/patrol/detail/<int:id>')
+@auth_required
 def patrol_detail(id):
     try:
         data = PatrolService.get_detail(id)

@@ -106,10 +106,11 @@ def verify_password(password: str, hashed: str) -> bool:
     # Legacy SHA256 fallback for migration
     return hashlib.sha256(password.encode()).hexdigest() == hashed
 
-def generate_token(user_id: int, username: str) -> str:
+def generate_token(user_id: int, username: str, role: str = 'user') -> str:
     payload = {
         'user_id': user_id,
         'username': username,
+        'role': role,
         'exp': datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRATION_HOURS)
     }
     return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
@@ -123,13 +124,22 @@ def verify_token(token: str) -> Optional[Dict[str, Any]]:
     except jwt.InvalidTokenError:
         return None
 
+def require_admin(f: Any) -> Any:
+    """要求 JWT 中 role == 'admin' 的裝飾器，需緊接在 @auth_required 之後使用"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user = getattr(request, 'user', {})
+        if user.get('role') != 'admin':
+            return jsonify({'error': '此操作需要管理員權限'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
 def auth_required(f: Any) -> Any:
     @wraps(f)
     def decorated(*args, **kwargs):
+        # 僅接受 Authorization header，禁止從 query string 取得 token
+        # （URL token 會被記錄至 Nginx log、瀏覽器歷史及 Referer header）
         token = request.headers.get('Authorization')
-        if not token:
-            # 支援從 query string 取得 token（用於檔案下載等無法帶 header 的場景）
-            token = request.args.get('token')
         if not token:
             return jsonify({'error': '缺少認證 Token'}), 401
         if token.startswith('Bearer '):
@@ -143,21 +153,97 @@ def auth_required(f: Any) -> Any:
 
 
 # ==================================================
+# File Upload Validation (C-3)
+# ==================================================
+import os as _os
+
+def validate_upload_file(file: Any, max_bytes: int = 10 * 1024 * 1024) -> Optional[str]:
+    """
+    驗證上傳檔案的副檔名與大小限制（出貨/巡檢匯入共用）
+    回傳錯誤訊息字串；無錯誤則回傳 None
+    """
+    allowed_extensions = {'.xlsx', '.xls'}
+    ext = _os.path.splitext(file.filename)[1].lower()
+    if ext not in allowed_extensions:
+        return f"不支援的檔案格式: {ext}，僅接受 .xlsx / .xls"
+    file.seek(0, 2)
+    file_size = file.tell()
+    file.seek(0)
+    if file_size > max_bytes:
+        return f"檔案大小超過 {max_bytes // (1024 * 1024)}MB 限制"
+    return None
+
+
+# ==================================================
+# Spec Nominal Parser (C-2)
+# ==================================================
+def parse_spec_nominals(spec: Optional[str]) -> Dict[str, float]:
+    """
+    從規格字串解析各尺寸名義值（shipping/patrol 共用）
+    例：'31.9*2.2*589' → {'外徑': 31.9, '厚度': 2.2, '內徑': 27.5, '長度': 589.0}
+    """
+    result: Dict[str, float] = {}
+    if not spec:
+        return result
+    s = str(spec).strip().replace('×', '*').replace('x', '*').replace('X', '*')
+    while '**' in s:
+        s = s.replace('**', '*')
+    parts = s.split('*')
+    try:
+        nums = [float(p.strip()) for p in parts if p.strip()]
+        if len(nums) >= 2:
+            result['外徑'] = nums[0]
+            val2 = nums[1]
+            if val2 < (nums[0] / 2):
+                result['厚度'] = val2
+                result['內徑'] = nums[0] - (val2 * 2)
+            else:
+                result['內徑'] = val2
+                result['厚度'] = (nums[0] - val2) / 2
+            if len(nums) >= 3:
+                result['長度'] = nums[2]
+        elif len(nums) == 1:
+            result['外徑'] = nums[0]
+    except (ValueError, TypeError):
+        pass
+    return result
+
+
+# ==================================================
 # ID Generation
 # ==================================================
+
+# 允許使用 generate_number 的（資料表, 欄位）白名單，防止 SQL Injection
+_NUMBER_FIELD_WHITELIST: Dict[str, str] = {
+    "不合格品單":  "NCMR單號",
+    "異常矯正單":  "8D單號",   # CAR 與 8D 共用同一張表，欄位不同
+    "重工申請單":  "申請單號",
+}
+# 異常矯正單同時有 8D單號 與 CAR單號 兩個欄位，另外維護完整允許集合
+_NUMBER_PAIR_WHITELIST: set = {
+    ("不合格品單", "NCMR單號"),
+    ("異常矯正單", "8D單號"),
+    ("異常矯正單", "CAR單號"),
+    ("重工申請單", "申請單號"),
+}
+
 def generate_number(prefix: str, table_name: Optional[str] = None, number_field: Optional[str] = None) -> str:
     """
     統一編碼生成函數
     格式：PREFIX-YYYYMM-XXX (例：NCMR-202601-001)
     """
     year_month = datetime.now().strftime('%Y%m')
-    
+
     if table_name and number_field:
+        # 白名單驗證：只允許已知的（資料表, 欄位）組合，防止 f-string 拼接注入
+        if (table_name, number_field) not in _NUMBER_PAIR_WHITELIST:
+            raise ValueError(f"不允許的資料表或欄位名稱：{table_name}.{number_field}")
+
         try:
             sql = f"""
-                SELECT "{number_field}" 
-                FROM "{table_name}" 
-                WHERE "{number_field}" IS NOT NULL 
+                SELECT "{number_field}"
+                FROM "{table_name}"
+                WHERE "{number_field}" IS NOT NULL
                 AND "{number_field}" LIKE :pattern
                 ORDER BY "{number_field}" DESC
             """

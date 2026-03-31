@@ -141,3 +141,5 @@ The `.env` file is committed with development credentials — do not commit prod
 - **Measurement groups:** `ShippingData` stores measurements as `od1`–`od5`, `id1`–`id5`, etc. The `is_ng` boolean is computed at save time based on tolerance comparisons.
 - **Excel import/export:** Several routes accept multipart form uploads (`.xlsx`) and return Excel files via `send_file`. openpyxl is used directly (not pandas) for formatting.
 - **API docs:** Swagger UI available at `/apidocs` when running Flask.
+
+後端是在venv環境中啟動

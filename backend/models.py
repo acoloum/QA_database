@@ -9,6 +9,7 @@ class User(db.Model):
     username = db.Column('使用者名稱', db.String, unique=True, nullable=False)
     password = db.Column('密碼', db.String, nullable=False)
     is_active = db.Column('是否啟用', db.Boolean, default=True)
+    role = db.Column('角色', db.String(20), nullable=False, default='user', server_default='user')
 
     def __repr__(self):
         return f'<User {self.username}>'
