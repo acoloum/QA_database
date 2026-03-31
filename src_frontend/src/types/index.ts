@@ -1,6 +1,7 @@
 export interface User {
     user_id: string;
     username: string;
+    role: string;
 }
 
 export interface AuthState {
@@ -13,6 +14,7 @@ export interface LoginResponse {
     token: string;
     username: string;
     user_id: string;
+    role: string;
     error?: string;
 }
 
@@ -20,6 +22,14 @@ export interface VerifyTokenResponse {
     valid: boolean;
     username: string;
     user_id: string;
+    role: string;
+}
+
+export interface UserRecord {
+    id: number;
+    username: string;
+    role: string;
+    is_active: boolean;
 }
 
 // Rework Interfaces

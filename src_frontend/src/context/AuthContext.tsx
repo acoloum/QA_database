@@ -4,7 +4,7 @@ import api from '../services/api';
 import type { AuthState, User, VerifyTokenResponse } from '../types';
 
 interface AuthContextType extends AuthState {
-    login: (token: string, username: string, userId: string) => void;
+    login: (token: string, username: string, userId: string, role?: string) => void;
     logout: () => void;
     checkAuth: () => Promise<void>;
 }
@@ -16,10 +16,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
     const [isLoading, setIsLoading] = useState<boolean>(true);
 
-    const login = (token: string, username: string, userId: string) => {
+    const login = (token: string, username: string, userId: string, role: string = 'user') => {
         localStorage.setItem('authToken', token);
         localStorage.setItem('username', username);
-        setUser({ username, user_id: userId });
+        setUser({ username, user_id: userId, role });
         setIsAuthenticated(true);
     };
 
@@ -43,7 +43,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (response.data.valid) {
                 setUser({
                     username: response.data.username,
-                    user_id: response.data.user_id
+                    user_id: response.data.user_id,
+                    role: response.data.role ?? 'user'
                 });
                 setIsAuthenticated(true);
             } else {

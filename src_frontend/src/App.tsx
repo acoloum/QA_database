@@ -14,6 +14,7 @@ import TolerancePage from './pages/tolerance/TolerancePage';
 import ExtrusionTolerancePage from './pages/extrusion-tolerance/ExtrusionTolerancePage';
 import UserManagementPage from './pages/admin/UserManagementPage';
 import ProtectedRoute from './components/ProtectedRoute';
+import AdminRoute from './components/AdminRoute';
 
 function App() {
   return (
@@ -37,8 +38,14 @@ function App() {
               <Route path="/cara" element={<CARAPage />} />
               <Route path="/tolerance" element={<TolerancePage />} />
               <Route path="/extrusion-tolerance" element={<ExtrusionTolerancePage />} />
-              <Route path="/admin/users" element={<UserManagementPage />} />
               {/* 未來在此處新增其他頁面路由 */}
+            </Route>
+          </Route>
+
+          {/* 管理員專屬路由 */}
+          <Route element={<AdminRoute />}>
+            <Route element={<MainLayout />}>
+              <Route path="/admin/users" element={<UserManagementPage />} />
             </Route>
           </Route>
 
