@@ -29,18 +29,18 @@ _ncmr_create_schema = NCMRCreateSchema()
 @auth_required
 def get_ncmr_list():
     try:
-        # 解析分頁與篩選參數
-        result = NCMRService.get_ncmr_list(
-            status=request.args.get('status'),
-            page=int(request.args.get('page', 1)),
-            per_page=int(request.args.get('per_page', 20)),
-            date_from=request.args.get('date_from'),
-            date_to=request.args.get('date_to'),
-            source=request.args.get('source'),
-            vendor=request.args.get('vendor'),
-            material=request.args.get('material'),
-            product_info=request.args.get('product_info'),
-        )
+        params = {
+            'page': int(request.args.get('page', 1)),
+            'per_page': min(int(request.args.get('per_page', 20)), 100),
+            'status': request.args.get('status') or None,
+            'date_from': request.args.get('date_from') or None,
+            'date_to': request.args.get('date_to') or None,
+            'source': request.args.get('source') or None,
+            'vendor': request.args.get('vendor') or None,
+            'material': request.args.get('material') or None,
+            'product_info': request.args.get('product_info') or None,
+        }
+        result = NCMRService.get_ncmr_list(**params)
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -110,8 +110,18 @@ def get_ncmr_info(ncmr_id):
 @auth_required
 def get_cara_list():
     try:
-        data = NCMRService.get_cara_list()
-        return jsonify(data)
+        params = {
+            'page': int(request.args.get('page', 1)),
+            'per_page': min(int(request.args.get('per_page', 20)), 100),
+            'status': request.args.get('status') or None,
+            'date_from': request.args.get('date_from') or None,
+            'date_to': request.args.get('date_to') or None,
+            'vendor': request.args.get('vendor') or None,
+            'material': request.args.get('material') or None,
+            'product_info': request.args.get('product_info') or None,
+        }
+        result = NCMRService.get_cara_list(**params)
+        return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -166,8 +176,18 @@ def delete_cara():
 @auth_required
 def get_capa_list():
     try:
-        data = NCMRService.get_capa_list()
-        return jsonify(data)
+        params = {
+            'page': int(request.args.get('page', 1)),
+            'per_page': min(int(request.args.get('per_page', 20)), 100),
+            'status': request.args.get('status') or None,
+            'date_from': request.args.get('date_from') or None,
+            'date_to': request.args.get('date_to') or None,
+            'vendor': request.args.get('vendor') or None,
+            'material': request.args.get('material') or None,
+            'product_info': request.args.get('product_info') or None,
+        }
+        result = NCMRService.get_capa_list(**params)
+        return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
