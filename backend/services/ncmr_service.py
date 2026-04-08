@@ -344,7 +344,7 @@ class NCMRService:
             if status:
                 query = query.filter(CorrectiveAction.status == status)
             if date_from:
-                query = query.filter(CorrectiveAction.created_at >= datetime.date.fromisoformat(date_from))
+                query = query.filter(CorrectiveAction.created_at >= datetime.datetime.fromisoformat(date_from + 'T00:00:00'))
             if date_to:
                 query = query.filter(CorrectiveAction.created_at <= datetime.datetime.fromisoformat(date_to + 'T23:59:59'))
             if vendor:

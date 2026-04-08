@@ -106,3 +106,19 @@ def test_get_cara_list_filter_status(app, db_session):
         result = NCMRService.get_cara_list(status='已結案')
         assert result['total'] == 1
         assert result['data'][0]['狀態'] == '已結案'
+
+
+def test_get_cara_list_filter_date_range(app, db_session):
+    with app.app_context():
+        import datetime as dt
+        n1 = _make_ncmr(db_session, ncmr_number='NCMR-D1')
+        n2 = _make_ncmr(db_session, ncmr_number='NCMR-D2')
+        ca1 = _make_car(db_session, n1, car_number='CAR-D1')
+        ca2 = _make_car(db_session, n2, car_number='CAR-D2')
+        # 手動設定建立日期
+        from backend.extensions import db
+        ca1.created_at = dt.datetime(2025, 1, 10)
+        ca2.created_at = dt.datetime(2025, 4, 20)
+        db.session.commit()
+        result = NCMRService.get_cara_list(date_from='2025-01-01', date_to='2025-02-28')
+        assert result['total'] == 1
