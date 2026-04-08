@@ -41,7 +41,6 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
     const [vendor, setVendor] = useState('');
     const [material, setMaterial] = useState('');
     const [productInfo, setProductInfo] = useState('');
-    const [productQty, setProductQty] = useState('');
     const [batch, setBatch] = useState('');
     const [defectQty, setDefectQty] = useState('');
     const [desc, setDesc] = useState('');
@@ -57,7 +56,6 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
         setVendor('');
         setMaterial('');
         setProductInfo('');
-        setProductQty('');
         setBatch('');
         setDefectQty('');
         setDesc('');
@@ -83,9 +81,7 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
                 setMaterial(d.材質 || '');
                  
                 setProductInfo(d.產品資訊 || '');
-                 
-                setProductQty(d.產品數量 ? Math.floor(Number(d.產品數量)).toString() : '');
-                 
+
                 setBatch(d.批號 || '');
                  
                 setDefectQty(d.不合格數量 ? Math.floor(Number(d.不合格數量)).toString() : '');
@@ -114,7 +110,6 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
             "廠商": vendor,
             "材質": material,
             "產品資訊": productInfo,
-            "產品數量": productQty,
             "批號": batch,
             "不合格數量": defectQty,
             "不良描述": desc,
@@ -170,7 +165,6 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
                             <Col md={4}><Form.Label>廠商</Form.Label><Form.Control value={vendor} onChange={e => setVendor(e.target.value)} placeholder="請輸入廠商名稱" /></Col>
                             <Col md={4}><Form.Label>材質</Form.Label><Form.Control value={material} onChange={e => setMaterial(e.target.value)} placeholder="請輸入材質" /></Col>
                             <Col md={4}><Form.Label>規格</Form.Label><Form.Control value={productInfo} onChange={e => setProductInfo(e.target.value)} placeholder="請輸入規格" /></Col>
-                            <Col md={6}><Form.Label>產品數量</Form.Label><Form.Control type="number" value={productQty} onChange={e => setProductQty(e.target.value)} /></Col>
                             <Col md={6}><Form.Label>不合格數量</Form.Label><Form.Control type="number" value={defectQty} onChange={e => setDefectQty(e.target.value)} /></Col>
                             <Col md={12}><Form.Label>批號/訂單號</Form.Label><Form.Control value={batch} onChange={e => setBatch(e.target.value)} placeholder="請輸入批號或訂單號" /></Col>
                             <Col md={12}><Form.Label>不良描述</Form.Label><Form.Control as="textarea" rows={2} value={desc} onChange={e => setDesc(e.target.value)} placeholder="請描述不良情況" /></Col>
