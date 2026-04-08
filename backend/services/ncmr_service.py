@@ -533,14 +533,43 @@ class NCMRService:
     # CAPA Logic (Similar to CAR)
     # ==================================================
     @staticmethod
-    def get_capa_list() -> List[Dict[str, Any]]:
+    def get_capa_list(
+        page: int = 1,
+        per_page: int = 20,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        vendor: Optional[str] = None,
+        material: Optional[str] = None,
+        product_info: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> Dict[str, Any]:
         try:
-            query = CorrectiveAction.query.filter(CorrectiveAction.eight_d_number != None)\
-                .options(joinedload(CorrectiveAction.ncmr), joinedload(CorrectiveAction.owner))\
-                .order_by(CorrectiveAction.id.desc())
-            
+            query = CorrectiveAction.query\
+                .filter(CorrectiveAction.eight_d_number.isnot(None))\
+                .join(NCMR, CorrectiveAction.ncmr_id == NCMR.id)\
+                .options(joinedload(CorrectiveAction.ncmr), joinedload(CorrectiveAction.owner))
+
+            if status:
+                query = query.filter(CorrectiveAction.status == status)
+            if date_from:
+                query = query.filter(CorrectiveAction.created_at >= datetime.datetime.fromisoformat(date_from + 'T00:00:00'))
+            if date_to:
+                query = query.filter(CorrectiveAction.created_at <= datetime.datetime.fromisoformat(date_to + 'T23:59:59'))
+            if vendor:
+                query = query.filter(NCMR.vendor.ilike(f'%{vendor}%'))
+            if material:
+                query = query.filter(NCMR.material.ilike(f'%{material}%'))
+            if product_info:
+                query = query.filter(NCMR.product_info.ilike(f'%{product_info}%'))
+
+            total = query.count()
+            cas = query.order_by(CorrectiveAction.id.desc())\
+                .offset((page - 1) * per_page)\
+                .limit(per_page)\
+                .all()
+
             data = []
-            for ca in query.all():
+            for ca in cas:
                 ncmr = ca.ncmr
                 item = {
                     "識別碼": ca.id,
@@ -548,41 +577,6 @@ class NCMRService:
                     "8D單號": ca.eight_d_number,
                     "CAR單號": ca.car_number,
                     "負責人員": ca.owner_id,
-                    "問題描述": ca.d2,     # Mapping D2 -> 問題描述 for list view? Legacy selected fields 
-                    "根本原因": ca.d4,     # Mapping D4
-                    "矯正措施": ca.d3,     # Mapping D3? Or D5? Leagcy: "矯正措施" column in DB?
-                    # Wait, legacy SQL select: "問題描述", "根本原因", "矯正措施", "預防措施" columns directly from table.
-                    # My model has d1..d8. 
-                    # If legacy table actually has COLUMNS named "問題描述", "根本原因" etc AND D1..D8 are aliases, 
-                    # OR if they are separate.
-                    # My model `CorrectiveAction` definition in Step 258 has `d2 = db.Column('D2_問題描述', ...)`
-                    # So `d2` attribute MAPS to `D2_問題描述` column.
-                    # But legacy Code `get_capa_list` selected: `T1."問題描述", T1."根本原因", T1."矯正措施", T1."預防措施"`.
-                    # This implies there are columns named EXACTLY that, NOT `D2_問題描述`.
-                    # It seems `異常矯正單` might have mixed naming or I assumed 8D structure.
-                    # Re-reading `ncmr_service.py` legacy code:
-                    # `T1."問題描述", T1."根本原因", T1."矯正措施", T1."預防措施"`
-                    # AND `update_cara` used: `D2_問題描述`, `D3_暫時對策`...
-                    # It seems standard names are used for CARs (D-steps) but maybe simplified names for CAPA list?
-                    # Or maybe the columns exist simultaneously?
-                    # Or my model definition is WRONG for `CorrectionAction`.
-                    
-                    # Let's check `backend/models.py` again.
-                    # `d2 = db.Column('D2_問題描述', db.String)`
-                    # If the actual DB column is `問題描述`, then this mapping will fail at runtime.
-                    # I should have checked the schema more carefully.
-                    # However, `update_cara` in legacy code used `D2_問題描述`.
-                    # `get_capa_list` in legacy code used `問題描述`.
-                    # This suggests EITHER aliases in SQL or multiple columns.
-                    # BUT `update_cara` is for CAR. `get_capa_list` is for CAPA (8D).
-                    # Maybe 8D uses different columns?
-                    # Let's assume for now 8D maps to D-fields.
-                    # D2 = Problem Description = 問題描述
-                    # D4 = Root Cause = 真因分析/根本原因
-                    # D5 = Permanent Action = 永久對策/矯正措施?
-                    # D7 = Prevent Recurrence = 預防再發/預防措施
-                    
-                    # I will map them accordingly.
                     "狀態": ca.status,
                     "建立日期": format_value(ca.created_at),
                     "結案日期": format_value(ca.closed_at),
@@ -595,18 +589,15 @@ class NCMRService:
                     "NCMR單號": ncmr.ncmr_number if ncmr else "",
                     "ncmr_date": format_value(ncmr.date) if ncmr else ""
                 }
-                
-                # Manual mapping based on 8D logic assumption
                 item["問題描述"] = ca.d2 or ""
                 item["根本原因"] = ca.d4 or ""
-                item["矯正措施"] = ca.d5 or "" # Permanent action
+                item["矯正措施"] = ca.d5 or ""
                 item["預防措施"] = ca.d7 or ""
-                
                 for k, v in item.items():
-                   item[k] = format_value(v)
-                
+                    item[k] = format_value(v)
                 data.append(item)
-            return data
+
+            return {"data": data, "total": total, "page": page, "per_page": per_page}
         except Exception as e:
             raise e
 
