@@ -33,13 +33,13 @@ const PaginationBar = ({ page, perPage, total, onPageChange }: PaginationBarProp
                 共 {total} 筆，第 {page} / {totalPages} 頁
             </small>
             <Pagination size="sm" className="mb-0">
-                <Pagination.Prev disabled={page === 1} onClick={() => onPageChange(page - 1)} />
-                {getPageNumbers().map((p, idx) =>
+                <Pagination.Prev disabled={page === 1} onClick={() => page > 1 && onPageChange(page - 1)} />
+                {getPageNumbers().map((p) =>
                     p === 'ellipsis-start' || p === 'ellipsis-end'
                         ? <Pagination.Ellipsis key={p} disabled />
-                        : <Pagination.Item key={idx} active={p === page} onClick={() => onPageChange(p as number)}>{p}</Pagination.Item>
+                        : <Pagination.Item key={p} active={p === page} onClick={() => onPageChange(p as number)}>{p}</Pagination.Item>
                 )}
-                <Pagination.Next disabled={page === totalPages} onClick={() => onPageChange(page + 1)} />
+                <Pagination.Next disabled={page === totalPages} onClick={() => page < totalPages && onPageChange(page + 1)} />
             </Pagination>
         </div>
     );
