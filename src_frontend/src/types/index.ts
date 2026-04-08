@@ -1,3 +1,10 @@
+export interface PaginatedResponse<T> {
+    data: T[];
+    total: number;
+    page: number;
+    per_page: number;
+}
+
 export interface User {
     user_id: string;
     username: string;
@@ -30,6 +37,7 @@ export interface UserRecord {
     username: string;
     role: string;
     is_active: boolean;
+    created_at: string | null;
 }
 
 // Rework Interfaces
