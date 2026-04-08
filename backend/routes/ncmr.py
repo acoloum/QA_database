@@ -1,20 +1,23 @@
 from flask import Blueprint, jsonify, request
-from marshmallow import Schema, fields, validate, ValidationError
+from marshmallow import Schema, fields, validate, ValidationError, EXCLUDE
 from ..services.ncmr_service import NCMRService
 from ..utils import auth_required
 
 ncmr_bp = Blueprint('ncmr', __name__)
 
 class NCMRCreateSchema(Schema):
-    發現日期 = fields.Date(required=True)
+    class Meta:
+        unknown = EXCLUDE
+
+    日期 = fields.Date(required=True)
     來源 = fields.String(required=True, validate=validate.Length(min=1, max=100))
-    廠商 = fields.String(load_default=None, validate=validate.Length(max=200))
-    材質 = fields.String(load_default=None, validate=validate.Length(max=100))
-    批號 = fields.String(load_default=None, validate=validate.Length(max=100))
-    產品資訊 = fields.String(load_default=None, validate=validate.Length(max=500))
-    產品數量 = fields.Integer(load_default=None, validate=validate.Range(min=0))
-    不良描述 = fields.String(load_default=None, validate=validate.Length(max=1000))
-    不合格數量 = fields.Integer(load_default=None, validate=validate.Range(min=0))
+    廠商 = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=200))
+    材質 = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=100))
+    批號 = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=100))
+    產品資訊 = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=500))
+    產品數量 = fields.Integer(load_default=None, allow_none=True, validate=validate.Range(min=0))
+    不良描述 = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=1000))
+    不合格數量 = fields.Integer(load_default=None, allow_none=True, validate=validate.Range(min=0))
 
 _ncmr_create_schema = NCMRCreateSchema()
 
@@ -26,16 +29,28 @@ _ncmr_create_schema = NCMRCreateSchema()
 @auth_required
 def get_ncmr_list():
     try:
-        data = NCMRService.get_ncmr_list(request.args.get('status'))
-        return jsonify(data)
+        # 解析分頁與篩選參數
+        result = NCMRService.get_ncmr_list(
+            status=request.args.get('status'),
+            page=int(request.args.get('page', 1)),
+            per_page=int(request.args.get('per_page', 20)),
+            date_from=request.args.get('date_from'),
+            date_to=request.args.get('date_to'),
+            source=request.args.get('source'),
+            vendor=request.args.get('vendor'),
+            material=request.args.get('material'),
+            product_info=request.args.get('product_info'),
+        )
+        return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @ncmr_bp.route('/api/ncmr/add', methods=['POST'])
 @auth_required
 def add_ncmr():
+    payload = {k: (None if v == '' else v) for k, v in (request.json or {}).items()}
     try:
-        _ncmr_create_schema.load(request.json or {})
+        _ncmr_create_schema.load(payload)
     except ValidationError as err:
         return jsonify({"error": "資料驗證失敗", "details": err.messages}), 400
     try:

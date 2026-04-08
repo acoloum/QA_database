@@ -18,7 +18,17 @@ class NCMRService:
     # NCMR Logic
     # ==================================================
     @staticmethod
-    def get_ncmr_list(status: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_ncmr_list(
+        status: Optional[str] = None,
+        page: int = 1,
+        per_page: int = 20,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        source: Optional[str] = None,
+        vendor: Optional[str] = None,
+        material: Optional[str] = None,
+        product_info: Optional[str] = None,
+    ) -> Dict[str, Any]:
         try:
             query = NCMR.query.options(
                 joinedload(NCMR.inspector),
@@ -28,21 +38,32 @@ class NCMRService:
 
             if status:
                 query = query.filter(NCMR.status == status)
-            
-            query = query.order_by(NCMR.id.desc())
-            
-            ncmrs = query.all()
+            if date_from:
+                query = query.filter(NCMR.date >= datetime.date.fromisoformat(date_from))
+            if date_to:
+                query = query.filter(NCMR.date <= datetime.date.fromisoformat(date_to))
+            if source:
+                query = query.filter(NCMR.source == source)
+            if vendor:
+                query = query.filter(NCMR.vendor.ilike(f'%{vendor}%'))
+            if material:
+                query = query.filter(NCMR.material.ilike(f'%{material}%'))
+            if product_info:
+                query = query.filter(NCMR.product_info.ilike(f'%{product_info}%'))
+
+            total = query.count()
+            ncmrs = query.order_by(NCMR.id.desc())\
+                .offset((page - 1) * per_page)\
+                .limit(per_page)\
+                .all()
+
             data = []
-            
             for n in ncmrs:
-                # Logic to determine latest status
                 car_status = None
                 capa_status = None
-                
-                # Filter CAs in Python (eager loaded)
+
                 cars = [ca for ca in n.corrective_actions if ca.car_number]
                 if cars:
-                    # Sort by id desc (assuming latest created is last)
                     latest_car = sorted(cars, key=lambda x: x.id, reverse=True)[0]
                     car_status = latest_car.status
 
@@ -54,13 +75,12 @@ class NCMRService:
                 rework_count = 0
                 rework_status = None
                 if n.rework_requests:
-                    # Rework count = total executions across all requests
                     rework_count = sum(len(req.executions) for req in n.rework_requests)
                     latest_rework = sorted(n.rework_requests, key=lambda x: x.id, reverse=True)[0]
                     rework_status = latest_rework.status
-                
+
                 inspector_name = n.inspector.name if n.inspector else ""
-                
+
                 item = {
                     "識別碼": n.id,
                     "單號": n.ncmr_number,
@@ -84,8 +104,8 @@ class NCMRService:
                     "重工狀態": rework_status
                 }
                 data.append(item)
-                
-            return data
+
+            return {"data": data, "total": total, "page": page, "per_page": per_page}
         except Exception as e:
             raise e
 
