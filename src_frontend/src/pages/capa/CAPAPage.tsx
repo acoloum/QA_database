@@ -149,7 +149,7 @@ const CAPAPage = () => {
                         onChange={e => handleFilterChange('status', e.target.value)}
                     >
                         <option value="">全部</option>
-                        <option value="矯正中">矯正中</option>
+                        <option value="進行中">進行中</option>
                         <option value="已結案">已結案</option>
                     </Form.Select>
                 </Col>
