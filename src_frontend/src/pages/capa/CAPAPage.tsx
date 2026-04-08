@@ -38,6 +38,8 @@ const CAPAPage = () => {
         if (queryEditId) {
             setEditId(Number(queryEditId));
             setShowModal(true);
+            // 讀取後立即清除 URL query string，防止 modal 意外重開
+            navigate(window.location.pathname, { replace: true });
         }
     }, [searchParams]);
 
