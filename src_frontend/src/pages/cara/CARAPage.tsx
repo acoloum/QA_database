@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button, Card, Col, Form, Table, Badge } from 'react-bootstrap';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import api from '../../services/api';
 import CARAModal from '../../components/cara/CARAModal';
 import FilterBar from '../../components/common/FilterBar';
@@ -40,7 +41,7 @@ const CARAPage = () => {
     const { data: result, isLoading } = useCARAList(activeParams);
     const rows = result?.data ?? [];
 
-    const handleFilterChange = (key: string, value: string) => {
+    const handleFilterChange = (key: keyof CARFilters, value: string) => {
         setFilters(prev => ({ ...prev, [key]: value }));
         setPage(1);
     };
@@ -55,8 +56,10 @@ const CARAPage = () => {
         try {
             await api.post('/cara/delete', { id });
             queryClient.invalidateQueries({ queryKey: ['caraList'], exact: false });
+            toast.success('刪除成功');
         } catch (error) {
             console.error('刪除失敗', error);
+            toast.error('刪除失敗，請稍後再試');
         }
     };
 
@@ -216,7 +219,7 @@ const CARAPage = () => {
 
             <CARAModal
                 show={showModal}
-                handleClose={() => setShowModal(false)}
+                handleClose={() => { setShowModal(false); setEditId(null); }}
                 onSuccess={() => queryClient.invalidateQueries({ queryKey: ['caraList'], exact: false })}
                 editId={editId}
             />
