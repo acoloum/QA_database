@@ -29,9 +29,14 @@ _ncmr_create_schema = NCMRCreateSchema()
 @auth_required
 def get_ncmr_list():
     try:
+        try:
+            page = max(1, int(request.args.get('page', 1)))
+            per_page = min(max(1, int(request.args.get('per_page', 20))), 100)
+        except (ValueError, TypeError):
+            return jsonify({"error": "page 與 per_page 必須為整數"}), 400
         params = {
-            'page': int(request.args.get('page', 1)),
-            'per_page': min(int(request.args.get('per_page', 20)), 100),
+            'page': page,
+            'per_page': per_page,
             'status': request.args.get('status') or None,
             'date_from': request.args.get('date_from') or None,
             'date_to': request.args.get('date_to') or None,
@@ -110,9 +115,14 @@ def get_ncmr_info(ncmr_id):
 @auth_required
 def get_cara_list():
     try:
+        try:
+            page = max(1, int(request.args.get('page', 1)))
+            per_page = min(max(1, int(request.args.get('per_page', 20))), 100)
+        except (ValueError, TypeError):
+            return jsonify({"error": "page 與 per_page 必須為整數"}), 400
         params = {
-            'page': int(request.args.get('page', 1)),
-            'per_page': min(int(request.args.get('per_page', 20)), 100),
+            'page': page,
+            'per_page': per_page,
             'status': request.args.get('status') or None,
             'date_from': request.args.get('date_from') or None,
             'date_to': request.args.get('date_to') or None,
@@ -176,9 +186,14 @@ def delete_cara():
 @auth_required
 def get_capa_list():
     try:
+        try:
+            page = max(1, int(request.args.get('page', 1)))
+            per_page = min(max(1, int(request.args.get('per_page', 20))), 100)
+        except (ValueError, TypeError):
+            return jsonify({"error": "page 與 per_page 必須為整數"}), 400
         params = {
-            'page': int(request.args.get('page', 1)),
-            'per_page': min(int(request.args.get('per_page', 20)), 100),
+            'page': page,
+            'per_page': per_page,
             'status': request.args.get('status') or None,
             'date_from': request.args.get('date_from') or None,
             'date_to': request.args.get('date_to') or None,
