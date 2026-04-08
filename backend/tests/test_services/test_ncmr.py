@@ -177,12 +177,11 @@ def test_get_capa_list_filter_date_range(app, db_session):
         n1 = _make_ncmr(db_session, ncmr_number='NCMR-CD1')
         n2 = _make_ncmr(db_session, ncmr_number='NCMR-CD2')
         ca1 = _make_capa(db_session, n1, eight_d_number='8D-CD1')
-        _make_capa(db_session, n2, eight_d_number='8D-CD2')
+        ca2 = _make_capa(db_session, n2, eight_d_number='8D-CD2')
         from backend.extensions import db
         ca1.created_at = dt.datetime(2025, 1, 10)
-        db.session.query(CorrectiveAction).filter_by(id=ca1.id).update({'created_at': dt.datetime(2025, 1, 10)})
+        ca2.created_at = dt.datetime(2025, 4, 20)
         db.session.commit()
-        # 查詢 2025-01 範圍，只有 ca1 符合
         result = NCMRService.get_capa_list(date_from='2025-01-01', date_to='2025-01-31')
         assert result['total'] == 1
         assert result['data'][0]['8D單號'] == '8D-CD1'
