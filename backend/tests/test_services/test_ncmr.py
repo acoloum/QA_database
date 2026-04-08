@@ -122,3 +122,4 @@ def test_get_cara_list_filter_date_range(app, db_session):
         db.session.commit()
         result = NCMRService.get_cara_list(date_from='2025-01-01', date_to='2025-02-28')
         assert result['total'] == 1
+        assert result['data'][0]['CAR單號'] == 'CAR-D1'
