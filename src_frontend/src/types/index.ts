@@ -161,6 +161,7 @@ export interface NCMR {
     材質?: string;
     產品資訊?: string;
     產品數量?: number;
+    不合格數量?: number | string;
     不良描述?: string;
     不良原因大類?: string;
     不良原因細項?: string;

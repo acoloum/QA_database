@@ -9,7 +9,8 @@ import { useNCMRList, useDeleteNCMR, useCreateCARA, useCreateCAPA, useNCMRDetail
 
 const NCMRPage = () => {
     const navigate = useNavigate();
-    const { data: ncmrList = [], isLoading } = useNCMRList();
+    const { data: ncmrResult, isLoading } = useNCMRList();
+    const ncmrList = ncmrResult?.data ?? [];
 
     // Mutations
     const deleteMutation = useDeleteNCMR();
