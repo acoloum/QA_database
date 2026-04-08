@@ -52,7 +52,7 @@ export const useNCMRList = (params: NCMRListParams = {}) => {
                 material: item.材質 || item.material,
                 product_info: item.產品資訊 || item.product_info,
                 product_qty: item.產品數量 || item.product_qty,
-                defect_qty: item.不合格數量 ?? item.defect_qty,
+                defect_qty: item.不合格數量 != null ? Number(item.不合格數量) : item.defect_qty,
                 defect_desc: item.不良描述 || item.defect_desc,
                 defect_category: item.不良原因大類 || item.defect_category,
                 defect_reason: item.不良原因細項 || item.defect_reason,
@@ -188,7 +188,7 @@ export const useUpdateNCMR = () => {
             toast.success('更新成功');
             queryClient.invalidateQueries({ queryKey: ['ncmrList'], exact: false });
             if (variables.識別碼) {
-                queryClient.invalidateQueries({ queryKey: ['ncmrDetail', variables.識別碼] });
+                queryClient.invalidateQueries({ queryKey: ['ncmrDetail', variables.識別碼], exact: false });
             }
         },
     });
@@ -209,7 +209,7 @@ export const useDeleteNCMR = () => {
 };
 
 export const useCreateCARA = () => {
-    // const queryClient = useQueryClient(); // Might need to invalidate if it affects NCMR status
+    const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async (ncmrId: number) => {
             const res = await api.post('/cara/create', { ncmr_id: ncmrId });
@@ -219,11 +219,14 @@ export const useCreateCARA = () => {
             if (data.success) {
                 toast.success(`CAR單號：${data.car_number} 已成功建立！`);
             }
+            queryClient.invalidateQueries({ queryKey: ['ncmrList'], exact: false });
+            queryClient.invalidateQueries({ queryKey: ['ncmrDetail'], exact: false });
         },
     });
 };
 
 export const useCreateCAPA = () => {
+    const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async (ncmrId: number) => {
             const res = await api.post('/capa/create', { ncmr_id: ncmrId });
@@ -231,6 +234,8 @@ export const useCreateCAPA = () => {
         },
         onSuccess: () => {
             toast.success('已成功建立 CAPA 單');
+            queryClient.invalidateQueries({ queryKey: ['ncmrList'], exact: false });
+            queryClient.invalidateQueries({ queryKey: ['ncmrDetail'], exact: false });
         },
     });
 };
