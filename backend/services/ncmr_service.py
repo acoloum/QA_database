@@ -337,7 +337,7 @@ class NCMRService:
     ) -> Dict[str, Any]:
         try:
             query = CorrectiveAction.query\
-                .filter(CorrectiveAction.car_number != None)\
+                .filter(CorrectiveAction.car_number.isnot(None))\
                 .join(NCMR, CorrectiveAction.ncmr_id == NCMR.id)\
                 .options(joinedload(CorrectiveAction.ncmr), joinedload(CorrectiveAction.owner))
 

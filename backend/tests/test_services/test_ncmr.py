@@ -123,3 +123,15 @@ def test_get_cara_list_filter_date_range(app, db_session):
         result = NCMRService.get_cara_list(date_from='2025-01-01', date_to='2025-02-28')
         assert result['total'] == 1
         assert result['data'][0]['CAR單號'] == 'CAR-D1'
+
+
+def test_get_cara_list_excludes_capa_only_records(app, db_session):
+    """car_number 為 NULL 的 CorrectiveAction（純 CAPA 記錄）不應出現在 CAR 清單"""
+    with app.app_context():
+        n = _make_ncmr(db_session, ncmr_number='NCMR-PURE-CAPA')
+        # 建立只有 eight_d_number、沒有 car_number 的記錄
+        ca = CorrectiveAction(ncmr_id=n.id, eight_d_number='8D-ONLY', status='進行中')
+        db_session.add(ca)
+        db_session.commit()
+        result = NCMRService.get_cara_list()
+        assert result['total'] == 0
