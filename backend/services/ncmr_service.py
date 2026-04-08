@@ -325,14 +325,43 @@ class NCMRService:
     # CAR Logic
     # ==================================================
     @staticmethod
-    def get_cara_list() -> List[Dict[str, Any]]:
+    def get_cara_list(
+        page: int = 1,
+        per_page: int = 20,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        vendor: Optional[str] = None,
+        material: Optional[str] = None,
+        product_info: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> Dict[str, Any]:
         try:
-            query = CorrectiveAction.query.filter(CorrectiveAction.car_number != None)\
-                .options(joinedload(CorrectiveAction.ncmr), joinedload(CorrectiveAction.owner))\
-                .order_by(CorrectiveAction.id.desc())
-            
+            query = CorrectiveAction.query\
+                .filter(CorrectiveAction.car_number != None)\
+                .join(NCMR, CorrectiveAction.ncmr_id == NCMR.id)\
+                .options(joinedload(CorrectiveAction.ncmr), joinedload(CorrectiveAction.owner))
+
+            if status:
+                query = query.filter(CorrectiveAction.status == status)
+            if date_from:
+                query = query.filter(CorrectiveAction.created_at >= datetime.date.fromisoformat(date_from))
+            if date_to:
+                query = query.filter(CorrectiveAction.created_at <= datetime.datetime.fromisoformat(date_to + 'T23:59:59'))
+            if vendor:
+                query = query.filter(NCMR.vendor.ilike(f'%{vendor}%'))
+            if material:
+                query = query.filter(NCMR.material.ilike(f'%{material}%'))
+            if product_info:
+                query = query.filter(NCMR.product_info.ilike(f'%{product_info}%'))
+
+            total = query.count()
+            cas = query.order_by(CorrectiveAction.id.desc())\
+                .offset((page - 1) * per_page)\
+                .limit(per_page)\
+                .all()
+
             data = []
-            for ca in query.all():
+            for ca in cas:
                 ncmr = ca.ncmr
                 item = {
                     "識別碼": ca.id,
@@ -352,11 +381,11 @@ class NCMRService:
                     "ncmr_product": ncmr.product_info if ncmr else "",
                     "負責人員姓名": ca.owner.name if ca.owner else ""
                 }
-                # Format all
                 for k, v in item.items():
                     item[k] = format_value(v)
                 data.append(item)
-            return data
+
+            return {"data": data, "total": total, "page": page, "per_page": per_page}
         except Exception as e:
             raise e
 

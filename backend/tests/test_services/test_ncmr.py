@@ -58,3 +58,51 @@ def test_get_ncmr_list_filter_date_range(app, db_session):
         result = NCMRService.get_ncmr_list(date_from='2025-01-01', date_to='2025-02-28')
         assert result['total'] == 1
         assert result['data'][0]['日期'] == '2025-01-10'
+
+
+from backend.models import CorrectiveAction
+
+
+def _make_car(db_session, ncmr, **kwargs):
+    defaults = dict(
+        ncmr_id=ncmr.id,
+        car_number='CAR-TEST-001',
+        status='進行中',
+    )
+    defaults.update(kwargs)
+    ca = CorrectiveAction(**defaults)
+    db_session.add(ca)
+    db_session.commit()
+    return ca
+
+
+def test_get_cara_list_pagination(app, db_session):
+    with app.app_context():
+        for i in range(5):
+            n = _make_ncmr(db_session, ncmr_number=f'NCMR-CAR-{i}')
+            _make_car(db_session, n, car_number=f'CAR-{i:03}')
+        result = NCMRService.get_cara_list(page=1, per_page=3)
+        assert result['total'] == 5
+        assert len(result['data']) == 3
+
+
+def test_get_cara_list_filter_vendor(app, db_session):
+    with app.app_context():
+        n1 = _make_ncmr(db_session, ncmr_number='NCMR-V1', vendor='VendorAlpha')
+        n2 = _make_ncmr(db_session, ncmr_number='NCMR-V2', vendor='VendorBeta')
+        _make_car(db_session, n1, car_number='CAR-V1')
+        _make_car(db_session, n2, car_number='CAR-V2')
+        result = NCMRService.get_cara_list(vendor='alpha')
+        assert result['total'] == 1
+        assert result['data'][0]['ncmr_vendor'] == 'VendorAlpha'
+
+
+def test_get_cara_list_filter_status(app, db_session):
+    with app.app_context():
+        n1 = _make_ncmr(db_session, ncmr_number='NCMR-S1')
+        n2 = _make_ncmr(db_session, ncmr_number='NCMR-S2')
+        _make_car(db_session, n1, car_number='CAR-S1', status='進行中')
+        _make_car(db_session, n2, car_number='CAR-S2', status='已結案')
+        result = NCMRService.get_cara_list(status='已結案')
+        assert result['total'] == 1
+        assert result['data'][0]['狀態'] == '已結案'
