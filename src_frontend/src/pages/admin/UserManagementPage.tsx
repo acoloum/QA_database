@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Form, Table, Badge, Modal, Alert, Spinner } from 'react-bootstrap';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
+import { useAuth } from '../../context/useAuth';
 import type { UserRecord } from '../../types';
 
 // ── API 函式 ──────────────────────────────────────────────
@@ -26,9 +27,27 @@ const updateActive = async ({ id, is_active }: { id: number; is_active: boolean 
     return res.data;
 };
 
+// ── 工具函式 ──────────────────────────────────────────────
+const formatCreatedAt = (iso: string | null): string => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
+};
+
+/** 從後端錯誤回應取得訊息 */
+const getErrorMessage = (err: unknown): string => {
+    if (err && typeof err === 'object' && 'response' in err) {
+        const axiosErr = err as { response?: { data?: { error?: string } } };
+        return axiosErr.response?.data?.error ?? '操作失敗，請稍後再試';
+    }
+    return '操作失敗，請稍後再試';
+};
+
 // ── 元件 ─────────────────────────────────────────────────
 const UserManagementPage = () => {
     const queryClient = useQueryClient();
+    const { user: currentUser } = useAuth();
+    const currentUserId = currentUser ? Number(currentUser.user_id) : null;
 
     // 使用者列表
     const { data: users = [], isLoading, isError } = useQuery({
@@ -36,23 +55,39 @@ const UserManagementPage = () => {
         queryFn: fetchUsers,
     });
 
-    // 修改角色
+    // 修改角色（加入確認與錯誤處理）
     const roleMutation = useMutation({
         mutationFn: updateRole,
         onSuccess: () => {
             toast.success('角色已更新');
             queryClient.invalidateQueries({ queryKey: ['userList'] });
         },
+        onError: (err) => {
+            toast.error(getErrorMessage(err));
+            // 重新載入以還原畫面上的選單狀態
+            queryClient.invalidateQueries({ queryKey: ['userList'] });
+        },
     });
 
-    // 啟用／停用
+    // 啟用／停用（加入錯誤處理）
     const activeMutation = useMutation({
         mutationFn: updateActive,
         onSuccess: (_data, variables) => {
             toast.success(variables.is_active ? '帳號已啟用' : '帳號已停用');
             queryClient.invalidateQueries({ queryKey: ['userList'] });
         },
+        onError: (err) => {
+            toast.error(getErrorMessage(err));
+        },
     });
+
+    // 角色變更確認（升級為 admin 需確認）
+    const handleRoleChange = (u: UserRecord, newRole: string) => {
+        if (newRole === 'admin' && u.role !== 'admin') {
+            if (!window.confirm(`確定要將「${u.username}」升級為管理員？`)) return;
+        }
+        roleMutation.mutate({ id: u.id, role: newRole });
+    };
 
     // 新增使用者 Modal
     const [showModal, setShowModal] = useState(false);
@@ -70,8 +105,8 @@ const UserManagementPage = () => {
             setShowModal(false);
             resetForm();
         },
-        onError: (err: Error) => {
-            setFormError(err.message || '建立失敗');
+        onError: (err) => {
+            setFormError(getErrorMessage(err));
         },
     });
 
@@ -86,6 +121,11 @@ const UserManagementPage = () => {
     const handleCreateSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         setFormError('');
+        const trimmedUsername = newUsername.trim();
+        if (!/^[A-Za-z0-9_\-.]{3,50}$/.test(trimmedUsername)) {
+            setFormError('使用者名稱長度需 3–50 字元，僅允許英數字、底線、連字號、點號');
+            return;
+        }
         if (newPassword !== newConfirm) {
             setFormError('兩次密碼輸入不一致');
             return;
@@ -94,7 +134,7 @@ const UserManagementPage = () => {
             setFormError('密碼長度至少需要 8 個字元');
             return;
         }
-        createMutation.mutate({ username: newUsername, password: newPassword, role: newRole });
+        createMutation.mutate({ username: trimmedUsername, password: newPassword, role: newRole });
     };
 
     // ── 渲染 ────────────────────────────────────────────
@@ -127,53 +167,65 @@ const UserManagementPage = () => {
                                     <th>使用者名稱</th>
                                     <th>角色</th>
                                     <th>帳號狀態</th>
+                                    <th>建立日期</th>
                                     <th className="text-end pe-4">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {users.map(u => (
-                                    <tr key={u.id}>
-                                        <td className="ps-4 text-muted">{u.id}</td>
-                                        <td>
-                                            <i className="fa-solid fa-user me-2 text-secondary"></i>
-                                            {u.username}
-                                        </td>
-                                        <td>
-                                            <Form.Select
-                                                size="sm"
-                                                style={{ width: '110px' }}
-                                                value={u.role}
-                                                disabled={roleMutation.isPending}
-                                                onChange={e => roleMutation.mutate({ id: u.id, role: e.target.value })}
-                                            >
-                                                <option value="user">一般使用者</option>
-                                                <option value="admin">管理員</option>
-                                            </Form.Select>
-                                        </td>
-                                        <td>
-                                            <Badge bg={u.is_active ? 'success' : 'secondary'}>
-                                                {u.is_active ? '啟用中' : '已停用'}
-                                            </Badge>
-                                        </td>
-                                        <td className="text-end pe-4">
-                                            <Button
-                                                size="sm"
-                                                variant={u.is_active ? 'outline-danger' : 'outline-success'}
-                                                disabled={activeMutation.isPending}
-                                                onClick={() => activeMutation.mutate({ id: u.id, is_active: !u.is_active })}
-                                            >
-                                                {u.is_active ? (
-                                                    <><i className="fa-solid fa-ban me-1"></i>停用</>
-                                                ) : (
-                                                    <><i className="fa-solid fa-check me-1"></i>啟用</>
+                                {users.map(u => {
+                                    const isSelf = u.id === currentUserId;
+                                    return (
+                                        <tr key={u.id}>
+                                            <td className="ps-4 text-muted">{u.id}</td>
+                                            <td>
+                                                <i className="fa-solid fa-user me-2 text-secondary"></i>
+                                                {u.username}
+                                                {isSelf && (
+                                                    <Badge bg="info" className="ms-2 fw-normal">我</Badge>
                                                 )}
-                                            </Button>
-                                        </td>
-                                    </tr>
-                                ))}
+                                            </td>
+                                            <td>
+                                                <Form.Select
+                                                    size="sm"
+                                                    style={{ width: '110px' }}
+                                                    value={u.role}
+                                                    disabled={isSelf || roleMutation.isPending}
+                                                    title={isSelf ? '無法修改自己的角色' : undefined}
+                                                    onChange={e => handleRoleChange(u, e.target.value)}
+                                                >
+                                                    <option value="user">一般使用者</option>
+                                                    <option value="admin">管理員</option>
+                                                </Form.Select>
+                                            </td>
+                                            <td>
+                                                <Badge bg={u.is_active ? 'success' : 'secondary'}>
+                                                    {u.is_active ? '啟用中' : '已停用'}
+                                                </Badge>
+                                            </td>
+                                            <td className="text-muted small">
+                                                {formatCreatedAt(u.created_at)}
+                                            </td>
+                                            <td className="text-end pe-4">
+                                                <Button
+                                                    size="sm"
+                                                    variant={u.is_active ? 'outline-danger' : 'outline-success'}
+                                                    disabled={isSelf || activeMutation.isPending}
+                                                    title={isSelf ? '無法停用自己的帳號' : undefined}
+                                                    onClick={() => activeMutation.mutate({ id: u.id, is_active: !u.is_active })}
+                                                >
+                                                    {u.is_active ? (
+                                                        <><i className="fa-solid fa-ban me-1"></i>停用</>
+                                                    ) : (
+                                                        <><i className="fa-solid fa-check me-1"></i>啟用</>
+                                                    )}
+                                                </Button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                                 {users.length === 0 && (
                                     <tr>
-                                        <td colSpan={5} className="text-center text-muted py-4">尚無使用者資料</td>
+                                        <td colSpan={6} className="text-center text-muted py-4">尚無使用者資料</td>
                                     </tr>
                                 )}
                             </tbody>
@@ -196,8 +248,9 @@ const UserManagementPage = () => {
                             <Form.Label>使用者名稱</Form.Label>
                             <Form.Control
                                 type="text"
-                                placeholder="請輸入使用者名稱"
+                                placeholder="3–50 字元，英數字、底線、連字號、點號"
                                 value={newUsername}
+                                maxLength={50}
                                 onChange={e => setNewUsername(e.target.value)}
                                 required
                             />

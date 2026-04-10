@@ -1,5 +1,5 @@
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from .extensions import db
 from sqlalchemy.orm import relationship
 
@@ -10,6 +10,8 @@ class User(db.Model):
     password = db.Column('密碼', db.String, nullable=False)
     is_active = db.Column('是否啟用', db.Boolean, default=True)
     role = db.Column('角色', db.String(20), nullable=False, default='user', server_default='user')
+    created_at = db.Column('建立時間', db.DateTime(timezone=True), nullable=True,
+                           default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f'<User {self.username}>'

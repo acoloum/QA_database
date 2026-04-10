@@ -1,3 +1,4 @@
+import re
 from flask import Blueprint, jsonify, request, current_app
 from ..extensions import db, limiter
 from ..models import User
@@ -11,6 +12,9 @@ from ..utils import (
     auth_required,
     require_admin
 )
+
+_VALID_ROLES = ('user', 'admin')
+_USERNAME_RE = re.compile(r'^[A-Za-z0-9_\-\.]{3,50}$')
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -93,7 +97,8 @@ def list_users():
                 'id': u.id,
                 'username': u.username,
                 'role': u.role,
-                'is_active': u.is_active
+                'is_active': u.is_active,
+                'created_at': u.created_at.isoformat() if u.created_at else None
             }
             for u in users
         ])
@@ -168,32 +173,36 @@ def create_user():
     data = request.json
     if not data:
         return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
-    username = data.get('username')
-    password = data.get('password')
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+    new_role = data.get('role', 'user')
 
     if not username or not password:
         return jsonify({"error": "使用者名稱和密碼為必填欄位"}), 400
 
+    if not _USERNAME_RE.match(username):
+        return jsonify({"error": "使用者名稱長度需 3–50 字元，僅允許英數字、底線、連字號、點號"}), 400
+
     if len(password) < 8:
         return jsonify({"error": "密碼長度至少需要 8 個字元"}), 400
+
+    if new_role not in _VALID_ROLES:
+        return jsonify({"error": "角色值無效，僅允許 'user' 或 'admin'"}), 400
 
     try:
         if User.query.filter_by(username=username).first():
             return jsonify({"error": "使用者名稱已存在"}), 400
 
-        from sqlalchemy import text as _text
-        hashed_pw = hash_password(password)
-        new_role = data.get('role', 'user')
-        db.session.execute(
-            _text('INSERT INTO "使用者" ("使用者名稱", "密碼", "是否啟用", "角色") VALUES (:u, :p, TRUE, :r)'),
-            {'u': username, 'p': hashed_pw, 'r': new_role}
+        new_user = User(
+            username=username,
+            password=hash_password(password),
+            role=new_role,
+            is_active=True
         )
+        db.session.add(new_user)
         db.session.commit()
         return jsonify({"success": True, "message": "使用者建立成功"})
     except Exception as e:
         db.session.rollback()
-        error_msg = str(e)
-        if 'UNIQUE' in error_msg or 'unique' in error_msg:
-            return jsonify({"error": "使用者名稱已存在"}), 400
-        current_app.logger.exception("Create user error: %s", error_msg)
+        current_app.logger.exception("Create user error: %s", str(e))
         return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500

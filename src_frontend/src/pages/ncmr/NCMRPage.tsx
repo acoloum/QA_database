@@ -161,7 +161,6 @@ const NCMRPage = () => {
                         <option value="待處理">待處理</option>
                         <option value="CAR處理中">CAR處理中</option>
                         <option value="CAR已完成">CAR已完成</option>
-                        <option value="矯正中">矯正中</option>
                     </Form.Select>
                 </Col>
             </FilterBar>

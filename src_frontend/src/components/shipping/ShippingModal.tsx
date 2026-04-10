@@ -55,7 +55,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
 
     const createMutation = useCreateShipping();
     const updateMutation = useUpdateShipping();
-    const checkToleranceMutation = useCheckTolerance();
+    const { mutateAsync: checkToleranceMutate } = useCheckTolerance();
 
     // Form State
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -200,7 +200,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             const vendorId = vendorObj ? vendorObj.id : '';
 
             try {
-                const result = await checkToleranceMutation.mutateAsync({
+                const result = await checkToleranceMutate({
                     vendor_id: vendorId,
                     material,
                     spec
@@ -222,7 +222,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
 
         const timeout = setTimeout(checkTolerance, 500);
         return () => clearTimeout(timeout);
-    }, [material, spec, vendorName, vendors, checkToleranceMutation]);
+    }, [material, spec, vendorName, vendors, checkToleranceMutate]);
 
     // Validate measurements against tolerance
     useEffect(() => {
