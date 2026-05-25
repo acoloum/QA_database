@@ -439,8 +439,12 @@ def get_dashboard_trends():
 @auth_required
 def get_inspectors():
     try:
-        inspectors = Inspector.query.all()
-        return jsonify([{"id": i.id, "name": i.name.strip() if i.name else ""} for i in inspectors])
+        inspectors = Inspector.query.order_by(Inspector.group, Inspector.name).all()
+        return jsonify([{
+            "id":    i.id,
+            "name":  i.name.strip() if i.name else "",
+            "group": (i.group or "").strip(),
+        } for i in inspectors])
     except Exception as e:
         current_app.logger.exception("查詢檢驗人員清單時發生錯誤: %s", str(e))
         return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500

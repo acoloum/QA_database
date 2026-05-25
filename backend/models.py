@@ -21,6 +21,7 @@ class Inspector(db.Model):
     __tablename__ = '品管人員'
     id = db.Column('識別碼', db.Integer, primary_key=True)
     name = db.Column('姓名', db.String, nullable=False)
+    group = db.Column('小組', db.String, nullable=True)
 
 class Vendor(db.Model):
     __tablename__ = '廠商資料'
