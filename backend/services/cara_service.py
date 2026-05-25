@@ -176,7 +176,7 @@ class CARAService:
         status['D2'] = bool(c.d2_what or c.d2)
         status['D3'] = bool(c.d3_action or c.d3)
         status['D4'] = bool(c.d4_root_cause or c.d4)
-        status['D6'] = bool(c.d6_verified)
+        status['D6'] = bool(c.d6_verified or c.d6_result or c.d6)
         status['D8'] = bool(c.d8_confirmation)
         done = sum(1 for v in status.values() if v)
         return {
@@ -232,23 +232,23 @@ class CARAService:
             # D1
             'D1_leader_id':   c.d1_leader_id,
             'D1_leader_name': c.leader.name if c.leader else None,
-            # D2
-            'D2_what':     c.d2_what, 'D2_where': c.d2_where,
-            'D2_when':     c.d2_when, 'D2_who':   c.d2_who,
-            'D2_why':      c.d2_why,  'D2_how':   c.d2_how,
+            # D2（優先取結構化欄位，舊版僅有純文字則放入 What）
+            'D2_what':     c.d2_what or c.d2, 'D2_where': c.d2_where,
+            'D2_when':     c.d2_when,          'D2_who':   c.d2_who,
+            'D2_why':      c.d2_why,           'D2_how':   c.d2_how,
             'D2_how_many': c.d2_how_many,
             # D3
-            'D3_action':         c.d3_action,
+            'D3_action':         c.d3_action or c.d3,
             'D3_effective_date': c.d3_effective_date.isoformat() if c.d3_effective_date else None,
             'D3_verification':   c.d3_verification,
             # D4
             'D4_tool':       c.d4_tool,
             'D4_five_why':   c.d4_five_why,
             'D4_fishbone':   c.d4_fishbone,
-            'D4_root_cause': c.d4_root_cause,
+            'D4_root_cause': c.d4_root_cause or c.d4,
             # D6
             'D6_implement_date': c.d6_implement_date.isoformat() if c.d6_implement_date else None,
-            'D6_result':         c.d6_result,
+            'D6_result':         c.d6_result or c.d6,
             'D6_verified':       c.d6_verified,
             # D8
             'D8_close_date':   c.d8_close_date.isoformat() if c.d8_close_date else None,
