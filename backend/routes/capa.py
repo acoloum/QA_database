@@ -162,16 +162,46 @@ def delete_capa(current_user, capa_id: int):
         return jsonify({'error': str(e)}), 500
 
 
-# ── 報表下載（預留 8.6）────────────────────────────────────────
+# ── 報表下載 ────────────────────────────────────────────────────
 @capa_bp.route('/api/capas/<int:capa_id>/report/pdf', methods=['GET'])
 @auth_required
 def download_pdf(current_user, capa_id: int):
-    """GET /api/capas/<id>/report/pdf — 下載 AIAG 8D 報表 PDF（尚未實作）"""
-    return jsonify({'error': '報表功能尚未開放，敬請期待'}), 501
+    """GET /api/capas/<id>/report/pdf — 下載 AIAG 8D 報表 PDF"""
+    detail = CAPAService.get_detail(capa_id)
+    if not detail:
+        return jsonify({'error': 'CAPA 不存在'}), 404
+    try:
+        from flask import send_file
+        from ..services.eightd_pdf import generate_8d_pdf
+        buf = generate_8d_pdf(detail)
+        filename = f"8D_{detail.get('no', capa_id)}.pdf"
+        return send_file(
+            buf,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=filename,
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @capa_bp.route('/api/capas/<int:capa_id>/report/excel', methods=['GET'])
 @auth_required
 def download_excel(current_user, capa_id: int):
-    """GET /api/capas/<id>/report/excel — 下載 AIAG 8D 報表 Excel（尚未實作）"""
-    return jsonify({'error': '報表功能尚未開放，敬請期待'}), 501
+    """GET /api/capas/<id>/report/excel — 下載 AIAG 8D 報表 Excel"""
+    detail = CAPAService.get_detail(capa_id)
+    if not detail:
+        return jsonify({'error': 'CAPA 不存在'}), 404
+    try:
+        from flask import send_file
+        from ..services.eightd_excel import generate_8d_excel
+        buf = generate_8d_excel(detail)
+        filename = f"8D_{detail.get('no', capa_id)}.xlsx"
+        return send_file(
+            buf,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename,
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
