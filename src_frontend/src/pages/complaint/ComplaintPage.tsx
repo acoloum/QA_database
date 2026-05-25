@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Container, Row, Col, Card, Table, Badge, Button, Form,
 } from 'react-bootstrap';
@@ -15,6 +16,7 @@ import type { CustomerComplaint } from '../../types';
 const PAGE_SIZE = 20;
 
 const ComplaintPage = () => {
+    const navigate = useNavigate();
     // 篩選
     const [customerFilter,  setCustomerFilter]  = useState('');
     const [productFilter,   setProductFilter]   = useState('');
@@ -85,10 +87,16 @@ const ComplaintPage = () => {
                     <i className="bi bi-megaphone me-2 text-warning" />
                     客訴管理
                 </h4>
-                <Button variant="primary" onClick={handleNew}>
-                    <i className="bi bi-plus-lg me-1" />
-                    新增客訴
-                </Button>
+                <div className="d-flex gap-2">
+                    <Button variant="outline-primary" size="sm" onClick={() => navigate('/complaints/stats')}>
+                        <i className="bi bi-bar-chart-fill me-1" />
+                        統計分析
+                    </Button>
+                    <Button variant="primary" onClick={handleNew}>
+                        <i className="bi bi-plus-lg me-1" />
+                        新增客訴
+                    </Button>
+                </div>
             </div>
 
             {/* 篩選列 */}
