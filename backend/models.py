@@ -342,7 +342,6 @@ class CorrectiveAction(db.Model):
     d8_close_date   = db.Column('D8_結案日期',   db.Date, nullable=True)
     d8_confirmation = db.Column('D8_結案確認',   db.Text, nullable=True)
     d8_recognition  = db.Column('D8_團隊表揚',   db.Text, nullable=True)
-    d8 = db.Column('D8_結案確認', db.Text, nullable=True)
 
     # --- 時間戳 ---
     created_at = db.Column('建立時間', db.DateTime, default=datetime.utcnow)
