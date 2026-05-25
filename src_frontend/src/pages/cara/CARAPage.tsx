@@ -1,13 +1,11 @@
 import { useState } from 'react';
 import { Button, Card, Col, Form, Table, Badge } from 'react-bootstrap';
-import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
-import api from '../../services/api';
 import CARAModal from '../../components/cara/CARAModal';
 import FilterBar from '../../components/common/FilterBar';
 import PaginationBar from '../../components/common/PaginationBar';
 import { useCARAList } from '../../hooks/useNCMR';
+import { useDeleteCARA } from '../../hooks/useCARA';
 import type { CARListParams } from '../../hooks/useNCMR';
 
 // 篩選欄位（排除分頁參數）
@@ -24,7 +22,7 @@ const EMPTY_FILTERS: CARFilters = {
 
 const CARAPage = () => {
     const navigate = useNavigate();
-    const queryClient = useQueryClient();
+    const deleteCARA = useDeleteCARA();
 
     const [filters, setFilters] = useState<CARFilters>(EMPTY_FILTERS);
     const [page, setPage] = useState(1);
@@ -51,16 +49,9 @@ const CARAPage = () => {
         setPage(1);
     };
 
-    const handleDelete = async (id: number) => {
+    const handleDelete = (id: number) => {
         if (!window.confirm(`確定要刪除 CAR #${id} 嗎？`)) return;
-        try {
-            await api.post('/cara/delete', { id });
-            queryClient.invalidateQueries({ queryKey: ['caraList'], exact: false });
-            toast.success('刪除成功');
-        } catch (error) {
-            console.error('刪除失敗', error);
-            toast.error('刪除失敗，請稍後再試');
-        }
+        deleteCARA.mutate(id);
     };
 
     const handleEdit = (id: number) => {
@@ -219,9 +210,8 @@ const CARAPage = () => {
 
             <CARAModal
                 show={showModal}
-                handleClose={() => { setShowModal(false); setEditId(null); }}
-                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['caraList'], exact: false })}
-                editId={editId}
+                caraId={editId}
+                onHide={() => { setShowModal(false); setEditId(null); }}
             />
         </div>
     );
