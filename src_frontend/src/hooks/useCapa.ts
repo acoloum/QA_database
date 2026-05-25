@@ -193,3 +193,24 @@ export const D_STEP_LABELS: Record<number, string> = {
     7: 'D7 橫向展開',
     8: 'D8 結案確認',
 };
+
+// ── 8D 報表下載 ────────────────────────────────────────────────
+export const download8DReport = async (capaId: number, format: 'pdf' | 'excel') => {
+    const ext  = format === 'pdf' ? 'pdf' : 'xlsx';
+    const mime = format === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+    const res = await api.get(`/capas/${capaId}/report/${format}`, {
+        responseType: 'blob',
+    });
+
+    const url = URL.createObjectURL(new Blob([res.data as BlobPart], { type: mime }));
+    const a   = document.createElement('a');
+    a.href    = url;
+    a.download = `8D_${capaId}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+};

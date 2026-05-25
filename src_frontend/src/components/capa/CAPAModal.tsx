@@ -5,11 +5,13 @@ import {
 } from 'react-bootstrap';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
+import toast from 'react-hot-toast';
 import {
     useCapaDetail,
     useUpdateCapaStep,
     useCapaCloseGate,
     useCloseCapa,
+    download8DReport,
     CAPA_SEVERITY_VARIANT,
     RIGOR_STEPS,
     D_STEP_LABELS,
@@ -596,7 +598,41 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                         </>
                     )}
                 </div>
-                <Button variant="secondary" onClick={onHide}>關閉</Button>
+                <div className="d-flex gap-2">
+                    {capa && !isLoading && (
+                        <>
+                            <Button
+                                variant="outline-success"
+                                size="sm"
+                                onClick={async () => {
+                                    try {
+                                        await download8DReport(capa.id, 'excel');
+                                    } catch {
+                                        toast.error('Excel 匯出失敗');
+                                    }
+                                }}
+                            >
+                                <i className="bi bi-file-earmark-excel me-1" />
+                                匯出 Excel
+                            </Button>
+                            <Button
+                                variant="outline-danger"
+                                size="sm"
+                                onClick={async () => {
+                                    try {
+                                        await download8DReport(capa.id, 'pdf');
+                                    } catch {
+                                        toast.error('PDF 匯出失敗');
+                                    }
+                                }}
+                            >
+                                <i className="bi bi-file-earmark-pdf me-1" />
+                                匯出 PDF
+                            </Button>
+                        </>
+                    )}
+                    <Button variant="secondary" onClick={onHide}>關閉</Button>
+                </div>
             </Modal.Footer>
         </Modal>
     );

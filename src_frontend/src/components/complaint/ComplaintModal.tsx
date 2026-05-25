@@ -129,7 +129,7 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
         failure_hours:           failureHours ? Number(failureHours) : undefined,
         initial_reply_deadline:  initialReplyDeadline || undefined,
         final_reply_deadline:    finalReplyDeadline || undefined,
-        status:                  isEdit ? status : undefined,
+        status:                  isEdit ? (status as import('../../types').ComplaintStatus) : undefined,
         initial_reply:           isEdit ? (initialReply.trim() || undefined) : undefined,
         final_reply:             isEdit ? (finalReply.trim() || undefined) : undefined,
         satisfaction:            isEdit && satisfaction ? Number(satisfaction) : undefined,

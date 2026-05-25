@@ -46,7 +46,8 @@ export const useTasksBySource = (sourceType: string, sourceId: number | null) =>
             const res = await api.get<ActionTask[]>('/tasks', {
                 params: { source_type: sourceType, source_id: sourceId },
             });
-            return res.data.data ?? res.data;
+            const d = res.data as unknown as { data?: ActionTask[] } | ActionTask[];
+            return (Array.isArray(d) ? d : d.data) ?? [];
         },
         enabled: !!sourceId,
     });
