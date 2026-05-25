@@ -285,13 +285,17 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
         setD1Leader(capa.D1_leader_id ?? '');
         setD1Members(capa.D1_members ?? []);
 
-        setD2What(capa.D2_what ?? '');
-        setD2Where(capa.D2_where ?? '');
-        setD2When(capa.D2_when ?? '');
-        setD2Who(capa.D2_who ?? '');
-        setD2Why(capa.D2_why ?? '');
-        setD2How(capa.D2_how ?? '');
-        setD2HowMany(capa.D2_how_many ?? '');
+        // D2：優先用已儲存值；若欄位為 null（從未填寫）則從來源資訊帶入
+        const si = (capa.source_info ?? {}) as Record<string, string | number | null>;
+        const isNcmr = capa.source_type === 'ncmr';
+        setD2What(    capa.D2_what     ?? ((si.defect        as string) ?? ''));
+        setD2Where(   capa.D2_where    ?? (isNcmr ? (si.source        as string ?? '') : ''));
+        setD2When(    capa.D2_when     ?? '');
+        setD2Who(     capa.D2_who      ?? (isNcmr ? (si.vendor        as string ?? '') : ''));
+        setD2Why(     capa.D2_why      ?? '');
+        setD2How(     capa.D2_how      ?? (isNcmr ? (si.defect_detail as string ?? '') : ''));
+        setD2HowMany( capa.D2_how_many ?? (isNcmr && si.defect_qty != null
+            ? `${si.defect_qty} / ${si.total_qty ?? '?'} 支` : ''));
 
         setD3Action(capa.D3_action ?? '');
         setD3EffDate(capa.D3_effective_date ?? '');

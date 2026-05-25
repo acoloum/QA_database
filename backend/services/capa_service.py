@@ -49,16 +49,25 @@ class CAPAService:
             raise ValueError(f'CAPA 來源類型無效：{source_type}，必須為 ncmr 或 complaint')
 
         # 驗證來源存在
+        d2_what = d2_who = d2_where = d2_how = d2_how_many = None
         if source_type == 'ncmr':
             source = NCMR.query.get(source_id)
             if not source:
                 raise ValueError(f'NCMR #{source_id} 不存在')
             symptom = symptom or source.description
+            # 從 NCMR 預填 D2 5W2H
+            d2_what     = source.description
+            d2_who      = source.vendor
+            d2_where    = source.source
+            d2_how      = source.defect_detail
+            qty_str     = f"{source.defect_quantity or '?'} / {source.quantity or '?'} 支"
+            d2_how_many = qty_str
         else:
             source = CustomerComplaint.query.get(source_id)
             if not source:
                 raise ValueError(f'客訴 #{source_id} 不存在')
             symptom = symptom or source.description
+            d2_what = source.description
 
         # 預設嚴格度
         rigor = SEVERITY_RIGOR_MAP.get(severity, '完整8D')
@@ -72,6 +81,12 @@ class CAPAService:
             rigor          = rigor,
             d0_symptom     = symptom,
             d0_severity    = severity,
+            # D2 從來源預填
+            d2_what        = d2_what,
+            d2_who         = d2_who,
+            d2_where       = d2_where,
+            d2_how         = d2_how,
+            d2_how_many    = d2_how_many,
         )
         db.session.add(ca)
 
@@ -335,11 +350,16 @@ class CAPAService:
             n = NCMR.query.get(ca.source_id or ca.ncmr_id)
             if n:
                 source_info = {
-                    'ncmr_no':    n.ncmr_number,
-                    'vendor':     n.vendor,
-                    'material':   n.material,
-                    'spec':       n.product_info,
-                    'defect':     n.description,
+                    'ncmr_no':       n.ncmr_number,
+                    'vendor':        n.vendor,
+                    'material':      n.material,
+                    'spec':          n.product_info,
+                    'defect':        n.description,
+                    'defect_detail': n.defect_detail,
+                    'source':        n.source,
+                    'total_qty':     n.quantity,
+                    'defect_qty':    n.defect_quantity,
+                    'ncmr_date':     n.date.isoformat() if n.date else None,
                 }
         elif ca.source_type == 'complaint':
             c = CustomerComplaint.query.get(ca.source_id)
