@@ -13,6 +13,8 @@ import CARAPage from './pages/cara/CARAPage';
 import TolerancePage from './pages/tolerance/TolerancePage';
 import ExtrusionTolerancePage from './pages/extrusion-tolerance/ExtrusionTolerancePage';
 import UserManagementPage from './pages/admin/UserManagementPage';
+import TaskListPage from './pages/task/TaskListPage';
+import ComplaintPage from './pages/complaint/ComplaintPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 
@@ -36,6 +38,8 @@ function App() {
               <Route path="/ncmr" element={<NCMRPage />} /> {/* Added NCMRPage route */}
               <Route path="/capa" element={<CAPAPage />} />
               <Route path="/cara" element={<CARAPage />} />
+              <Route path="/tasks" element={<TaskListPage />} />
+              <Route path="/complaints" element={<ComplaintPage />} />
               <Route path="/tolerance" element={<TolerancePage />} />
               <Route path="/extrusion-tolerance" element={<ExtrusionTolerancePage />} />
               {/* 未來在此處新增其他頁面路由 */}

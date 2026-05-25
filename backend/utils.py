@@ -1,3 +1,4 @@
+import inspect
 import secrets
 import hashlib
 import jwt
@@ -135,6 +136,16 @@ def require_admin(f: Any) -> Any:
     return decorated
 
 def auth_required(f: Any) -> Any:
+    """JWT 驗證裝飾器。
+
+    支援兩種路由風格：
+    - 舊式：函式簽名不含 current_user，透過 request.user（dict）存取使用者
+    - 新式：函式第一個參數為 current_user，自動注入 Inspector ORM 物件
+    """
+    # 預先判斷函式是否需要 current_user（避免每次請求都用 inspect）
+    sig_params = list(inspect.signature(f).parameters.keys())
+    _inject_user = bool(sig_params and sig_params[0] == 'current_user')
+
     @wraps(f)
     def decorated(*args, **kwargs):
         # 僅接受 Authorization header，禁止從 query string 取得 token
@@ -148,6 +159,14 @@ def auth_required(f: Any) -> Any:
         if not payload:
             return jsonify({'error': '無效或過期的 Token'}), 401
         request.user = payload
+
+        if _inject_user:
+            # 注入 Inspector ORM 物件供新式路由使用
+            from .models import Inspector
+            user_id = payload.get('id') or payload.get('user_id')
+            current_user = Inspector.query.get(user_id) if user_id else None
+            return f(current_user, *args, **kwargs)
+
         return f(*args, **kwargs)
     return decorated
 

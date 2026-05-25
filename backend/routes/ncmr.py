@@ -96,6 +96,51 @@ def get_source_info():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@ncmr_bp.route('/api/ncmr/<int:ncmr_id>/open-capa', methods=['POST'])
+@auth_required
+def open_capa_from_ncmr(current_user, ncmr_id):
+    """POST /api/ncmr/<id>/open-capa — 從 NCMR 開立 CAPA（8D）
+
+    Body（選填）:
+    {
+      "severity": "Critical | Major | Minor"
+    }
+    """
+    from ..services.capa_service import CAPAService
+    from ..models import NCMR as NCMRModel
+    from ..extensions import db
+    data = request.get_json() or {}
+    try:
+        ncmr = NCMRModel.query.get(ncmr_id)
+        if not ncmr:
+            return jsonify({'error': f'NCMR #{ncmr_id} 不存在'}), 404
+
+        # 若該 NCMR 已有關聯 CAPA，阻止重複開立
+        if getattr(ncmr, 'related_capa_id', None):
+            return jsonify({'error': '此 NCMR 已開立 CAPA，不可重複開立'}), 409
+
+        severity   = data.get('severity', 'Major')
+        creator_id = current_user.id if current_user else None
+        capa = CAPAService.create_from_source(
+            source_type = 'ncmr',
+            source_id   = ncmr_id,
+            symptom     = ncmr.description,
+            severity    = severity,
+            creator_id  = creator_id,
+        )
+
+        # 回寫 NCMR 關聯
+        ncmr.related_capa_id     = capa['id']
+        ncmr.related_capa_source = 'capa'
+        db.session.commit()
+
+        return jsonify(capa), 201
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @ncmr_bp.route('/api/ncmr/<int:ncmr_id>', methods=['GET'])
 @auth_required
 def get_ncmr_info(ncmr_id):

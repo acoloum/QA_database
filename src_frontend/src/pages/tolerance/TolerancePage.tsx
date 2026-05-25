@@ -71,13 +71,21 @@ const TolerancePage = () => {
             if (vendor) params.append('vendor_id', vendor);
             if (spec) params.append('spec', spec);
 
-            // Get token
-            const token = localStorage.getItem('authToken');
-            const url = `${api.defaults.baseURL?.replace('/api', '')}/api/tolerance/export?${params.toString()}&token=${token}`;
-            window.location.href = url;
+            // 使用 Axios 下載，自動帶入 Authorization header
+            const res = await api.get(`/tolerance/export?${params.toString()}`, {
+                responseType: 'blob',
+            });
+
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', '廠商公差資料.xlsx');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
         } catch (error) {
-            console.error("Export failed", error);
-            // Error handled by global handler or just ignored as this is a direct link
+            console.error('匯出失敗', error);
         }
     };
 

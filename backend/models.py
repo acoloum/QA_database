@@ -2,6 +2,7 @@
 from datetime import date, datetime, timezone
 from .extensions import db
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import JSONB
 
 class User(db.Model):
     __tablename__ = '使用者'
@@ -256,32 +257,105 @@ class NCMR(db.Model):
     defect_detail = db.Column('不良原因細項', db.String)
     create_date = db.Column('建立日期', db.Date)
 
+    # 1.4 新增：關聯 CAPA 追溯欄位
+    related_capa_id = db.Column('關聯CAPA_ID', db.Integer, nullable=True)
+    related_capa_source = db.Column('關聯CAPA來源', db.String(20), nullable=True)
+
     inspector = db.relationship('Inspector', backref='ncmr_list')
     corrective_actions = db.relationship('CorrectiveAction', backref='ncmr', cascade="all, delete-orphan")
     rework_requests = db.relationship('ReworkRequest', backref='ncmr', cascade="all, delete-orphan")
 
 class CorrectiveAction(db.Model):
+    """異常矯正單 — CAPA（我方執行矯正，含 D0-D8 完整 8D 流程）"""
     __tablename__ = '異常矯正單'
     id = db.Column('識別碼', db.Integer, primary_key=True)
-    ncmr_id = db.Column('NCMR_ID', db.Integer, db.ForeignKey('不合格品單.識別碼'))
     car_number = db.Column('CAR單號', db.String, index=True)
     eight_d_number = db.Column('8D單號', db.String, index=True)
-    owner_id = db.Column('負責人員', db.Integer, db.ForeignKey('品管人員.識別碼'))
-    status = db.Column('狀態', db.String, index=True)
-    
-    d1 = db.Column('D1_小組成員', db.String)
-    d2 = db.Column('D2_問題描述', db.String)
-    d3 = db.Column('D3_暫時對策', db.String)
-    d4 = db.Column('D4_真因分析', db.String)
-    d5 = db.Column('D5_永久對策', db.String)
-    d6 = db.Column('D6_成效驗證', db.String)
-    d7 = db.Column('D7_預防再發', db.String)
-    d8 = db.Column('D8_結案確認', db.String)
+    status = db.Column('狀態', db.String, index=True, default='進行中')
 
+    # --- 1.5 源頭欄位（強制有來源）---
+    source_type = db.Column('來源類型', db.String(20), nullable=True)   # 'ncmr' | 'complaint'
+    source_id   = db.Column('來源ID',   db.Integer,    nullable=True)
+    # 保留舊欄位相容性（遷移後從 source_id 帶入）
+    ncmr_id = db.Column('NCMR_ID', db.Integer, db.ForeignKey('不合格品單.識別碼'), nullable=True)
+
+    # --- 嚴格度 ---
+    rigor = db.Column('嚴格度', db.String(20), nullable=True, default='完整8D')
+    # '完整8D' | '簡化5D'
+
+    # --- D0 立案 ---
+    d0_symptom   = db.Column('D0_症狀描述',   db.Text, nullable=True)
+    d0_criteria  = db.Column('D0_判斷準則',   JSONB,   nullable=True)   # list of strings
+    d0_severity  = db.Column('D0_嚴重度',     db.String(20), nullable=True)  # Critical|Major|Minor
+    d0_deadline  = db.Column('D0_客戶要求結案日', db.Date, nullable=True)
+
+    # --- D1 小組（結構化）---
+    d1_champion_id = db.Column('D1_Champion', db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
+    d1_leader_id   = db.Column('D1_Leader',   db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
+    d1_members     = db.Column('D1_成員',     JSONB, nullable=True)     # list of inspector ids
+    # 保留舊欄位相容性
+    owner_id = db.Column('負責人員', db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
+
+    # --- D2 問題描述（5W2H）---
+    d2_what      = db.Column('D2_What',      db.Text, nullable=True)
+    d2_where     = db.Column('D2_Where',     db.Text, nullable=True)
+    d2_when      = db.Column('D2_When',      db.Text, nullable=True)
+    d2_who       = db.Column('D2_Who',       db.Text, nullable=True)
+    d2_why       = db.Column('D2_Why',       db.Text, nullable=True)
+    d2_how       = db.Column('D2_How',       db.Text, nullable=True)
+    d2_how_many  = db.Column('D2_HowMany',   db.Text, nullable=True)
+    # 保留舊欄位（顯示用，可存舊版純文字）
+    d2 = db.Column('D2_問題描述', db.Text, nullable=True)
+
+    # --- D3 暫時對策 ---
+    d3_action        = db.Column('D3_對策內容',     db.Text, nullable=True)
+    d3_effective_date= db.Column('D3_生效日',       db.Date, nullable=True)
+    d3_verification  = db.Column('D3_有效性驗證',   db.Text, nullable=True)
+    d3 = db.Column('D3_暫時對策', db.Text, nullable=True)
+
+    # --- D4 真因分析 ---
+    d4_tool         = db.Column('D4_工具',        db.String(20), nullable=True)  # '5why'|'fishbone'|'both'
+    d4_five_why     = db.Column('D4_5Why資料',    JSONB, nullable=True)  # [{q,a}, ...]
+    d4_fishbone     = db.Column('D4_魚骨圖資料',  JSONB, nullable=True)  # {man:[],machine:[],material:[],method:[],measurement:[],environment:[]}
+    d4_root_cause   = db.Column('D4_根本原因',    db.Text, nullable=True)
+    d4 = db.Column('D4_真因分析', db.Text, nullable=True)
+
+    # --- D5 永久對策 ---
+    d5_action       = db.Column('D5_對策內容',     db.Text, nullable=True)
+    d5_planned_date = db.Column('D5_預計實施日',   db.Date, nullable=True)
+    d5_verify_plan  = db.Column('D5_驗證計畫',     db.Text, nullable=True)
+    d5 = db.Column('D5_永久對策', db.Text, nullable=True)
+
+    # --- D6 實施驗證 ---
+    d6_implement_date= db.Column('D6_實施日',      db.Date,    nullable=True)
+    d6_result        = db.Column('D6_驗證結果',    db.Text,    nullable=True)
+    d6_verified      = db.Column('D6_驗證通過',    db.Boolean, nullable=True, default=False)
+    d6 = db.Column('D6_成效驗證', db.Text, nullable=True)
+
+    # --- D7 預防再發 ---
+    d7_actions = db.Column('D7_橫展類型', JSONB, nullable=True)
+    # [{type:'pfmea'|'control_plan'|'sop'|'training'|'cross_part'|'customer_notify'|'other',
+    #   task_id:int, assignee_id:int, due_date:'YYYY-MM-DD', part_nos:[str]}]
+    d7 = db.Column('D7_預防再發', db.Text, nullable=True)
+
+    # --- D8 結案 ---
+    d8_close_date   = db.Column('D8_結案日期',   db.Date, nullable=True)
+    d8_confirmation = db.Column('D8_結案確認',   db.Text, nullable=True)
+    d8_recognition  = db.Column('D8_團隊表揚',   db.Text, nullable=True)
+    d8 = db.Column('D8_結案確認', db.Text, nullable=True)
+
+    # --- 時間戳 ---
     created_at = db.Column('建立時間', db.DateTime, default=datetime.utcnow)
-    closed_at = db.Column('結案日期', db.DateTime)
+    closed_at  = db.Column('結案日期_舊', db.DateTime, nullable=True)
 
-    owner = db.relationship('Inspector', backref='cars')
+    # --- 關聯 ---
+    owner     = db.relationship('Inspector', foreign_keys=[owner_id],       backref='cars')
+    champion  = db.relationship('Inspector', foreign_keys=[d1_champion_id], backref='capa_champion')
+    leader    = db.relationship('Inspector', foreign_keys=[d1_leader_id],   backref='capa_leader')
+    tasks     = db.relationship('ActionTask', backref='capa',
+                                primaryjoin="and_(ActionTask.source_type=='capa', "
+                                            "foreign(ActionTask.source_id)==CorrectiveAction.id)",
+                                lazy='dynamic')
 
 class ReworkRequest(db.Model):
     __tablename__ = '重工申請單'
@@ -369,3 +443,191 @@ class ReworkCost(db.Model):
 
     recorder = db.relationship('Inspector', backref='rework_costs')
     rework = db.relationship('ReworkRequest', backref='costs')
+
+
+# ============================================================
+# 1.1 客訴模組
+# ============================================================
+class CustomerComplaint(db.Model):
+    """客訴紀錄 — 外部不良（客戶端發現），獨立於 NCMR"""
+    __tablename__ = '客訴紀錄'
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    complaint_no = db.Column('客訴單號', db.String(50), unique=True, index=True)
+
+    # 基本資訊
+    customer       = db.Column('客戶',      db.String(100), nullable=False)
+    complaint_date = db.Column('客訴日期',  db.Date,        nullable=False, index=True)
+    product_no     = db.Column('料號',      db.String(100), nullable=False)
+    description    = db.Column('不良描述',  db.Text,        nullable=False)
+    contact_person = db.Column('客戶聯絡人', db.String(100), nullable=True)
+    severity       = db.Column('嚴重度',    db.String(20),  nullable=True)
+    defect_category= db.Column('不良類別',  db.String(100), nullable=True)
+
+    # 客訴類型：'quality' | 'warranty' | 'field_failure'
+    complaint_type = db.Column('客訴類型', db.String(30), nullable=False, default='quality')
+
+    # Warranty / Field Failure 額外欄位
+    device_serial = db.Column('失效裝置序號', db.String(100), nullable=True)
+    usage_env     = db.Column('使用環境',     db.Text,        nullable=True)
+    failure_hours = db.Column('失效時數',     db.Float,       nullable=True)
+
+    # 應答時效
+    initial_reply_deadline = db.Column('初步回覆期限', db.Date, nullable=True)
+    final_reply_deadline   = db.Column('最終回覆期限', db.Date, nullable=True)
+
+    # 回覆內容
+    initial_reply      = db.Column('初步回覆內容', db.Text,     nullable=True)
+    initial_reply_date = db.Column('初步回覆日期', db.DateTime, nullable=True)
+    final_reply        = db.Column('最終回覆內容', db.Text,     nullable=True)
+    final_reply_date   = db.Column('最終回覆日期', db.DateTime, nullable=True)
+
+    # 客戶滿意度（1-5）
+    satisfaction      = db.Column('客戶滿意度', db.Integer, nullable=True)
+    satisfaction_note = db.Column('滿意度備註', db.Text,    nullable=True)
+
+    # 重複客訴警示
+    is_repeat   = db.Column('是否重複客訴',   db.Boolean, default=False)
+    repeat_refs = db.Column('重複客訴參考單號', JSONB,      nullable=True)
+
+    # 關聯 CAPA
+    related_capa_id = db.Column('關聯CAPA_ID', db.Integer, nullable=True)
+
+    # 狀態：'待處理' | '處理中' | '已結案'
+    status = db.Column('狀態', db.String(20), default='待處理', index=True)
+
+    # 時間戳
+    created_by = db.Column('建立人員', db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
+    created_at = db.Column('建立時間', db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column('更新時間', db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    creator = db.relationship('Inspector', backref='complaints')
+
+
+# ============================================================
+# 1.2 任務模組（跨模組共用）
+# ============================================================
+class ActionTask(db.Model):
+    """橫展任務 — 跨模組共用，初期與 CAPA D7 連動"""
+    __tablename__ = '橫展任務'
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    task_no = db.Column('任務單號', db.String(50), unique=True, index=True)
+
+    # 多型來源
+    source_type = db.Column('來源類型', db.String(30), nullable=False, index=True)
+    source_id   = db.Column('來源ID',   db.Integer,    nullable=False, index=True)
+
+    # 任務內容
+    category    = db.Column('類別', db.String(50), nullable=False)
+    # 'pfmea'|'control_plan'|'sop'|'training'|'cross_part'|'customer_notify'|'other'
+    title       = db.Column('標題',    db.String(200), nullable=False)
+    description = db.Column('描述',    db.Text,        nullable=True)
+    part_nos    = db.Column('相關料號', JSONB,          nullable=True)
+
+    # 指派
+    assignee_id = db.Column('負責人', db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
+
+    # 期限與狀態：'pending'|'in_progress'|'completed'|'waived'
+    due_date = db.Column('應完成日', db.Date,      nullable=True)
+    status   = db.Column('狀態',    db.String(20), default='pending', index=True)
+
+    # 完成資訊
+    completion_proof = db.Column('完成證明', db.Text,     nullable=True)
+    waiver_reason    = db.Column('豁免理由', db.Text,     nullable=True)
+    completed_at     = db.Column('完成時間', db.DateTime, nullable=True)
+
+    # 時間戳
+    created_at = db.Column('建立時間', db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column('更新時間', db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    assignee = db.relationship('Inspector', backref='assigned_tasks')
+
+
+# ============================================================
+# 1.3 附件模組（跨模組共用）
+# ============================================================
+class Attachment(db.Model):
+    """共用附件 — 依 entity_type + entity_id + d_step 分類"""
+    __tablename__ = '附件'
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+
+    # 所屬實體（多型）：'capa'|'cara'|'task'|'complaint'
+    entity_type = db.Column('實體類型', db.String(30), nullable=False, index=True)
+    entity_id   = db.Column('實體ID',   db.Integer,    nullable=False, index=True)
+    d_step      = db.Column('D步驟',    db.Integer,    nullable=True)
+
+    # 檔案資訊
+    file_name = db.Column('檔案名稱', db.String(255), nullable=False)
+    file_path = db.Column('檔案路徑', db.String(500), nullable=False)
+    mime_type = db.Column('MIME類型', db.String(100), nullable=True)
+    file_size = db.Column('檔案大小', db.Integer,    nullable=True)   # bytes
+
+    # 上傳資訊
+    uploaded_by = db.Column('上傳人員', db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
+    uploaded_at = db.Column('上傳時間', db.DateTime, default=datetime.utcnow)
+
+    uploader = db.relationship('Inspector', backref='attachments')
+
+
+# ============================================================
+# 1.6 CARARecord（矯正措施要求，對外發給供應商）
+# ============================================================
+class CARARecord(db.Model):
+    """矯正措施要求 — 對供應商發出，簡化流程 D2/D3/D4/D6/D8"""
+    __tablename__ = '矯正措施要求'
+
+    id      = db.Column('識別碼',  db.Integer,   primary_key=True)
+    cara_no = db.Column('CARA單號', db.String(50), unique=True, index=True)
+    status  = db.Column('狀態',    db.String(20), default='進行中', index=True)
+
+    # 來源（來料異常 NCMR）
+    ncmr_id = db.Column('NCMR_ID', db.Integer, db.ForeignKey('不合格品單.識別碼'), nullable=True)
+    vendor  = db.Column('廠商',    db.String(100), nullable=True)
+
+    # D2 問題描述（5W2H）
+    d2_what     = db.Column('D2_What',    db.Text, nullable=True)
+    d2_where    = db.Column('D2_Where',   db.Text, nullable=True)
+    d2_when     = db.Column('D2_When',    db.Text, nullable=True)
+    d2_who      = db.Column('D2_Who',     db.Text, nullable=True)
+    d2_why      = db.Column('D2_Why',     db.Text, nullable=True)
+    d2_how      = db.Column('D2_How',     db.Text, nullable=True)
+    d2_how_many = db.Column('D2_HowMany', db.Text, nullable=True)
+    d2          = db.Column('D2_問題描述', db.Text, nullable=True)  # 舊版相容
+
+    # D3 暫時對策（供應商回覆）
+    d3_action         = db.Column('D3_對策內容',   db.Text, nullable=True)
+    d3_effective_date = db.Column('D3_生效日',     db.Date, nullable=True)
+    d3_verification   = db.Column('D3_有效性驗證', db.Text, nullable=True)
+    d3                = db.Column('D3_暫時對策',   db.Text, nullable=True)
+
+    # D4 真因分析（供應商回覆）
+    d4_tool       = db.Column('D4_工具',      db.String(20), nullable=True)
+    d4_five_why   = db.Column('D4_5Why資料',  JSONB, nullable=True)
+    d4_fishbone   = db.Column('D4_魚骨圖資料', JSONB, nullable=True)
+    d4_root_cause = db.Column('D4_根本原因',  db.Text, nullable=True)
+    d4            = db.Column('D4_真因分析',   db.Text, nullable=True)
+
+    # D6 實施驗證
+    d6_implement_date = db.Column('D6_實施日',   db.Date,    nullable=True)
+    d6_result         = db.Column('D6_驗證結果', db.Text,    nullable=True)
+    d6_verified       = db.Column('D6_驗證通過', db.Boolean, nullable=True, default=False)
+    d6                = db.Column('D6_成效驗證', db.Text,    nullable=True)
+
+    # D8 結案
+    d8_close_date   = db.Column('D8_結案日期', db.Date, nullable=True)
+    d8_confirmation = db.Column('D8_結案確認', db.Text, nullable=True)
+    d8              = db.Column('D8_結案確認_舊', db.Text, nullable=True)
+
+    # 負責人（舊版相容回填）
+    owner_id     = db.Column('負責人員',  db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
+    d1_leader_id = db.Column('D1_Leader', db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
+
+    # 時間戳
+    created_at = db.Column('建立時間', db.DateTime, default=datetime.utcnow)
+    closed_at  = db.Column('結案時間', db.DateTime, nullable=True)
+
+    ncmr   = db.relationship('NCMR', backref='cara_records')
+    owner  = db.relationship('Inspector', foreign_keys=[owner_id],     backref='cara_owned')
+    leader = db.relationship('Inspector', foreign_keys=[d1_leader_id], backref='cara_led')

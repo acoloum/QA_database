@@ -77,10 +77,9 @@ const PatrolPage = () => {
         setPage(1);
     };
 
-    const handleExport = () => {
-        const token = localStorage.getItem('authToken');
+    const handleExport = async () => {
         // 僅匯出原始檢驗數據，不含 SPC 分析
-        const qs = new URLSearchParams({
+        const params = new URLSearchParams({
             s_date: startDate,
             e_date: endDate,
             m_id: machine,
@@ -88,9 +87,23 @@ const PatrolPage = () => {
             cust_id: customer,
             mat: material,
             spec: spec,
-            token: token || ''
         });
-        window.location.href = `${api.defaults.baseURL}/patrol/export?${qs.toString()}`;
+        try {
+            const res = await api.get(`/patrol/export?${params.toString()}`, {
+                responseType: 'blob',
+            });
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', '巡檢數據.xlsx');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('匯出失敗', error);
+            alert('匯出失敗，請重新整理後再試');
+        }
     };
 
     const handleDelete = async (id: number) => {

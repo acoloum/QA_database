@@ -12,3 +12,6 @@ database_backup/
 .env
 *.log
 .env
+
+# 附件上傳儲存目錄
+backend/uploads/

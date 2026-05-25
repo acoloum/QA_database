@@ -1,241 +1,247 @@
 import { useState, useEffect } from 'react';
-import { Button, Card, Col, Form, Table, Badge } from 'react-bootstrap';
-import { useQueryClient } from '@tanstack/react-query';
+import { Container, Card, Table, Badge, Button, Form, Row, Col, ProgressBar } from 'react-bootstrap';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import toast from 'react-hot-toast';
-import api from '../../services/api';
+import {
+    useCapaList,
+    useDeleteCapa,
+    CAPA_SEVERITY_VARIANT,
+    CAPA_STATUS_VARIANT,
+} from '../../hooks/useCapa';
 import CAPAModal from '../../components/capa/CAPAModal';
-import FilterBar from '../../components/common/FilterBar';
-import PaginationBar from '../../components/common/PaginationBar';
-import { useCAPAList } from '../../hooks/useNCMR';
-import type { CAPAListParams } from '../../hooks/useNCMR';
+import type { CAPAListItem } from '../../types';
 
-// 篩選欄位（排除分頁參數）
-type CAPAFilters = Omit<CAPAListParams, 'page' | 'per_page'>;
-
-const EMPTY_FILTERS: CAPAFilters = {
-    date_from: '',
-    date_to: '',
-    vendor: '',
-    material: '',
-    product_info: '',
-    status: '',
-};
+const PAGE_SIZE = 20;
 
 const CAPAPage = () => {
     const navigate = useNavigate();
-    const queryClient = useQueryClient();
     const [searchParams] = useSearchParams();
 
-    const [filters, setFilters] = useState<CAPAFilters>(EMPTY_FILTERS);
-    const [page, setPage] = useState(1);
+    // 篩選
+    const [sourceType,  setSourceType]  = useState('');
+    const [statusFilter, setStatusFilter] = useState('');
+    const [dateFrom,    setDateFrom]    = useState('');
+    const [dateTo,      setDateTo]      = useState('');
+    const [page,        setPage]        = useState(1);
+
+    // Modal
     const [showModal, setShowModal] = useState(false);
-    const [editId, setEditId] = useState<number | null>(null);
+    const [editId,    setEditId]    = useState<number | null>(null);
 
-    // 依 searchParams 開啟 modal（CAPA 特有功能）
+    // URL 參數觸發開啟（來自 NCMR / 客訴頁開立後跳轉）
     useEffect(() => {
-        const queryEditId = searchParams.get('editId');
-        if (queryEditId) {
-            setEditId(Number(queryEditId));
+        const openId = searchParams.get('openId');
+        if (openId) {
+            setEditId(Number(openId));
             setShowModal(true);
-            // 讀取後立即清除 URL query string，防止 modal 意外重開
-            navigate(window.location.pathname, { replace: true });
+            navigate('/capa', { replace: true });
         }
-    }, [searchParams]);
+    }, [searchParams, navigate]);
 
-    // 組合查詢參數，空字串欄位不傳給 API
-    const activeParams: CAPAListParams = {
-        ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== '')),
+    const params = {
+        source_type: sourceType  || undefined,
+        status:      statusFilter || undefined,
+        date_from:   dateFrom    || undefined,
+        date_to:     dateTo      || undefined,
         page,
-        per_page: 20,
+        per_page: PAGE_SIZE,
     };
 
-    const { data: result, isLoading } = useCAPAList(activeParams);
-    const rows = result?.data ?? [];
+    const { data, isLoading } = useCapaList(params);
+    const deleteMutation      = useDeleteCapa();
+    const capas               = data?.data ?? [];
+    const totalPages          = Math.ceil((data?.total ?? 0) / PAGE_SIZE);
 
-    const handleFilterChange = (key: keyof CAPAFilters, value: string) => {
-        setFilters(prev => ({ ...prev, [key]: value }));
-        setPage(1);
-    };
-
-    const handleReset = () => {
-        setFilters(EMPTY_FILTERS);
-        setPage(1);
-    };
-
-    const handleDelete = async (id: number) => {
-        if (!window.confirm(`確定要刪除 CAPA #${id} 嗎？`)) return;
-        try {
-            await api.post('/capa/delete', { id });
-            queryClient.invalidateQueries({ queryKey: ['capaList'], exact: false });
-            toast.success('刪除成功');
-        } catch (error) {
-            console.error('刪除失敗', error);
-            toast.error('刪除失敗，請稍後再試');
+    const handleEdit   = (item: CAPAListItem) => { setEditId(item.id); setShowModal(true); };
+    const handleDelete = (item: CAPAListItem) => {
+        if (window.confirm(`確定刪除 CAPA「${item.no}」嗎？`)) {
+            deleteMutation.mutate(item.id);
         }
     };
-
-    const handleEdit = (id: number) => {
-        setEditId(id);
-        setShowModal(true);
+    const handleReset = () => {
+        setSourceType('');
+        setStatusFilter('');
+        setDateFrom('');
+        setDateTo('');
+        setPage(1);
     };
 
     return (
-        <div className="container-fluid p-4">
+        <Container fluid className="py-4">
             <div className="d-flex justify-content-between align-items-center mb-4">
-                <h2 className="text-primary fw-bold">
-                    <i className="bi bi-shield-check"></i> 異常矯正措施 (CAPA)
-                </h2>
-                <Button className="btn-back-home" onClick={() => navigate('/')}>
-                    <i className="bi bi-arrow-left"></i> 回首頁
-                </Button>
+                <h4 className="mb-0">
+                    <i className="bi bi-shield-check me-2 text-primary" />
+                    異常矯正措施（CAPA）
+                </h4>
+                <div className="d-flex gap-2">
+                    <Button variant="outline-secondary" size="sm" onClick={() => navigate('/')}>
+                        <i className="bi bi-arrow-left me-1" />
+                        回首頁
+                    </Button>
+                    <span className="small text-muted align-self-center">
+                        <i className="bi bi-info-circle me-1" />
+                        CAPA 請從 NCMR 或客訴頁面開立
+                    </span>
+                </div>
             </div>
 
             {/* 篩選列 */}
-            <FilterBar onReset={handleReset}>
-                <Col xs={12} sm={6} md={2}>
-                    <Form.Label className="small mb-1">日期（起）</Form.Label>
-                    <Form.Control
-                        type="date"
-                        size="sm"
-                        value={filters.date_from ?? ''}
-                        onChange={e => handleFilterChange('date_from', e.target.value)}
-                    />
-                </Col>
-                <Col xs={12} sm={6} md={2}>
-                    <Form.Label className="small mb-1">日期（迄）</Form.Label>
-                    <Form.Control
-                        type="date"
-                        size="sm"
-                        value={filters.date_to ?? ''}
-                        onChange={e => handleFilterChange('date_to', e.target.value)}
-                    />
-                </Col>
-                <Col xs={12} sm={6} md={2}>
-                    <Form.Label className="small mb-1">廠商</Form.Label>
-                    <Form.Control
-                        type="text"
-                        size="sm"
-                        placeholder="輸入廠商"
-                        value={filters.vendor ?? ''}
-                        onChange={e => handleFilterChange('vendor', e.target.value)}
-                    />
-                </Col>
-                <Col xs={12} sm={6} md={2}>
-                    <Form.Label className="small mb-1">材質</Form.Label>
-                    <Form.Control
-                        type="text"
-                        size="sm"
-                        placeholder="輸入材質"
-                        value={filters.material ?? ''}
-                        onChange={e => handleFilterChange('material', e.target.value)}
-                    />
-                </Col>
-                <Col xs={12} sm={6} md={2}>
-                    <Form.Label className="small mb-1">規格</Form.Label>
-                    <Form.Control
-                        type="text"
-                        size="sm"
-                        placeholder="輸入規格"
-                        value={filters.product_info ?? ''}
-                        onChange={e => handleFilterChange('product_info', e.target.value)}
-                    />
-                </Col>
-                <Col xs={12} sm={6} md={2}>
-                    <Form.Label className="small mb-1">狀態</Form.Label>
-                    <Form.Select
-                        size="sm"
-                        value={filters.status ?? ''}
-                        onChange={e => handleFilterChange('status', e.target.value)}
-                    >
-                        <option value="">全部</option>
-                        <option value="進行中">進行中</option>
-                        <option value="已結案">已結案</option>
-                    </Form.Select>
-                </Col>
-            </FilterBar>
+            <Card className="mb-3 shadow-sm">
+                <Card.Body className="py-2">
+                    <Row className="g-2 align-items-end">
+                        <Col xs={6} md={2}>
+                            <Form.Label className="small mb-1">來源類型</Form.Label>
+                            <Form.Select size="sm" value={sourceType}
+                                onChange={e => { setSourceType(e.target.value); setPage(1); }}>
+                                <option value="">全部</option>
+                                <option value="ncmr">NCMR</option>
+                                <option value="complaint">客訴</option>
+                            </Form.Select>
+                        </Col>
+                        <Col xs={6} md={2}>
+                            <Form.Label className="small mb-1">狀態</Form.Label>
+                            <Form.Select size="sm" value={statusFilter}
+                                onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
+                                <option value="">全部</option>
+                                <option value="進行中">進行中</option>
+                                <option value="已結案">已結案</option>
+                            </Form.Select>
+                        </Col>
+                        <Col xs={6} md={2}>
+                            <Form.Label className="small mb-1">建立日期（起）</Form.Label>
+                            <Form.Control type="date" size="sm" value={dateFrom}
+                                onChange={e => { setDateFrom(e.target.value); setPage(1); }} />
+                        </Col>
+                        <Col xs={6} md={2}>
+                            <Form.Label className="small mb-1">建立日期（迄）</Form.Label>
+                            <Form.Control type="date" size="sm" value={dateTo}
+                                onChange={e => { setDateTo(e.target.value); setPage(1); }} />
+                        </Col>
+                        <Col xs={12} md={2}>
+                            <Button variant="outline-secondary" size="sm" className="w-100" onClick={handleReset}>
+                                清除篩選
+                            </Button>
+                        </Col>
+                    </Row>
+                </Card.Body>
+            </Card>
 
-            {/* 資料表 */}
+            {/* CAPA 表格 */}
             <Card className="shadow-sm">
-                <Card.Body>
-                    <Table hover responsive className="align-middle">
-                        <thead className="table-light">
-                            <tr>
-                                <th>單號</th>
-                                <th>關聯異常單</th>
-                                <th>廠商</th>
-                                <th>材質</th>
-                                <th>規格</th>
-                                <th>建立日期</th>
-                                <th>負責人</th>
-                                <th>狀態</th>
-                                <th>操作</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {isLoading ? (
+                <Card.Body className="p-0">
+                    <div className="table-responsive">
+                        <Table hover className="mb-0">
+                            <thead className="table-light">
                                 <tr>
-                                    <td colSpan={9} className="text-center py-4">載入中...</td>
+                                    <th>8D 單號</th>
+                                    <th>來源</th>
+                                    <th>嚴格度</th>
+                                    <th>嚴重度</th>
+                                    <th>負責人</th>
+                                    <th>客戶要求結案日</th>
+                                    <th>進度</th>
+                                    <th>狀態</th>
+                                    <th style={{ width: '120px' }}>操作</th>
                                 </tr>
-                            ) : rows.length === 0 ? (
-                                <tr>
-                                    <td colSpan={9} className="text-center py-4">無資料</td>
-                                </tr>
-                            ) : (
-                                rows.map(item => (
+                            </thead>
+                            <tbody>
+                                {isLoading ? (
+                                    <tr><td colSpan={9} className="text-center py-4 text-muted">載入中…</td></tr>
+                                ) : capas.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={9} className="text-center py-4 text-muted">
+                                            <i className="bi bi-inbox fs-3 d-block mb-2" />
+                                            查無 CAPA 資料
+                                        </td>
+                                    </tr>
+                                ) : capas.map(item => (
                                     <tr key={item.id}>
-                                        <td className="fw-bold">{String(item.no ?? '')}</td>
-                                        <td>{String(item.ncmr_no ?? '')} ({String(item.source ?? '')})</td>
-                                        <td>{String(item.vendor ?? '') || '-'}</td>
-                                        <td>{String(item.material ?? '') || '-'}</td>
-                                        <td>{String(item.spec ?? '') || '-'}</td>
-                                        <td>{String(item.create_date ?? '').substring(0, 10) || '-'}</td>
-                                        <td>{String(item.owner ?? '') || '-'}</td>
+                                        <td className="fw-semibold small">{item.no}</td>
+                                        <td className="small">
+                                            <Badge bg="light" text="dark">
+                                                {item.source_type === 'ncmr' ? 'NCMR' : '客訴'}
+                                            </Badge>
+                                            <span className="ms-1 text-muted">#{item.source_id}</span>
+                                        </td>
+                                        <td className="small">
+                                            <Badge bg={item.rigor === '完整8D' ? 'primary' : 'info'}>
+                                                {item.rigor}
+                                            </Badge>
+                                        </td>
                                         <td>
-                                            <Badge bg={item.status === '已結案' ? 'success' : 'warning'} text="dark">
-                                                {String(item.status ?? '')}
+                                            {item.severity && (
+                                                <Badge bg={CAPA_SEVERITY_VARIANT[item.severity] ?? 'secondary'}>
+                                                    {item.severity}
+                                                </Badge>
+                                            )}
+                                        </td>
+                                        <td className="small">{item.owner ?? '—'}</td>
+                                        <td className="small">{item.deadline ?? '—'}</td>
+                                        <td style={{ minWidth: '100px' }}>
+                                            <div className="d-flex align-items-center gap-2">
+                                                <ProgressBar
+                                                    now={item.progress_percent}
+                                                    variant={
+                                                        item.progress_percent >= 100 ? 'success' :
+                                                        item.progress_percent >= 50  ? 'primary' : 'warning'
+                                                    }
+                                                    style={{ height: '6px', flex: 1 }}
+                                                />
+                                                <span className="small text-muted" style={{ whiteSpace: 'nowrap' }}>
+                                                    {item.progress_percent}%
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <Badge bg={CAPA_STATUS_VARIANT[item.status] ?? 'secondary'}>
+                                                {item.status}
                                             </Badge>
                                         </td>
                                         <td>
                                             <Button
                                                 variant="outline-primary"
                                                 size="sm"
-                                                className="me-2"
-                                                onClick={() => handleEdit(item.id)}
+                                                className="me-1"
+                                                onClick={() => handleEdit(item)}
                                             >
                                                 處理
                                             </Button>
                                             <Button
                                                 variant="outline-danger"
                                                 size="sm"
-                                                onClick={() => handleDelete(item.id)}
+                                                onClick={() => handleDelete(item)}
+                                                disabled={deleteMutation.isPending}
                                             >
                                                 刪除
                                             </Button>
                                         </td>
                                     </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </Table>
+                                ))}
+                            </tbody>
+                        </Table>
+                    </div>
+
+                    {totalPages > 1 && (
+                        <div className="d-flex justify-content-between align-items-center px-3 py-2 border-top">
+                            <span className="small text-muted">
+                                共 {data?.total ?? 0} 筆，第 {page}/{totalPages} 頁
+                            </span>
+                            <div>
+                                <Button variant="outline-secondary" size="sm" className="me-1"
+                                    disabled={page <= 1} onClick={() => setPage(p => p - 1)}>上一頁</Button>
+                                <Button variant="outline-secondary" size="sm"
+                                    disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>下一頁</Button>
+                            </div>
+                        </div>
+                    )}
                 </Card.Body>
             </Card>
 
-            {/* 分頁列 */}
-            <PaginationBar
-                page={page}
-                perPage={activeParams.per_page ?? 20}
-                total={result?.total ?? 0}
-                onPageChange={setPage}
-            />
-
             <CAPAModal
                 show={showModal}
-                handleClose={() => { setShowModal(false); setEditId(null); }}
-                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['capaList'], exact: false })}
-                editId={editId}
+                capaId={editId}
+                onHide={() => { setShowModal(false); setEditId(null); }}
             />
-        </div>
+        </Container>
     );
 };
 

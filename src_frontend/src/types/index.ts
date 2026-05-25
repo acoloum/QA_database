@@ -574,3 +574,198 @@ export interface ReworkCostDetail {
     總成本?: number;
     備註?: string;
 }
+
+// ── 附件 ──────────────────────────────────────────────────────
+export interface Attachment {
+    id: number;
+    entity_type: string;
+    entity_id: number;
+    d_step?: string | null;
+    file_name: string;
+    mime_type: string;
+    file_size: number;
+    uploader_id?: number;
+    created_at?: string;
+}
+
+// ── 橫展任務 ─────────────────────────────────────────────────
+export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'waived';
+export type TaskCategory =
+    | 'pfmea' | 'control_plan' | 'sop' | 'training'
+    | 'cross_part' | 'customer_notify' | 'other';
+
+export interface ActionTask {
+    id: number;
+    task_no: string;
+    source_type: string;
+    source_id: number;
+    category: TaskCategory;
+    title?: string;
+    description?: string;
+    assignee_id?: number;
+    assignee_name?: string;
+    due_date?: string | null;
+    status: TaskStatus;
+    completion_proof?: string | null;
+    waiver_reason?: string | null;
+    is_overdue?: boolean;
+    overdue_days?: number;
+    created_at?: string;
+}
+
+// ── 客訴 ─────────────────────────────────────────────────────
+export type ComplaintType = 'quality' | 'warranty' | 'field_failure';
+export type ComplaintStatus = '待處理' | '處理中' | '已結案';
+
+export interface CustomerComplaint {
+    id: number;
+    complaint_no: string;
+    customer: string;
+    complaint_date: string;
+    product_no: string;
+    description: string;
+    contact_person?: string | null;
+    severity?: string | null;
+    defect_category?: string | null;
+    complaint_type: ComplaintType;
+    device_serial?: string | null;
+    usage_env?: string | null;
+    failure_hours?: number | null;
+    initial_reply_deadline?: string | null;
+    final_reply_deadline?: string | null;
+    initial_reply?: string | null;
+    initial_reply_date?: string | null;
+    final_reply?: string | null;
+    final_reply_date?: string | null;
+    satisfaction?: number | null;
+    satisfaction_note?: string | null;
+    is_repeat: boolean;
+    repeat_refs: string[];
+    related_capa_id?: number | null;
+    status: ComplaintStatus;
+    created_by?: number | null;
+    created_at?: string;
+    overdue_days?: number;
+    is_overdue?: boolean;
+}
+
+// ── CAPA 重設計（D0-D8）──────────────────────────────────────
+export type CAPASeverity = 'Critical' | 'Major' | 'Minor';
+export type CAPARigor = '完整8D' | '簡化5D';
+export type CAPAStatus = '進行中' | '已結案';
+
+export interface D7Action {
+    type: string;
+    checked: boolean;
+    assignee_id?: number | null;
+    due_date?: string | null;
+    description?: string;
+    part_nos?: string;
+}
+
+export interface CAPAProgress {
+    total_steps: number;
+    completed_steps: number;
+    percent: number;
+    step_status: Record<string, boolean>;
+}
+
+export interface CAPADetail {
+    id: number;
+    no: string;
+    source_type: string;
+    source_id: number;
+    source_info: Record<string, string | null>;
+    rigor: CAPARigor;
+    status: CAPAStatus;
+    progress: CAPAProgress;
+    D0_symptom?: string | null;
+    D0_criteria?: string[] | null;
+    D0_severity?: CAPASeverity | null;
+    D0_deadline?: string | null;
+    D1_champion_id?: number | null;
+    D1_leader_id?: number | null;
+    D1_members?: number[] | null;
+    D1_leader_name?: string | null;
+    D1_champion_name?: string | null;
+    D2_what?: string | null;
+    D2_where?: string | null;
+    D2_when?: string | null;
+    D2_who?: string | null;
+    D2_why?: string | null;
+    D2_how?: string | null;
+    D2_how_many?: string | null;
+    D3_action?: string | null;
+    D3_effective_date?: string | null;
+    D3_verification?: string | null;
+    D4_tool?: string | null;
+    D4_five_why?: unknown[] | null;
+    D4_fishbone?: Record<string, string[]> | null;
+    D4_root_cause?: string | null;
+    D5_action?: string | null;
+    D5_planned_date?: string | null;
+    D5_verify_plan?: string | null;
+    D6_implement_date?: string | null;
+    D6_result?: string | null;
+    D6_verified?: boolean;
+    D7_actions?: D7Action[];
+    tasks?: ActionTask[];
+    D8_close_date?: string | null;
+    D8_confirmation?: string | null;
+    D8_recognition?: string | null;
+    created_at?: string;
+    closed_at?: string | null;
+}
+
+export interface CAPAListItem {
+    id: number;
+    no: string;
+    source_type: string;
+    source_id: number;
+    rigor: CAPARigor;
+    status: CAPAStatus;
+    severity?: string | null;
+    owner?: string;
+    create_date?: string;
+    deadline?: string | null;
+    progress_percent: number;
+}
+
+// ── CARA 重設計 ───────────────────────────────────────────────
+export interface CARADetail {
+    id: number;
+    no: string;
+    vendor?: string | null;
+    status: string;
+    ncmr_id?: number | null;
+    ncmr_info?: Record<string, string | null>;
+    progress: {
+        total_steps: number;
+        completed_steps: number;
+        percent: number;
+        step_status: Record<string, boolean>;
+    };
+    D1_leader_id?: number | null;
+    D1_leader_name?: string | null;
+    D2_what?: string | null;
+    D2_where?: string | null;
+    D2_when?: string | null;
+    D2_who?: string | null;
+    D2_why?: string | null;
+    D2_how?: string | null;
+    D2_how_many?: string | null;
+    D3_action?: string | null;
+    D3_effective_date?: string | null;
+    D3_verification?: string | null;
+    D4_tool?: string | null;
+    D4_five_why?: unknown[] | null;
+    D4_fishbone?: Record<string, string[]> | null;
+    D4_root_cause?: string | null;
+    D6_implement_date?: string | null;
+    D6_result?: string | null;
+    D6_verified?: boolean;
+    D8_close_date?: string | null;
+    D8_confirmation?: string | null;
+    created_at?: string;
+    closed_at?: string | null;
+}
