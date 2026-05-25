@@ -177,7 +177,7 @@ class CARAService:
         status['D3'] = bool(c.d3_action or c.d3)
         status['D4'] = bool(c.d4_root_cause or c.d4)
         status['D6'] = bool(c.d6_verified)
-        status['D8'] = bool(c.d8_confirmation or c.d8)
+        status['D8'] = bool(c.d8_confirmation)
         done = sum(1 for v in status.values() if v)
         return {
             'total_steps':     len(CARA_STEPS),

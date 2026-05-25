@@ -297,7 +297,7 @@ class CAPAService:
         if ca.d5_action or ca.d5:              completed.append(5)
         if ca.d6_verified:                     completed.append(6)
         if ca.d7_actions:                      completed.append(7)
-        if ca.d8_confirmation or ca.d8:        completed.append(8)
+        if ca.d8_confirmation:                 completed.append(8)
 
         done_steps = [s for s in steps if s in completed]
         pct = round(len(done_steps) / len(steps) * 100) if steps else 0

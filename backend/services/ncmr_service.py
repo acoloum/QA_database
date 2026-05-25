@@ -443,7 +443,7 @@ class NCMRService:
                 "D5_永久對策": ca.d5,
                 "D6_成效驗證": ca.d6,
                 "D7_預防再發": ca.d7,
-                "D8_結案確認": ca.d8,
+                "D8_結案確認": ca.d8_confirmation,
                 "建立時間": ca.created_at,
                 "完成時間": ca.closed_at,
                 "建立日期": ca.created_at.strftime('%Y-%m-%d') if ca.created_at else "",
