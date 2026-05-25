@@ -497,11 +497,11 @@ class CustomerComplaint(db.Model):
     status = db.Column('狀態', db.String(20), default='待處理', index=True)
 
     # 時間戳
-    created_by = db.Column('建立人員', db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
+    created_by = db.Column('建立人員', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True)
     created_at = db.Column('建立時間', db.DateTime, default=datetime.utcnow)
     updated_at = db.Column('更新時間', db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    creator = db.relationship('Inspector', backref='complaints')
+    creator = db.relationship('User', backref='complaints', foreign_keys=[created_by])
 
 
 # ============================================================
@@ -565,10 +565,10 @@ class Attachment(db.Model):
     file_size = db.Column('檔案大小', db.Integer,    nullable=True)   # bytes
 
     # 上傳資訊
-    uploaded_by = db.Column('上傳人員', db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
+    uploaded_by = db.Column('上傳人員', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True)
     uploaded_at = db.Column('上傳時間', db.DateTime, default=datetime.utcnow)
 
-    uploader = db.relationship('Inspector', backref='attachments')
+    uploader = db.relationship('User', backref='attachments', foreign_keys=[uploaded_by])
 
 
 # ============================================================

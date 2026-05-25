@@ -161,10 +161,10 @@ def auth_required(f: Any) -> Any:
         request.user = payload
 
         if _inject_user:
-            # 注入 Inspector ORM 物件供新式路由使用
-            from .models import Inspector
+            # 注入 User ORM 物件供新式路由使用
+            from .models import User
             user_id = payload.get('id') or payload.get('user_id')
-            current_user = Inspector.query.get(user_id) if user_id else None
+            current_user = User.query.get(user_id) if user_id else None
             return f(current_user, *args, **kwargs)
 
         return f(*args, **kwargs)
