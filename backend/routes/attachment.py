@@ -1,7 +1,15 @@
 """附件路由 — 上傳、查詢、下載、刪除"""
 from flask import Blueprint, jsonify, request, send_file, redirect
+from typing import Optional
 from ..services.attachment_service import AttachmentService
 from ..utils import auth_required
+
+
+def _parse_d_step(raw: Optional[str]) -> Optional[int]:
+    """將 'D0'、'D2'、'2' 等格式統一轉為整數；None 或空字串回傳 None"""
+    if raw is None or raw == '':
+        return None
+    return int(raw.lstrip('Dd'))
 
 attachment_bp = Blueprint('attachment', __name__)
 
@@ -26,7 +34,7 @@ def upload_attachment(current_user):
 
     try:
         entity_id_int = int(entity_id)
-        d_step = int(d_step_raw) if d_step_raw is not None and d_step_raw != '' else None
+        d_step = _parse_d_step(d_step_raw)
         result = AttachmentService.upload(
             file=file,
             entity_type=entity_type,
@@ -55,7 +63,7 @@ def list_attachments(current_user):
         return jsonify({'error': '缺少 entity_type 或 entity_id'}), 400
 
     try:
-        d_step = int(d_step_raw) if d_step_raw is not None else None
+        d_step = _parse_d_step(d_step_raw)
         items = AttachmentService.list_by_entity(
             entity_type=entity_type,
             entity_id=int(entity_id),
