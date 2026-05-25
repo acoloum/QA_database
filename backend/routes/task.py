@@ -7,7 +7,7 @@ from ..utils import auth_required
 task_bp = Blueprint('task', __name__)
 
 
-@task_bp.route('/tasks', methods=['GET'])
+@task_bp.route('/api/tasks', methods=['GET'])
 @auth_required
 def list_tasks(current_user):
     """GET /api/tasks — 任務列表，支援多維篩選"""
@@ -28,7 +28,7 @@ def list_tasks(current_user):
         return jsonify({'error': str(e)}), 500
 
 
-@task_bp.route('/tasks/my', methods=['GET'])
+@task_bp.route('/api/tasks/my', methods=['GET'])
 @auth_required
 def my_tasks(current_user):
     """GET /api/tasks/my — 當前使用者的未完成待辦"""
@@ -39,7 +39,7 @@ def my_tasks(current_user):
         return jsonify({'error': str(e)}), 500
 
 
-@task_bp.route('/tasks', methods=['POST'])
+@task_bp.route('/api/tasks', methods=['POST'])
 @auth_required
 def create_task(current_user):
     """POST /api/tasks — 建立任務（一般用途，D7 有專屬路由）"""
@@ -66,7 +66,7 @@ def create_task(current_user):
         return jsonify({'error': str(e)}), 500
 
 
-@task_bp.route('/tasks/<int:task_id>/status', methods=['PATCH'])
+@task_bp.route('/api/tasks/<int:task_id>/status', methods=['PATCH'])
 @auth_required
 def update_task_status(current_user, task_id: int):
     """PATCH /api/tasks/<id>/status — 狀態切換"""
@@ -88,7 +88,7 @@ def update_task_status(current_user, task_id: int):
         return jsonify({'error': str(e)}), 500
 
 
-@task_bp.route('/tasks/<int:task_id>', methods=['DELETE'])
+@task_bp.route('/api/tasks/<int:task_id>', methods=['DELETE'])
 @auth_required
 def delete_task(current_user, task_id: int):
     """DELETE /api/tasks/<id> — 僅 pending 狀態可刪"""
@@ -101,7 +101,7 @@ def delete_task(current_user, task_id: int):
         return jsonify({'error': str(e)}), 500
 
 
-@task_bp.route('/tasks/check-gate', methods=['GET'])
+@task_bp.route('/api/tasks/check-gate', methods=['GET'])
 @auth_required
 def check_close_gate(current_user):
     """GET /api/tasks/check-gate?source_type=capa&source_id=1 — D8 結案前 gate 確認"""

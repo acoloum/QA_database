@@ -9,7 +9,7 @@ complaint_bp = Blueprint('complaint', __name__)
 
 
 # ── 列表 / 建立 ───────────────────────────────────────────────
-@complaint_bp.route('/complaints', methods=['GET'])
+@complaint_bp.route('/api/complaints', methods=['GET'])
 @auth_required
 def list_complaints(current_user):
     """GET /api/complaints — 客訴列表，支援多維篩選"""
@@ -30,7 +30,7 @@ def list_complaints(current_user):
         return jsonify({'error': str(e)}), 500
 
 
-@complaint_bp.route('/complaints', methods=['POST'])
+@complaint_bp.route('/api/complaints', methods=['POST'])
 @auth_required
 def create_complaint(current_user):
     """POST /api/complaints — 新增客訴"""
@@ -45,7 +45,7 @@ def create_complaint(current_user):
 
 
 # ── 單筆操作 ─────────────────────────────────────────────────
-@complaint_bp.route('/complaints/<int:complaint_id>', methods=['GET'])
+@complaint_bp.route('/api/complaints/<int:complaint_id>', methods=['GET'])
 @auth_required
 def get_complaint(current_user, complaint_id: int):
     """GET /api/complaints/<id>"""
@@ -55,7 +55,7 @@ def get_complaint(current_user, complaint_id: int):
     return jsonify(c), 200
 
 
-@complaint_bp.route('/complaints/<int:complaint_id>', methods=['PUT'])
+@complaint_bp.route('/api/complaints/<int:complaint_id>', methods=['PUT'])
 @auth_required
 def update_complaint(current_user, complaint_id: int):
     """PUT /api/complaints/<id>"""
@@ -69,7 +69,7 @@ def update_complaint(current_user, complaint_id: int):
         return jsonify({'error': str(e)}), 500
 
 
-@complaint_bp.route('/complaints/<int:complaint_id>', methods=['DELETE'])
+@complaint_bp.route('/api/complaints/<int:complaint_id>', methods=['DELETE'])
 @auth_required
 def delete_complaint(current_user, complaint_id: int):
     """DELETE /api/complaints/<id>"""
@@ -83,7 +83,7 @@ def delete_complaint(current_user, complaint_id: int):
 
 
 # ── 開立 CAPA ────────────────────────────────────────────────
-@complaint_bp.route('/complaints/<int:complaint_id>/open-capa', methods=['POST'])
+@complaint_bp.route('/api/complaints/<int:complaint_id>/open-capa', methods=['POST'])
 @auth_required
 def open_capa_from_complaint(current_user, complaint_id: int):
     """POST /api/complaints/<id>/open-capa — 從客訴開立 CAPA"""
@@ -112,14 +112,14 @@ def open_capa_from_complaint(current_user, complaint_id: int):
 
 
 # ── Dashboard 快查 ───────────────────────────────────────────
-@complaint_bp.route('/complaints/overdue', methods=['GET'])
+@complaint_bp.route('/api/complaints/overdue', methods=['GET'])
 @auth_required
 def overdue_complaints(current_user):
     """GET /api/complaints/overdue — 逾期客訴列表"""
     return jsonify(ComplaintService.overdue_list()), 200
 
 
-@complaint_bp.route('/complaints/recent-repeats', methods=['GET'])
+@complaint_bp.route('/api/complaints/recent-repeats', methods=['GET'])
 @auth_required
 def recent_repeat_complaints(current_user):
     """GET /api/complaints/recent-repeats — 近 30 天重複客訴"""
@@ -128,35 +128,35 @@ def recent_repeat_complaints(current_user):
 
 
 # ── 統計 ─────────────────────────────────────────────────────
-@complaint_bp.route('/complaints/stats/by-customer', methods=['GET'])
+@complaint_bp.route('/api/complaints/stats/by-customer', methods=['GET'])
 @auth_required
 def stats_by_customer(current_user):
     df, dt = _date_params()
     return jsonify(ComplaintStatsService.by_customer(df, dt)), 200
 
 
-@complaint_bp.route('/complaints/stats/by-product', methods=['GET'])
+@complaint_bp.route('/api/complaints/stats/by-product', methods=['GET'])
 @auth_required
 def stats_by_product(current_user):
     df, dt = _date_params()
     return jsonify(ComplaintStatsService.by_product(df, dt)), 200
 
 
-@complaint_bp.route('/complaints/stats/by-category', methods=['GET'])
+@complaint_bp.route('/api/complaints/stats/by-category', methods=['GET'])
 @auth_required
 def stats_by_category(current_user):
     df, dt = _date_params()
     return jsonify(ComplaintStatsService.by_category(df, dt)), 200
 
 
-@complaint_bp.route('/complaints/stats/by-month', methods=['GET'])
+@complaint_bp.route('/api/complaints/stats/by-month', methods=['GET'])
 @auth_required
 def stats_by_month(current_user):
     df, dt = _date_params()
     return jsonify(ComplaintStatsService.by_month(df, dt)), 200
 
 
-@complaint_bp.route('/complaints/stats/warranty', methods=['GET'])
+@complaint_bp.route('/api/complaints/stats/warranty', methods=['GET'])
 @auth_required
 def stats_warranty(current_user):
     df, dt = _date_params()

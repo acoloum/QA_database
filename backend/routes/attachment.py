@@ -6,7 +6,7 @@ from ..utils import auth_required
 attachment_bp = Blueprint('attachment', __name__)
 
 
-@attachment_bp.route('/attachments/upload', methods=['POST'])
+@attachment_bp.route('/api/attachments/upload', methods=['POST'])
 @auth_required
 def upload_attachment(current_user):
     """
@@ -41,7 +41,7 @@ def upload_attachment(current_user):
         return jsonify({'error': f'上傳失敗：{e}'}), 500
 
 
-@attachment_bp.route('/attachments', methods=['GET'])
+@attachment_bp.route('/api/attachments', methods=['GET'])
 @auth_required
 def list_attachments(current_user):
     """
@@ -66,7 +66,7 @@ def list_attachments(current_user):
         return jsonify({'error': str(e)}), 500
 
 
-@attachment_bp.route('/attachments/<int:att_id>/download', methods=['GET'])
+@attachment_bp.route('/api/attachments/<int:att_id>/download', methods=['GET'])
 @auth_required
 def download_attachment(current_user, att_id: int):
     """GET /api/attachments/<id>/download"""
@@ -92,7 +92,7 @@ def download_attachment(current_user, att_id: int):
     return jsonify({'error': '檔案不存在於伺服器'}), 404
 
 
-@attachment_bp.route('/attachments/<int:att_id>', methods=['DELETE'])
+@attachment_bp.route('/api/attachments/<int:att_id>', methods=['DELETE'])
 @auth_required
 def delete_attachment(current_user, att_id: int):
     """DELETE /api/attachments/<id>"""
