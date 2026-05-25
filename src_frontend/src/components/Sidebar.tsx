@@ -34,6 +34,8 @@ const Sidebar = () => {
                 { title: '重工管理', path: '/rework', icon: 'fa-rotate' },
                 { title: 'CAR 要求', path: '/cara', icon: 'fa-bullhorn' },
                 { title: '矯正措施', path: '/capa', icon: 'fa-file-signature' },
+                { title: '客訴管理', path: '/complaints', icon: 'fa-megaphone' },
+                { title: '任務清單', path: '/tasks', icon: 'fa-list-check' },
                 { title: '公差管理', path: '/tolerance', icon: 'fa-ruler-combined' },
                 { title: '擠壓公差', path: '/extrusion-tolerance', icon: 'fa-compress-alt' },
             ]
