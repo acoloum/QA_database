@@ -62,7 +62,7 @@ const useInspectors = () =>
     useQuery({
         queryKey: ['inspectors'],
         queryFn: async () => {
-            const res = await api.get('/auth/inspectors');
+            const res = await api.get('/inspectors');
             return res.data as { id: number; name: string }[];
         },
         staleTime: 10 * 60 * 1000,
