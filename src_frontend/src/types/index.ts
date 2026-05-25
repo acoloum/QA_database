@@ -729,6 +729,8 @@ export interface CAPAListItem {
     create_date?: string;
     deadline?: string | null;
     progress_percent: number;
+    vendor?: string | null;
+    ncmr_description?: string | null;
 }
 
 // ── CARA 重設計 ───────────────────────────────────────────────

@@ -134,6 +134,8 @@ const CAPAPage = () => {
                                 <tr>
                                     <th>8D 單號</th>
                                     <th>來源</th>
+                                    <th>廠商</th>
+                                    <th>不良描述</th>
                                     <th>嚴格度</th>
                                     <th>嚴重度</th>
                                     <th>負責人</th>
@@ -145,10 +147,10 @@ const CAPAPage = () => {
                             </thead>
                             <tbody>
                                 {isLoading ? (
-                                    <tr><td colSpan={9} className="text-center py-4 text-muted">載入中…</td></tr>
+                                    <tr><td colSpan={11} className="text-center py-4 text-muted">載入中…</td></tr>
                                 ) : capas.length === 0 ? (
                                     <tr>
-                                        <td colSpan={9} className="text-center py-4 text-muted">
+                                        <td colSpan={11} className="text-center py-4 text-muted">
                                             <i className="bi bi-inbox fs-3 d-block mb-2" />
                                             查無 CAPA 資料
                                         </td>
@@ -160,7 +162,12 @@ const CAPAPage = () => {
                                             <Badge bg="light" text="dark">
                                                 {item.source_type === 'ncmr' ? 'NCMR' : '客訴'}
                                             </Badge>
-                                            <span className="ms-1 text-muted">#{item.source_id}</span>
+                                        </td>
+                                        <td className="small">{item.vendor ?? '—'}</td>
+                                        <td className="small" style={{ maxWidth: '180px' }}>
+                                            <span className="text-truncate d-block" title={item.ncmr_description ?? ''}>
+                                                {item.ncmr_description ?? '—'}
+                                            </span>
                                         </td>
                                         <td className="small">
                                             <Badge bg={item.rigor === '完整8D' ? 'primary' : 'info'}>

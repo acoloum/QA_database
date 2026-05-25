@@ -326,6 +326,7 @@ class CAPAService:
     # ── 序列化（列表用）─────────────────────────────────────
     @staticmethod
     def _to_list_dict(ca: CorrectiveAction) -> Dict[str, Any]:
+        ncmr = NCMR.query.get(ca.source_id or ca.ncmr_id) if ca.source_type == 'ncmr' or ca.ncmr_id else None
         return {
             'id':              ca.id,
             'no':              ca.eight_d_number,
@@ -338,6 +339,8 @@ class CAPAService:
             'create_date':     ca.created_at.isoformat() if ca.created_at else None,
             'deadline':        ca.d0_deadline.isoformat() if ca.d0_deadline else None,
             'progress_percent': CAPAService._calc_progress(ca)['percent'],
+            'vendor':          ncmr.vendor if ncmr else None,
+            'ncmr_description': ncmr.description if ncmr else None,
         }
 
     # ── 序列化（明細用）─────────────────────────────────────

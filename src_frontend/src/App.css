@@ -1274,6 +1274,25 @@ header h1 {
     box-shadow: none !important;
 }
 
+/* Modal 內的 pills（CAPA 步驟導覽）：覆蓋側邊欄白字規則 */
+.modal .nav-pills .nav-link {
+    color: #495057 !important;
+    background-color: transparent !important;
+    background-image: none !important;
+}
+
+.modal .nav-pills .nav-link:hover {
+    color: #4f46e5 !important;
+    background-color: rgba(79, 70, 229, 0.08) !important;
+}
+
+.modal .nav-pills .nav-link.active {
+    color: #fff !important;
+    background-color: #4f46e5 !important;
+    background-image: none !important;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.35) !important;
+}
+
 .sidebar-footer {
     padding: 16px 20px;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
