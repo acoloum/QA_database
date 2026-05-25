@@ -189,12 +189,18 @@ class CARAService:
     # ── 序列化（列表用）─────────────────────────────────────
     @staticmethod
     def _to_list_dict(c: CARARecord) -> Dict[str, Any]:
+        n = c.ncmr
         return {
             'id':       c.id,
             'no':       c.cara_no,
             'vendor':   c.vendor,
             'status':   c.status,
             'ncmr_id':  c.ncmr_id,
+            'ncmr_no':  n.ncmr_number if n else None,
+            'source':   n.source if n else None,
+            'material': n.material if n else None,
+            'product':  n.product_info if n else None,
+            'owner':    c.leader.name if c.leader else None,
             'progress_percent': CARAService._calc_progress(c)['percent'],
             'created_at': c.created_at.isoformat() if c.created_at else None,
         }

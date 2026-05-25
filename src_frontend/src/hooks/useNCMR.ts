@@ -82,18 +82,18 @@ export const useCARAList = (params: CARListParams = {}) => {
                 total: number;
                 page: number;
                 per_page: number;
-            }>('/cara', { params });
+            }>('/caras', { params });
             const mapped = res.data.data.map((item) => ({
-                id: item['識別碼'] as number,
-                no: item['單號'],
-                ncmr_no: item['ncmr_number'] || item['ncmr_id'],
-                source: item['ncmr_source'],
-                vendor: item['ncmr_vendor'],
-                material: item['ncmr_material'],
-                product: item['ncmr_product'],
-                create_date: item['建立日期'] || item['ncmr_date'],
-                owner: item['負責人員姓名'],
-                status: item['狀態'],
+                id: item['id'] as number,
+                no: item['no'],
+                ncmr_no: item['ncmr_no'] || item['ncmr_id'],
+                source: item['source'],
+                vendor: item['vendor'],
+                material: item['material'],
+                product: item['product'],
+                create_date: item['created_at'],
+                owner: item['owner'],
+                status: item['status'],
             }));
             return {
                 data: mapped,
