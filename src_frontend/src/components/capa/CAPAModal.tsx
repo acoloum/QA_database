@@ -60,9 +60,7 @@ const CRITERIA_OPTIONS = [
 // ── 人員型別 ──────────────────────────────────────────────────
 interface InspectorItem { id: number; name: string; group: string }
 
-// 顯示標籤：小組與姓名不同時顯示「小組-姓名」，否則直接顯示名稱
-const inspectorLabel = (i: InspectorItem) =>
-    i.group && i.group !== i.name ? `${i.group}-${i.name}` : i.name;
+const inspectorLabel = (i: InspectorItem) => i.name;
 
 // 依小組分組 inspectors
 const groupInspectors = (list: InspectorItem[]) =>
