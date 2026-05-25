@@ -1,5 +1,5 @@
 """附件路由 — 上傳、查詢、下載、刪除"""
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, jsonify, request, send_file, redirect
 from ..services.attachment_service import AttachmentService
 from ..utils import auth_required
 
@@ -74,16 +74,22 @@ def download_attachment(current_user, att_id: int):
     if not att:
         return jsonify({'error': '附件不存在'}), 404
 
+    # 本地儲存：直接回傳檔案
     abs_path = AttachmentService.get_file_path(att_id)
-    if not abs_path:
-        return jsonify({'error': '檔案不存在於伺服器'}), 404
+    if abs_path:
+        return send_file(
+            abs_path,
+            mimetype=att['mime_type'] or 'application/octet-stream',
+            as_attachment=True,
+            download_name=att['file_name'],
+        )
 
-    return send_file(
-        abs_path,
-        mimetype=att['mime_type'] or 'application/octet-stream',
-        as_attachment=True,
-        download_name=att['file_name'],
-    )
+    # 雲端儲存：redirect 至 presigned URL
+    url = AttachmentService.get_download_url(att_id)
+    if url:
+        return redirect(url)
+
+    return jsonify({'error': '檔案不存在於伺服器'}), 404
 
 
 @attachment_bp.route('/attachments/<int:att_id>', methods=['DELETE'])

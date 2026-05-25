@@ -1,7 +1,6 @@
 """附件服務 — 共用附件上傳、查詢、下載、刪除"""
 import os
 import uuid
-from datetime import datetime
 from typing import List, Optional, Dict, Any
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
@@ -11,9 +10,7 @@ from ..models import Attachment
 
 # 允許的 MIME 類型白名單
 ALLOWED_MIME_TYPES = {
-    # 圖片
     'image/jpeg', 'image/jpg', 'image/png', 'image/gif',
-    # 文件
     'application/pdf',
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -21,7 +18,6 @@ ALLOWED_MIME_TYPES = {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'application/vnd.ms-powerpoint',
     'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    # 文字
     'text/plain', 'text/csv',
 }
 
@@ -31,38 +27,28 @@ ALLOWED_EXTENSIONS = {
     'txt', 'csv',
 }
 
-MAX_FILE_SIZE = 10 * 1024 * 1024   # 10 MB
+MAX_FILE_SIZE    = 10 * 1024 * 1024
 VALID_ENTITY_TYPES = {'capa', 'cara', 'task', 'complaint'}
+
+
+def _get_storage():
+    """取得目前 app 設定的儲存後端"""
+    return current_app.config['STORAGE']
 
 
 class AttachmentService:
 
     @staticmethod
-    def _get_upload_dir(entity_type: str, entity_id: int) -> str:
-        """取得並確認儲存目錄"""
-        base = current_app.config.get('UPLOAD_FOLDER',
-               os.path.join(os.path.dirname(current_app.root_path), 'backend', 'uploads'))
-        upload_dir = os.path.join(base, entity_type, str(entity_id))
-        os.makedirs(upload_dir, exist_ok=True)
-        return upload_dir
-
-    @staticmethod
     def _allowed_file(file: FileStorage) -> tuple[bool, str]:
-        """驗證檔案類型與大小"""
-        # 副檔名檢查
         filename = file.filename or ''
         ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
         if ext not in ALLOWED_EXTENSIONS:
             return False, f'不允許的檔案類型 .{ext}，允許類型：{", ".join(sorted(ALLOWED_EXTENSIONS))}'
-
-        # 讀取大小
         file.seek(0, 2)
         size = file.tell()
         file.seek(0)
         if size > MAX_FILE_SIZE:
-            mb = size / (1024 * 1024)
-            return False, f'檔案大小 {mb:.1f} MB 超過上限 10 MB'
-
+            return False, f'檔案大小 {size / 1024 / 1024:.1f} MB 超過上限 10 MB'
         return True, ''
 
     @staticmethod
@@ -73,7 +59,6 @@ class AttachmentService:
         d_step: Optional[int],
         uploader_id: Optional[int],
     ) -> Dict[str, Any]:
-        """上傳附件，回傳附件資訊"""
         if entity_type not in VALID_ENTITY_TYPES:
             raise ValueError(f'無效的實體類型：{entity_type}')
 
@@ -81,18 +66,12 @@ class AttachmentService:
         if not ok:
             raise ValueError(msg)
 
-        # 產生安全唯一檔名
         original = secure_filename(file.filename or 'unnamed')
         ext = original.rsplit('.', 1)[-1].lower() if '.' in original else ''
         unique_name = f'{uuid.uuid4().hex}.{ext}' if ext else uuid.uuid4().hex
-        save_dir = AttachmentService._get_upload_dir(entity_type, entity_id)
-        save_path = os.path.join(save_dir, unique_name)
-
-        file.save(save_path)
-        file_size = os.path.getsize(save_path)
-        mime = file.mimetype or ''
-        # 相對路徑儲存（方便移植）
         rel_path = os.path.join('uploads', entity_type, str(entity_id), unique_name)
+
+        file_size = _get_storage().save(file, rel_path)
 
         att = Attachment(
             entity_type=entity_type,
@@ -100,7 +79,7 @@ class AttachmentService:
             d_step=d_step,
             file_name=original,
             file_path=rel_path,
-            mime_type=mime,
+            mime_type=file.mimetype or '',
             file_size=file_size,
             uploaded_by=uploader_id,
         )
@@ -114,7 +93,6 @@ class AttachmentService:
         entity_id: int,
         d_step: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """查詢實體所有附件，可篩選 D 步驟"""
         q = Attachment.query.filter_by(entity_type=entity_type, entity_id=entity_id)
         if d_step is not None:
             q = q.filter_by(d_step=d_step)
@@ -123,15 +101,19 @@ class AttachmentService:
 
     @staticmethod
     def get_file_path(att_id: int) -> Optional[str]:
-        """取得附件的絕對路徑（用於 send_file）"""
+        """取得可傳給 send_file() 的絕對路徑；雲端後端回傳 None"""
         att = Attachment.query.get(att_id)
         if not att:
             return None
-        base = current_app.config.get('UPLOAD_FOLDER',
-               os.path.join(os.path.dirname(current_app.root_path), 'backend', 'uploads'))
-        # rel_path 是 uploads/{type}/{id}/{file}
-        abs_path = os.path.join(os.path.dirname(base), att.file_path)
-        return abs_path if os.path.exists(abs_path) else None
+        return _get_storage().get_abs_path(att.file_path)
+
+    @staticmethod
+    def get_download_url(att_id: int) -> Optional[str]:
+        """取得可直接 redirect 的下載 URL；本地後端回傳 None"""
+        att = Attachment.query.get(att_id)
+        if not att:
+            return None
+        return _get_storage().get_download_url(att.file_path)
 
     @staticmethod
     def get_by_id(att_id: int) -> Optional[Dict[str, Any]]:
@@ -140,22 +122,13 @@ class AttachmentService:
 
     @staticmethod
     def delete(att_id: int, requester_id: int, requester_role: str) -> bool:
-        """刪除附件（僅上傳者或 admin/品保主管可操作）"""
         att = Attachment.query.get(att_id)
         if not att:
             raise ValueError('附件不存在')
-
-        # 權限：上傳者本人 OR admin 角色
         if att.uploaded_by != requester_id and requester_role not in ('admin', 'manager'):
             raise PermissionError('無權限刪除此附件')
 
-        # 刪除實體檔案
-        base = current_app.config.get('UPLOAD_FOLDER',
-               os.path.join(os.path.dirname(current_app.root_path), 'backend', 'uploads'))
-        abs_path = os.path.join(os.path.dirname(base), att.file_path)
-        if os.path.exists(abs_path):
-            os.remove(abs_path)
-
+        _get_storage().delete(att.file_path)
         db.session.delete(att)
         db.session.commit()
         return True

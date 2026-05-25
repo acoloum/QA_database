@@ -46,9 +46,12 @@ services:
       - "8080:80"
     volumes:
       - app_logs:/app/logs
+      - app_uploads:/app/backend/uploads
 
 volumes:
   postgres_data:
     driver: local
   app_logs:
+    driver: local
+  app_uploads:
     driver: local

@@ -20,6 +20,7 @@ from .routes.task import task_bp
 from .routes.complaint import complaint_bp
 from .routes.capa import capa_bp
 from .routes.cara import cara_bp
+from .storage import create_storage_backend
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -49,6 +50,9 @@ if not app.debug:
 
 db.init_app(app)
 limiter.init_app(app)
+
+# 初始化儲存後端（可透過 STORAGE_BACKEND_TYPE / UPLOAD_FOLDER 環境變數切換）
+app.config['STORAGE'] = create_storage_backend(app.config)
 
 # Configure CORS — 明確指定允許來源，避免任意來源攜帶憑證
 CORS(app, supports_credentials=True, origins=ALLOWED_ORIGINS)
