@@ -1,0 +1,47 @@
+-- 補齊 CAPA 8D 重設計時新增但未執行 DDL 的欄位
+ALTER TABLE "異常矯正單"
+  -- 來源欄位
+  ADD COLUMN IF NOT EXISTS "來源類型"        VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS "來源ID"          INTEGER,
+  ADD COLUMN IF NOT EXISTS "嚴格度"          VARCHAR(20) DEFAULT '完整8D',
+  -- D0 立案
+  ADD COLUMN IF NOT EXISTS "D0_症狀描述"     TEXT,
+  ADD COLUMN IF NOT EXISTS "D0_判斷準則"     JSONB,
+  ADD COLUMN IF NOT EXISTS "D0_嚴重度"       VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS "D0_客戶要求結案日" DATE,
+  -- D1 小組
+  ADD COLUMN IF NOT EXISTS "D1_Champion"     INTEGER,
+  ADD COLUMN IF NOT EXISTS "D1_Leader"       INTEGER,
+  ADD COLUMN IF NOT EXISTS "D1_成員"         JSONB,
+  -- D2 5W2H
+  ADD COLUMN IF NOT EXISTS "D2_What"         TEXT,
+  ADD COLUMN IF NOT EXISTS "D2_Where"        TEXT,
+  ADD COLUMN IF NOT EXISTS "D2_When"         TEXT,
+  ADD COLUMN IF NOT EXISTS "D2_Who"          TEXT,
+  ADD COLUMN IF NOT EXISTS "D2_Why"          TEXT,
+  ADD COLUMN IF NOT EXISTS "D2_How"          TEXT,
+  ADD COLUMN IF NOT EXISTS "D2_HowMany"      TEXT,
+  -- D3 暫時對策（新版欄位）
+  ADD COLUMN IF NOT EXISTS "D3_對策內容"     TEXT,
+  ADD COLUMN IF NOT EXISTS "D3_生效日"       DATE,
+  ADD COLUMN IF NOT EXISTS "D3_有效性驗證"   TEXT,
+  -- D4 真因分析（新版欄位）
+  ADD COLUMN IF NOT EXISTS "D4_工具"         VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS "D4_5Why資料"     JSONB,
+  ADD COLUMN IF NOT EXISTS "D4_魚骨圖資料"   JSONB,
+  ADD COLUMN IF NOT EXISTS "D4_根本原因"     TEXT,
+  -- D5 永久對策（新版欄位）
+  ADD COLUMN IF NOT EXISTS "D5_對策內容"     TEXT,
+  ADD COLUMN IF NOT EXISTS "D5_預計實施日"   DATE,
+  ADD COLUMN IF NOT EXISTS "D5_驗證計畫"     TEXT,
+  -- D6 實施驗證（新版欄位）
+  ADD COLUMN IF NOT EXISTS "D6_實施日"       DATE,
+  ADD COLUMN IF NOT EXISTS "D6_驗證結果"     TEXT,
+  ADD COLUMN IF NOT EXISTS "D6_驗證通過"     BOOLEAN DEFAULT FALSE,
+  -- D7 預防再發（新版欄位）
+  ADD COLUMN IF NOT EXISTS "D7_橫展類型"     JSONB,
+  -- D8 結案（新版欄位）
+  ADD COLUMN IF NOT EXISTS "D8_結案日期"     DATE,
+  ADD COLUMN IF NOT EXISTS "D8_團隊表揚"     TEXT,
+  -- 時間戳（舊版相容）
+  ADD COLUMN IF NOT EXISTS "結案日期_舊"     TIMESTAMP;
