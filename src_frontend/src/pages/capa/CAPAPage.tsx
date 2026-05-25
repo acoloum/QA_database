@@ -29,7 +29,7 @@ const CAPAPage = () => {
 
     // URL 參數觸發開啟（來自 NCMR / 客訴頁開立後跳轉）
     useEffect(() => {
-        const openId = searchParams.get('openId');
+        const openId = searchParams.get('editId') ?? searchParams.get('openId');
         if (openId) {
             setEditId(Number(openId));
             setShowModal(true);

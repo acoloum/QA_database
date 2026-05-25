@@ -229,7 +229,7 @@ export const useCreateCAPA = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async (ncmrId: number) => {
-            const res = await api.post('/capa/create', { ncmr_id: ncmrId });
+            const res = await api.post(`/ncmr/${ncmrId}/open-capa`, {});
             return res.data;
         },
         onSuccess: () => {
