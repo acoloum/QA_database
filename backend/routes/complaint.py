@@ -112,19 +112,6 @@ def open_capa_from_complaint(current_user, complaint_id: int):
         return jsonify({'error': str(e)}), 500
 
 
-# ── 從客訴開立 CARA ─────────────────────────────────────────
-@complaint_bp.route('/api/complaints/<int:complaint_id>/open-cara', methods=['POST'])
-@auth_required
-def open_cara_from_complaint(current_user, complaint_id: int):
-    """POST /api/complaints/<id>/open-cara — 從客訴開立 CARA"""
-    try:
-        result = ComplaintService.open_cara(complaint_id)
-        return jsonify(result), 201
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
 
 # ── 從客訴開立重工 ────────────────────────────────────────────
 @complaint_bp.route('/api/complaints/<int:complaint_id>/open-rework', methods=['POST'])

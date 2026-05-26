@@ -28,7 +28,7 @@ ALLOWED_EXTENSIONS = {
 }
 
 MAX_FILE_SIZE    = 10 * 1024 * 1024
-VALID_ENTITY_TYPES = {'capa', 'cara', 'task', 'complaint'}
+VALID_ENTITY_TYPES = {'capa', 'task', 'complaint'}
 
 
 def _get_storage():

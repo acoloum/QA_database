@@ -177,21 +177,6 @@ class ComplaintService:
         db.session.commit()
         return True
 
-    # ── 從客訴開立 CARA ──────────────────────────────────────
-    @staticmethod
-    def open_cara(complaint_id: int) -> Dict[str, Any]:
-        c = CustomerComplaint.query.get(complaint_id)
-        if not c:
-            raise ValueError('客訴不存在')
-        if c.related_cara_id:
-            raise ValueError(f'此客訴已開立 CARA（ID: {c.related_cara_id}）')
-
-        from ..services.cara_service import CARAService
-        cara = CARAService.create_from_complaint(c)
-        c.related_cara_id = cara['id']
-        db.session.commit()
-        return cara
-
     # ── 從客訴開立重工 ───────────────────────────────────────
     @staticmethod
     def open_rework(complaint_id: int) -> Dict[str, Any]:
@@ -277,7 +262,6 @@ class ComplaintService:
             'repeat_refs': c.repeat_refs or [],
             # 關聯
             'related_capa_id':   c.related_capa_id,
-            'related_cara_id':   c.related_cara_id,
             'related_rework_id': c.related_rework_id,
             'status':            c.status,
             'created_by':      c.created_by,

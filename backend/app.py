@@ -19,7 +19,6 @@ from .routes.attachment import attachment_bp
 from .routes.task import task_bp
 from .routes.complaint import complaint_bp
 from .routes.capa import capa_bp
-from .routes.cara import cara_bp
 from .storage import create_storage_backend
 
 app = Flask(__name__)
@@ -70,7 +69,6 @@ app.register_blueprint(attachment_bp)
 app.register_blueprint(task_bp)
 app.register_blueprint(complaint_bp)
 app.register_blueprint(capa_bp)
-app.register_blueprint(cara_bp)
 
 # Global Error Handler (Optional but recommended)
 # Global Error Handler
