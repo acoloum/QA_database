@@ -58,13 +58,7 @@ class NCMRService:
 
             data = []
             for n in ncmrs:
-                car_status = None
                 capa_status = None
-
-                cars = [ca for ca in n.corrective_actions if ca.car_number]
-                if cars:
-                    latest_car = sorted(cars, key=lambda x: x.id, reverse=True)[0]
-                    car_status = latest_car.status
 
                 capas = [ca for ca in n.corrective_actions if ca.eight_d_number]
                 if capas:
@@ -97,7 +91,6 @@ class NCMRService:
                     "不良原因大類": n.defect_category,
                     "不良原因細項": n.defect_detail,
                     "發現人員姓名": inspector_name,
-                    "CAR狀態": car_status,
                     "CAPA狀態": capa_status,
                     "重工執行次數": rework_count,
                     "重工狀態": rework_status
@@ -366,7 +359,6 @@ class NCMRService:
                     "識別碼": ca.id,
                     "NCMR_ID": ca.ncmr_id,
                     "8D單號": ca.eight_d_number,
-                    "CAR單號": ca.car_number,
                     "負責人員": ca.owner_id,
                     "狀態": ca.status,
                     "建立日期": format_value(ca.created_at),
