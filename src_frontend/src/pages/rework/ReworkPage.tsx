@@ -13,6 +13,7 @@ import EditInspectionModal from '../../components/rework/EditInspectionModal';
 import EditCostModal from '../../components/rework/EditCostModal';
 import EditBasicInfoModal from '../../components/rework/EditBasicInfoModal';
 import ReworkStatisticsDashboard from '../../components/rework/ReworkStatisticsDashboard';
+import ReworkFollowUpModal from '../../components/rework/ReworkFollowUpModal';
 
 const ReworkPage = () => {
     const navigate = useNavigate();
@@ -46,6 +47,13 @@ const ReworkPage = () => {
 
     const [initialNcmrId, setInitialNcmrId] = useState<string>('');
     const [initialNcmrNo, setInitialNcmrNo] = useState<string>('');
+
+    // 結案後追蹤 Modal（若 NCMR 尚未開 CAPA 則提示）
+    const [followUpModal, setFollowUpModal] = useState<{
+        show: boolean;
+        ncmrId: number;
+        ncmrNumber: string;
+    } | null>(null);
 
     // Filters
     const [statusFilter, setStatusFilter] = useState('');
@@ -203,6 +211,27 @@ const ReworkPage = () => {
         try {
             await api.post('/rework/close', { rework_id: reworkId });
             alert('結案成功');
+
+            // 結案後，若該重工關聯 NCMR 且 NCMR 尚未開立 CAPA，提示使用者
+            const rework = applications.find(a => a.識別碼 === reworkId)
+                ?? (selectedReworkDetail?.識別碼 === reworkId ? selectedReworkDetail : null);
+            const ncmrId = rework?.NCMR_ID;
+            if (ncmrId) {
+                try {
+                    const ncmrRes = await api.get(`/ncmr/detail/${ncmrId}`);
+                    const ncmr = ncmrRes.data;
+                    if (!ncmr.related_capa_id) {
+                        setFollowUpModal({
+                            show: true,
+                            ncmrId,
+                            ncmrNumber: rework?.ncmr_number || ncmr.NCMR單號 || String(ncmrId),
+                        });
+                    }
+                } catch {
+                    // 取不到 NCMR 詳細資料也不影響結案流程
+                }
+            }
+
             reloadDetailData();
         } catch (error: unknown) {
             const err = error as { response?: { data?: { error?: string } } };
@@ -702,6 +731,16 @@ const ReworkPage = () => {
                 onSuccess={() => reloadDetailData()}
                 application={selectedReworkDetail}
             />
+
+            {/* 結案後追蹤：若 NCMR 尚未開 CAPA 則提示 */}
+            {followUpModal && (
+                <ReworkFollowUpModal
+                    show={followUpModal.show}
+                    onHide={() => setFollowUpModal(null)}
+                    ncmrId={followUpModal.ncmrId}
+                    ncmrNumber={followUpModal.ncmrNumber}
+                />
+            )}
         </div>
     );
 };
