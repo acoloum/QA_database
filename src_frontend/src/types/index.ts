@@ -520,7 +520,6 @@ export interface DashboardStats {
     patrol: KpiModuleStats;
     ncmr: KpiModuleStats;
     rework: KpiModuleStats;
-    cara: KpiModuleStats;
     capa: KpiModuleStats;
 }
 
@@ -642,7 +641,6 @@ export interface CustomerComplaint {
     is_repeat: boolean;
     repeat_refs: string[];
     related_capa_id?: number | null;
-    related_cara_id?: number | null;
     related_rework_id?: number | null;
     status: ComplaintStatus;
     created_by?: number | null;
@@ -735,41 +733,3 @@ export interface CAPAListItem {
     ncmr_description?: string | null;
 }
 
-// ── CARA 重設計 ───────────────────────────────────────────────
-export interface CARADetail {
-    id: number;
-    no: string;
-    vendor?: string | null;
-    status: string;
-    ncmr_id?: number | null;
-    ncmr_info?: Record<string, string | null>;
-    progress: {
-        total_steps: number;
-        completed_steps: number;
-        percent: number;
-        step_status: Record<string, boolean>;
-    };
-    D1_leader_id?: number | null;
-    D1_leader_name?: string | null;
-    D2_what?: string | null;
-    D2_where?: string | null;
-    D2_when?: string | null;
-    D2_who?: string | null;
-    D2_why?: string | null;
-    D2_how?: string | null;
-    D2_how_many?: string | null;
-    D3_action?: string | null;
-    D3_effective_date?: string | null;
-    D3_verification?: string | null;
-    D4_tool?: string | null;
-    D4_five_why?: unknown[] | null;
-    D4_fishbone?: Record<string, string[]> | null;
-    D4_root_cause?: string | null;
-    D6_implement_date?: string | null;
-    D6_result?: string | null;
-    D6_verified?: boolean;
-    D8_close_date?: string | null;
-    D8_confirmation?: string | null;
-    created_at?: string;
-    closed_at?: string | null;
-}

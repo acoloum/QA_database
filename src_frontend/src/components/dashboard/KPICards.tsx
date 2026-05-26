@@ -88,18 +88,6 @@ const KPICards = ({ period = 'this_month', customDateRange }: KPICardsProps) => 
             isAnomaly: (s) => (s.rework.trend === 'up' && s.rework.change_pct > 30)
         },
         {
-            label: 'CAR 要求',
-            key: 'cara',
-            icon: 'fa-bullhorn',
-            getValue: (s) => s.cara.pending,
-            getPending: (s) => s.cara.pending,
-            getTrend: (s) => s.cara.trend,
-            getChange: (s) => s.cara.change_pct,
-            path: '/cara',
-            suffix: '待處理',
-            isAnomaly: (s) => (s.cara.trend === 'up' && s.cara.change_pct > 30)
-        },
-        {
             label: '矯正措施',
             key: 'capa',
             icon: 'fa-file-signature',

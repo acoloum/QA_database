@@ -6,7 +6,7 @@ import DispositionModal from '../../components/ncmr/DispositionModal';
 import FilterBar from '../../components/common/FilterBar';
 import PaginationBar from '../../components/common/PaginationBar';
 import { useNavigate } from 'react-router-dom';
-import { useNCMRList, useDeleteNCMR, useCreateCARA, useCreateCAPA, useNCMRDetail } from '../../hooks/useNCMR';
+import { useNCMRList, useDeleteNCMR, useCreateCAPA, useNCMRDetail } from '../../hooks/useNCMR';
 import type { NCMRListParams } from '../../hooks/useNCMR';
 
 const EMPTY_FILTERS: NCMRListParams = {
@@ -30,7 +30,6 @@ const NCMRPage = () => {
     const total = result?.total ?? 0;
 
     const deleteMutation = useDeleteNCMR();
-    const createCARAMutation = useCreateCARA();
     const createCAPAMutation = useCreateCAPA();
 
     const [showModal, setShowModal] = useState(false);
@@ -92,11 +91,6 @@ const NCMRPage = () => {
         if (window.confirm('確定要針對此異常單開立重工申請嗎？')) {
             window.open(`/rework?ncmr_id=${id}&ncmr_no=${no || id}`, '_blank');
         }
-    };
-
-    const convertToCAR = (id: number) => {
-        if (!window.confirm('確定要將此異常單轉為CAR嗎？')) return;
-        createCARAMutation.mutate(id);
     };
 
     const convertTo8D = async (id: number) => {
@@ -200,7 +194,6 @@ const NCMRPage = () => {
                                                 <Button variant="outline-dark" size="sm" onClick={() => setPrintItem(item)}>列印</Button>
                                                 <Button variant="outline-primary" size="sm" onClick={() => { setEditId(item.id); setShowModal(true); }}>編輯</Button>
                                                 <Button variant="outline-warning" size="sm" onClick={() => convertToRework(item.id, item.no || String(item.id))}>轉重工</Button>
-                                                <Button variant="outline-info" size="sm" onClick={() => convertToCAR(item.id)}>轉CAR</Button>
                                                 <Button variant="outline-success" size="sm" onClick={() => convertTo8D(item.id)}>轉8D</Button>
                                                 <Button variant="outline-danger" size="sm" onClick={() => handleDelete(item.id)}>刪除</Button>
                                             </div>

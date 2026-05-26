@@ -4,8 +4,9 @@
  * - 既有毒禁用：any → warning（不阻擋）
  */
 import { execSync } from 'child_process';
+import { existsSync } from 'fs';
 import { ESLint } from 'eslint';
-import { resolve, isAbsolute } from 'path';
+import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -20,19 +21,20 @@ const toAbs = (f) => {
   return resolve(ROOT, rel);
 };
 
-// 取得 staged 的新檔案
+// 取得 staged 的新增檔案
 const newFiles = exec('git diff --cached --name-only --diff-filter=A')
   .split('\n')
   .filter(f => f && /\.(ts|tsx)$/.test(f))
   .map(toAbs);
 
-// 取得 staged 的所有 TS/TSX 檔
-const allStaged = exec('git diff --cached --name-only')
+// 取得 staged 的所有 TS/TSX 檔（排除已刪除的檔案 --diff-filter=d 小寫d表示排除刪除）
+const allStaged = exec('git diff --cached --name-only --diff-filter=d')
   .split('\n')
   .filter(f => f && /\.(ts|tsx)$/.test(f))
   .map(toAbs);
 
-const existingFiles = allStaged.filter(f => !newFiles.includes(f));
+// 排除新增檔並只保留實際存在於磁碟的檔案
+const existingFiles = allStaged.filter(f => !newFiles.includes(f) && existsSync(f));
 
 const allResults = [];
 

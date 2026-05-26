@@ -9,7 +9,6 @@ import ShippingPage from './pages/shipping/ShippingPage';
 import PatrolPage from './pages/patrol/PatrolPage';
 import NCMRPage from './pages/ncmr/NCMRPage';
 import CAPAPage from './pages/capa/CAPAPage';
-import CARAPage from './pages/cara/CARAPage';
 import TolerancePage from './pages/tolerance/TolerancePage';
 import ExtrusionTolerancePage from './pages/extrusion-tolerance/ExtrusionTolerancePage';
 import UserManagementPage from './pages/admin/UserManagementPage';
@@ -38,7 +37,6 @@ function App() {
               <Route path="/patrol" element={<PatrolPage />} /> {/* Added PatrolPage route */}
               <Route path="/ncmr" element={<NCMRPage />} /> {/* Added NCMRPage route */}
               <Route path="/capa" element={<CAPAPage />} />
-              <Route path="/cara" element={<CARAPage />} />
               <Route path="/tasks" element={<TaskListPage />} />
               <Route path="/complaints" element={<ComplaintPage />} />
               <Route path="/complaints/stats" element={<ComplaintStatsPage />} />

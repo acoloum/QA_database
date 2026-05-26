@@ -32,7 +32,6 @@ const Sidebar = () => {
                 { title: '現場巡檢', path: '/patrol', icon: 'fa-wand-magic-sparkles' },
                 { title: '不合格品', path: '/ncmr', icon: 'fa-triangle-exclamation' },
                 { title: '重工管理', path: '/rework', icon: 'fa-rotate' },
-                { title: 'CAR 要求', path: '/cara', icon: 'fa-bullhorn' },
                 { title: '矯正措施', path: '/capa', icon: 'fa-file-signature' },
                 { title: '客訴管理', path: '/complaints', icon: 'fa-comment-dots' },
                 { title: '任務清單', path: '/tasks', icon: 'fa-list-check' },

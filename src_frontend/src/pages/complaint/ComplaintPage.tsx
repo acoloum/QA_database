@@ -7,7 +7,6 @@ import {
     useComplaintList,
     useDeleteComplaint,
     useOpenCapaFromComplaint,
-    useOpenCaraFromComplaint,
     useOpenReworkFromComplaint,
     COMPLAINT_TYPE_LABELS,
     COMPLAINT_STATUS_VARIANT,
@@ -48,7 +47,6 @@ const ComplaintPage = () => {
     const { data, isLoading }   = useComplaintList(params);
     const deleteMutation        = useDeleteComplaint();
     const openCapaMutation      = useOpenCapaFromComplaint();
-    const openCaraMutation      = useOpenCaraFromComplaint();
     const openReworkMutation    = useOpenReworkFromComplaint();
 
     const complaints  = data?.data ?? [];
@@ -70,16 +68,6 @@ const ComplaintPage = () => {
         }
         if (window.confirm(`確定從客訴「${c.complaint_no}」開立 CAPA？`)) {
             openCapaMutation.mutate(c.id);
-        }
-    };
-
-    const handleOpenCara = (c: CustomerComplaint) => {
-        if (c.related_cara_id) {
-            alert(`此客訴已開立 CARA（ID: ${c.related_cara_id}）`);
-            return;
-        }
-        if (window.confirm(`確定從客訴「${c.complaint_no}」開立 CARA？`)) {
-            openCaraMutation.mutate(c.id);
         }
     };
 
@@ -257,14 +245,6 @@ const ComplaintPage = () => {
                                                     <Button variant="outline-warning" size="sm" style={{ fontSize: '0.7rem' }}
                                                         onClick={() => handleOpenCapa(c)} disabled={openCapaMutation.isPending}>
                                                         開立CAPA
-                                                    </Button>
-                                                )}
-                                                {c.related_cara_id ? (
-                                                    <Badge bg="info" text="dark">CARA #{c.related_cara_id}</Badge>
-                                                ) : (
-                                                    <Button variant="outline-info" size="sm" style={{ fontSize: '0.7rem' }}
-                                                        onClick={() => handleOpenCara(c)} disabled={openCaraMutation.isPending}>
-                                                        開立CARA
                                                     </Button>
                                                 )}
                                                 {c.related_rework_id ? (

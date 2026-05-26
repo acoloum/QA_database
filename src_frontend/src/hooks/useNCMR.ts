@@ -73,37 +73,6 @@ export const useNCMRList = (params: NCMRListParams = {}) => {
     });
 };
 
-export const useCARAList = (params: CARListParams = {}) => {
-    return useQuery({
-        queryKey: ['caraList', params],
-        queryFn: async () => {
-            const res = await api.get<{
-                data: Record<string, unknown>[];
-                total: number;
-                page: number;
-                per_page: number;
-            }>('/caras', { params });
-            const mapped = res.data.data.map((item) => ({
-                id: item['id'] as number,
-                no: item['no'],
-                ncmr_no: item['ncmr_no'] || item['ncmr_id'],
-                source: item['source'],
-                vendor: item['vendor'],
-                material: item['material'],
-                product: item['product'],
-                create_date: item['created_at'],
-                owner: item['owner'],
-                status: item['status'],
-            }));
-            return {
-                data: mapped,
-                total: res.data.total,
-                page: res.data.page,
-                per_page: res.data.per_page,
-            };
-        },
-    });
-};
 
 export const useCAPAList = (params: CAPAListParams = {}) => {
     return useQuery({
@@ -208,22 +177,6 @@ export const useDeleteNCMR = () => {
     });
 };
 
-export const useCreateCARA = () => {
-    const queryClient = useQueryClient();
-    return useMutation({
-        mutationFn: async (ncmrId: number) => {
-            const res = await api.post('/cara/create', { ncmr_id: ncmrId });
-            return res.data;
-        },
-        onSuccess: (data) => {
-            if (data.success) {
-                toast.success(`CAR單號：${data.car_number} 已成功建立！`);
-            }
-            queryClient.invalidateQueries({ queryKey: ['ncmrList'], exact: false });
-            queryClient.invalidateQueries({ queryKey: ['ncmrDetail'], exact: false });
-        },
-    });
-};
 
 export const useCreateCAPA = () => {
     const queryClient = useQueryClient();

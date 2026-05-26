@@ -38,7 +38,7 @@ export const useMyTasks = () => {
     });
 };
 
-// ── 依來源查詢任務（CAPA/CARA 明細頁）────────────────────────
+// ── 依來源查詢任務（CAPA 明細頁）────────────────────────────
 export const useTasksBySource = (sourceType: string, sourceId: number | null) => {
     return useQuery({
         queryKey: ['tasks', sourceType, sourceId],

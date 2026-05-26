@@ -7,11 +7,10 @@ export interface DashboardStats {
     ncmr: { current: number; previous: number; pending: number; trend: string; change_pct: number };
     capa: { current: number; previous: number; pending: number; trend: string; change_pct: number };
     rework: { current: number; previous: number; pending: number; trend: string; change_pct: number };
-    cara: { current: number; previous: number; pending: number; trend: string; change_pct: number };
 }
 
 export interface TodoItem {
-    type: 'ncmr' | 'capa' | 'rework' | 'cara';
+    type: 'ncmr' | 'capa' | 'rework';
     id: string;
     title: string;
     description: string | null;
