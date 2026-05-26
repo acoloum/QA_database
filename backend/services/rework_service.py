@@ -149,15 +149,30 @@ class ReworkService:
                     "ncmr_number": ncmr.ncmr_number if ncmr else "",
                     "廠商": ncmr.vendor if ncmr else "",
                     "材質": ncmr.material if ncmr else "",
-                    # "產品資訊" already in ReworkRequest, but also in NCMR. 
+                    # "產品資訊" already in ReworkRequest, but also in NCMR.
                     # Legacy query selected n."產品資訊" AS "產品資訊" but Rework also has "產品資訊" column.
                     # Legacy code selected r.* then overwritten by n."產品資訊" if collision?
                     # Actually `product_info` is in ReworkRequest too.
+                    "客訴_ID": r.complaint_id,
                 }
                 # Format
                 for k, v in item.items():
                     item[k] = format_value(v)
                 data.append(item)
+
+            # 補上客訴單號（從 CustomerComplaint 反查，避免 N+1 改為批量查詢）
+            from ..models import CustomerComplaint
+            complaint_ids = [r.complaint_id for r in requests if r.complaint_id]
+            if complaint_ids:
+                complaints = {
+                    c.id: c.complaint_no
+                    for c in CustomerComplaint.query.filter(CustomerComplaint.id.in_(complaint_ids)).all()
+                }
+                for item in data:
+                    cid = item.get("客訴_ID")
+                    if cid:
+                        item["客訴單號"] = complaints.get(cid, "")
+
             return data
         except Exception as e:
             raise e
@@ -213,6 +228,7 @@ class ReworkService:
             rework_number = generate_number('RW', "重工申請單", "申請單號")
             req = ReworkRequest(
                 ncmr_id      = None,
+                complaint_id = complaint.id,
                 rework_number= rework_number,
                 applicant_id = None,
                 product_info = f'{complaint.product_no} / {complaint.customer}',

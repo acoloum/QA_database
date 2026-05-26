@@ -379,7 +379,8 @@ class ReworkRequest(db.Model):
     
     created_at = db.Column('申請日期', db.DateTime, default=datetime.utcnow)
     actual_finish_date = db.Column('實際完成日期', db.DateTime)
-    
+    complaint_id = db.Column('客訴_ID', db.Integer, nullable=True)
+
     applicant = db.relationship('Inspector', foreign_keys=[applicant_id], backref='rework_requests')
     reviewer = db.relationship('Inspector', foreign_keys=[reviewer_id], backref='rework_reviews')
     executions = db.relationship('ReworkExecution', backref='request', cascade="all, delete-orphan")
