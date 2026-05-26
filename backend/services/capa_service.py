@@ -277,6 +277,13 @@ class CAPAService:
         ca.d8_recognition = recognition
         ca.d8_close_date  = date.today()
         ca.closed_at      = datetime.utcnow()
+
+        # 若來源為客訴，同步將客訴狀態設為已結案
+        if ca.source_type == 'complaint' and ca.source_id:
+            complaint = CustomerComplaint.query.get(ca.source_id)
+            if complaint:
+                complaint.status = '已結案'
+
         db.session.commit()
         return CAPAService._to_dict(ca)
 
@@ -286,6 +293,13 @@ class CAPAService:
         ca = CorrectiveAction.query.get(capa_id)
         if not ca:
             raise ValueError('CAPA 不存在')
+        # 若來源為客訴，將客訴狀態回退為待處理並清空 related_capa_id
+        if ca.source_type == 'complaint' and ca.source_id:
+            complaint = CustomerComplaint.query.get(ca.source_id)
+            if complaint:
+                complaint.status = '待處理'
+                complaint.related_capa_id = None
+
         # 同步刪除關聯任務（pending 狀態）
         ActionTask.query.filter_by(
             source_type='capa', source_id=capa_id, status='pending'
