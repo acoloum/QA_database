@@ -20,7 +20,7 @@ export interface NCMRListParams {
     status?: string;
 }
 
-export interface CARListParams {
+export interface CAPAListParams {
     page?: number;
     per_page?: number;
     date_from?: string;
@@ -30,8 +30,6 @@ export interface CARListParams {
     product_info?: string;
     status?: string;
 }
-
-export type CAPAListParams = CARListParams;
 
 export const useNCMRList = (params: NCMRListParams = {}) => {
     return useQuery({
