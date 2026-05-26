@@ -492,7 +492,6 @@ class CustomerComplaint(db.Model):
 
     # 關聯單據
     related_capa_id   = db.Column('關聯CAPA_ID',  db.Integer, nullable=True)
-    related_cara_id   = db.Column('關聯CARA_ID',  db.Integer, nullable=True)
     related_rework_id = db.Column('關聯重工_ID',  db.Integer, nullable=True)
 
     # 狀態：'待處理' | '處理中' | '已結案'
