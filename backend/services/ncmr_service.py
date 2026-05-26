@@ -491,7 +491,7 @@ class NCMRService:
                 if owner:
                     ca.owner_id = owner.id
 
-            d_fields = ['D2_問題描述', 'D3_暫時對策', 'D4_真因分析', 'D6_成效驗證', 'D7_預防再發', 'D8_結案確認']
+            d_fields = ['D2_問題描述', 'D3_暫時對策', 'D4_真因分析', 'D5_永久對策', 'D6_成效驗證', 'D7_預防再發', 'D8_結案確認']
             for f in d_fields:
                 if f in data:
                     val = data[f]
