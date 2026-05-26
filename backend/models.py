@@ -490,8 +490,10 @@ class CustomerComplaint(db.Model):
     is_repeat   = db.Column('是否重複客訴',   db.Boolean, default=False)
     repeat_refs = db.Column('重複客訴參考單號', JSONB,      nullable=True)
 
-    # 關聯 CAPA
-    related_capa_id = db.Column('關聯CAPA_ID', db.Integer, nullable=True)
+    # 關聯單據
+    related_capa_id   = db.Column('關聯CAPA_ID',  db.Integer, nullable=True)
+    related_cara_id   = db.Column('關聯CARA_ID',  db.Integer, nullable=True)
+    related_rework_id = db.Column('關聯重工_ID',  db.Integer, nullable=True)
 
     # 狀態：'待處理' | '處理中' | '已結案'
     status = db.Column('狀態', db.String(20), default='待處理', index=True)

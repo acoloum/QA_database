@@ -204,6 +204,31 @@ class ReworkService:
             raise e
 
     @staticmethod
+    def create_from_complaint(complaint) -> Dict[str, Any]:
+        """從客訴直接開立重工申請單（不需 NCMR）"""
+        from ..models import CustomerComplaint
+        if not isinstance(complaint, CustomerComplaint):
+            raise ValueError('無效的客訴物件')
+        try:
+            rework_number = generate_number('RW', "重工申請單", "申請單號")
+            req = ReworkRequest(
+                ncmr_id      = None,
+                rework_number= rework_number,
+                applicant_id = None,
+                product_info = f'{complaint.product_no} / {complaint.customer}',
+                reason       = complaint.description,
+                urgency      = '普通',
+                department   = '',
+                status       = '申請中',
+            )
+            db.session.add(req)
+            db.session.commit()
+            return {'rework_id': req.id, 'rework_number': req.rework_number}
+        except Exception as e:
+            db.session.rollback()
+            raise e
+
+    @staticmethod
     def update_application(rework_id: int, data: Dict[str, Any]) -> bool:
         try:
             req = ReworkRequest.query.get(rework_id)

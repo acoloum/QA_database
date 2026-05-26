@@ -642,6 +642,8 @@ export interface CustomerComplaint {
     is_repeat: boolean;
     repeat_refs: string[];
     related_capa_id?: number | null;
+    related_cara_id?: number | null;
+    related_rework_id?: number | null;
     status: ComplaintStatus;
     created_by?: number | null;
     created_at?: string;

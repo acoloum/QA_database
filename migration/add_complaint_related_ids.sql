@@ -1,0 +1,4 @@
+-- 客訴紀錄新增 CARA 與重工關聯欄位
+ALTER TABLE "客訴紀錄"
+    ADD COLUMN IF NOT EXISTS "關聯CARA_ID"  INTEGER,
+    ADD COLUMN IF NOT EXISTS "關聯重工_ID" INTEGER;

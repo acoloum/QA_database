@@ -7,6 +7,8 @@ import {
     useComplaintList,
     useDeleteComplaint,
     useOpenCapaFromComplaint,
+    useOpenCaraFromComplaint,
+    useOpenReworkFromComplaint,
     COMPLAINT_TYPE_LABELS,
     COMPLAINT_STATUS_VARIANT,
 } from '../../hooks/useComplaint';
@@ -46,6 +48,8 @@ const ComplaintPage = () => {
     const { data, isLoading }   = useComplaintList(params);
     const deleteMutation        = useDeleteComplaint();
     const openCapaMutation      = useOpenCapaFromComplaint();
+    const openCaraMutation      = useOpenCaraFromComplaint();
+    const openReworkMutation    = useOpenReworkFromComplaint();
 
     const complaints  = data?.data ?? [];
     const totalPages  = Math.ceil((data?.total ?? 0) / PAGE_SIZE);
@@ -66,6 +70,26 @@ const ComplaintPage = () => {
         }
         if (window.confirm(`確定從客訴「${c.complaint_no}」開立 CAPA？`)) {
             openCapaMutation.mutate(c.id);
+        }
+    };
+
+    const handleOpenCara = (c: CustomerComplaint) => {
+        if (c.related_cara_id) {
+            alert(`此客訴已開立 CARA（ID: ${c.related_cara_id}）`);
+            return;
+        }
+        if (window.confirm(`確定從客訴「${c.complaint_no}」開立 CARA？`)) {
+            openCaraMutation.mutate(c.id);
+        }
+    };
+
+    const handleOpenRework = (c: CustomerComplaint) => {
+        if (c.related_rework_id) {
+            alert(`此客訴已開立重工單（ID: ${c.related_rework_id}）`);
+            return;
+        }
+        if (window.confirm(`確定從客訴「${c.complaint_no}」開立重工申請單？`)) {
+            openReworkMutation.mutate(c.id);
         }
     };
 
@@ -170,7 +194,7 @@ const ComplaintPage = () => {
                                     <th>初回期限</th>
                                     <th>狀態</th>
                                     <th>重複</th>
-                                    <th>CAPA</th>
+                                    <th style={{ minWidth: '200px' }}>關聯單據</th>
                                     <th style={{ width: '120px' }}>操作</th>
                                 </tr>
                             </thead>
@@ -226,19 +250,32 @@ const ComplaintPage = () => {
                                             )}
                                         </td>
                                         <td>
-                                            {c.related_capa_id ? (
-                                                <Badge bg="success">已開立</Badge>
-                                            ) : (
-                                                <Button
-                                                    variant="outline-warning"
-                                                    size="sm"
-                                                    style={{ fontSize: '0.7rem' }}
-                                                    onClick={() => handleOpenCapa(c)}
-                                                    disabled={openCapaMutation.isPending}
-                                                >
-                                                    開立 CAPA
-                                                </Button>
-                                            )}
+                                            <div className="d-flex flex-wrap gap-1">
+                                                {c.related_capa_id ? (
+                                                    <Badge bg="warning" text="dark">CAPA #{c.related_capa_id}</Badge>
+                                                ) : (
+                                                    <Button variant="outline-warning" size="sm" style={{ fontSize: '0.7rem' }}
+                                                        onClick={() => handleOpenCapa(c)} disabled={openCapaMutation.isPending}>
+                                                        開立CAPA
+                                                    </Button>
+                                                )}
+                                                {c.related_cara_id ? (
+                                                    <Badge bg="info" text="dark">CARA #{c.related_cara_id}</Badge>
+                                                ) : (
+                                                    <Button variant="outline-info" size="sm" style={{ fontSize: '0.7rem' }}
+                                                        onClick={() => handleOpenCara(c)} disabled={openCaraMutation.isPending}>
+                                                        開立CARA
+                                                    </Button>
+                                                )}
+                                                {c.related_rework_id ? (
+                                                    <Badge bg="secondary">重工 #{c.related_rework_id}</Badge>
+                                                ) : (
+                                                    <Button variant="outline-secondary" size="sm" style={{ fontSize: '0.7rem' }}
+                                                        onClick={() => handleOpenRework(c)} disabled={openReworkMutation.isPending}>
+                                                        開立重工
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </td>
                                         <td>
                                             <Button

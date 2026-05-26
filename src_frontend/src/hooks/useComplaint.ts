@@ -136,6 +136,43 @@ export const useOpenCapaFromComplaint = () => {
     });
 };
 
+// ── 從客訴開立 CARA ───────────────────────────────────────────
+export const useOpenCaraFromComplaint = () => {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: async (complaintId: number) => {
+            const res = await api.post(`/complaints/${complaintId}/open-cara`);
+            return res.data;
+        },
+        onSuccess: () => {
+            toast.success('CARA 已開立');
+            qc.invalidateQueries({ queryKey: ['complaintList'] });
+            qc.invalidateQueries({ queryKey: ['caraList'] });
+        },
+        onError: (err: Error) => {
+            toast.error(`開立失敗：${err.message}`);
+        },
+    });
+};
+
+// ── 從客訴開立重工 ────────────────────────────────────────────
+export const useOpenReworkFromComplaint = () => {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: async (complaintId: number) => {
+            const res = await api.post(`/complaints/${complaintId}/open-rework`);
+            return res.data;
+        },
+        onSuccess: () => {
+            toast.success('重工申請單已開立');
+            qc.invalidateQueries({ queryKey: ['complaintList'] });
+        },
+        onError: (err: Error) => {
+            toast.error(`開立失敗：${err.message}`);
+        },
+    });
+};
+
 // ── 統計查詢 ─────────────────────────────────────────────────
 export const useComplaintStatsByCustomer = (params?: { date_from?: string; date_to?: string }) =>
     useQuery({

@@ -60,6 +60,25 @@ class CARAService:
         db.session.commit()
         return CARAService._to_dict(cara)
 
+    # ── 從客訴開立 CARA ──────────────────────────────────────
+    @staticmethod
+    def create_from_complaint(complaint) -> Dict[str, Any]:
+        """從客訴直接開立 CARA（不需 NCMR，vendor 填客戶名稱）"""
+        from ..models import CustomerComplaint
+        if not isinstance(complaint, CustomerComplaint):
+            raise ValueError('無效的客訴物件')
+
+        cara = CARARecord(
+            cara_no      = CARAService._gen_no(),
+            ncmr_id      = None,
+            vendor       = complaint.customer,
+            status       = '進行中',
+            d2           = complaint.description,
+        )
+        db.session.add(cara)
+        db.session.commit()
+        return CARAService._to_dict(cara)
+
     # ── 查詢列表 ─────────────────────────────────────────────
     @staticmethod
     def list_caras(
