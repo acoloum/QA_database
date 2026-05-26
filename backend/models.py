@@ -556,7 +556,7 @@ class Attachment(db.Model):
 
     id = db.Column('識別碼', db.Integer, primary_key=True)
 
-    # 所屬實體（多型）：'capa'|'cara'|'task'|'complaint'
+    # 所屬實體（多型）：'capa'|'task'|'complaint'
     entity_type = db.Column('實體類型', db.String(30), nullable=False, index=True)
     entity_id   = db.Column('實體ID',   db.Integer,    nullable=False, index=True)
     d_step      = db.Column('D步驟',    db.Integer,    nullable=True)
