@@ -63,7 +63,8 @@ const ComplaintPage = () => {
 
     const handleOpenCapa = (c: CustomerComplaint) => {
         if (c.related_capa_id) {
-            alert(`此客訴已開立 CAPA（ID: ${c.related_capa_id}）`);
+            // 已開立 CAPA，直接跳轉
+            navigate(`/capa?editId=${c.related_capa_id}`);
             return;
         }
         if (window.confirm(`確定從客訴「${c.complaint_no}」開立 CAPA？`)) {
@@ -73,7 +74,8 @@ const ComplaintPage = () => {
 
     const handleOpenRework = (c: CustomerComplaint) => {
         if (c.related_rework_id) {
-            alert(`此客訴已開立重工單（ID: ${c.related_rework_id}）`);
+            // 已開立重工單，直接跳轉
+            navigate(`/rework?id=${c.related_rework_id}`);
             return;
         }
         if (window.confirm(`確定從客訴「${c.complaint_no}」開立重工申請單？`)) {
@@ -240,7 +242,16 @@ const ComplaintPage = () => {
                                         <td>
                                             <div className="d-flex flex-wrap gap-1">
                                                 {c.related_capa_id ? (
-                                                    <Badge bg="warning" text="dark">CAPA #{c.related_capa_id}</Badge>
+                                                    // 已開立 CAPA — 可點擊 badge，跳轉至 CAPA 頁面
+                                                    <Badge
+                                                        bg="warning"
+                                                        text="dark"
+                                                        style={{ cursor: 'pointer' }}
+                                                        onClick={() => navigate(`/capa?editId=${c.related_capa_id}`)}
+                                                        title="點擊查看 CAPA"
+                                                    >
+                                                        CAPA #{c.related_capa_id}
+                                                    </Badge>
                                                 ) : (
                                                     <Button variant="outline-warning" size="sm" style={{ fontSize: '0.7rem' }}
                                                         onClick={() => handleOpenCapa(c)} disabled={openCapaMutation.isPending}>
@@ -248,7 +259,15 @@ const ComplaintPage = () => {
                                                     </Button>
                                                 )}
                                                 {c.related_rework_id ? (
-                                                    <Badge bg="secondary">重工 #{c.related_rework_id}</Badge>
+                                                    // 已開立重工單 — 可點擊 badge，跳轉至重工頁面
+                                                    <Badge
+                                                        bg="secondary"
+                                                        style={{ cursor: 'pointer' }}
+                                                        onClick={() => navigate(`/rework?id=${c.related_rework_id}`)}
+                                                        title="點擊查看重工單"
+                                                    >
+                                                        重工 #{c.related_rework_id}
+                                                    </Badge>
                                                 ) : (
                                                     <Button variant="outline-secondary" size="sm" style={{ fontSize: '0.7rem' }}
                                                         onClick={() => handleOpenRework(c)} disabled={openReworkMutation.isPending}>
