@@ -196,7 +196,7 @@ complaint_id = db.Column('客訴_ID', db.Integer, nullable=True)
 NCMR 的重工完成後，使用者常忘記開立後續 CAPA。
 
 ### 觸發時機
-重工執行記錄（`ReworkExecution`）狀態變更為「已完成」時觸發。
+重工申請單（`ReworkRequest`）結案（status → `'已完成'`）時觸發。即使用者點重工列表的「結案」按鈕、`POST /api/rework/close` 成功之後。
 
 ### 互動流程
 ```
@@ -222,8 +222,9 @@ NCMR 的重工完成後，使用者常忘記開立後續 CAPA。
 - 若 NCMR 已有 `related_capa_id`，不顯示提示
 
 ### 前端變更
-- `src_frontend/src/components/rework/EditExecutionModal.tsx`：完成後觸發 `ReworkFollowUpModal`
+- `src_frontend/src/pages/rework/ReworkPage.tsx`：`handleCloseRework` 結案成功後，若 rework 有 `ncmr_id` 且該 NCMR 尚無 `related_capa_id`，顯示 `ReworkFollowUpModal`
 - 新增 `src_frontend/src/components/rework/ReworkFollowUpModal.tsx` 元件
+- `src_frontend/src/hooks/useNCMR.ts`：新增 `useNCMRDetail`（若不存在）以查 `related_capa_id` 判斷是否要顯示提示
 
 ### 後端
 - 無需新 API，前端跳轉時直接呼叫既有的 CAPA 建立 API
@@ -277,7 +278,7 @@ NCMR 的重工完成後，使用者常忘記開立後續 CAPA。
 - `src_frontend/src/components/dashboard/KPICards.tsx` — 移除「CAR 要求」KPI 卡片
 - `src_frontend/src/pages/complaint/ComplaintPage.tsx` — 移除 CARA 按鈕；CAPA / 重工 badge 改連結
 - `src_frontend/src/pages/ncmr/NCMRPage.tsx` — 移除 `convertToCAR()` 與「轉為 CAR」按鈕
-- `src_frontend/src/components/rework/EditExecutionModal.tsx` — 完成時觸發新 Modal
+- `src_frontend/src/pages/rework/ReworkPage.tsx` — `handleCloseRework` 加觸發 `ReworkFollowUpModal`
 
 ### 前端（新增）
 - `src_frontend/src/components/rework/ReworkFollowUpModal.tsx`
