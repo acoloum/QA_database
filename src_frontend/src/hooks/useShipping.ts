@@ -70,7 +70,7 @@ export const useInspectors = () => {
     return useQuery({
         queryKey: ['inspectors'],
         queryFn: async () => {
-            const res = await api.get<Inspector[]>('/inspectors');
+            const res = await api.get<Inspector[]>('/inspectors', { params: { group: '品保' } });
             return res.data;
         },
         staleTime: 60 * 60 * 1000,

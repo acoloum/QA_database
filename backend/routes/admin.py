@@ -439,7 +439,11 @@ def get_dashboard_trends():
 @auth_required
 def get_inspectors():
     try:
-        inspectors = Inspector.query.order_by(Inspector.group, Inspector.name).all()
+        q = Inspector.query
+        group_filter = request.args.get('group')
+        if group_filter:
+            q = q.filter(Inspector.group == group_filter)
+        inspectors = q.order_by(Inspector.group, Inspector.name).all()
         return jsonify([{
             "id":    i.id,
             "name":  i.name.strip() if i.name else "",

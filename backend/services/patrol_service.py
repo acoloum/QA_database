@@ -48,7 +48,7 @@ class PatrolService:
         try:
             machines = [{"id": r.id, "name": r.name.strip()} for r in Machine.query.all()]
             operators = [{"id": r.id, "name": r.name.strip()} for r in Operator.query.all()]
-            inspectors = [{"id": r.id, "name": r.name.strip()} for r in Inspector.query.all()]
+            inspectors = [{"id": r.id, "name": r.name.strip()} for r in Inspector.query.filter_by(group='品保').order_by(Inspector.name).all()]
             customers = [{"id": r.id, "name": r.name.strip()} for r in Vendor.query.all()]
             
             return {
