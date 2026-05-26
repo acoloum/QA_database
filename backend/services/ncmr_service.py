@@ -9,7 +9,6 @@ from ..utils import (
     format_value,
     handle_db_error,
     generate_ncmr_number,
-    generate_car_number,
     generate_8d_number
 )
 
@@ -322,215 +321,7 @@ class NCMRService:
             raise e
 
     # ==================================================
-    # CAR Logic
-    # ==================================================
-    @staticmethod
-    def get_cara_list(
-        page: int = 1,
-        per_page: int = 20,
-        date_from: Optional[str] = None,
-        date_to: Optional[str] = None,
-        vendor: Optional[str] = None,
-        material: Optional[str] = None,
-        product_info: Optional[str] = None,
-        status: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        try:
-            query = CorrectiveAction.query\
-                .filter(CorrectiveAction.car_number.isnot(None))\
-                .join(NCMR, CorrectiveAction.ncmr_id == NCMR.id)\
-                .options(joinedload(CorrectiveAction.ncmr), joinedload(CorrectiveAction.owner))
-
-            if status:
-                query = query.filter(CorrectiveAction.status == status)
-            if date_from:
-                query = query.filter(CorrectiveAction.created_at >= datetime.datetime.fromisoformat(date_from + 'T00:00:00'))
-            if date_to:
-                query = query.filter(CorrectiveAction.created_at <= datetime.datetime.fromisoformat(date_to + 'T23:59:59'))
-            if vendor:
-                query = query.filter(NCMR.vendor.ilike(f'%{vendor}%'))
-            if material:
-                query = query.filter(NCMR.material.ilike(f'%{material}%'))
-            if product_info:
-                query = query.filter(NCMR.product_info.ilike(f'%{product_info}%'))
-
-            total = query.count()
-            cas = query.order_by(CorrectiveAction.id.desc())\
-                .offset((page - 1) * per_page)\
-                .limit(per_page)\
-                .all()
-
-            data = []
-            for ca in cas:
-                ncmr = ca.ncmr
-                item = {
-                    "識別碼": ca.id,
-                    "NCMR_ID": ca.ncmr_id,
-                    "CAR單號": ca.car_number,
-                    "單號": ca.car_number,
-                    "8D單號": ca.eight_d_number,
-                    "負責人員": ca.owner_id,
-                    "狀態": ca.status,
-                    "ncmr_id": ca.ncmr_id,
-                    "ncmr_number": ncmr.ncmr_number if ncmr else "",
-                    "ncmr_date": format_value(ncmr.date) if ncmr else "",
-                    "ncmr_source": ncmr.source if ncmr else "",
-                    "ncmr_description": ncmr.description if ncmr else "",
-                    "ncmr_vendor": ncmr.vendor if ncmr else "",
-                    "ncmr_material": ncmr.material if ncmr else "",
-                    "ncmr_product": ncmr.product_info if ncmr else "",
-                    "負責人員姓名": ca.owner.name if ca.owner else ""
-                }
-                for k, v in item.items():
-                    item[k] = format_value(v)
-                data.append(item)
-
-            return {"data": data, "total": total, "page": page, "per_page": per_page}
-        except Exception as e:
-            raise e
-
-    @staticmethod
-    def create_cara(data: Dict[str, Any]) -> Dict[str, Any]:
-        ncmr_id = data.get('ncmr_id')
-        try:
-            existing = CorrectiveAction.query.filter_by(ncmr_id=ncmr_id).filter(CorrectiveAction.car_number != None).first()
-            if existing:
-                raise ValueError("此異常單已開立過CAR")
-
-            ncmr = NCMR.query.get(ncmr_id)
-            if not ncmr: raise ValueError("NCMR not found")
-
-            car_number = generate_car_number()
-            
-            # Check if there is an existing CA record for this NCMR (e.g. CAPA exists) or create new?
-            # One NCMR can have both CAR and CAPA. Usually they are separate records in '異常矯正單' based on legacy:
-            # Legacy INSERTs a new row for CAR.
-            
-            ca = CorrectiveAction(
-                car_number=car_number,
-                ncmr_id=ncmr_id,
-                status='進行中'
-            )
-            db.session.add(ca)
-            
-            ncmr.status = 'CAR處理中'
-            
-            db.session.commit()
-            return {"car_number": car_number, "ncmr_number": ncmr.ncmr_number}
-        except Exception as e:
-            db.session.rollback()
-            raise e
-
-    @staticmethod
-    def get_cara_detail(cara_id: int) -> Optional[Dict[str, Any]]:
-        try:
-            ca = CorrectiveAction.query.options(joinedload(CorrectiveAction.owner)).get(cara_id)
-            if not ca or not ca.car_number:
-                return None
-
-            cara_data = {
-                "識別碼": ca.id,
-                "NCMR_ID": ca.ncmr_id,
-                "CAR單號": ca.car_number,
-                "單號": ca.car_number,
-                "8D單號": ca.eight_d_number,
-                "負責人員": ca.owner_id,
-                "狀態": ca.status,
-                "D1_小組成員": ca.d1,
-                "D2_問題描述": ca.d2,
-                "D3_暫時對策": ca.d3,
-                "D4_真因分析": ca.d4,
-                "D5_永久對策": ca.d5,
-                "D6_成效驗證": ca.d6,
-                "D7_預防再發": ca.d7,
-                "D8_結案確認": ca.d8_confirmation,
-                "建立時間": ca.created_at,
-                "完成時間": ca.closed_at,
-                "建立日期": ca.created_at.strftime('%Y-%m-%d') if ca.created_at else "",
-                "結案日期": ca.closed_at.strftime('%Y-%m-%d') if ca.closed_at else "",
-                "負責人員姓名": ca.owner.name if ca.owner else ""
-            }
-
-            ncmr_data = {}
-            if ca.ncmr_id:
-                # Use get_ncmr_info to reuse logic or query ncmr
-                n = NCMR.query.options(joinedload(NCMR.inspector)).get(ca.ncmr_id)
-                if n:
-                   # similar mapping as get_ncmr_info but as subdict
-                   ncmr_data = {
-                       "NCMR單號": n.ncmr_number,
-                       "發現日期": n.date.strftime('%Y-%m-%d') if n.date else "",
-                       "來源": n.source,
-                       "產品資訊": n.product_info,
-                       "產品數量": n.quantity,
-                       "材質": n.material,
-                       "廠商": n.vendor,
-                       "批號": n.batch_num,
-                       "不良描述": n.description,
-                       "不良數量": n.defect_quantity,
-                       "判定結果": n.result,
-                       "狀態": n.status,
-                       "發現人員姓名": n.inspector.name if n.inspector else "",
-                   }
-                   if n.vendor:
-                       v = Vendor.query.filter_by(name=n.vendor).first()
-                       ncmr_data["廠商中文名稱"] = v.name if v else n.vendor
-
-            return {"cara": cara_data, "ncmr": ncmr_data}
-        except Exception as e:
-            raise e
-
-    @staticmethod
-    def update_cara(data: Dict[str, Any]) -> bool:
-        cara_id = data.get('識別碼')
-        try:
-            ca = CorrectiveAction.query.get(cara_id)
-            if not ca: return False
-
-            if data.get('負責人員姓名'):
-                owner = Inspector.query.filter_by(name=data.get('負責人員姓名')).first()
-                if owner: ca.owner_id = owner.id
-            
-            d_fields = ['D2_問題描述', 'D3_暫時對策', 'D4_真因分析', 'D6_成效驗證', 'D7_預防再發', 'D8_結案確認']
-            for f in d_fields:
-                if f in data: # allow setting to empty if sent
-                    val = data[f]
-                    # Map to model field (lowercase d2, etc. or defined as such?)
-                    # Model defined as d1..d8
-                    # Map "D2_问题描述" -> d2
-                    attr = f.split('_')[0].lower() # D2 -> d2
-                    setattr(ca, attr, val)
-
-            if data.get('狀態'):
-                ca.status = data.get('狀態')
-            
-            if data.get('狀態') == '已結案':
-                ca.closed_at = datetime.datetime.now()
-                # Update NCMR
-                if ca.ncmr_id:
-                     ncmr = NCMR.query.get(ca.ncmr_id)
-                     if ncmr: ncmr.status = 'CAR已完成'
-            
-            db.session.commit()
-            return True
-        except Exception as e:
-            db.session.rollback()
-            raise e
-
-    @staticmethod
-    def delete_cara(cara_id: int) -> bool:
-        try:
-            ca = CorrectiveAction.query.get(cara_id)
-            if ca and ca.car_number:
-                db.session.delete(ca)
-                db.session.commit()
-            return True
-        except Exception as e:
-            db.session.rollback()
-            raise e
-
-    # ==================================================
-    # CAPA Logic (Similar to CAR)
+    # CAPA Logic
     # ==================================================
     @staticmethod
     def get_capa_list(
@@ -631,13 +422,97 @@ class NCMRService:
 
     @staticmethod
     def get_capa_detail(capa_id: int) -> Optional[Dict[str, Any]]:
-        # Using same logic as get_cara_detail but maybe different frontend expectations?
-        # get_capa_detail legacy calls `get_capa_detail`.
-        return NCMRService.get_cara_detail(capa_id)
+        """取得 CAPA（8D）詳細資料"""
+        try:
+            ca = CorrectiveAction.query.options(joinedload(CorrectiveAction.owner)).get(capa_id)
+            if not ca or not ca.eight_d_number:
+                return None
+
+            capa_data = {
+                "識別碼": ca.id,
+                "NCMR_ID": ca.ncmr_id,
+                "8D單號": ca.eight_d_number,
+                "單號": ca.eight_d_number,
+                "負責人員": ca.owner_id,
+                "狀態": ca.status,
+                "D1_小組成員": ca.d1,
+                "D2_問題描述": ca.d2,
+                "D3_暫時對策": ca.d3,
+                "D4_真因分析": ca.d4,
+                "D5_永久對策": ca.d5,
+                "D6_成效驗證": ca.d6,
+                "D7_預防再發": ca.d7,
+                "D8_結案確認": ca.d8_confirmation,
+                "建立時間": ca.created_at,
+                "完成時間": ca.closed_at,
+                "建立日期": ca.created_at.strftime('%Y-%m-%d') if ca.created_at else "",
+                "結案日期": ca.closed_at.strftime('%Y-%m-%d') if ca.closed_at else "",
+                "負責人員姓名": ca.owner.name if ca.owner else ""
+            }
+
+            ncmr_data = {}
+            if ca.ncmr_id:
+                n = NCMR.query.options(joinedload(NCMR.inspector)).get(ca.ncmr_id)
+                if n:
+                    ncmr_data = {
+                        "NCMR單號": n.ncmr_number,
+                        "發現日期": n.date.strftime('%Y-%m-%d') if n.date else "",
+                        "來源": n.source,
+                        "產品資訊": n.product_info,
+                        "產品數量": n.quantity,
+                        "材質": n.material,
+                        "廠商": n.vendor,
+                        "批號": n.batch_num,
+                        "不良描述": n.description,
+                        "不良數量": n.defect_quantity,
+                        "判定結果": n.result,
+                        "狀態": n.status,
+                        "發現人員姓名": n.inspector.name if n.inspector else "",
+                    }
+                    if n.vendor:
+                        v = Vendor.query.filter_by(name=n.vendor).first()
+                        ncmr_data["廠商中文名稱"] = v.name if v else n.vendor
+
+            return {"capa": capa_data, "ncmr": ncmr_data}
+        except Exception as e:
+            raise e
 
     @staticmethod
     def update_capa(data: Dict[str, Any]) -> bool:
-        return NCMRService.update_cara(data)
+        """更新 CAPA（8D）資料"""
+        capa_id = data.get('識別碼')
+        try:
+            ca = CorrectiveAction.query.get(capa_id)
+            if not ca:
+                return False
+
+            if data.get('負責人員姓名'):
+                owner = Inspector.query.filter_by(name=data.get('負責人員姓名')).first()
+                if owner:
+                    ca.owner_id = owner.id
+
+            d_fields = ['D2_問題描述', 'D3_暫時對策', 'D4_真因分析', 'D6_成效驗證', 'D7_預防再發', 'D8_結案確認']
+            for f in d_fields:
+                if f in data:
+                    val = data[f]
+                    attr = f.split('_')[0].lower()  # 例：D2_問題描述 -> d2
+                    setattr(ca, attr, val)
+
+            if data.get('狀態'):
+                ca.status = data.get('狀態')
+
+            if data.get('狀態') == '已結案':
+                ca.closed_at = datetime.datetime.now()
+                if ca.ncmr_id:
+                    ncmr = NCMR.query.get(ca.ncmr_id)
+                    if ncmr:
+                        ncmr.status = '矯正完成'
+
+            db.session.commit()
+            return True
+        except Exception as e:
+            db.session.rollback()
+            raise e
 
     @staticmethod
     def delete_capa(capa_id: int) -> bool:

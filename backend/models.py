@@ -270,7 +270,8 @@ class CorrectiveAction(db.Model):
     """異常矯正單 — CAPA（我方執行矯正，含 D0-D8 完整 8D 流程）"""
     __tablename__ = '異常矯正單'
     id = db.Column('識別碼', db.Integer, primary_key=True)
-    car_number = db.Column('CAR單號', db.String, index=True)
+    # car_number 欄位已在 Task 16 destructive migration 中刪除
+    # car_number = db.Column('CAR單號', db.String, index=True)
     eight_d_number = db.Column('8D單號', db.String, index=True)
     status = db.Column('狀態', db.String, index=True, default='進行中')
 

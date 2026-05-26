@@ -300,11 +300,6 @@ def generate_8d_number() -> str:
     """生成8D編號"""
     return generate_number('CAPA', "異常矯正單", "8D單號")
 
-def generate_car_number() -> str:
-    """生成CAR編號"""
-    return generate_number('CAR', "異常矯正單", 'CAR單號')
-
-
 # ==================================================
 # Formatting & Validation
 # ==================================================

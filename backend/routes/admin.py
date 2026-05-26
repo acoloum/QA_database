@@ -32,12 +32,6 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
             CorrectiveAction.status.in_(['待處理', '進行中'])
         ).count()
 
-    def count_pending_cara():
-        return CorrectiveAction.query.filter(
-            CorrectiveAction.car_number != None,
-            CorrectiveAction.status.in_(['待處理', '進行中'])
-        ).count()
-
     def count_pending_rework():
         return ReworkRequest.query.filter(
             ReworkRequest.status.notin_(['已完成', '已拒絕'])
@@ -122,23 +116,6 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
     _capa_current = int(capa_row.current or 0)
     _capa_previous = int(capa_row.previous or 0)
 
-    cara_row = db.session.query(
-        func.sum(case(
-            (and_(CorrectiveAction.created_at >= start_date,
-                  CorrectiveAction.created_at <= end_date,
-                  CorrectiveAction.car_number != None), 1),
-            else_=0
-        )).label('current'),
-        func.sum(case(
-            (and_(CorrectiveAction.created_at >= compare_start,
-                  CorrectiveAction.created_at <= compare_end,
-                  CorrectiveAction.car_number != None), 1),
-            else_=0
-        )).label('previous'),
-    ).first()
-    _cara_current = int(cara_row.current or 0)
-    _cara_previous = int(cara_row.previous or 0)
-
     # ---------- ReworkRequest：一次查詢同時取得 current / previous ----------
     rework_row = db.session.query(
         func.sum(case(
@@ -185,11 +162,6 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
             "current": _rework_current,
             "previous": _rework_previous,
             "pending": count_pending_rework()
-        },
-        "cara": {
-            "current": _cara_current,
-            "previous": _cara_previous,
-            "pending": count_pending_cara()
         }
     }
 
@@ -276,22 +248,6 @@ def get_dashboard_todos():
                 "date": n.date.isoformat() if n.date else None,
                 "priority": "high",
                 "path": "/ncmr"
-            })
-
-        # CAR 項目（car_number 存在）
-        pending_cars = CorrectiveAction.query.filter(
-            CorrectiveAction.car_number != None,
-            CorrectiveAction.status.in_(['待處理', '進行中'])
-        ).order_by(CorrectiveAction.created_at.desc()).limit(5).all()
-        for c in pending_cars:
-            todos.append({
-                "type": "cara",
-                "id": c.car_number,
-                "title": f"CAR {c.car_number} {c.status}",
-                "description": c.d2[:50] + "..." if c.d2 and len(c.d2) > 50 else c.d2,
-                "date": c.created_at.isoformat() if c.created_at else None,
-                "priority": "medium",
-                "path": "/cara"
             })
 
         # CAPA 項目（8D 編號存在）
