@@ -97,11 +97,12 @@ def open_capa_from_complaint(current_user, complaint_id: int):
             severity     = source_info.get('severity', 'Major'),
             creator_id   = current_user.id,
         )
-        # 更新客訴關聯
+        # 更新客訴關聯，並將狀態改為「處理中」
         from ..models import CustomerComplaint
         c = CustomerComplaint.query.get(complaint_id)
         if c:
             c.related_capa_id = capa['id']
+            c.status = '處理中'
             from ..extensions import db
             db.session.commit()
         return jsonify(capa), 201
