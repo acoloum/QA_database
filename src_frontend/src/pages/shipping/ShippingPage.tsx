@@ -51,8 +51,11 @@ const ShippingPage = () => {
 
         const uniqueCombos = new Set<string>();
         inspections.forEach(item => {
-            if (item.材質) {
-                uniqueCombos.add(`${item.材質}|||${item.檢驗規格 || ''}|||${item.廠商中文名稱 || ''}`);
+            const mat = item.材質 ?? item.material;
+            const sp = item.檢驗規格 ?? item.spec ?? '';
+            const vn = item.廠商中文名稱 ?? item.vendor_name ?? '';
+            if (mat) {
+                uniqueCombos.add(`${mat}|||${sp}|||${vn}`);
             }
         });
 
@@ -127,7 +130,7 @@ const ShippingPage = () => {
     };
 
     // Use a stable key derived from inspections to avoid infinite re-fetching
-    const inspectionKey = JSON.stringify(inspections.map(i => `${i.材質}|||${i.檢驗規格}|||${i.廠商中文名稱}`));
+    const inspectionKey = JSON.stringify(inspections.map(i => `${i.材質 ?? i.material}|||${i.檢驗規格 ?? i.spec}|||${i.廠商中文名稱 ?? i.vendor_name}`));
     useEffect(() => {
         fetchTolerances();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -136,33 +139,64 @@ const ShippingPage = () => {
     // Refresh list when filters change is handled by React Query key
 
     const checkViolation = (item: ShippingInspection) => {
-        const combo = `${item.材質}|||${item.檢驗規格 || ''}|||${item.廠商中文名稱 || ''}`;
+        const combo = `${item.材質 ?? item.material}|||${item.檢驗規格 ?? item.spec ?? ''}|||${item.廠商中文名稱 ?? item.vendor_name ?? ''}`;
         const std = tolerances[combo];
         if (!std) return { hasViolation: false, found: false };
 
-        const items = ["外徑", "內徑", "真圓度", "厚度", "同心度", "長度", "硬度", "真直度"];
-        const gc = (item as unknown as { 組數?: number }).組數 || 5;
+        const MINMAX_ITEMS = new Set(["外徑", "內徑", "厚度"]);
+        const ALL_ITEMS = ["外徑", "內徑", "真圓度", "厚度", "同心度", "長度", "硬度", "真直度", "韋伯氏硬度"];
         let hasViolation = false;
 
-        for (const it of items) {
-            const tol = std[it];
-            if (!tol) continue;
+        // 新格式：使用 measurements 巢狀物件
+        if (item.measurements && Object.keys(item.measurements).length > 0) {
+            outer: for (const [, groupData] of Object.entries(item.measurements)) {
+                for (const itName of ALL_ITEMS) {
+                    const tol = std[itName];
+                    if (!tol) continue;
+                    const measItem = groupData[itName];
+                    if (!measItem) continue;
 
-            for (let g = 1; g <= gc; g++) {
-                const keys = it === "外徑" || it === "內徑" || it === "厚度"
-                    ? [`${it}${g}-min`, `${it}${g}-max`]
-                    : [`${it}${g}`];
-
-                for (const k of keys) {
-                    const val = parseFloat((item as unknown as Record<string, string>)[k]);
-                    if (!isNaN(val) && (val < tol.lsl || val > tol.usl)) {
-                        hasViolation = true;
-                        break;
+                    if (MINMAX_ITEMS.has(itName)) {
+                        const minV = measItem.value_min;
+                        const maxV = measItem.value_max;
+                        if (minV != null && !isNaN(minV) && (minV < tol.lsl || minV > tol.usl)) {
+                            hasViolation = true;
+                            break outer;
+                        }
+                        if (maxV != null && !isNaN(maxV) && (maxV < tol.lsl || maxV > tol.usl)) {
+                            hasViolation = true;
+                            break outer;
+                        }
+                    } else {
+                        const v = measItem.value_single;
+                        if (v != null && !isNaN(v) && (v < tol.lsl || v > tol.usl)) {
+                            hasViolation = true;
+                            break outer;
+                        }
                     }
                 }
-                if (hasViolation) break;
             }
-            if (hasViolation) break;
+        } else {
+            // 舊格式回退：從平鋪欄位讀取
+            const gc = (item as unknown as { 組數?: number }).組數 ?? item.group_count ?? 5;
+            outer: for (const it of ALL_ITEMS) {
+                const tol = std[it];
+                if (!tol) continue;
+
+                for (let g = 1; g <= gc; g++) {
+                    const keys = MINMAX_ITEMS.has(it)
+                        ? [`${it}${g}-min`, `${it}${g}-max`]
+                        : [`${it}${g}`];
+
+                    for (const k of keys) {
+                        const val = parseFloat((item as unknown as Record<string, string>)[k]);
+                        if (!isNaN(val) && (val < tol.lsl || val > tol.usl)) {
+                            hasViolation = true;
+                            break outer;
+                        }
+                    }
+                }
+            }
         }
 
         return { hasViolation, found: true };
@@ -350,13 +384,18 @@ const ShippingPage = () => {
                                 ) : (
                                     inspections.map((item) => {
                                         const { hasViolation, found } = checkViolation(item);
+                                        const itemId = item.識別碼 ?? item.id;
+                                        const itemDate = item.檢驗日期 ?? item.date;
+                                        const itemVendor = item.廠商中文名稱 ?? item.vendor_name;
+                                        const itemMaterial = item.材質 ?? item.material;
+                                        const itemSpec = item.檢驗規格 ?? item.spec;
                                         return (
-                                            <tr key={item.識別碼} className={hasViolation ? 'table-danger-subtle' : ''}>
-                                                <td>{item.識別碼}</td>
-                                                <td>{item.檢驗日期?.substring(0, 10)}</td>
-                                                <td>{item.廠商中文名稱}</td>
-                                                <td>{item.材質}</td>
-                                                <td>{item.檢驗規格}</td>
+                                            <tr key={itemId} className={hasViolation ? 'table-danger-subtle' : ''}>
+                                                <td>{itemId}</td>
+                                                <td>{itemDate?.substring(0, 10)}</td>
+                                                <td>{itemVendor}</td>
+                                                <td>{itemMaterial}</td>
+                                                <td>{itemSpec}</td>
                                                 <td className="text-center">
                                                     {!found ? (
                                                         <span className="badge bg-secondary">-</span>
@@ -370,13 +409,13 @@ const ShippingPage = () => {
                                                     <div className="action-buttons">
                                                         <button
                                                             className="btn btn-sm btn-outline-primary"
-                                                            onClick={() => handleEdit(item.識別碼)}
+                                                            onClick={() => handleEdit(itemId)}
                                                         >
                                                             編輯
                                                         </button>
                                                         <button
                                                             className="btn btn-sm btn-outline-danger"
-                                                            onClick={() => handleDelete(item.識別碼)}
+                                                            onClick={() => handleDelete(itemId)}
                                                         >
                                                             刪除
                                                         </button>

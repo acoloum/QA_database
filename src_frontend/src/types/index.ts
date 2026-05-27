@@ -270,9 +270,16 @@ export interface ShippingInspection {
   vendor_name?: string;
   is_ng: boolean;
   measurements: ShippingMeasurements;
-  // 舊版中文欄位（Task 5 完成 ShippingPage/ShippingModal 更新後移除）
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [key: string]: any;
+  // 舊版中文欄位（後端回傳時仍包含，保留以相容過渡期）
+  識別碼?: number;
+  檢驗日期?: string;
+  廠商中文名稱?: string;
+  材質?: string;
+  檢驗規格?: string;
+  訂單號碼?: string;
+  組數?: number;
+  檢驗人員?: string | number;
+  檢驗人員姓名?: string;
 }
 
 export interface ToleranceItem {
