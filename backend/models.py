@@ -4,6 +4,19 @@ from .extensions import db
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 
+
+class SoftDeleteMixin:
+    """軟刪除 Mixin：加入 deleted_at 欄位，刪除時設時間戳而非真正 DELETE"""
+    deleted_at = db.Column('刪除時間', db.DateTime, nullable=True, index=True)
+
+    def soft_delete(self):
+        self.deleted_at = datetime.utcnow()
+
+    @classmethod
+    def active_query(cls):
+        return cls.query.filter(cls.deleted_at.is_(None))
+
+
 JsonType = JSONB().with_variant(db.JSON(), 'sqlite')
 
 class User(db.Model):
@@ -242,7 +255,7 @@ class ExtrusionToleranceDetail(db.Model):
     std_val = db.Column('標準值', db.Numeric)
     unit = db.Column('單位', db.String, default='mm')
 
-class NCMR(db.Model):
+class NCMR(SoftDeleteMixin, db.Model):
     __tablename__ = '不合格品單'
     id = db.Column('識別碼', db.Integer, primary_key=True)
     ncmr_number = db.Column('NCMR單號', db.String, unique=True, index=True)
@@ -274,7 +287,7 @@ class NCMR(db.Model):
     corrective_actions = db.relationship('CorrectiveAction', backref='ncmr', cascade="all, delete-orphan")
     rework_requests = db.relationship('ReworkRequest', backref='ncmr', cascade="all, delete-orphan")
 
-class CorrectiveAction(db.Model):
+class CorrectiveAction(SoftDeleteMixin, db.Model):
     """異常矯正單 — CAPA（我方執行矯正，含 D0-D8 完整 8D 流程）"""
     __tablename__ = '異常矯正單'
 
@@ -378,7 +391,7 @@ class CorrectiveAction(db.Model):
                                             "foreign(ActionTask.source_id)==CorrectiveAction.id)",
                                 lazy='dynamic')
 
-class ReworkRequest(db.Model):
+class ReworkRequest(SoftDeleteMixin, db.Model):
     __tablename__ = '重工申請單'
     id = db.Column('識別碼', db.Integer, primary_key=True)
     ncmr_id = db.Column('NCMR_ID', db.Integer, db.ForeignKey('不合格品單.識別碼'))
@@ -474,7 +487,7 @@ class ReworkCost(db.Model):
 # ============================================================
 # 1.1 客訴模組
 # ============================================================
-class CustomerComplaint(db.Model):
+class CustomerComplaint(SoftDeleteMixin, db.Model):
     """客訴紀錄 — 外部不良（客戶端發現），獨立於 NCMR"""
     __tablename__ = '客訴紀錄'
 
