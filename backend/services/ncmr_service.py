@@ -151,14 +151,15 @@ class NCMRService:
             new_status = data.get('狀態')
             if new_status and new_status != ncmr.status:
                 validate_status_transition('NCMR', ncmr.status, new_status)
+                ncmr.status = new_status  # 通過驗證後才套用新狀態
 
             # 結案前置檢查
             if new_status == '已結案':
                 # 若有關聯 CAPA，需確認 CAPA 已結案
-                if ncmr.related_capa_id:
-                    capa = CorrectiveAction.query.get(ncmr.related_capa_id)
-                    if capa and capa.status != '已結案':
-                        raise ValueError('CAPA 尚未結案，無法將 NCMR 結案')
+                open_capas = [ca for ca in ncmr.corrective_actions
+                              if ca.deleted_at is None and ca.status != '已結案']
+                if open_capas:
+                    raise ValueError('CAPA 尚未結案，無法將 NCMR 結案')
                 # 若有關聯重工，需確認重工已完成
                 open_reworks = [r for r in ncmr.rework_requests
                                 if r.deleted_at is None and r.status not in ('已結案', '撤銷')]
@@ -171,12 +172,14 @@ class NCMRService:
                      ncmr.inspector_id = inspector.id
 
             # Mapping with type conversion
+            # 注意：'狀態' 已由上方狀態機驗證區塊單獨處理，
+            # 不納入 field_map 以防止被覆蓋為 None 或繞過狀態機驗證
             field_map = {
                 '日期': 'date', '建立日期': 'create_date', '來源': 'source', '產品資訊': 'product_info',
                 '產品數量': 'quantity', '材質': 'material', '廠商': 'vendor',
-                '批號': 'batch_num', '不良描述': 'description', 
+                '批號': 'batch_num', '不良描述': 'description',
                 '不合格數量': 'defect_quantity', '判定結果': 'result',
-                '狀態': 'status', '不良原因大類': 'defect_category',
+                '不良原因大類': 'defect_category',
                 '不良原因細項': 'defect_detail'
             }
             
@@ -410,7 +413,7 @@ class NCMRService:
             existing = CorrectiveAction.query.filter_by(ncmr_id=ncmr_id).filter(CorrectiveAction.eight_d_number != None).first()
             if existing: raise ValueError("此異常單已開立過矯正單")
 
-            ncmr = NCMR.query.get(ncmr_id)
+            ncmr = NCMR.active_query().filter_by(id=ncmr_id).first()
             if not ncmr: raise ValueError("NCMR not found")
 
             capa_number = generate_8d_number()
@@ -515,7 +518,7 @@ class NCMRService:
             if data.get('狀態') == '已結案':
                 ca.closed_at = datetime.datetime.now()
                 if ca.ncmr_id:
-                    ncmr = NCMR.query.get(ca.ncmr_id)
+                    ncmr = NCMR.active_query().filter_by(id=ca.ncmr_id).first()
                     if ncmr:
                         ncmr.status = '矯正完成'
 
