@@ -153,15 +153,15 @@ const ComplaintStatsPage = () => {
                         </Card>
                     </Col>
 
-                    {/* 料號別橫條圖 */}
+                    {/* 材質規格別橫條圖 */}
                     <Col md={6}>
                         <Card className="shadow-sm">
-                            <Card.Header className="fw-semibold">料號別客訴件數（Top 10）</Card.Header>
+                            <Card.Header className="fw-semibold">材質別客訴件數（Top 10）</Card.Header>
                             <Card.Body>
                                 {byProduct && byProduct.length > 0 ? (
                                     <Bar
                                         data={{
-                                            labels: byProduct.slice(0, 10).map(d => d.product_no),
+                                            labels: byProduct.slice(0, 10).map(d => [d.material, d.spec].filter(Boolean).join(' ')),
                                             datasets: [
                                                 {
                                                     label: '客訴件數',
@@ -223,15 +223,15 @@ const ComplaintStatsPage = () => {
                                         </Col>
                                     </Row>
 
-                                    {warranty.by_product && warranty.by_product.length > 0 && (
+                                    {warranty.by_material && warranty.by_material.length > 0 && (
                                         <>
-                                            <h6 className="fw-semibold mb-3">料號別保固 / 故障件數</h6>
+                                            <h6 className="fw-semibold mb-3">材質別保固 / 故障件數</h6>
                                             <Bar
                                                 data={{
-                                                    labels: warranty.by_product.slice(0, 10).map(d => d.product_no),
+                                                    labels: warranty.by_material.slice(0, 10).map(d => d.material),
                                                     datasets: [{
                                                         label: '件數',
-                                                        data: warranty.by_product.slice(0, 10).map(d => d.total),
+                                                        data: warranty.by_material.slice(0, 10).map(d => d.total),
                                                         backgroundColor: CHART_COLORS[2],
                                                     }],
                                                 }}

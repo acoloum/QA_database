@@ -33,7 +33,7 @@ const RecentRepeatsWidget = () => {
                             <tr>
                                 <th>單號</th>
                                 <th>客戶</th>
-                                <th>料號</th>
+                                <th>材質 / 規格</th>
                                 <th>日期</th>
                                 <th>歷史筆數</th>
                             </tr>
@@ -43,7 +43,7 @@ const RecentRepeatsWidget = () => {
                                 <tr key={c.id}>
                                     <td className="small fw-semibold">{c.complaint_no}</td>
                                     <td className="small">{c.customer}</td>
-                                    <td className="small">{c.product_no}</td>
+                                    <td className="small">{[c.material, c.spec].filter(Boolean).join(' / ') || '—'}</td>
                                     <td className="small">{c.complaint_date}</td>
                                     <td className="small">
                                         <Badge bg="danger">

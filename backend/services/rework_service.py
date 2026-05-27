@@ -231,7 +231,7 @@ class ReworkService:
                 complaint_id = complaint.id,
                 rework_number= rework_number,
                 applicant_id = None,
-                product_info = f'{complaint.product_no} / {complaint.customer}',
+                product_info = f'{complaint.material or ""} {complaint.spec or ""} / {complaint.customer}'.strip(),
                 reason       = complaint.description,
                 urgency      = '普通',
                 department   = '',

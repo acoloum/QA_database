@@ -20,7 +20,7 @@ const ComplaintPage = () => {
     const navigate = useNavigate();
     // 篩選
     const [customerFilter,  setCustomerFilter]  = useState('');
-    const [productFilter,   setProductFilter]   = useState('');
+    const [materialFilter,  setMaterialFilter]  = useState('');
     const [statusFilter,    setStatusFilter]    = useState('');
     const [typeFilter,      setTypeFilter]      = useState('');
     const [dateFromFilter,  setDateFromFilter]  = useState('');
@@ -34,7 +34,7 @@ const ComplaintPage = () => {
 
     const params = {
         customer:       customerFilter  || undefined,
-        product_no:     productFilter   || undefined,
+        material:       materialFilter  || undefined,
         status:         statusFilter    || undefined,
         complaint_type: typeFilter      || undefined,
         date_from:      dateFromFilter  || undefined,
@@ -85,7 +85,7 @@ const ComplaintPage = () => {
 
     const handleReset = () => {
         setCustomerFilter('');
-        setProductFilter('');
+        setMaterialFilter('');
         setStatusFilter('');
         setTypeFilter('');
         setDateFromFilter('');
@@ -123,9 +123,9 @@ const ComplaintPage = () => {
                                 value={customerFilter} onChange={e => { setCustomerFilter(e.target.value); setPage(1); }} />
                         </Col>
                         <Col xs={6} md={2}>
-                            <Form.Label className="small mb-1">料號</Form.Label>
-                            <Form.Control size="sm" placeholder="搜尋料號…"
-                                value={productFilter} onChange={e => { setProductFilter(e.target.value); setPage(1); }} />
+                            <Form.Label className="small mb-1">材質</Form.Label>
+                            <Form.Control size="sm" placeholder="搜尋材質…"
+                                value={materialFilter} onChange={e => { setMaterialFilter(e.target.value); setPage(1); }} />
                         </Col>
                         <Col xs={6} md={2}>
                             <Form.Label className="small mb-1">狀態</Form.Label>
@@ -177,7 +177,7 @@ const ComplaintPage = () => {
                                 <tr>
                                     <th>單號</th>
                                     <th>客戶</th>
-                                    <th>料號</th>
+                                    <th>材質 / 規格</th>
                                     <th>日期</th>
                                     <th>類型</th>
                                     <th>嚴重度</th>
@@ -202,7 +202,9 @@ const ComplaintPage = () => {
                                     <tr key={c.id} className={c.is_overdue ? 'table-warning' : ''}>
                                         <td className="small fw-semibold">{c.complaint_no}</td>
                                         <td className="small">{c.customer}</td>
-                                        <td className="small">{c.product_no}</td>
+                                        <td className="small">
+                                            {[c.material, c.spec].filter(Boolean).join(' / ') || '—'}
+                                        </td>
                                         <td className="small">{c.complaint_date}</td>
                                         <td className="small">
                                             <Badge bg="light" text="dark">

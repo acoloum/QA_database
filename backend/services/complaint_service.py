@@ -26,7 +26,7 @@ class ComplaintService:
     # ── 建立客訴 ─────────────────────────────────────────────
     @staticmethod
     def create(data: Dict[str, Any], creator_id: Optional[int] = None) -> Dict[str, Any]:
-        required = ('customer', 'complaint_date', 'product_no', 'description')
+        required = ('customer', 'complaint_date', 'description')
         missing = [f for f in required if not data.get(f)]
         if missing:
             raise ValueError(f'缺少必填欄位：{missing}')
@@ -43,9 +43,10 @@ class ComplaintService:
             complaint_no   = ComplaintService._gen_no(),
             customer       = data['customer'],
             complaint_date = c_date,
-            product_no     = data['product_no'],
+            material       = data.get('material'),
+            spec           = data.get('spec'),
+            extrusion_nos  = data.get('extrusion_nos') or [],
             description    = data['description'],
-            contact_person = data.get('contact_person'),
             severity       = data.get('severity'),
             defect_category= data.get('defect_category'),
             complaint_type = ctype,
@@ -68,16 +69,17 @@ class ComplaintService:
         db.session.commit()
         return ComplaintService._to_dict(complaint)
 
-    # ── 重複客訴偵測（12 個月內相同客戶+料號+不良類別）────────
+    # ── 重複客訴偵測（12 個月內相同客戶+材質+規格+不良類別）────────
     @staticmethod
     def _check_repeat(complaint: CustomerComplaint) -> None:
         cutoff = date.today() - timedelta(days=365)
         q = CustomerComplaint.query.filter(
-            CustomerComplaint.customer       == complaint.customer,
-            CustomerComplaint.product_no     == complaint.product_no,
-            CustomerComplaint.defect_category== complaint.defect_category,
-            CustomerComplaint.complaint_date >= cutoff,
-            CustomerComplaint.id             != complaint.id,
+            CustomerComplaint.customer        == complaint.customer,
+            CustomerComplaint.material        == complaint.material,
+            CustomerComplaint.spec            == complaint.spec,
+            CustomerComplaint.defect_category == complaint.defect_category,
+            CustomerComplaint.complaint_date  >= cutoff,
+            CustomerComplaint.id              != complaint.id,
         )
         history = q.all()
         if history:
@@ -91,7 +93,7 @@ class ComplaintService:
     @staticmethod
     def list_complaints(
         customer: Optional[str] = None,
-        product_no: Optional[str] = None,
+        material: Optional[str] = None,
         status: Optional[str] = None,
         complaint_type: Optional[str] = None,
         date_from: Optional[date] = None,
@@ -103,8 +105,8 @@ class ComplaintService:
         q = CustomerComplaint.query
         if customer:
             q = q.filter(CustomerComplaint.customer.ilike(f'%{customer}%'))
-        if product_no:
-            q = q.filter(CustomerComplaint.product_no.ilike(f'%{product_no}%'))
+        if material:
+            q = q.filter(CustomerComplaint.material.ilike(f'%{material}%'))
         if status:
             q = q.filter_by(status=status)
         if complaint_type:
@@ -144,8 +146,8 @@ class ComplaintService:
             raise ValueError('結案前請填寫客戶滿意度（1-5）')
 
         updatable = (
-            'customer', 'complaint_date', 'product_no', 'description',
-            'contact_person', 'severity', 'defect_category', 'complaint_type',
+            'customer', 'complaint_date', 'material', 'spec', 'extrusion_nos',
+            'description', 'severity', 'defect_category', 'complaint_type',
             'device_serial', 'usage_env', 'failure_hours',
             'initial_reply_deadline', 'final_reply_deadline',
             'initial_reply', 'final_reply',
@@ -207,7 +209,6 @@ class ComplaintService:
             'source_id':   c.id,
             'symptom':     c.description,
             'customer':    c.customer,
-            'product_no':  c.product_no,
             'severity':    c.severity or 'Major',
         }
 
@@ -240,9 +241,10 @@ class ComplaintService:
             'complaint_no': c.complaint_no,
             'customer':     c.customer,
             'complaint_date': c.complaint_date.isoformat() if c.complaint_date else None,
-            'product_no':   c.product_no,
+            'material':     c.material,
+            'spec':         c.spec,
+            'extrusion_nos': c.extrusion_nos or [],
             'description':  c.description,
-            'contact_person': c.contact_person,
             'severity':     c.severity,
             'defect_category': c.defect_category,
             'complaint_type':  c.complaint_type,

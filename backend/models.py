@@ -469,13 +469,14 @@ class CustomerComplaint(db.Model):
     complaint_no = db.Column('客訴單號', db.String(50), unique=True, index=True)
 
     # 基本資訊
-    customer       = db.Column('客戶',      db.String(100), nullable=False)
-    complaint_date = db.Column('客訴日期',  db.Date,        nullable=False, index=True)
-    product_no     = db.Column('料號',      db.String(100), nullable=False)
-    description    = db.Column('不良描述',  db.Text,        nullable=False)
-    contact_person = db.Column('客戶聯絡人', db.String(100), nullable=True)
-    severity       = db.Column('嚴重度',    db.String(20),  nullable=True)
-    defect_category= db.Column('不良類別',  db.String(100), nullable=True)
+    customer        = db.Column('客戶',      db.String(100), nullable=False)
+    complaint_date  = db.Column('客訴日期',  db.Date,        nullable=False, index=True)
+    material        = db.Column('材質',      db.String(100), nullable=True)
+    spec            = db.Column('規格',      db.String(200), nullable=True)
+    extrusion_nos   = db.Column('擠製編號',  JsonType,       nullable=True)  # list[str]
+    description     = db.Column('不良描述',  db.Text,        nullable=False)
+    severity        = db.Column('嚴重度',    db.String(20),  nullable=True)
+    defect_category = db.Column('不良類別',  db.String(100), nullable=True)
 
     # 客訴類型：'quality' | 'warranty' | 'field_failure'
     complaint_type = db.Column('客訴類型', db.String(30), nullable=False, default='quality')

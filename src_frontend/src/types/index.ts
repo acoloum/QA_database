@@ -622,9 +622,10 @@ export interface CustomerComplaint {
     complaint_no: string;
     customer: string;
     complaint_date: string;
-    product_no: string;
+    material?: string | null;
+    spec?: string | null;
+    extrusion_nos?: string[];
     description: string;
-    contact_person?: string | null;
     severity?: string | null;
     defect_category?: string | null;
     complaint_type: ComplaintType;

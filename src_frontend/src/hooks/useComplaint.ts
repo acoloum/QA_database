@@ -5,7 +5,7 @@ import type { CustomerComplaint, PaginatedResponse } from '../types';
 
 export interface ComplaintListParams {
     customer?: string;
-    product_no?: string;
+    material?: string;
     status?: string;
     complaint_type?: string;
     date_from?: string;
@@ -170,7 +170,7 @@ export const useComplaintStatsByProduct = (params?: { date_from?: string; date_t
         queryKey: ['complaintStats', 'product', params],
         queryFn: async () => {
             const res = await api.get('/complaints/stats/by-product', { params });
-            return res.data as { product_no: string; total: number; repeat_count: number; repeat_rate: number }[];
+            return res.data as { material: string; spec: string; total: number; repeat_count: number; repeat_rate: number }[];
         },
     });
 
@@ -193,7 +193,7 @@ export const useComplaintStatsWarranty = (params?: { date_from?: string; date_to
                 warranty_count: number;
                 field_failure_count: number;
                 avg_failure_hours: number | null;
-                by_product: { product_no: string; total: number }[];
+                by_material: { material: string; total: number }[];
             };
         },
     });

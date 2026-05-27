@@ -17,6 +17,16 @@ interface ComplaintModalProps {
 }
 
 const SEVERITY_OPTIONS = ['Critical', 'Major', 'Minor'];
+const DEFECT_CATEGORY_OPTIONS = [
+    '外觀不良',
+    '尺寸不良',
+    '材質/機械性質不良',
+    '加工性不良',
+    '包裝不良',
+    '混料/錯料',
+    '數量不符',
+    '其他',
+];
 const DEFAULT_REPLY_DAYS: Record<ComplaintType, number> = {
     quality:       14,
     warranty:      30,
@@ -38,9 +48,11 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
     // 表單狀態
     const [customer,               setCustomer]               = useState('');
     const [complaintDate,          setComplaintDate]          = useState(new Date().toISOString().split('T')[0]);
-    const [productNo,              setProductNo]              = useState('');
+    const [material,               setMaterial]               = useState('');
+    const [spec,                   setSpec]                   = useState('');
+    const [extrusionNos,           setExtrusionNos]           = useState<string[]>([]);
+    const [extrusionInput,         setExtrusionInput]         = useState('');
     const [description,            setDescription]            = useState('');
-    const [contactPerson,          setContactPerson]          = useState('');
     const [severity,               setSeverity]               = useState('Major');
     const [defectCategory,         setDefectCategory]         = useState('');
     const [complaintType,          setComplaintType]          = useState<ComplaintType>('quality');
@@ -83,9 +95,10 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
             if (editData) {
                 setCustomer(editData.customer ?? '');
                 setComplaintDate(editData.complaint_date ?? '');
-                setProductNo(editData.product_no ?? '');
+                setMaterial(editData.material ?? '');
+                setSpec(editData.spec ?? '');
+                setExtrusionNos(editData.extrusion_nos ?? []);
                 setDescription(editData.description ?? '');
-                setContactPerson(editData.contact_person ?? '');
                 setSeverity(editData.severity ?? 'Major');
                 setDefectCategory(editData.defect_category ?? '');
                 setComplaintType(editData.complaint_type ?? 'quality');
@@ -101,12 +114,13 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
                 setSatisfactionNote(editData.satisfaction_note ?? '');
                 setRepeatWarning(editData.is_repeat);
             } else {
-                // 重置
                 setCustomer('');
                 setComplaintDate(new Date().toISOString().split('T')[0]);
-                setProductNo('');
+                setMaterial('');
+                setSpec('');
+                setExtrusionNos([]);
+                setExtrusionInput('');
                 setDescription('');
-                setContactPerson('');
                 setSeverity('Major');
                 setDefectCategory('');
                 setComplaintType('quality');
@@ -128,14 +142,27 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
         return () => { cancelled = true; };
     }, [editData, show]);
 
+    const addExtrusionNo = () => {
+        const val = extrusionInput.trim();
+        if (val && !extrusionNos.includes(val)) {
+            setExtrusionNos(prev => [...prev, val]);
+        }
+        setExtrusionInput('');
+    };
+
+    const removeExtrusionNo = (no: string) => {
+        setExtrusionNos(prev => prev.filter(n => n !== no));
+    };
+
     const buildPayload = () => ({
         customer:                customer.trim(),
         complaint_date:          complaintDate,
-        product_no:              productNo.trim(),
+        material:                material.trim() || undefined,
+        spec:                    spec.trim() || undefined,
+        extrusion_nos:           extrusionNos,
         description:             description.trim(),
-        contact_person:          contactPerson.trim() || undefined,
         severity:                severity || undefined,
-        defect_category:         defectCategory.trim() || undefined,
+        defect_category:         defectCategory || undefined,
         complaint_type:          complaintType,
         device_serial:           deviceSerial.trim() || undefined,
         usage_env:               usageEnv.trim() || undefined,
@@ -175,7 +202,7 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
                     <Alert variant="warning" className="py-2 mb-3">
                         <i className="bi bi-exclamation-triangle-fill me-2" />
                         <strong>重複客訴警示：</strong>
-                        此為 12 個月內相同客戶 + 料號 + 不良類別的重複客訴。
+                        此為 12 個月內相同客戶 + 材質 + 規格 + 不良類別的重複客訴。
                         {(editData?.repeat_refs?.length ?? 0) > 0 && (
                             <span className="ms-1">
                                 關聯單號：
@@ -212,16 +239,6 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
                     </Col>
                     <Col md={4}>
                         <Form.Group>
-                            <Form.Label>料號 <span className="text-danger">*</span></Form.Label>
-                            <Form.Control
-                                value={productNo}
-                                onChange={e => setProductNo(e.target.value)}
-                                placeholder="產品料號"
-                            />
-                        </Form.Group>
-                    </Col>
-                    <Col md={4}>
-                        <Form.Group>
                             <Form.Label>客訴類型</Form.Label>
                             <Form.Select
                                 value={complaintType}
@@ -231,6 +248,53 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
                                     <option key={k} value={k}>{v}</option>
                                 ))}
                             </Form.Select>
+                        </Form.Group>
+                    </Col>
+                    <Col md={4}>
+                        <Form.Group>
+                            <Form.Label>材質</Form.Label>
+                            <Form.Control
+                                value={material}
+                                onChange={e => setMaterial(e.target.value)}
+                                placeholder="如：6061、6063…"
+                            />
+                        </Form.Group>
+                    </Col>
+                    <Col md={4}>
+                        <Form.Group>
+                            <Form.Label>規格</Form.Label>
+                            <Form.Control
+                                value={spec}
+                                onChange={e => setSpec(e.target.value)}
+                                placeholder="如：T5、T6…"
+                            />
+                        </Form.Group>
+                    </Col>
+                    <Col md={4}>
+                        <Form.Group>
+                            <Form.Label>擠製編號</Form.Label>
+                            <div className="d-flex gap-1">
+                                <Form.Control
+                                    value={extrusionInput}
+                                    onChange={e => setExtrusionInput(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addExtrusionNo(); } }}
+                                    placeholder="輸入後按 Enter 或 +"
+                                />
+                                <Button variant="outline-secondary" onClick={addExtrusionNo}>+</Button>
+                            </div>
+                            {extrusionNos.length > 0 && (
+                                <div className="mt-1 d-flex flex-wrap gap-1">
+                                    {extrusionNos.map(no => (
+                                        <Badge key={no} bg="secondary" className="d-flex align-items-center gap-1" style={{ fontSize: '0.8rem' }}>
+                                            {no}
+                                            <span
+                                                style={{ cursor: 'pointer', lineHeight: 1 }}
+                                                onClick={() => removeExtrusionNo(no)}
+                                            >×</span>
+                                        </Badge>
+                                    ))}
+                                </div>
+                            )}
                         </Form.Group>
                     </Col>
                     <Col md={4}>
@@ -246,20 +310,12 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
                     <Col md={4}>
                         <Form.Group>
                             <Form.Label>不良類別</Form.Label>
-                            <Form.Control
-                                value={defectCategory}
-                                onChange={e => setDefectCategory(e.target.value)}
-                                placeholder="如：外觀、尺寸、功能…"
-                            />
-                        </Form.Group>
-                    </Col>
-                    <Col md={4}>
-                        <Form.Group>
-                            <Form.Label>聯絡人</Form.Label>
-                            <Form.Control
-                                value={contactPerson}
-                                onChange={e => setContactPerson(e.target.value)}
-                            />
+                            <Form.Select value={defectCategory} onChange={e => setDefectCategory(e.target.value)}>
+                                <option value="">— 請選擇 —</option>
+                                {DEFECT_CATEGORY_OPTIONS.map(opt => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                            </Form.Select>
                         </Form.Group>
                     </Col>
                     <Col md={12}>
@@ -411,7 +467,7 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
                 <Button
                     variant="primary"
                     onClick={handleSubmit}
-                    disabled={isPending || !customer || !productNo || !description}
+                    disabled={isPending || !customer || !description}
                 >
                     {isPending ? '儲存中…' : (isEdit ? '儲存更改' : '新增客訴')}
                 </Button>

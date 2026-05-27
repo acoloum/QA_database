@@ -390,7 +390,8 @@ class CAPAService:
                 source_info = {
                     'complaint_no': c.complaint_no,
                     'customer':     c.customer,
-                    'product_no':   c.product_no,
+                    'material':     c.material,
+                    'spec':         c.spec,
                     'defect':       c.description,
                 }
 

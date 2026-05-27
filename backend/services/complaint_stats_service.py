@@ -1,4 +1,4 @@
-"""客訴統計服務 — 客戶、料號、不良類別、月份、Warranty 維度"""
+"""客訴統計服務 — 客戶、材質規格、不良類別、月份、Warranty 維度"""
 from datetime import date
 from typing import List, Optional, Dict, Any
 from sqlalchemy import func, extract
@@ -38,19 +38,21 @@ class ComplaintStatsService:
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
     ) -> List[Dict[str, Any]]:
-        """依料號維度統計件數與重複率"""
+        """依材質+規格維度統計件數與重複率"""
         q = db.session.query(
-            CustomerComplaint.product_no,
+            CustomerComplaint.material,
+            CustomerComplaint.spec,
             func.count(CustomerComplaint.id).label('total'),
             func.sum(
                 func.cast(CustomerComplaint.is_repeat, db.Integer)
             ).label('repeat_count'),
-        ).group_by(CustomerComplaint.product_no)
+        ).group_by(CustomerComplaint.material, CustomerComplaint.spec)
         q = _apply_date_filter(q, date_from, date_to)
         rows = q.order_by(func.count(CustomerComplaint.id).desc()).all()
         return [
             {
-                'product_no':   r.product_no,
+                'material':     r.material or '—',
+                'spec':         r.spec or '—',
                 'total':        r.total,
                 'repeat_count': int(r.repeat_count or 0),
                 'repeat_rate':  round(int(r.repeat_count or 0) / r.total * 100, 1) if r.total else 0,
@@ -122,12 +124,13 @@ class ComplaintStatsService:
         hours = [i.failure_hours for i in items if i.failure_hours is not None]
         avg_hours = round(sum(hours) / len(hours), 1) if hours else None
 
-        # 依料號統計
-        product_map: Dict[str, int] = {}
+        # 依材質統計
+        material_map: Dict[str, int] = {}
         for i in items:
-            product_map[i.product_no] = product_map.get(i.product_no, 0) + 1
-        by_product = sorted(
-            [{'product_no': k, 'total': v} for k, v in product_map.items()],
+            key = i.material or '未填'
+            material_map[key] = material_map.get(key, 0) + 1
+        by_material = sorted(
+            [{'material': k, 'total': v} for k, v in material_map.items()],
             key=lambda x: -x['total'],
         )
 
@@ -136,7 +139,7 @@ class ComplaintStatsService:
             'warranty_count':      warranty_count,
             'field_failure_count': field_failure_count,
             'avg_failure_hours':   avg_hours,
-            'by_product':          by_product,
+            'by_material':         by_material,
         }
 
 
