@@ -4,7 +4,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import joinedload
 from ..extensions import db
 from ..models import CorrectiveAction, NCMR, CustomerComplaint, Inspector, ActionTask
-from ..utils import generate_number
+from ..utils import generate_number, validate_status_transition
 from .task_service import TaskService
 
 # 嚴重度 → 嚴格度預設映射（可 override）
@@ -108,7 +108,7 @@ class CAPAService:
         page: int = 1,
         per_page: int = 20,
     ) -> Dict[str, Any]:
-        q = CorrectiveAction.query.filter(
+        q = CorrectiveAction.active_query().filter(
             CorrectiveAction.eight_d_number.isnot(None)
         )
         if source_type:
@@ -133,18 +133,24 @@ class CAPAService:
     # ── 取得明細 ─────────────────────────────────────────────
     @staticmethod
     def get_detail(capa_id: int) -> Optional[Dict[str, Any]]:
-        ca = CorrectiveAction.query.get(capa_id)
+        ca = CorrectiveAction.active_query().filter_by(id=capa_id).first()
         return CAPAService._to_dict(ca) if ca else None
 
     # ── 更新各 D 步驟 ────────────────────────────────────────
     @staticmethod
     def update_step(capa_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
         """更新任意 D 步驟欄位（不觸發 gate，gate 由 close 路由處理）"""
-        ca = CorrectiveAction.query.get(capa_id)
+        ca = CorrectiveAction.active_query().filter_by(id=capa_id).first()
         if not ca:
             raise ValueError('CAPA 不存在')
         if ca.status == '已結案':
             raise ValueError('已結案的 CAPA 不可修改')
+
+        # 狀態轉移驗證
+        new_status = data.get('status') or data.get('狀態')
+        if new_status and new_status != ca.status:
+            validate_status_transition('CAPA', ca.status, new_status)
+            ca.status = new_status
 
         # D0
         _setif(ca, 'd0_symptom',   data, 'D0_symptom')
@@ -248,13 +254,13 @@ class CAPAService:
     # ── D6 gate 檢查 ─────────────────────────────────────────
     @staticmethod
     def check_d6_gate(capa_id: int) -> bool:
-        ca = CorrectiveAction.query.get(capa_id)
+        ca = CorrectiveAction.active_query().filter_by(id=capa_id).first()
         return bool(ca and ca.d6_verified)
 
     # ── D8 結案 ──────────────────────────────────────────────
     @staticmethod
     def close(capa_id: int, confirmation: str, recognition: Optional[str] = None) -> Dict[str, Any]:
-        ca = CorrectiveAction.query.get(capa_id)
+        ca = CorrectiveAction.active_query().filter_by(id=capa_id).first()
         if not ca:
             raise ValueError('CAPA 不存在')
         if ca.status == '已結案':
@@ -278,6 +284,12 @@ class CAPAService:
         ca.d8_close_date  = date.today()
         ca.closed_at      = datetime.utcnow()
 
+        # CAPA 結案時，若來源為 NCMR，自動更新 NCMR 狀態為「矯正完成」
+        if ca.ncmr_id:
+            ncmr = NCMR.active_query().filter_by(id=ca.ncmr_id).first()
+            if ncmr and ncmr.status == '矯正中':
+                ncmr.status = '矯正完成'
+
         # 若來源為客訴，同步將客訴狀態設為已結案
         if ca.source_type == 'complaint' and ca.source_id:
             complaint = CustomerComplaint.query.get(ca.source_id)
@@ -290,7 +302,7 @@ class CAPAService:
     # ── 刪除 ─────────────────────────────────────────────────
     @staticmethod
     def delete(capa_id: int) -> bool:
-        ca = CorrectiveAction.query.get(capa_id)
+        ca = CorrectiveAction.active_query().filter_by(id=capa_id).first()
         if not ca:
             raise ValueError('CAPA 不存在')
         # 若來源為客訴，將客訴狀態回退為待處理並清空 related_capa_id
@@ -310,7 +322,8 @@ class CAPAService:
         ActionTask.query.filter_by(
             source_type='capa', source_id=capa_id, status='pending'
         ).delete(synchronize_session=False)
-        db.session.delete(ca)
+        # 軟刪除：設定 deleted_at 時間戳，而非真正 DELETE
+        ca.soft_delete()
         db.session.commit()
         return True
 
