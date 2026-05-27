@@ -145,7 +145,6 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     useEffect(() => {
         if (show) {
             if (editId && detailData) {
-                // eslint-disable-next-line react-hooks/set-state-in-effect
                 setDate(detailData.檢驗日期 ?? detailData.date ?? '');
                 setInspectorName(String(detailData.檢驗人員 ?? '') || String(detailData.檢驗人員姓名 ?? '') || String(detailData.inspector_name ?? '') || '');
                 setVendorName(String(detailData.廠商中文名稱 ?? detailData.vendor_name ?? ''));
@@ -209,9 +208,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     // 廠商變更時（僅新增模式），重置量測組
     useEffect(() => {
         if (!editId) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
             setGroupCount(DEFAULT_GROUP_COUNT);
-            // eslint-disable-next-line react-hooks/set-state-in-effect
             setGroups(initEmptyGroups(DEFAULT_GROUP_COUNT, ITEMS));
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -253,7 +250,6 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     // 公差違規偵測（新格式：從 groups 讀取量測值）
     useEffect(() => {
         if (!tolerance) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
             setViolations({});
             return;
         }
