@@ -143,7 +143,7 @@ class NCMRService:
             raise ValueError("缺少識別碼")
         
         try:
-            ncmr = NCMR.query.get(ncmr_id)
+            ncmr = NCMR.active_query().filter_by(id=ncmr_id).first()
             if not ncmr:
                 raise ValueError("找不到該筆資料")
 
@@ -219,7 +219,7 @@ class NCMRService:
             # Explicitly delete CAs first if cascade not trusted, but defined cascade should work.
             # However legacy code deleted CA then NCMR.
             # I set cascade="all, delete-orphan".
-            ncmr = NCMR.query.get(ncmr_id)
+            ncmr = NCMR.active_query().filter_by(id=ncmr_id).first()
             if ncmr:
                 ncmr.soft_delete()
                 db.session.commit()
@@ -264,7 +264,7 @@ class NCMRService:
     @staticmethod
     def get_ncmr_info(ncmr_id: int) -> Optional[Dict[str, Any]]:
         try:
-            n = NCMR.query.options(joinedload(NCMR.inspector)).get(ncmr_id)
+            n = NCMR.active_query().options(joinedload(NCMR.inspector)).filter_by(id=ncmr_id).first()
             if not n:
                 return None
             
