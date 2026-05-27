@@ -761,3 +761,18 @@ export interface CAPAListItem {
     ncmr_description?: string | null;
 }
 
+export interface VendorPerformance {
+  id: number;
+  vendor_id: number;
+  vendor_name?: string;
+  period: string;
+  inspection_count: number;
+  defect_count: number;
+  defect_rate: number;
+  capa_count: number;
+  avg_capa_days?: number | null;
+  complaint_count: number;
+  score: number;
+  calculated_at?: string;
+}
+

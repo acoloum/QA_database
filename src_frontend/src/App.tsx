@@ -15,6 +15,7 @@ import UserManagementPage from './pages/admin/UserManagementPage';
 import TaskListPage from './pages/task/TaskListPage';
 import ComplaintPage from './pages/complaint/ComplaintPage';
 import ComplaintStatsPage from './pages/complaint/ComplaintStatsPage';
+import VendorPerformancePage from './pages/vendor/VendorPerformancePage';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 
@@ -42,6 +43,7 @@ function App() {
               <Route path="/complaints/stats" element={<ComplaintStatsPage />} />
               <Route path="/tolerance" element={<TolerancePage />} />
               <Route path="/extrusion-tolerance" element={<ExtrusionTolerancePage />} />
+              <Route path="/vendor-performance" element={<VendorPerformancePage />} />
               {/* 未來在此處新增其他頁面路由 */}
             </Route>
           </Route>
