@@ -1,7 +1,7 @@
 import re
 from flask import Blueprint, jsonify, request, current_app
 from ..extensions import db, limiter
-from ..models import User
+from ..models import User, Role
 from ..utils import (
     generate_token,
     verify_token,
@@ -10,7 +10,8 @@ from ..utils import (
     verify_password,
     handle_db_error,
     auth_required,
-    require_admin
+    require_admin,
+    require_permission
 )
 
 _VALID_ROLES = ('user', 'admin')
@@ -85,6 +86,22 @@ def get_csrf_token_api():
     token = generate_csrf_token()
     return jsonify({'csrf_token': token})
 
+@auth_bp.route('/api/roles', methods=['GET'])
+@auth_required
+@require_permission('user.manage')
+def list_roles(current_user):
+    """列出所有角色（需 user.manage 權限）"""
+    try:
+        roles = Role.query.order_by(Role.code).all()
+        return jsonify([
+            {'code': r.code, 'name': r.name, 'permissions': r.permissions}
+            for r in roles
+        ])
+    except Exception as e:
+        current_app.logger.exception("List roles error: %s", str(e))
+        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+
+
 @auth_bp.route('/api/users', methods=['GET'])
 @auth_required
 @require_admin
@@ -120,6 +137,11 @@ def update_user_role(user_id):
     new_role = data.get('role')
     if new_role not in ('user', 'admin'):
         return jsonify({"error": "角色值無效，僅允許 'user' 或 'admin'"}), 400
+
+    # 若 Role 表存在對應角色代碼則一併驗證
+    role_exists = Role.query.filter_by(code=new_role).first()
+    if not role_exists:
+        return jsonify({"error": f"角色代碼不存在：{new_role}"}), 400
 
     # 禁止管理員修改自己的角色，避免意外失去管理員權限
     current_user = getattr(request, 'user', {})

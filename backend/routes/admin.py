@@ -3,8 +3,8 @@ from sqlalchemy import text, func, or_, case, and_
 from dateutil.relativedelta import relativedelta
 from datetime import datetime, timedelta, date
 from ..extensions import db
-from ..models import Inspector, Vendor, Machine, Operator, ShippingData, PatrolMain, NCMR, CorrectiveAction, ReworkRequest
-from ..utils import auth_required
+from ..models import Inspector, Vendor, Machine, Operator, ShippingData, PatrolMain, NCMR, CorrectiveAction, ReworkRequest, AuditLog
+from ..utils import auth_required, require_permission
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -464,4 +464,42 @@ def get_specs():
         return jsonify(specs)
     except Exception as e:
         current_app.logger.exception("查詢檢驗規格清單時發生錯誤: %s", str(e))
+        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+
+
+@admin_bp.route('/api/audit-logs', methods=['GET'])
+@auth_required
+@require_permission('user.manage')
+def get_audit_logs(current_user):
+    """查詢審計日誌（需 user.manage 權限）"""
+    page = request.args.get('page', 1, type=int)
+    per_page = min(request.args.get('per_page', 50, type=int), 200)
+    module = request.args.get('module')
+    user_id = request.args.get('user_id', type=int)
+
+    try:
+        q = AuditLog.query.order_by(AuditLog.created_at.desc())
+        if module:
+            q = q.filter(AuditLog.module == module)
+        if user_id:
+            q = q.filter(AuditLog.user_id == user_id)
+
+        pagination = q.paginate(page=page, per_page=per_page, error_out=False)
+        items = [
+            {
+                'id': log.id,
+                'user_id': log.user_id,
+                'username': log.user.username if log.user else '(已刪除)',
+                'action': log.action,
+                'module': log.module,
+                'record_id': log.record_id,
+                'old_value': log.old_value,
+                'new_value': log.new_value,
+                'created_at': log.created_at.isoformat() if log.created_at else None,
+            }
+            for log in pagination.items
+        ]
+        return jsonify({'data': items, 'total': pagination.total, 'page': page, 'per_page': per_page})
+    except Exception as e:
+        current_app.logger.exception("查詢審計日誌時發生錯誤: %s", str(e))
         return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
