@@ -266,6 +266,10 @@ class NCMR(db.Model):
     related_capa_id = db.Column('關聯CAPA_ID', db.Integer, nullable=True)
     related_capa_source = db.Column('關聯CAPA來源', db.String(20), nullable=True)
 
+    __table_args__ = (
+        db.Index('idx_ncmr_status_date', '狀態', '發現日期'),
+    )
+
     inspector = db.relationship('Inspector', backref='ncmr_list')
     corrective_actions = db.relationship('CorrectiveAction', backref='ncmr', cascade="all, delete-orphan")
     rework_requests = db.relationship('ReworkRequest', backref='ncmr', cascade="all, delete-orphan")
@@ -360,6 +364,11 @@ class CorrectiveAction(db.Model):
     created_at = db.Column('建立時間', db.DateTime, default=datetime.utcnow)
     closed_at  = db.Column('結案日期_舊', db.DateTime, nullable=True)
 
+    __table_args__ = (
+        db.Index('idx_capa_source', '來源類型', '來源ID'),
+        db.Index('idx_capa_status_deadline', '狀態', 'D0_客戶要求結案日'),
+    )
+
     # --- 關聯 ---
     owner     = db.relationship('Inspector', foreign_keys=[owner_id],       backref='cars')
     champion  = db.relationship('Inspector', foreign_keys=[d1_champion_id], backref='capa_champion')
@@ -392,6 +401,10 @@ class ReworkRequest(db.Model):
     created_at = db.Column('申請日期', db.DateTime, default=datetime.utcnow)
     actual_finish_date = db.Column('實際完成日期', db.DateTime)
     complaint_id = db.Column('客訴_ID', db.Integer, nullable=True)
+
+    __table_args__ = (
+        db.Index('idx_rework_status_created', '狀態', '申請日期'),
+    )
 
     applicant = db.relationship('Inspector', foreign_keys=[applicant_id], backref='rework_requests')
     reviewer = db.relationship('Inspector', foreign_keys=[reviewer_id], backref='rework_reviews')
@@ -515,6 +528,10 @@ class CustomerComplaint(db.Model):
     created_by = db.Column('建立人員', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True)
     created_at = db.Column('建立時間', db.DateTime, default=datetime.utcnow)
     updated_at = db.Column('更新時間', db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.Index('idx_complaint_repeat_date', '是否重複客訴', '客訴日期'),
+    )
 
     creator = db.relationship('User', backref='complaints', foreign_keys=[created_by])
 
