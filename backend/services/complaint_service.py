@@ -18,7 +18,7 @@ class ComplaintService:
     def _gen_no() -> str:
         today = date.today().strftime('%Y%m%d')
         acquire_number_lock(f'客訴紀錄.客訴單號.CC.{today}')
-        count = CustomerComplaint.query.filter(
+        count = CustomerComplaint.active_query().filter(
             CustomerComplaint.complaint_no.like(f'CC-{today}-%')
         ).count()
         return f'CC-{today}-{count + 1:03d}'
@@ -73,7 +73,7 @@ class ComplaintService:
     @staticmethod
     def _check_repeat(complaint: CustomerComplaint) -> None:
         cutoff = date.today() - timedelta(days=365)
-        q = CustomerComplaint.query.filter(
+        q = CustomerComplaint.active_query().filter(
             CustomerComplaint.customer        == complaint.customer,
             CustomerComplaint.material        == complaint.material,
             CustomerComplaint.spec            == complaint.spec,
@@ -102,7 +102,7 @@ class ComplaintService:
         page: int = 1,
         per_page: int = 20,
     ) -> Dict[str, Any]:
-        q = CustomerComplaint.query
+        q = CustomerComplaint.active_query()
         if customer:
             q = q.filter(CustomerComplaint.customer.ilike(f'%{customer}%'))
         if material:
@@ -131,13 +131,13 @@ class ComplaintService:
     # ── 取得明細 ─────────────────────────────────────────────
     @staticmethod
     def get_detail(complaint_id: int) -> Optional[Dict[str, Any]]:
-        c = CustomerComplaint.query.get(complaint_id)
+        c = CustomerComplaint.active_query().filter(CustomerComplaint.id == complaint_id).first()
         return ComplaintService._to_dict(c) if c else None
 
     # ── 更新 ─────────────────────────────────────────────────
     @staticmethod
     def update(complaint_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
-        c = CustomerComplaint.query.get(complaint_id)
+        c = CustomerComplaint.active_query().filter(CustomerComplaint.id == complaint_id).first()
         if not c:
             raise ValueError('客訴不存在')
 
@@ -174,17 +174,17 @@ class ComplaintService:
     # ── 刪除 ─────────────────────────────────────────────────
     @staticmethod
     def delete(complaint_id: int) -> bool:
-        c = CustomerComplaint.query.get(complaint_id)
+        c = CustomerComplaint.active_query().filter(CustomerComplaint.id == complaint_id).first()
         if not c:
             raise ValueError('客訴不存在')
-        db.session.delete(c)
+        c.soft_delete()
         db.session.commit()
         return True
 
     # ── 從客訴開立重工 ───────────────────────────────────────
     @staticmethod
     def open_rework(complaint_id: int) -> Dict[str, Any]:
-        c = CustomerComplaint.query.get(complaint_id)
+        c = CustomerComplaint.active_query().filter(CustomerComplaint.id == complaint_id).first()
         if not c:
             raise ValueError('客訴不存在')
         if c.related_rework_id:
@@ -199,7 +199,7 @@ class ComplaintService:
     # ── 開立 CAPA（回傳 CAPA source 資訊，由 CAPA service 建立）
     @staticmethod
     def prepare_capa_source(complaint_id: int) -> Dict[str, Any]:
-        c = CustomerComplaint.query.get(complaint_id)
+        c = CustomerComplaint.active_query().filter(CustomerComplaint.id == complaint_id).first()
         if not c:
             raise ValueError('客訴不存在')
         if c.related_capa_id:
@@ -216,7 +216,7 @@ class ComplaintService:
     @staticmethod
     def overdue_list() -> List[Dict[str, Any]]:
         today = date.today()
-        items = CustomerComplaint.query.filter(
+        items = CustomerComplaint.active_query().filter(
             CustomerComplaint.status.in_(['待處理', '處理中']),
             CustomerComplaint.initial_reply_deadline < today,
         ).order_by(CustomerComplaint.initial_reply_deadline.asc()).all()
@@ -226,7 +226,7 @@ class ComplaintService:
     @staticmethod
     def recent_repeats(days: int = 30) -> List[Dict[str, Any]]:
         cutoff = date.today() - timedelta(days=days)
-        items = CustomerComplaint.query.filter(
+        items = CustomerComplaint.active_query().filter(
             CustomerComplaint.is_repeat == True,
             CustomerComplaint.complaint_date >= cutoff,
         ).order_by(CustomerComplaint.complaint_date.desc()).all()
