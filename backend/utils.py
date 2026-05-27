@@ -246,6 +246,14 @@ _NUMBER_PAIR_WHITELIST: set = {
     ("重工申請單", "申請單號"),
 }
 
+def acquire_number_lock(lock_key: str) -> None:
+    """在 PostgreSQL 交易中取得單號產生鎖，避免多人同時產生重複序號。"""
+    bind = db.session.get_bind()
+    if bind and bind.dialect.name == 'postgresql':
+        db.session.execute(text('SELECT pg_advisory_xact_lock(hashtext(:lock_key))'), {
+            'lock_key': lock_key,
+        })
+
 def generate_number(prefix: str, table_name: Optional[str] = None, number_field: Optional[str] = None) -> str:
     """
     統一編碼生成函數
@@ -259,6 +267,7 @@ def generate_number(prefix: str, table_name: Optional[str] = None, number_field:
             raise ValueError(f"不允許的資料表或欄位名稱：{table_name}.{number_field}")
 
         try:
+            acquire_number_lock(f'{table_name}.{number_field}.{prefix}.{year_month}')
             sql = f"""
                 SELECT "{number_field}"
                 FROM "{table_name}"

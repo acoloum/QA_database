@@ -4,15 +4,19 @@ from .extensions import db
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 
+JsonType = JSONB().with_variant(db.JSON(), 'sqlite')
+
 class User(db.Model):
     __tablename__ = '使用者'
     id = db.Column('識別碼', db.Integer, primary_key=True)
     username = db.Column('使用者名稱', db.String, unique=True, nullable=False)
     password = db.Column('密碼', db.String, nullable=False)
+    inspector_id = db.Column('品管人員ID', db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
     is_active = db.Column('是否啟用', db.Boolean, default=True)
     role = db.Column('角色', db.String(20), nullable=False, default='user', server_default='user')
     created_at = db.Column('建立時間', db.DateTime(timezone=True), nullable=True,
                            default=lambda: datetime.now(timezone.utc))
+    inspector = db.relationship('Inspector', foreign_keys=[inspector_id], backref='users')
 
     def __repr__(self):
         return f'<User {self.username}>'
@@ -241,7 +245,7 @@ class ExtrusionToleranceDetail(db.Model):
 class NCMR(db.Model):
     __tablename__ = '不合格品單'
     id = db.Column('識別碼', db.Integer, primary_key=True)
-    ncmr_number = db.Column('NCMR單號', db.String, index=True)
+    ncmr_number = db.Column('NCMR單號', db.String, unique=True, index=True)
     date = db.Column('發現日期', db.Date, index=True)
     source = db.Column('來源', db.String)
     product_info = db.Column('產品資訊', db.String)
@@ -269,8 +273,17 @@ class NCMR(db.Model):
 class CorrectiveAction(db.Model):
     """異常矯正單 — CAPA（我方執行矯正，含 D0-D8 完整 8D 流程）"""
     __tablename__ = '異常矯正單'
+
+    def __init__(self, **kwargs):
+        # 舊版 CAR 欄位已移除；保留建構參數相容，避免舊匯入/測試資料建立時中斷。
+        kwargs.pop('car_number', None)
+        for key, value in kwargs.items():
+            if not hasattr(type(self), key):
+                raise TypeError(f"'{key}' is an invalid keyword argument for CorrectiveAction")
+            setattr(self, key, value)
+
     id = db.Column('識別碼', db.Integer, primary_key=True)
-    eight_d_number = db.Column('8D單號', db.String, index=True)
+    eight_d_number = db.Column('8D單號', db.String, unique=True, index=True)
     status = db.Column('狀態', db.String, index=True, default='進行中')
 
     # --- 1.5 源頭欄位（強制有來源）---
@@ -285,14 +298,14 @@ class CorrectiveAction(db.Model):
 
     # --- D0 立案 ---
     d0_symptom   = db.Column('D0_症狀描述',   db.Text, nullable=True)
-    d0_criteria  = db.Column('D0_判斷準則',   JSONB,   nullable=True)   # list of strings
+    d0_criteria  = db.Column('D0_判斷準則',   JsonType,   nullable=True)   # list of strings
     d0_severity  = db.Column('D0_嚴重度',     db.String(20), nullable=True)  # Critical|Major|Minor
     d0_deadline  = db.Column('D0_客戶要求結案日', db.Date, nullable=True)
 
     # --- D1 小組（結構化）---
     d1_champion_id = db.Column('D1_Champion', db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
     d1_leader_id   = db.Column('D1_Leader',   db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
-    d1_members     = db.Column('D1_成員',     JSONB, nullable=True)     # list of inspector ids
+    d1_members     = db.Column('D1_成員',     JsonType, nullable=True)     # list of inspector ids
     # 保留舊欄位相容性
     owner_id = db.Column('負責人員', db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
 
@@ -315,8 +328,8 @@ class CorrectiveAction(db.Model):
 
     # --- D4 真因分析 ---
     d4_tool         = db.Column('D4_工具',        db.String(20), nullable=True)  # '5why'|'fishbone'|'both'
-    d4_five_why     = db.Column('D4_5Why資料',    JSONB, nullable=True)  # [{q,a}, ...]
-    d4_fishbone     = db.Column('D4_魚骨圖資料',  JSONB, nullable=True)  # {man:[],machine:[],material:[],method:[],measurement:[],environment:[]}
+    d4_five_why     = db.Column('D4_5Why資料',    JsonType, nullable=True)  # [{q,a}, ...]
+    d4_fishbone     = db.Column('D4_魚骨圖資料',  JsonType, nullable=True)  # {man:[],machine:[],material:[],method:[],measurement:[],environment:[]}
     d4_root_cause   = db.Column('D4_根本原因',    db.Text, nullable=True)
     d4 = db.Column('D4_真因分析', db.Text, nullable=True)
 
@@ -333,7 +346,7 @@ class CorrectiveAction(db.Model):
     d6 = db.Column('D6_成效驗證', db.Text, nullable=True)
 
     # --- D7 預防再發 ---
-    d7_actions = db.Column('D7_橫展類型', JSONB, nullable=True)
+    d7_actions = db.Column('D7_橫展類型', JsonType, nullable=True)
     # [{type:'pfmea'|'control_plan'|'sop'|'training'|'cross_part'|'customer_notify'|'other',
     #   task_id:int, assignee_id:int, due_date:'YYYY-MM-DD', part_nos:[str]}]
     d7 = db.Column('D7_預防再發', db.Text, nullable=True)
@@ -360,7 +373,7 @@ class ReworkRequest(db.Model):
     __tablename__ = '重工申請單'
     id = db.Column('識別碼', db.Integer, primary_key=True)
     ncmr_id = db.Column('NCMR_ID', db.Integer, db.ForeignKey('不合格品單.識別碼'))
-    rework_number = db.Column('申請單號', db.String)
+    rework_number = db.Column('申請單號', db.String, unique=True)
     applicant_id = db.Column('申請人員', db.Integer, db.ForeignKey('品管人員.識別碼'))
     department = db.Column('部門', db.String)
     urgency = db.Column('緊急程度', db.String)
@@ -488,7 +501,7 @@ class CustomerComplaint(db.Model):
 
     # 重複客訴警示
     is_repeat   = db.Column('是否重複客訴',   db.Boolean, default=False)
-    repeat_refs = db.Column('重複客訴參考單號', JSONB,      nullable=True)
+    repeat_refs = db.Column('重複客訴參考單號', JsonType,      nullable=True)
 
     # 關聯單據
     related_capa_id   = db.Column('關聯CAPA_ID',  db.Integer, nullable=True)
@@ -524,7 +537,7 @@ class ActionTask(db.Model):
     # 'pfmea'|'control_plan'|'sop'|'training'|'cross_part'|'customer_notify'|'other'
     title       = db.Column('標題',    db.String(200), nullable=False)
     description = db.Column('描述',    db.Text,        nullable=True)
-    part_nos    = db.Column('相關料號', JSONB,          nullable=True)
+    part_nos    = db.Column('相關料號', JsonType,          nullable=True)
 
     # 指派
     assignee_id = db.Column('負責人', db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)

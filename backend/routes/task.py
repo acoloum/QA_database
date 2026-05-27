@@ -33,7 +33,7 @@ def list_tasks(current_user):
 def my_tasks(current_user):
     """GET /api/tasks/my — 當前使用者的未完成待辦"""
     try:
-        tasks = TaskService.my_tasks(assignee_id=current_user.id)
+        tasks = TaskService.my_tasks_for_user(current_user)
         return jsonify(tasks), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500

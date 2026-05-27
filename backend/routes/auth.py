@@ -97,6 +97,7 @@ def list_users():
                 'id': u.id,
                 'username': u.username,
                 'role': u.role,
+                'inspector_id': u.inspector_id,
                 'is_active': u.is_active,
                 'created_at': u.created_at.isoformat() if u.created_at else None
             }
@@ -176,6 +177,7 @@ def create_user():
     username = data.get('username', '').strip()
     password = data.get('password', '')
     new_role = data.get('role', 'user')
+    inspector_id = data.get('inspector_id')
 
     if not username or not password:
         return jsonify({"error": "使用者名稱和密碼為必填欄位"}), 400
@@ -197,6 +199,7 @@ def create_user():
             username=username,
             password=hash_password(password),
             role=new_role,
+            inspector_id=inspector_id,
             is_active=True
         )
         db.session.add(new_user)

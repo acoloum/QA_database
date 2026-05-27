@@ -36,6 +36,7 @@ export interface UserRecord {
     id: number;
     username: string;
     role: string;
+    inspector_id?: number | null;
     is_active: boolean;
     created_at: string | null;
 }

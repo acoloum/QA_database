@@ -64,55 +64,68 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
     useEffect(() => {
         if (!isEdit && complaintDate && complaintType) {
             const days = DEFAULT_REPLY_DAYS[complaintType];
-            setInitialReplyDeadline(addDays(complaintDate, 3));
-            setFinalReplyDeadline(addDays(complaintDate, days));
+            let cancelled = false;
+            queueMicrotask(() => {
+                if (cancelled) return;
+                setInitialReplyDeadline(addDays(complaintDate, 3));
+                setFinalReplyDeadline(addDays(complaintDate, days));
+            });
+            return () => { cancelled = true; };
         }
     }, [complaintDate, complaintType, isEdit]);
 
     // 填入編輯資料
     useEffect(() => {
-        if (editData) {
-            setCustomer(editData.customer ?? '');
-            setComplaintDate(editData.complaint_date ?? '');
-            setProductNo(editData.product_no ?? '');
-            setDescription(editData.description ?? '');
-            setContactPerson(editData.contact_person ?? '');
-            setSeverity(editData.severity ?? 'Major');
-            setDefectCategory(editData.defect_category ?? '');
-            setComplaintType(editData.complaint_type ?? 'quality');
-            setDeviceSerial(editData.device_serial ?? '');
-            setUsageEnv(editData.usage_env ?? '');
-            setFailureHours(editData.failure_hours != null ? String(editData.failure_hours) : '');
-            setInitialReplyDeadline(editData.initial_reply_deadline ?? '');
-            setFinalReplyDeadline(editData.final_reply_deadline ?? '');
-            setStatus(editData.status ?? '待處理');
-            setInitialReply(editData.initial_reply ?? '');
-            setFinalReply(editData.final_reply ?? '');
-            setSatisfaction(editData.satisfaction != null ? String(editData.satisfaction) : '');
-            setSatisfactionNote(editData.satisfaction_note ?? '');
-            setRepeatWarning(editData.is_repeat);
-        } else {
-            // 重置
-            setCustomer('');
-            setComplaintDate(new Date().toISOString().split('T')[0]);
-            setProductNo('');
-            setDescription('');
-            setContactPerson('');
-            setSeverity('Major');
-            setDefectCategory('');
-            setComplaintType('quality');
-            setDeviceSerial('');
-            setUsageEnv('');
-            setFailureHours('');
-            setInitialReplyDeadline('');
-            setFinalReplyDeadline('');
-            setStatus('待處理');
-            setInitialReply('');
-            setFinalReply('');
-            setSatisfaction('');
-            setSatisfactionNote('');
-            setRepeatWarning(false);
-        }
+        let cancelled = false;
+        const applyFormState = () => {
+            if (cancelled) return;
+
+            if (editData) {
+                setCustomer(editData.customer ?? '');
+                setComplaintDate(editData.complaint_date ?? '');
+                setProductNo(editData.product_no ?? '');
+                setDescription(editData.description ?? '');
+                setContactPerson(editData.contact_person ?? '');
+                setSeverity(editData.severity ?? 'Major');
+                setDefectCategory(editData.defect_category ?? '');
+                setComplaintType(editData.complaint_type ?? 'quality');
+                setDeviceSerial(editData.device_serial ?? '');
+                setUsageEnv(editData.usage_env ?? '');
+                setFailureHours(editData.failure_hours != null ? String(editData.failure_hours) : '');
+                setInitialReplyDeadline(editData.initial_reply_deadline ?? '');
+                setFinalReplyDeadline(editData.final_reply_deadline ?? '');
+                setStatus(editData.status ?? '待處理');
+                setInitialReply(editData.initial_reply ?? '');
+                setFinalReply(editData.final_reply ?? '');
+                setSatisfaction(editData.satisfaction != null ? String(editData.satisfaction) : '');
+                setSatisfactionNote(editData.satisfaction_note ?? '');
+                setRepeatWarning(editData.is_repeat);
+            } else {
+                // 重置
+                setCustomer('');
+                setComplaintDate(new Date().toISOString().split('T')[0]);
+                setProductNo('');
+                setDescription('');
+                setContactPerson('');
+                setSeverity('Major');
+                setDefectCategory('');
+                setComplaintType('quality');
+                setDeviceSerial('');
+                setUsageEnv('');
+                setFailureHours('');
+                setInitialReplyDeadline('');
+                setFinalReplyDeadline('');
+                setStatus('待處理');
+                setInitialReply('');
+                setFinalReply('');
+                setSatisfaction('');
+                setSatisfactionNote('');
+                setRepeatWarning(false);
+            }
+        };
+
+        queueMicrotask(applyFormState);
+        return () => { cancelled = true; };
     }, [editData, show]);
 
     const buildPayload = () => ({

@@ -299,6 +299,12 @@ class CAPAService:
             if complaint:
                 complaint.status = '待處理'
                 complaint.related_capa_id = None
+        if ca.source_type == 'ncmr' and (ca.source_id or ca.ncmr_id):
+            ncmr = NCMR.query.get(ca.source_id or ca.ncmr_id)
+            if ncmr and ncmr.related_capa_id == ca.id:
+                ncmr.related_capa_id = None
+                ncmr.related_capa_source = None
+                ncmr.status = '待處理'
 
         # 同步刪除關聯任務（pending 狀態）
         ActionTask.query.filter_by(

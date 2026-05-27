@@ -288,65 +288,74 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
     // 從伺服器資料初始化草稿
     useEffect(() => {
         if (!capa) return;
-        setD0Symptom(capa.D0_symptom ?? '');
-        setD0Criteria(capa.D0_criteria ?? []);
-        setD0Severity((capa.D0_severity ?? '') as CAPASeverity | '');
-        setD0Rigor(capa.rigor ?? '完整8D');
-        setD0Deadline(capa.D0_deadline ?? '');
+        let cancelled = false;
+        queueMicrotask(() => {
+            if (cancelled) return;
+            setD0Symptom(capa.D0_symptom ?? '');
+            setD0Criteria(capa.D0_criteria ?? []);
+            setD0Severity((capa.D0_severity ?? '') as CAPASeverity | '');
+            setD0Rigor(capa.rigor ?? '完整8D');
+            setD0Deadline(capa.D0_deadline ?? '');
 
-        setD1Champion(capa.D1_champion_id ?? '');
-        setD1Leader(capa.D1_leader_id ?? '');
-        setD1Members(capa.D1_members ?? []);
+            setD1Champion(capa.D1_champion_id ?? '');
+            setD1Leader(capa.D1_leader_id ?? '');
+            setD1Members(capa.D1_members ?? []);
 
-        // D2：優先用已儲存值；若欄位為 null（從未填寫）則從來源資訊帶入
-        const si = (capa.source_info ?? {}) as Record<string, string | number | null>;
-        const isNcmr = capa.source_type === 'ncmr';
-        setD2What(    capa.D2_what     ?? ((si.defect        as string) ?? ''));
-        setD2Where(   capa.D2_where    ?? (isNcmr ? (si.source        as string ?? '') : ''));
-        setD2When(    capa.D2_when     ?? '');
-        setD2Who(     capa.D2_who      ?? (isNcmr ? (si.vendor        as string ?? '') : ''));
-        setD2Why(     capa.D2_why      ?? '');
-        setD2How(     capa.D2_how      ?? (isNcmr ? (si.defect_detail as string ?? '') : ''));
-        setD2HowMany( capa.D2_how_many ?? (isNcmr && si.defect_qty != null
-            ? `${si.defect_qty} / ${si.total_qty ?? '?'} 支` : ''));
+            // D2：優先用已儲存值；若欄位為 null（從未填寫）則從來源資訊帶入
+            const si = (capa.source_info ?? {}) as Record<string, string | number | null>;
+            const isNcmr = capa.source_type === 'ncmr';
+            setD2What(    capa.D2_what     ?? ((si.defect        as string) ?? ''));
+            setD2Where(   capa.D2_where    ?? (isNcmr ? (si.source        as string ?? '') : ''));
+            setD2When(    capa.D2_when     ?? '');
+            setD2Who(     capa.D2_who      ?? (isNcmr ? (si.vendor        as string ?? '') : ''));
+            setD2Why(     capa.D2_why      ?? '');
+            setD2How(     capa.D2_how      ?? (isNcmr ? (si.defect_detail as string ?? '') : ''));
+            setD2HowMany( capa.D2_how_many ?? (isNcmr && si.defect_qty != null
+                ? `${si.defect_qty} / ${si.total_qty ?? '?'} 支` : ''));
 
-        setD3Action(capa.D3_action ?? '');
-        setD3EffDate(capa.D3_effective_date ?? '');
-        setD3Verif(capa.D3_verification ?? '');
+            setD3Action(capa.D3_action ?? '');
+            setD3EffDate(capa.D3_effective_date ?? '');
+            setD3Verif(capa.D3_verification ?? '');
 
-        setD4Tool(capa.D4_tool ?? '5why');
-        setD4FiveWhy((capa.D4_five_why ?? []) as { why: string; answer: string }[]);
-        setD4Fishbone((capa.D4_fishbone ?? {}) as Record<string, string[]>);
-        setD4RootCause(capa.D4_root_cause ?? '');
+            setD4Tool(capa.D4_tool ?? '5why');
+            setD4FiveWhy((capa.D4_five_why ?? []) as { why: string; answer: string }[]);
+            setD4Fishbone((capa.D4_fishbone ?? {}) as Record<string, string[]>);
+            setD4RootCause(capa.D4_root_cause ?? '');
 
-        setD5Action(capa.D5_action ?? '');
-        setD5PlannedDate(capa.D5_planned_date ?? '');
-        setD5VerifyPlan(capa.D5_verify_plan ?? '');
+            setD5Action(capa.D5_action ?? '');
+            setD5PlannedDate(capa.D5_planned_date ?? '');
+            setD5VerifyPlan(capa.D5_verify_plan ?? '');
 
-        setD6ImplDate(capa.D6_implement_date ?? '');
-        setD6Result(capa.D6_result ?? '');
-        setD6Verified(capa.D6_verified ?? false);
+            setD6ImplDate(capa.D6_implement_date ?? '');
+            setD6Result(capa.D6_result ?? '');
+            setD6Verified(capa.D6_verified ?? false);
 
-        // D7 Actions 初始化：從伺服器資料合併 D7_TYPES
-        const serverActions = capa.D7_actions ?? [];
-        const merged = D7_TYPES.map(t => {
-            const found = serverActions.find(a => a.type === t.key);
-            return found ?? { type: t.key, checked: false, assignee_id: null, due_date: null, description: '', part_nos: '' };
+            // D7 Actions 初始化：從伺服器資料合併 D7_TYPES
+            const serverActions = capa.D7_actions ?? [];
+            const merged = D7_TYPES.map(t => {
+                const found = serverActions.find(a => a.type === t.key);
+                return found ?? { type: t.key, checked: false, assignee_id: null, due_date: null, description: '', part_nos: '' };
+            });
+            setD7Actions(merged);
+
+            setD8Confirm(capa.D8_confirmation ?? '');
+            setD8Recog(capa.D8_recognition ?? '');
+
+            // 預設第一個有效 Tab
+            const steps = RIGOR_STEPS[capa.rigor] ?? [0, 1, 2, 3, 4, 5, 6, 7, 8];
+            setActiveTab(`d${steps[0]}`);
         });
-        setD7Actions(merged);
-
-        setD8Confirm(capa.D8_confirmation ?? '');
-        setD8Recog(capa.D8_recognition ?? '');
-
-        // 預設第一個有效 Tab
-        const steps = RIGOR_STEPS[capa.rigor] ?? [0, 1, 2, 3, 4, 5, 6, 7, 8];
-        setActiveTab(`d${steps[0]}`);
+        return () => { cancelled = true; };
     }, [capa]);
 
     // 嚴重度聯動嚴格度（可手動 override）
     useEffect(() => {
         if (d0Severity && !isClosed) {
-            setD0Rigor(SEVERITY_TO_RIGOR[d0Severity] ?? '完整8D');
+            let cancelled = false;
+            queueMicrotask(() => {
+                if (!cancelled) setD0Rigor(SEVERITY_TO_RIGOR[d0Severity] ?? '完整8D');
+            });
+            return () => { cancelled = true; };
         }
     }, [d0Severity, isClosed]);
 

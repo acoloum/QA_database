@@ -77,7 +77,7 @@ const NCMRPage = () => {
 </div></body></html>`;
             const pw = window.open('', '_blank', 'width=800,height=600');
             if (pw) { pw.document.write(printContent); pw.document.close(); }
-            setPrintItem(null);
+            queueMicrotask(() => setPrintItem(null));
         }
     }, [printItem, printDetail]);
 

@@ -4,6 +4,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import and_, func
 from ..extensions import db
 from ..models import CustomerComplaint, Inspector
+from ..utils import acquire_number_lock
 
 VALID_TYPES     = {'quality', 'warranty', 'field_failure'}
 VALID_STATUSES  = {'待處理', '處理中', '已結案'}
@@ -16,6 +17,7 @@ class ComplaintService:
     @staticmethod
     def _gen_no() -> str:
         today = date.today().strftime('%Y%m%d')
+        acquire_number_lock(f'客訴紀錄.客訴單號.CC.{today}')
         count = CustomerComplaint.query.filter(
             CustomerComplaint.complaint_no.like(f'CC-{today}-%')
         ).count()
@@ -198,6 +200,8 @@ class ComplaintService:
         c = CustomerComplaint.query.get(complaint_id)
         if not c:
             raise ValueError('客訴不存在')
+        if c.related_capa_id:
+            raise ValueError(f'此客訴已開立 CAPA（ID: {c.related_capa_id}）')
         return {
             'source_type': 'complaint',
             'source_id':   c.id,

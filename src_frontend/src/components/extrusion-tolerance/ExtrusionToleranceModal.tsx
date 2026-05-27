@@ -55,24 +55,29 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
 
     useEffect(() => {
         if (!show) return;
-        if (!editId) { reset(); return; }
-        if (!detail) return;
-        const m = detail.main;
-        setMaterial(m.材質);
-        setSpec(m.規格 || '');
-        setVendor(m.廠商 || '');
-        setNote(m.備註 || '');
-        setCreatedAt(m.建立日期?.split('T')[0] || new Date().toISOString().split('T')[0]);
-        setRows(
-            detail.details.length > 0
-                ? detail.details.map((d) => ({
-                      測量項目: d.測量項目,
-                      公差下限: d.公差下限 != null ? String(d.公差下限) : '',
-                      公差上限: d.公差上限 != null ? String(d.公差上限) : '',
-                      標準值: d.標準值 != null ? String(d.標準值) : '',
-                  }))
-                : [emptyRow()]
-        );
+        let cancelled = false;
+        queueMicrotask(() => {
+            if (cancelled) return;
+            if (!editId) { reset(); return; }
+            if (!detail) return;
+            const m = detail.main;
+            setMaterial(m.材質);
+            setSpec(m.規格 || '');
+            setVendor(m.廠商 || '');
+            setNote(m.備註 || '');
+            setCreatedAt(m.建立日期?.split('T')[0] || new Date().toISOString().split('T')[0]);
+            setRows(
+                detail.details.length > 0
+                    ? detail.details.map((d) => ({
+                          測量項目: d.測量項目,
+                          公差下限: d.公差下限 != null ? String(d.公差下限) : '',
+                          公差上限: d.公差上限 != null ? String(d.公差上限) : '',
+                          標準值: d.標準值 != null ? String(d.標準值) : '',
+                      }))
+                    : [emptyRow()]
+            );
+        });
+        return () => { cancelled = true; };
     }, [show, editId, detail, reset]);
 
     const updateRow = (idx: number, field: keyof DetailRow, val: string) => {

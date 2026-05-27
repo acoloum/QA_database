@@ -3,7 +3,8 @@ from datetime import datetime, date
 from typing import List, Optional, Dict, Any
 from sqlalchemy import and_
 from ..extensions import db
-from ..models import ActionTask, Inspector
+from ..models import ActionTask, Inspector, User
+from ..utils import acquire_number_lock
 
 VALID_CATEGORIES = {
     'pfmea', 'control_plan', 'sop', 'training',
@@ -35,6 +36,7 @@ class TaskService:
     @staticmethod
     def _gen_task_no() -> str:
         today = date.today().strftime('%Y%m%d')
+        acquire_number_lock(f'橫展任務.任務單號.TASK.{today}')
         count = ActionTask.query.filter(
             ActionTask.task_no.like(f'TASK-{today}-%')
         ).count()
@@ -165,6 +167,17 @@ class TaskService:
             d['overdue_days'] = (today - t.due_date).days if d['is_overdue'] else 0
             result.append(d)
         return result
+
+    @staticmethod
+    def my_tasks_for_user(user: User) -> List[Dict[str, Any]]:
+        """依登入使用者找到對應品管人員，再回傳該品管人員的待辦。"""
+        inspector_id = getattr(user, 'inspector_id', None)
+        if not inspector_id and getattr(user, 'username', None):
+            inspector = Inspector.query.filter_by(name=user.username).first()
+            inspector_id = inspector.id if inspector else None
+        if not inspector_id:
+            return []
+        return TaskService.my_tasks(inspector_id)
 
     # ── 依來源查詢（用於 CAPA D7 顯示）────────────────────────
     @staticmethod

@@ -1,15 +1,8 @@
-import React, { createContext, useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import api from '../services/api';
-import type { AuthState, User, VerifyTokenResponse } from '../types';
-
-interface AuthContextType extends AuthState {
-    login: (token: string, username: string, userId: string, role?: string) => void;
-    logout: () => void;
-    checkAuth: () => Promise<void>;
-}
-
-export const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import type { User, VerifyTokenResponse } from '../types';
+import { AuthContext } from './authContextDefinition';
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [user, setUser] = useState<User | null>(null);

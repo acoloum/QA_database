@@ -40,9 +40,9 @@ def test_generic_exception(app, client, auth_headers):
     # Ensure handlers are triggered
     app.config['PROPAGATE_EXCEPTIONS'] = False
 
-    # Patch a known existing route to raise a generic ValueError
+    # Patch a known existing route to raise a generic unexpected exception
     with patch('backend.services.tolerance_service.ToleranceService.search_tolerance') as mock_search:
-        mock_search.side_effect = ValueError("Something went wrong")
+        mock_search.side_effect = RuntimeError("Something went wrong")
         
         response = client.get('/api/tolerance/search?material=test', headers=auth_headers)
         
