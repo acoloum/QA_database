@@ -1,7 +1,8 @@
 from flask import Blueprint, jsonify, request
 from marshmallow import Schema, fields, validate, ValidationError, EXCLUDE
 from ..services.ncmr_service import NCMRService
-from ..utils import auth_required
+from ..utils import auth_required, require_permission, log_audit
+from ..extensions import db
 
 ncmr_bp = Blueprint('ncmr', __name__)
 
@@ -52,7 +53,8 @@ def get_ncmr_list():
 
 @ncmr_bp.route('/api/ncmr/add', methods=['POST'])
 @auth_required
-def add_ncmr():
+@require_permission('ncmr.create')
+def add_ncmr(current_user):
     payload = {k: (None if v == '' else v) for k, v in (request.json or {}).items()}
     try:
         _ncmr_create_schema.load(payload)
@@ -60,6 +62,12 @@ def add_ncmr():
         return jsonify({"error": "資料驗證失敗", "details": err.messages}), 400
     try:
         ncmr_number = NCMRService.add_ncmr(request.json)
+        try:
+            log_audit(current_user.id if current_user else None, 'create', 'NCMR',
+                      new_val={'ncmr_number': ncmr_number})
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
         return jsonify({"success": True, "ncmr_number": ncmr_number})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -77,12 +85,19 @@ def update_ncmr():
 
 @ncmr_bp.route('/api/ncmr/delete', methods=['POST'])
 @auth_required
-def delete_ncmr():
+@require_permission('ncmr.delete')
+def delete_ncmr(current_user):
     try:
         ncmr_id = request.json.get('id')
         if not ncmr_id:
             return jsonify({"error": "缺少識別碼"}), 400
         NCMRService.delete_ncmr(ncmr_id)
+        try:
+            log_audit(current_user.id if current_user else None, 'delete', 'NCMR',
+                      record_id=ncmr_id)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
