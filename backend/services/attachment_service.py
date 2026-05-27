@@ -102,7 +102,7 @@ class AttachmentService:
     @staticmethod
     def get_file_path(att_id: int) -> Optional[str]:
         """取得可傳給 send_file() 的絕對路徑；雲端後端回傳 None"""
-        att = Attachment.query.get(att_id)
+        att = db.session.get(Attachment, att_id)
         if not att:
             return None
         return _get_storage().get_abs_path(att.file_path)
@@ -110,19 +110,19 @@ class AttachmentService:
     @staticmethod
     def get_download_url(att_id: int) -> Optional[str]:
         """取得可直接 redirect 的下載 URL；本地後端回傳 None"""
-        att = Attachment.query.get(att_id)
+        att = db.session.get(Attachment, att_id)
         if not att:
             return None
         return _get_storage().get_download_url(att.file_path)
 
     @staticmethod
     def get_by_id(att_id: int) -> Optional[Dict[str, Any]]:
-        att = Attachment.query.get(att_id)
+        att = db.session.get(Attachment, att_id)
         return AttachmentService._to_dict(att) if att else None
 
     @staticmethod
     def delete(att_id: int, requester_id: int, requester_role: str) -> bool:
-        att = Attachment.query.get(att_id)
+        att = db.session.get(Attachment, att_id)
         if not att:
             raise ValueError('附件不存在')
         if att.uploaded_by != requester_id and requester_role not in ('admin', 'manager'):

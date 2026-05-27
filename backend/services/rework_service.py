@@ -182,7 +182,7 @@ class ReworkService:
     def create_application(data: Dict[str, Any]) -> Dict[str, Any]:
         try:
             ncmr_id = data.get('NCMR_ID')
-            ncmr = NCMR.query.get(ncmr_id)
+            ncmr = NCMR.active_query().filter_by(id=ncmr_id).first()
             if not ncmr: raise ValueError("找不到對應的NCMR記錄")
 
             applicant = Inspector.query.filter_by(name=data.get('申請人員姓名')).first()
@@ -248,7 +248,7 @@ class ReworkService:
     @staticmethod
     def update_application(rework_id: int, data: Dict[str, Any]) -> bool:
         try:
-            req = ReworkRequest.query.get(rework_id)
+            req = ReworkRequest.active_query().filter_by(id=rework_id).first()
             if not req: raise ValueError("找不到重工申請單")
 
             # 狀態機驗證
@@ -291,7 +291,7 @@ class ReworkService:
             action = data.get('action')
             reviewer_name = data.get('審核人員姓名')
             
-            req = ReworkRequest.query.get(rework_id)
+            req = ReworkRequest.active_query().filter_by(id=rework_id).first()
             if not req: raise ValueError("找不到重工申請單")
 
             reviewer = Inspector.query.filter_by(name=reviewer_name).first()
@@ -450,7 +450,7 @@ class ReworkService:
     @staticmethod
     def update_execution(execution_id: int, data: Dict[str, Any]) -> bool:
         try:
-            e = ReworkExecution.query.get(execution_id)
+            e = db.session.get(ReworkExecution, execution_id)
             if not e: raise ValueError("找不到執行記錄")
 
             if data.get('負責人員姓名'):
@@ -483,7 +483,7 @@ class ReworkService:
     @staticmethod
     def delete_execution(execution_id: int) -> bool:
         try:
-            e = ReworkExecution.query.get(execution_id)
+            e = db.session.get(ReworkExecution, execution_id)
             if e:
                 db.session.delete(e)
                 db.session.commit()
@@ -511,7 +511,7 @@ class ReworkService:
             
             data = []
             for i in query.all():
-                inspector = Inspector.query.get(i.inspector_id) if i.inspector_id else None
+                inspector = db.session.get(Inspector, i.inspector_id) if i.inspector_id else None
                 item = {
                     "識別碼": i.id,
                     "重工單號": i.rework_id,
@@ -580,7 +580,7 @@ class ReworkService:
     @staticmethod
     def update_inspection(inspection_id: int, data: Dict[str, Any]) -> bool:
         try:
-            i = ReworkInspection.query.get(inspection_id)
+            i = db.session.get(ReworkInspection, inspection_id)
             if not i: raise ValueError("找不到品檢記錄")
             
             if data.get('檢驗人員姓名'):
@@ -604,7 +604,7 @@ class ReworkService:
     @staticmethod
     def delete_inspection(inspection_id: int) -> bool:
         try:
-            i = ReworkInspection.query.get(inspection_id)
+            i = db.session.get(ReworkInspection, inspection_id)
             if i:
                 db.session.delete(i)
                 db.session.commit()
@@ -617,7 +617,7 @@ class ReworkService:
     def close_rework(data: Dict[str, Any]) -> bool:
         try:
             rework_id = data.get('rework_id')
-            req = ReworkRequest.query.get(rework_id)
+            req = ReworkRequest.active_query().filter_by(id=rework_id).first()
             if not req: raise ValueError("找不到該重工單")
 
             if req.status == '已完成': raise ValueError("該重工單已結案")
@@ -646,7 +646,7 @@ class ReworkService:
     @staticmethod
     def delete_rework(rework_id: int) -> bool:
         try:
-            req = ReworkRequest.query.get(rework_id)
+            req = ReworkRequest.active_query().filter_by(id=rework_id).first()
             if not req: raise ValueError("找不到重工申請單")
 
             # 軟刪除申請單（保留相關執行/品檢/成本記錄）
@@ -747,7 +747,7 @@ class ReworkService:
     @staticmethod
     def update_cost(cost_id: int, data: Dict[str, Any]) -> bool:
         try:
-            c = ReworkCost.query.get(cost_id)
+            c = db.session.get(ReworkCost, cost_id)
             if not c: raise ValueError("找不到成本記錄")
 
             if data.get('記錄人員姓名'):
@@ -772,7 +772,7 @@ class ReworkService:
     @staticmethod
     def delete_cost(cost_id: int) -> bool:
         try:
-            c = ReworkCost.query.get(cost_id)
+            c = db.session.get(ReworkCost, cost_id)
             if c:
                 db.session.delete(c)
                 db.session.commit()

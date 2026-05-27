@@ -51,7 +51,7 @@ class CAPAService:
         # 驗證來源存在
         d2_what = d2_who = d2_where = d2_how = d2_how_many = None
         if source_type == 'ncmr':
-            source = NCMR.query.get(source_id)
+            source = NCMR.active_query().filter_by(id=source_id).first()
             if not source:
                 raise ValueError(f'NCMR #{source_id} 不存在')
             symptom = symptom or source.description
@@ -63,7 +63,7 @@ class CAPAService:
             qty_str     = f"{source.defect_quantity or '?'} / {source.quantity or '?'} 支"
             d2_how_many = qty_str
         else:
-            source = CustomerComplaint.query.get(source_id)
+            source = CustomerComplaint.active_query().filter_by(id=source_id).first()
             if not source:
                 raise ValueError(f'客訴 #{source_id} 不存在')
             symptom = symptom or source.description
@@ -292,7 +292,7 @@ class CAPAService:
 
         # 若來源為客訴，同步將客訴狀態設為已結案
         if ca.source_type == 'complaint' and ca.source_id:
-            complaint = CustomerComplaint.query.get(ca.source_id)
+            complaint = CustomerComplaint.active_query().filter_by(id=ca.source_id).first()
             if complaint:
                 complaint.status = '已結案'
 
@@ -307,12 +307,12 @@ class CAPAService:
             raise ValueError('CAPA 不存在')
         # 若來源為客訴，將客訴狀態回退為待處理並清空 related_capa_id
         if ca.source_type == 'complaint' and ca.source_id:
-            complaint = CustomerComplaint.query.get(ca.source_id)
+            complaint = CustomerComplaint.active_query().filter_by(id=ca.source_id).first()
             if complaint:
                 complaint.status = '待處理'
                 complaint.related_capa_id = None
         if ca.source_type == 'ncmr' and (ca.source_id or ca.ncmr_id):
-            ncmr = NCMR.query.get(ca.source_id or ca.ncmr_id)
+            ncmr = NCMR.active_query().filter_by(id=ca.source_id or ca.ncmr_id).first()
             if ncmr and ncmr.related_capa_id == ca.id:
                 ncmr.related_capa_id = None
                 ncmr.related_capa_source = None
@@ -359,7 +359,7 @@ class CAPAService:
     # ── 序列化（列表用）─────────────────────────────────────
     @staticmethod
     def _to_list_dict(ca: CorrectiveAction) -> Dict[str, Any]:
-        ncmr = NCMR.query.get(ca.source_id or ca.ncmr_id) if ca.source_type == 'ncmr' or ca.ncmr_id else None
+        ncmr = NCMR.active_query().filter_by(id=ca.source_id or ca.ncmr_id).first() if ca.source_type == 'ncmr' or ca.ncmr_id else None
         return {
             'id':              ca.id,
             'no':              ca.eight_d_number,
@@ -383,7 +383,7 @@ class CAPAService:
         # 取得來源資訊
         source_info = {}
         if ca.source_type == 'ncmr' and ca.ncmr_id:
-            n = NCMR.query.get(ca.source_id or ca.ncmr_id)
+            n = NCMR.active_query().filter_by(id=ca.source_id or ca.ncmr_id).first()
             if n:
                 source_info = {
                     'ncmr_no':       n.ncmr_number,
@@ -398,7 +398,7 @@ class CAPAService:
                     'ncmr_date':     n.date.isoformat() if n.date else None,
                 }
         elif ca.source_type == 'complaint':
-            c = CustomerComplaint.query.get(ca.source_id)
+            c = CustomerComplaint.active_query().filter_by(id=ca.source_id).first()
             if c:
                 source_info = {
                     'complaint_no': c.complaint_no,

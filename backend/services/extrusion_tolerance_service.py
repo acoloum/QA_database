@@ -153,7 +153,7 @@ class ExtrusionToleranceService:
     def update(tolerance_id: int, data: Dict[str, Any]) -> bool:
         """更新主檔 + 明細（刪除重建明細）"""
         try:
-            t = ExtrusionToleranceMain.query.get(tolerance_id)
+            t = db.session.get(ExtrusionToleranceMain, tolerance_id)
             if not t:
                 raise ValueError("找不到擠壓公差資料")
 
@@ -184,7 +184,7 @@ class ExtrusionToleranceService:
     def delete(tolerance_id: int) -> bool:
         """刪除（CASCADE 自動刪明細）"""
         try:
-            t = ExtrusionToleranceMain.query.get(tolerance_id)
+            t = db.session.get(ExtrusionToleranceMain, tolerance_id)
             if not t:
                 raise ValueError("找不到擠壓公差資料")
             db.session.delete(t)

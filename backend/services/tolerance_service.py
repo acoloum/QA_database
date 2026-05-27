@@ -132,7 +132,7 @@ class ToleranceService:
     @staticmethod
     def update_tolerance(tolerance_id: int, data: Dict[str, Any]) -> bool:
         try:
-            t = VendorToleranceMain.query.get(tolerance_id)
+            t = db.session.get(VendorToleranceMain, tolerance_id)
             if not t: raise ValueError("找不到公差資料")
             
             t.material = data.get('材質')
@@ -168,7 +168,7 @@ class ToleranceService:
     @staticmethod
     def delete_tolerance(tolerance_id: int) -> bool:
         try:
-            t = VendorToleranceMain.query.get(tolerance_id)
+            t = db.session.get(VendorToleranceMain, tolerance_id)
             if t:
                 db.session.delete(t)
                 db.session.commit()

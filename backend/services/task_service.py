@@ -81,7 +81,7 @@ class TaskService:
         completion_proof: Optional[str] = None,
         waiver_reason: Optional[str] = None,
     ) -> Dict[str, Any]:
-        task = ActionTask.query.get(task_id)
+        task = db.session.get(ActionTask, task_id)
         if not task:
             raise ValueError('任務不存在')
 
@@ -190,7 +190,7 @@ class TaskService:
     # ── 刪除（僅 pending 狀態可刪）────────────────────────────
     @staticmethod
     def delete(task_id: int) -> bool:
-        task = ActionTask.query.get(task_id)
+        task = db.session.get(ActionTask, task_id)
         if not task:
             raise ValueError('任務不存在')
         if task.status not in ('pending',):

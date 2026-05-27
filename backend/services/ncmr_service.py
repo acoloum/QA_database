@@ -236,12 +236,12 @@ class NCMRService:
         try:
             info = {}
             if source_type == '巡檢':
-                patrol = PatrolMain.query.get(source_id)
+                patrol = db.session.get(PatrolMain, source_id)
                 if patrol:
                     vendor_name = ""
                     # Patrol has customer_id linked to Vendor table
                     if patrol.customer_id:
-                        v = Vendor.query.get(patrol.customer_id)
+                        v = db.session.get(Vendor, patrol.customer_id)
                         vendor_name = v.name if v else ""
                     
                     info = {
@@ -251,7 +251,7 @@ class NCMRService:
                         "廠商": vendor_name
                     }
             elif source_type == '出貨檢':
-                shipping = ShippingData.query.get(source_id)
+                shipping = db.session.get(ShippingData, source_id)
                 if shipping:
                     vendor_name = shipping.vendor.name if shipping.vendor else ""
                     info = {
@@ -466,7 +466,7 @@ class NCMRService:
 
             ncmr_data = {}
             if ca.ncmr_id:
-                n = NCMR.query.options(joinedload(NCMR.inspector)).get(ca.ncmr_id)
+                n = NCMR.active_query().options(joinedload(NCMR.inspector)).filter_by(id=ca.ncmr_id).first()
                 if n:
                     ncmr_data = {
                         "NCMR單號": n.ncmr_number,
@@ -496,7 +496,7 @@ class NCMRService:
         """更新 CAPA（8D）資料"""
         capa_id = data.get('識別碼')
         try:
-            ca = CorrectiveAction.query.get(capa_id)
+            ca = CorrectiveAction.active_query().filter_by(id=capa_id).first()
             if not ca:
                 return False
 
@@ -531,7 +531,7 @@ class NCMRService:
     @staticmethod
     def delete_capa(capa_id: int) -> bool:
         try:
-            ca = CorrectiveAction.query.get(capa_id)
+            ca = CorrectiveAction.active_query().filter_by(id=capa_id).first()
             if ca and ca.eight_d_number:
                 db.session.delete(ca)
                 db.session.commit()

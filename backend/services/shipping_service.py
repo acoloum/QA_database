@@ -158,7 +158,7 @@ class ShippingService:
     @staticmethod
     def update(record_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
         """更新出貨檢驗主檔；若 data 含 measurements 則刪除舊明細並重建"""
-        rec = ShippingData.query.get(record_id)
+        rec = db.session.get(ShippingData, record_id)
         if not rec:
             raise ValueError(f"找不到 ID {record_id} 的資料")
 
@@ -274,7 +274,7 @@ class ShippingService:
     def get_by_id(data_id: int) -> Optional[Dict[str, Any]]:
         """根據 ID 獲取單筆出貨檢驗資料"""
         try:
-            item = ShippingData.query.get(data_id)
+            item = db.session.get(ShippingData, data_id)
             if not item:
                 return None
             return ShippingService._map_row_to_dict(item)
@@ -704,7 +704,7 @@ class ShippingService:
 
             if is_update:
                 record_id = data.get('識別碼')
-                shipping_data = ShippingData.query.get(record_id)
+                shipping_data = db.session.get(ShippingData, record_id)
                 if not shipping_data:
                     raise ValueError(f"找不到 ID {record_id} 的資料")
             else:
@@ -766,7 +766,7 @@ class ShippingService:
     def delete_data(record_id: int) -> bool:
         """刪除出貨檢驗資料"""
         try:
-            item = ShippingData.query.get(record_id)
+            item = db.session.get(ShippingData, record_id)
             if item:
                 db.session.delete(item)
                 db.session.commit()

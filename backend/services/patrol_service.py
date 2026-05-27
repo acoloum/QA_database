@@ -353,7 +353,7 @@ class PatrolService:
     @staticmethod
     def get_detail(id: int) -> Optional[Dict[str, Any]]:
         """獲取巡檢詳細資料（主檔+子檔）"""
-        patrol = PatrolMain.query.get(id)
+        patrol = db.session.get(PatrolMain, id)
         if not patrol:
             return None
 
@@ -562,7 +562,7 @@ class PatrolService:
             raise ValueError(", ".join(errors))
 
         try:
-            patrol = PatrolMain.query.get(record_id)
+            patrol = db.session.get(PatrolMain, record_id)
             if not patrol:
                 raise ValueError("找不到該筆資料")
 
@@ -620,7 +620,7 @@ class PatrolService:
             # Note: Cascade delete on relationship should handle details, 
             # but sometimes implicit delete is safer to be explicit or if cascade not working.
             # I defined cascade="all, delete-orphan" in PatrolMain, so just deleting main is enough.
-            patrol = PatrolMain.query.get(record_id)
+            patrol = db.session.get(PatrolMain, record_id)
             if patrol:
                 db.session.delete(patrol)
                 db.session.commit()
