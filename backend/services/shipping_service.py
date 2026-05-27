@@ -291,6 +291,23 @@ class ShippingService:
         start_date = args.get('start_date')
         end_date = args.get('end_date')
 
+        # ── SPCCache 快取讀取 ──────────────────────────────────────────────
+        from datetime import timedelta
+        from ..models import SPCCache
+
+        _cache_key = (
+            f"spc|{field}|{vendor or ''}|{material or ''}|"
+            f"{spec or ''}|{start_date or ''}|{end_date or ''}"
+        )
+        try:
+            _cached = SPCCache.query.filter_by(cache_key=_cache_key).first()
+            if _cached and _cached.expires_at > datetime.utcnow():
+                return _cached.result
+        except Exception:
+            # 快取讀取失敗不阻斷主流程
+            _cached = None
+        # ───────────────────────────────────────────────────────────────────
+
         try:
             # 1. Tolerance Lookup — reuse the same logic as the form
             from ..services.tolerance_service import ToleranceService
@@ -658,7 +675,7 @@ class ShippingService:
                             m_cpk = round(min(m_cpu, m_cpl), 3)
                             cpk_trend.append({"month": month_key, "cpk": m_cpk, "count": len(vals)})
 
-            return {
+            _result = {
                 "labels": labels_valid,
                 "ids": ids_valid,
                 "dates": dates_valid,
@@ -682,6 +699,28 @@ class ShippingService:
                 "distribution_stats": distribution_stats,
                 "cpk_trend": cpk_trend
             }
+
+            # ── SPCCache 快取寫入（1 小時過期）─────────────────────────────
+            try:
+                _now = datetime.utcnow()
+                _expires = _now + timedelta(hours=1)
+                if _cached:
+                    _cached.result = _result
+                    _cached.created_at = _now
+                    _cached.expires_at = _expires
+                else:
+                    db.session.add(SPCCache(
+                        cache_key=_cache_key,
+                        result=_result,
+                        expires_at=_expires,
+                    ))
+                db.session.commit()
+            except Exception:
+                # 快取寫入失敗不影響回傳結果
+                db.session.rollback()
+            # ───────────────────────────────────────────────────────────────
+
+            return _result
         except Exception as e:
             raise e
 
