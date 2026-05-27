@@ -9,10 +9,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
     const [isLoading, setIsLoading] = useState<boolean>(true);
 
-    const login = (token: string, username: string, userId: string, role: string = 'user') => {
+    const login = (
+        token: string,
+        username: string,
+        userId: string,
+        role: string = 'user',
+        permissions: Record<string, boolean> = {}
+    ) => {
         localStorage.setItem('authToken', token);
         localStorage.setItem('username', username);
-        setUser({ username, user_id: userId, role });
+        setUser({ username, user_id: userId, role, permissions });
         setIsAuthenticated(true);
     };
 
@@ -37,7 +43,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 setUser({
                     username: response.data.username,
                     user_id: response.data.user_id,
-                    role: response.data.role ?? 'user'
+                    role: response.data.role ?? 'user',
+                    permissions: response.data.permissions ?? {}
                 });
                 setIsAuthenticated(true);
             } else {
@@ -51,12 +58,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     }, []);
 
+    const hasPermission = (perm: string): boolean => {
+        if (!user) return false;
+        if (user.role === 'admin') return true;
+        return user.permissions?.[perm] === true;
+    };
+
     useEffect(() => {
         checkAuth();
     }, [checkAuth]);
 
     return (
-        <AuthContext.Provider value={{ user, isAuthenticated, isLoading, login, logout, checkAuth }}>
+        <AuthContext.Provider value={{ user, isAuthenticated, isLoading, login, logout, checkAuth, hasPermission }}>
             {children}
         </AuthContext.Provider>
     );

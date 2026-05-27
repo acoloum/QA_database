@@ -4,6 +4,7 @@ import { Button, Card, Form, Table, Badge, Modal, Alert, Spinner } from 'react-b
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { useAuth } from '../../context/useAuth';
+import { useRoles } from '../../context/useRoles';
 import type { UserRecord } from '../../types';
 
 // ── API 函式 ──────────────────────────────────────────────
@@ -46,8 +47,11 @@ const getErrorMessage = (err: unknown): string => {
 // ── 元件 ─────────────────────────────────────────────────
 const UserManagementPage = () => {
     const queryClient = useQueryClient();
-    const { user: currentUser } = useAuth();
+    const { user: currentUser, hasPermission } = useAuth();
     const currentUserId = currentUser ? Number(currentUser.user_id) : null;
+
+    // 從後端取得可用角色列表
+    const { data: roleOptions = [] } = useRoles();
 
     // 使用者列表
     const { data: users = [], isLoading, isError } = useQuery({
@@ -94,7 +98,7 @@ const UserManagementPage = () => {
     const [newUsername, setNewUsername] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [newConfirm, setNewConfirm] = useState('');
-    const [newRole, setNewRole] = useState<'user' | 'admin'>('user');
+    const [newRole, setNewRole] = useState<string>('user');
     const [formError, setFormError] = useState('');
 
     const createMutation = useMutation({
@@ -134,7 +138,7 @@ const UserManagementPage = () => {
             setFormError('密碼長度至少需要 8 個字元');
             return;
         }
-        createMutation.mutate({ username: trimmedUsername, password: newPassword, role: newRole });
+        createMutation.mutate({ username: trimmedUsername, password: newPassword, role: newRole as string });
     };
 
     // ── 渲染 ────────────────────────────────────────────
@@ -187,14 +191,24 @@ const UserManagementPage = () => {
                                             <td>
                                                 <Form.Select
                                                     size="sm"
-                                                    style={{ width: '110px' }}
+                                                    style={{ width: '120px' }}
                                                     value={u.role}
-                                                    disabled={isSelf || roleMutation.isPending}
-                                                    title={isSelf ? '無法修改自己的角色' : undefined}
+                                                    disabled={isSelf || roleMutation.isPending || !hasPermission('user.manage')}
+                                                    title={isSelf ? '無法修改自己的角色' : !hasPermission('user.manage') ? '無此操作權限' : undefined}
                                                     onChange={e => handleRoleChange(u, e.target.value)}
                                                 >
-                                                    <option value="user">一般使用者</option>
-                                                    <option value="admin">管理員</option>
+                                                    {roleOptions.length > 0
+                                                        ? roleOptions.map(r => (
+                                                            <option key={r.code} value={r.code}>{r.name}</option>
+                                                        ))
+                                                        : (
+                                                            // 後備選項（API 尚未載入時）
+                                                            <>
+                                                                <option value="user">一般使用者</option>
+                                                                <option value="admin">管理員</option>
+                                                            </>
+                                                        )
+                                                    }
                                                 </Form.Select>
                                             </td>
                                             <td>
@@ -280,10 +294,19 @@ const UserManagementPage = () => {
                             <Form.Label>角色</Form.Label>
                             <Form.Select
                                 value={newRole}
-                                onChange={e => setNewRole(e.target.value as 'user' | 'admin')}
+                                onChange={e => setNewRole(e.target.value)}
                             >
-                                <option value="user">一般使用者</option>
-                                <option value="admin">管理員</option>
+                                {roleOptions.length > 0
+                                    ? roleOptions.map(r => (
+                                        <option key={r.code} value={r.code}>{r.name}</option>
+                                    ))
+                                    : (
+                                        <>
+                                            <option value="user">一般使用者</option>
+                                            <option value="admin">管理員</option>
+                                        </>
+                                    )
+                                }
                             </Form.Select>
                         </Form.Group>
                     </Form>

@@ -71,11 +71,16 @@ def verify_token_api():
 
     payload = verify_token(token)
     if payload:
+        # 從 Role 資料表取得該角色的 permissions
+        role_code = payload.get('role', 'user')
+        role_obj = Role.query.filter_by(code=role_code).first()
+        permissions = role_obj.permissions if role_obj else {}
         return jsonify({
             'valid': True,
             'username': payload.get('username'),
             'user_id': payload.get('user_id'),
-            'role': payload.get('role', 'user')
+            'role': role_code,
+            'permissions': permissions,
         })
     else:
         return jsonify({'valid': False, 'error': 'Token 無效或已過期'}), 401

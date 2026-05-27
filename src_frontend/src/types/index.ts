@@ -9,6 +9,7 @@ export interface User {
     user_id: string;
     username: string;
     role: string;
+    permissions?: Record<string, boolean>;
 }
 
 export interface AuthState {
@@ -30,6 +31,7 @@ export interface VerifyTokenResponse {
     username: string;
     user_id: string;
     role: string;
+    permissions?: Record<string, boolean>;
 }
 
 export interface UserRecord {
