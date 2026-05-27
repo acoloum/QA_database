@@ -6,7 +6,7 @@ from datetime import datetime
 from collections import defaultdict
 from typing import List, Dict, Any, Optional, Union
 from sqlalchemy import or_, text
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import contains_eager
 from scipy import stats as scipy_stats
 from ..extensions import db
 from ..models import ShippingData, Inspector, Vendor, VendorToleranceMain, VendorToleranceDetail
@@ -66,15 +66,17 @@ class ShippingService:
     def get_list(args: Dict[str, Any]) -> Dict[str, Any]:
         """獲取出貨檢驗數據列表"""
         try:
-            query = ShippingData.query\
-                .options(
-                    joinedload(ShippingData.inspector),
-                    joinedload(ShippingData.vendor),
-                )
+            query = ShippingData.query
 
             # Joins for filtering/display
             query = query.outerjoin(Vendor, ShippingData.vendor_id == Vendor.id)
             query = query.outerjoin(Inspector, ShippingData.inspector_id == Inspector.id)
+
+            # Use contains_eager to reuse the JOINs above for eager loading
+            query = query.options(
+                contains_eager(ShippingData.inspector),
+                contains_eager(ShippingData.vendor),
+            )
 
             if args.get('id'):
                 query = query.filter(ShippingData.id == args['id'])
