@@ -216,6 +216,45 @@ def auth_required(f: Any) -> Any:
 
 
 # ==================================================
+# 細粒度權限控制
+# ==================================================
+def require_permission(perm: str):
+    """裝飾器：驗證當前使用者是否具備指定細粒度權限。
+    必須搭配 auth_required 使用，且路由函式第一個參數須為 current_user。
+    """
+    def decorator(f):
+        @wraps(f)
+        def wrapped(current_user, *args, **kwargs):
+            if current_user is None:
+                return jsonify({'success': False, 'error': '使用者不存在'}), 401
+            from .models import Role
+            role = Role.query.filter_by(code=current_user.role).first()
+            if not role or not role.has_permission(perm):
+                return jsonify({'success': False, 'error': '權限不足'}), 403
+            return f(current_user, *args, **kwargs)
+        return wrapped
+    return decorator
+
+
+# ==================================================
+# 操作審計日誌
+# ==================================================
+def log_audit(user_id, action: str, module: str,
+              record_id=None, old_val=None, new_val=None) -> None:
+    """將操作寫入審計日誌（在現有 db.session 中新增，由呼叫方負責 commit）"""
+    from .models import AuditLog
+    entry = AuditLog(
+        user_id=user_id,
+        action=action,
+        module=module,
+        record_id=record_id,
+        old_value=old_val,
+        new_value=new_val,
+    )
+    db.session.add(entry)
+
+
+# ==================================================
 # File Upload Validation (C-3)
 # ==================================================
 import os as _os
