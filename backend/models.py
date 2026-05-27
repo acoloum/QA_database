@@ -651,3 +651,28 @@ class Attachment(db.Model):
     uploaded_at = db.Column('上傳時間', db.DateTime, default=datetime.utcnow)
 
     uploader = db.relationship('User', backref='attachments', foreign_keys=[uploaded_by])
+
+
+# ============================================================
+# 1.4 廠商績效模組
+# ============================================================
+class VendorPerformance(db.Model):
+    """廠商績效 — 每月計算一次，可重複覆蓋"""
+    __tablename__ = '廠商績效'
+    __table_args__ = (
+        db.UniqueConstraint('廠商_ID', '期間', name='uq_vendor_period'),
+    )
+
+    id               = db.Column('識別碼',          db.Integer, primary_key=True)
+    vendor_id        = db.Column('廠商_ID',          db.Integer, db.ForeignKey('廠商資料.識別碼'), nullable=False)
+    period           = db.Column('期間',             db.String(7),  nullable=False)
+    inspection_count = db.Column('檢驗批次數',       db.Integer, default=0)
+    defect_count     = db.Column('不良批次數',       db.Integer, default=0)
+    defect_rate      = db.Column('缺陷率',           db.Float,   default=0.0)
+    capa_count       = db.Column('CAPA件數',         db.Integer, default=0)
+    avg_capa_days    = db.Column('平均CAPA結案天數', db.Float,   nullable=True)
+    complaint_count  = db.Column('客訴件數',         db.Integer, default=0)
+    score            = db.Column('績效評分',         db.Float,   default=100.0)
+    calculated_at    = db.Column('計算時間',         db.DateTime, default=datetime.utcnow)
+
+    vendor = db.relationship('Vendor', backref='performances')
