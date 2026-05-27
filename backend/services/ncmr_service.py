@@ -9,7 +9,8 @@ from ..utils import (
     format_value,
     handle_db_error,
     generate_ncmr_number,
-    generate_8d_number
+    generate_8d_number,
+    validate_status_transition
 )
 
 class NCMRService:
@@ -29,7 +30,7 @@ class NCMRService:
         product_info: Optional[str] = None,
     ) -> Dict[str, Any]:
         try:
-            query = NCMR.query.options(
+            query = NCMR.active_query().options(
                 joinedload(NCMR.inspector),
                 subqueryload(NCMR.corrective_actions),
                 subqueryload(NCMR.rework_requests).subqueryload(ReworkRequest.executions)
@@ -146,6 +147,24 @@ class NCMRService:
             if not ncmr:
                 raise ValueError("找不到該筆資料")
 
+            # 狀態轉移驗證
+            new_status = data.get('狀態')
+            if new_status and new_status != ncmr.status:
+                validate_status_transition('NCMR', ncmr.status, new_status)
+
+            # 結案前置檢查
+            if new_status == '已結案':
+                # 若有關聯 CAPA，需確認 CAPA 已結案
+                if ncmr.related_capa_id:
+                    capa = CorrectiveAction.query.get(ncmr.related_capa_id)
+                    if capa and capa.status != '已結案':
+                        raise ValueError('CAPA 尚未結案，無法將 NCMR 結案')
+                # 若有關聯重工，需確認重工已完成
+                open_reworks = [r for r in ncmr.rework_requests
+                                if r.deleted_at is None and r.status not in ('已結案', '撤銷')]
+                if open_reworks:
+                    raise ValueError('尚有未結案的重工申請單，無法將 NCMR 結案')
+
             if data.get('發現人員姓名'):
                 inspector = Inspector.query.filter_by(name=data.get('發現人員姓名')).first()
                 if inspector:
@@ -202,7 +221,7 @@ class NCMRService:
             # I set cascade="all, delete-orphan".
             ncmr = NCMR.query.get(ncmr_id)
             if ncmr:
-                db.session.delete(ncmr)
+                ncmr.soft_delete()
                 db.session.commit()
             return True
         except Exception as e:
