@@ -1,7 +1,8 @@
 
 from flask import Blueprint, jsonify, request, current_app
 from ..services.rework_service import ReworkService
-from ..utils import auth_required
+from ..utils import auth_required, require_permission, log_audit
+from ..extensions import db
 
 rework_bp = Blueprint('rework', __name__)
 
@@ -29,12 +30,15 @@ def get_rework_applications():
 
 @rework_bp.route('/api/rework/apply', methods=['POST'])
 @auth_required
-def apply_rework():
+@require_permission('rework.create')
+def apply_rework(current_user):
     """提交重工申請"""
     if not request.json:
         return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
     try:
         result = ReworkService.create_application(request.json)
+        log_audit(current_user.id, 'create', '重工', result.get('id') if isinstance(result, dict) else None)
+        db.session.commit()
         return jsonify({"success": True, **result})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -59,12 +63,16 @@ def update_rework_application(rework_id):
 
 @rework_bp.route('/api/rework/approve', methods=['POST'])
 @auth_required
-def approve_rework():
+@require_permission('rework.approve')
+def approve_rework(current_user):
     """審核重工申請"""
     if not request.json:
         return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
     try:
         ReworkService.approve_application(request.json)
+        rework_id = request.json.get('rework_id')
+        log_audit(current_user.id, 'approve', '重工', rework_id)
+        db.session.commit()
         return jsonify({"success": True})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -286,7 +294,8 @@ def close_rework():
 
 @rework_bp.route('/api/rework/delete', methods=['POST'])
 @auth_required
-def delete_rework():
+@require_permission('rework.delete')
+def delete_rework(current_user):
     """刪除重工申請"""
     if not request.json:
         return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
@@ -295,6 +304,8 @@ def delete_rework():
         if not rework_id:
             return jsonify({"error": "缺少重工ID"}), 400
         ReworkService.delete_rework(rework_id)
+        log_audit(current_user.id, 'delete', '重工', rework_id)
+        db.session.commit()
         return jsonify({"success": True})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400

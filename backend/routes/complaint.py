@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify, request
 from datetime import date
 from ..services.complaint_service import ComplaintService
 from ..services.complaint_stats_service import ComplaintStatsService
-from ..utils import auth_required
+from ..utils import auth_required, require_permission, log_audit
 
 complaint_bp = Blueprint('complaint', __name__)
 
@@ -71,10 +71,14 @@ def update_complaint(current_user, complaint_id: int):
 
 @complaint_bp.route('/api/complaints/<int:complaint_id>', methods=['DELETE'])
 @auth_required
+@require_permission('complaint.delete')
 def delete_complaint(current_user, complaint_id: int):
     """DELETE /api/complaints/<id>"""
     try:
         ComplaintService.delete(complaint_id)
+        from ..extensions import db
+        log_audit(current_user.id, 'delete', '客訴', complaint_id)
+        db.session.commit()
         return jsonify({'message': '刪除成功'}), 200
     except ValueError as e:
         return jsonify({'error': str(e)}), 404

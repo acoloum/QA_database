@@ -2,7 +2,8 @@
 from flask import Blueprint, jsonify, request
 from ..services.capa_service import CAPAService
 from ..services.task_service import TaskService
-from ..utils import auth_required
+from ..utils import auth_required, require_permission, log_audit
+from ..extensions import db
 
 capa_bp = Blueprint('capa', __name__)
 
@@ -122,6 +123,7 @@ def check_close_gate(current_user, capa_id: int):
 # ── D8 結案 ───────────────────────────────────────────────────
 @capa_bp.route('/api/capas/<int:capa_id>/close', methods=['POST'])
 @auth_required
+@require_permission('capa.close')
 def close_capa(current_user, capa_id: int):
     """POST /api/capas/<id>/close — D8 結案（需通過 D6 gate 與任務 gate）
 
@@ -141,6 +143,8 @@ def close_capa(current_user, capa_id: int):
             confirmation = confirmation,
             recognition  = data.get('D8_recognition'),
         )
+        log_audit(current_user.id, 'close', 'CAPA', capa_id)
+        db.session.commit()
         return jsonify(result), 200
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
@@ -151,10 +155,13 @@ def close_capa(current_user, capa_id: int):
 # ── 刪除 ─────────────────────────────────────────────────────
 @capa_bp.route('/api/capas/<int:capa_id>', methods=['DELETE'])
 @auth_required
+@require_permission('capa.close')
 def delete_capa(current_user, capa_id: int):
     """DELETE /api/capas/<id> — 刪除 CAPA（同步刪除 pending 橫展任務）"""
     try:
         CAPAService.delete(capa_id)
+        log_audit(current_user.id, 'delete', 'CAPA', capa_id)
+        db.session.commit()
         return jsonify({'message': '刪除成功'}), 200
     except ValueError as e:
         return jsonify({'error': str(e)}), 404
