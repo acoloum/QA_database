@@ -10,7 +10,8 @@ from ..models import (
 )
 from ..utils import (
     format_value,
-    generate_number
+    generate_number,
+    validate_status_transition,
 )
 
 class ReworkService:
@@ -22,7 +23,7 @@ class ReworkService:
     def get_statistics(args: Dict[str, Any]) -> Dict[str, Any]:
         """獲取重工統計數據"""
         try:
-            query = ReworkRequest.query
+            query = ReworkRequest.active_query()
 
             if args.get('start_date'):
                 query = query.filter(ReworkRequest.created_at >= args['start_date'])
@@ -103,7 +104,7 @@ class ReworkService:
     @staticmethod
     def get_application_list(args: Dict[str, Any]) -> List[Dict[str, Any]]:
         try:
-            query = ReworkRequest.query.options(
+            query = ReworkRequest.active_query().options(
                 joinedload(ReworkRequest.applicant),
                 joinedload(ReworkRequest.reviewer),
                 joinedload(ReworkRequest.ncmr)
@@ -249,6 +250,12 @@ class ReworkService:
         try:
             req = ReworkRequest.query.get(rework_id)
             if not req: raise ValueError("找不到重工申請單")
+
+            # 狀態機驗證
+            new_status = data.get('status') or data.get('狀態')
+            if new_status and new_status != req.status:
+                validate_status_transition('重工', req.status, new_status)
+                req.status = new_status
 
             mapping = {
                 '部門': 'department', '緊急程度': 'urgency', '產品資訊': 'product_info',
@@ -612,12 +619,24 @@ class ReworkService:
             rework_id = data.get('rework_id')
             req = ReworkRequest.query.get(rework_id)
             if not req: raise ValueError("找不到該重工單")
-            
+
             if req.status == '已完成': raise ValueError("該重工單已結案")
-            
+
             req.status = '已完成'
             req.actual_finish_date = datetime.now()
-            
+
+            # 重工完成時自動同步 NCMR（無關聯 CAPA 時）
+            if req.ncmr_id:
+                ncmr = NCMR.active_query().filter_by(id=req.ncmr_id).first()
+                if ncmr and ncmr.status == '矯正中':
+                    # 只有在 NCMR 沒有任何 CAPA（或全部已結案）時才自動結案
+                    open_capas = [
+                        ca for ca in ncmr.corrective_actions
+                        if ca.deleted_at is None and ca.status != '已結案'
+                    ]
+                    if not open_capas:
+                        ncmr.status = '矯正完成'
+
             db.session.commit()
             return True
         except Exception as e:
@@ -629,13 +648,9 @@ class ReworkService:
         try:
             req = ReworkRequest.query.get(rework_id)
             if not req: raise ValueError("找不到重工申請單")
-            
-            # 刪除相關記錄
-            ReworkExecution.query.filter_by(rework_id=rework_id).delete()
-            ReworkInspection.query.filter_by(rework_id=rework_id).delete()
-            ReworkCost.query.filter_by(rework_id=rework_id).delete()
-            
-            db.session.delete(req)
+
+            # 軟刪除申請單（保留相關執行/品檢/成本記錄）
+            req.soft_delete()
             db.session.commit()
             return True
         except Exception as e:
