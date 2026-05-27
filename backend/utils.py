@@ -33,6 +33,18 @@ except ImportError:
             return ''
         return str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#x27;')
 
+# ==================================================
+# API 回傳格式 Helper
+# ==================================================
+def api_success(data=None, message: str = '操作成功', code: int = 200):
+    """統一成功回傳格式"""
+    return jsonify({'success': True, 'data': data, 'message': message}), code
+
+def api_error(message: str, code: int = 400, detail=None):
+    """統一錯誤回傳格式"""
+    return jsonify({'success': False, 'error': message, 'detail': detail}), code
+
+
 def sanitize_html(text: Optional[Union[str, int, float]]) -> str:
     """Remove dangerous HTML tags while preserving safe formatting"""
     if text is None:
