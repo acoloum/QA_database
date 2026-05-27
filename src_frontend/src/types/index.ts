@@ -199,6 +199,19 @@ export interface NCMRUpdateInput extends NCMRCreateInput {
     狀態?: string; // DispositionModal 中使用的欄位
 }
 
+// Shipping Measurement Types
+export interface ShippingMeasurementItem {
+  lower_limit?: number | null;
+  upper_limit?: number | null;
+  value_min?: number | null;
+  value_max?: number | null;
+  value_single?: number | null;
+  is_ng: boolean;
+}
+
+// key: group_num（字串），value: { [itemName]: ShippingMeasurementItem }
+export type ShippingMeasurements = Record<string, Record<string, ShippingMeasurementItem>>;
+
 // Shipping Types
 export interface ShippingCreateInput {
     檢驗日期: string;
@@ -245,15 +258,21 @@ export interface Vendor {
 }
 
 export interface ShippingInspection {
-    識別碼: number;
-    檢驗日期: string;
-    檢驗人員姓名: string;
-    廠商中文名稱: string;
-    檢驗規格: string;
-    材質: string;
-    訂單號碼?: string;
-    // Dynamic measurement fields
-    [key: string]: unknown;
+  id: number;
+  date: string;
+  material?: string;
+  spec?: string;
+  order_num?: string;
+  group_count: number;
+  inspector_id?: number;
+  inspector_name?: string;
+  vendor_id?: number;
+  vendor_name?: string;
+  is_ng: boolean;
+  measurements: ShippingMeasurements;
+  // 舊版中文欄位（Task 5 完成 ShippingPage/ShippingModal 更新後移除）
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
 }
 
 export interface ToleranceItem {
