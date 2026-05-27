@@ -109,6 +109,9 @@ class ShippingData(db.Model):
     # Relationships
     inspector = db.relationship('Inspector', backref='shipping_data')
     vendor = db.relationship('Vendor', backref='shipping_data')
+    measurements = db.relationship('ShippingMeasurement', backref='shipping',
+                                   cascade='all, delete-orphan',
+                                   order_by='ShippingMeasurement.group_num, ShippingMeasurement.item')
 
     is_ng = db.Column('是否超差', db.Boolean, default=False, index=True)
     
@@ -202,6 +205,40 @@ class ShippingData(db.Model):
                     if v is not None and (v < tol['lsl'] or v > tol['usl']): return True
                     
         return False
+
+class ShippingMeasurement(db.Model):
+    """出貨巡檢量測明細 — 每筆對應一個組別的一個量測項目"""
+    __tablename__ = '出貨巡檢量測明細'
+    __table_args__ = (
+        db.UniqueConstraint('出貨檢驗_ID', '組別', '量測項目', name='uq_shipping_group_item'),
+        db.Index('idx_shipping_meas_shipping_id', '出貨檢驗_ID'),
+    )
+
+    id          = db.Column('識別碼',      db.Integer, primary_key=True)
+    shipping_id = db.Column('出貨檢驗_ID', db.Integer, db.ForeignKey('出貨檢驗數據.識別碼'), nullable=False)
+    group_num   = db.Column('組別',        db.Integer, nullable=False)
+    item        = db.Column('量測項目',    db.String(30), nullable=False)
+    lower_limit = db.Column('下限', db.Numeric(12, 4), nullable=True)
+    upper_limit = db.Column('上限', db.Numeric(12, 4), nullable=True)
+    value_min   = db.Column('量測最小值', db.Numeric(12, 4), nullable=True)
+    value_max   = db.Column('量測最大值', db.Numeric(12, 4), nullable=True)
+    value_single= db.Column('量測值',     db.Numeric(12, 4), nullable=True)
+    is_ng       = db.Column('是否超差',   db.Boolean, default=False, nullable=False)
+
+
+class SPCCache(db.Model):
+    """SPC 計算快取"""
+    __tablename__ = 'SPC快取'
+    __table_args__ = (
+        db.Index('idx_spc_cache_key', '快取鍵'),
+    )
+
+    id         = db.Column('識別碼', db.Integer, primary_key=True)
+    cache_key  = db.Column('快取鍵',  db.String(255), unique=True, nullable=False)
+    result     = db.Column('計算結果', JsonType, nullable=False)
+    created_at = db.Column('建立時間', db.DateTime, default=datetime.utcnow)
+    expires_at = db.Column('過期時間', db.DateTime, nullable=False)
+
 
 class VendorToleranceMain(db.Model):
     __tablename__ = '廠商公差主檔'
