@@ -6,10 +6,10 @@ from datetime import datetime
 from collections import defaultdict
 from typing import List, Dict, Any, Optional, Union
 from sqlalchemy import or_, text
-from sqlalchemy.orm import contains_eager
+from sqlalchemy.orm import contains_eager, joinedload
 from scipy import stats as scipy_stats
 from ..extensions import db
-from ..models import ShippingData, Inspector, Vendor, VendorToleranceMain, VendorToleranceDetail
+from ..models import ShippingData, ShippingMeasurement, Inspector, Vendor, VendorToleranceMain, VendorToleranceDetail
 from ..utils import (
     format_value,
     validate_inspection_data,
@@ -63,6 +63,171 @@ class ShippingService:
         return res
 
     @staticmethod
+    def _to_dict(rec: ShippingData) -> Dict[str, Any]:
+        """將 ShippingData 序列化為巢狀格式，量測值從 ShippingMeasurement 子表讀取"""
+        meas_map: Dict[str, Any] = {}
+        for m in rec.measurements:
+            g = str(m.group_num)
+            if g not in meas_map:
+                meas_map[g] = {}
+            meas_map[g][m.item] = {
+                'lower_limit':  float(m.lower_limit)  if m.lower_limit  is not None else None,
+                'upper_limit':  float(m.upper_limit)  if m.upper_limit  is not None else None,
+                'value_min':    float(m.value_min)    if m.value_min    is not None else None,
+                'value_max':    float(m.value_max)    if m.value_max    is not None else None,
+                'value_single': float(m.value_single) if m.value_single is not None else None,
+                'is_ng':        m.is_ng,
+            }
+
+        return {
+            'id':             rec.id,
+            'date':           rec.date.isoformat() if rec.date else None,
+            'material':       rec.material,
+            'spec':           rec.spec,
+            'order_num':      rec.order_num,
+            'group_count':    rec.group_count,
+            'inspector_id':   rec.inspector_id,
+            'inspector_name': rec.inspector.name if rec.inspector else None,
+            'vendor_id':      rec.vendor_id,
+            'vendor_name':    rec.vendor.name if rec.vendor else None,
+            'is_ng':          rec.is_ng,
+            'measurements':   meas_map,
+        }
+
+    @staticmethod
+    def create(data: Dict[str, Any]) -> Dict[str, Any]:
+        """新增出貨檢驗主檔及量測明細（使用 ShippingMeasurement 子表）"""
+        inspector = Inspector.query.filter_by(name=data.get('inspector_name')).first()
+        if not inspector:
+            raise ValueError(f"找不到檢驗人員: {data.get('inspector_name')}")
+
+        vendor = Vendor.query.filter_by(name=data.get('vendor_name')).first()
+        if not vendor:
+            raise ValueError(f"找不到廠商: {data.get('vendor_name')}")
+
+        try:
+            rec = ShippingData(
+                date=data.get('date'),
+                inspector_id=inspector.id,
+                vendor_id=vendor.id,
+                spec=data.get('spec'),
+                material=data.get('material'),
+                order_num=data.get('order_num'),
+                group_count=int(data.get('group_count', 5)),
+            )
+            db.session.add(rec)
+            db.session.flush()  # 取得 rec.id
+
+            any_ng = False
+            for g_str, items in (data.get('measurements') or {}).items():
+                for item_name, vals in items.items():
+                    lower    = vals.get('lower_limit')
+                    upper    = vals.get('upper_limit')
+                    v_min    = vals.get('value_min')
+                    v_max    = vals.get('value_max')
+                    v_single = vals.get('value_single')
+
+                    item_ng = False
+                    if lower is not None and upper is not None:
+                        for v in filter(lambda x: x is not None, [v_min, v_max, v_single]):
+                            if float(v) < float(lower) or float(v) > float(upper):
+                                item_ng = True
+                    if item_ng:
+                        any_ng = True
+
+                    db.session.add(ShippingMeasurement(
+                        shipping_id=rec.id,
+                        group_num=int(g_str),
+                        item=item_name,
+                        lower_limit=lower,
+                        upper_limit=upper,
+                        value_min=v_min,
+                        value_max=v_max,
+                        value_single=v_single,
+                        is_ng=item_ng,
+                    ))
+
+            rec.is_ng = any_ng
+            db.session.commit()
+            db.session.refresh(rec)
+            return ShippingService._to_dict(rec)
+        except Exception as e:
+            db.session.rollback()
+            raise e
+
+    @staticmethod
+    def update(record_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
+        """更新出貨檢驗主檔；若 data 含 measurements 則刪除舊明細並重建"""
+        rec = ShippingData.query.get(record_id)
+        if not rec:
+            raise ValueError(f"找不到 ID {record_id} 的資料")
+
+        try:
+            # 更新基本欄位（有提供才覆蓋）
+            if 'date' in data:
+                rec.date = data['date']
+            if 'material' in data:
+                rec.material = data['material']
+            if 'spec' in data:
+                rec.spec = data['spec']
+            if 'order_num' in data:
+                rec.order_num = data['order_num']
+            if 'group_count' in data:
+                rec.group_count = int(data['group_count'])
+            if 'inspector_name' in data:
+                inspector = Inspector.query.filter_by(name=data['inspector_name']).first()
+                if not inspector:
+                    raise ValueError(f"找不到檢驗人員: {data['inspector_name']}")
+                rec.inspector_id = inspector.id
+            if 'vendor_name' in data:
+                vendor = Vendor.query.filter_by(name=data['vendor_name']).first()
+                if not vendor:
+                    raise ValueError(f"找不到廠商: {data['vendor_name']}")
+                rec.vendor_id = vendor.id
+
+            if 'measurements' in data:
+                # 刪除舊量測明細再重建
+                ShippingMeasurement.query.filter_by(shipping_id=rec.id).delete()
+
+                any_ng = False
+                for g_str, items in (data.get('measurements') or {}).items():
+                    for item_name, vals in items.items():
+                        lower    = vals.get('lower_limit')
+                        upper    = vals.get('upper_limit')
+                        v_min    = vals.get('value_min')
+                        v_max    = vals.get('value_max')
+                        v_single = vals.get('value_single')
+
+                        item_ng = False
+                        if lower is not None and upper is not None:
+                            for v in filter(lambda x: x is not None, [v_min, v_max, v_single]):
+                                if float(v) < float(lower) or float(v) > float(upper):
+                                    item_ng = True
+                        if item_ng:
+                            any_ng = True
+
+                        db.session.add(ShippingMeasurement(
+                            shipping_id=rec.id,
+                            group_num=int(g_str),
+                            item=item_name,
+                            lower_limit=lower,
+                            upper_limit=upper,
+                            value_min=v_min,
+                            value_max=v_max,
+                            value_single=v_single,
+                            is_ng=item_ng,
+                        ))
+
+                rec.is_ng = any_ng
+
+            db.session.commit()
+            db.session.refresh(rec)
+            return ShippingService._to_dict(rec)
+        except Exception as e:
+            db.session.rollback()
+            raise e
+
+    @staticmethod
     def get_list(args: Dict[str, Any]) -> Dict[str, Any]:
         """獲取出貨檢驗數據列表"""
         try:
@@ -76,6 +241,7 @@ class ShippingService:
             query = query.options(
                 contains_eager(ShippingData.inspector),
                 contains_eager(ShippingData.vendor),
+                joinedload(ShippingData.measurements),
             )
 
             if args.get('id'):
