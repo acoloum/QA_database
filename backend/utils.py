@@ -44,6 +44,35 @@ def api_error(message: str, code: int = 400, detail=None):
     """統一錯誤回傳格式"""
     return jsonify({'success': False, 'error': message, 'detail': detail}), code
 
+# ==================================================
+# 狀態機驗證
+# ==================================================
+_STATUS_TRANSITIONS: dict = {
+    'NCMR': {
+        '新建':   {'處理中', '已驗證', '已結案'},
+        '處理中': {'已驗證', '已結案'},
+        '已驗證': {'已結案'},
+        '已結案': set(),
+    },
+    'CAPA': {
+        '進行中': {'已結案'},
+        '已結案': set(),
+    },
+    '重工': {
+        '申請中': {'執行中', '撤銷'},
+        '執行中': {'已完成'},
+        '已完成': {'已結案'},
+        '已結案': set(),
+        '撤銷':   set(),
+    },
+}
+
+def validate_status_transition(model: str, current: str, new: str) -> None:
+    """驗證狀態轉移合法性，不合法拋出 ValueError"""
+    allowed = _STATUS_TRANSITIONS.get(model, {}).get(current, set())
+    if new not in allowed:
+        raise ValueError(f'非法狀態轉移：{model} {current!r} → {new!r}')
+
 
 def sanitize_html(text: Optional[Union[str, int, float]]) -> str:
     """Remove dangerous HTML tags while preserving safe formatting"""
