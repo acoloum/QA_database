@@ -34,6 +34,44 @@ class User(db.Model):
     def __repr__(self):
         return f'<User {self.username}>'
 
+
+class Role(db.Model):
+    __tablename__ = '角色'
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    code = db.Column('角色代碼', db.String(30), unique=True, nullable=False)
+    name = db.Column('角色名稱', db.String(50), nullable=False)
+    permissions = db.Column('權限', JsonType, nullable=False, default=dict)
+
+    def has_permission(self, perm: str) -> bool:
+        return bool(self.permissions.get(perm))
+
+    def __repr__(self):
+        return f'<Role {self.code}>'
+
+
+class AuditLog(db.Model):
+    __tablename__ = '操作日誌'
+    __table_args__ = (
+        db.Index('idx_auditlog_module_record', '模組', '資料ID'),
+        db.Index('idx_auditlog_user_created', '使用者ID', '建立時間'),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    user_id = db.Column('使用者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True)
+    action = db.Column('操作類型', db.String(20), nullable=False)
+    module = db.Column('模組', db.String(30), nullable=False)
+    record_id = db.Column('資料ID', db.Integer, nullable=True)
+    old_value = db.Column('操作前', JsonType, nullable=True)
+    new_value = db.Column('操作後', JsonType, nullable=True)
+    created_at = db.Column('建立時間', db.DateTime(timezone=True), nullable=False,
+                           default=lambda: datetime.now(timezone.utc))
+
+    user = db.relationship('User', foreign_keys=[user_id])
+
+    def __repr__(self):
+        return f'<AuditLog {self.module} {self.action} {self.record_id}>'
+
+
 class Inspector(db.Model):
     __tablename__ = '品管人員'
     id = db.Column('識別碼', db.Integer, primary_key=True)
