@@ -7,10 +7,10 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 class SoftDeleteMixin:
     """軟刪除 Mixin：加入 deleted_at 欄位，刪除時設時間戳而非真正 DELETE"""
-    deleted_at = db.Column('刪除時間', db.DateTime, nullable=True, index=True)
+    deleted_at = db.Column('刪除時間', db.DateTime(timezone=True), nullable=True, index=True)
 
     def soft_delete(self):
-        self.deleted_at = datetime.utcnow()
+        self.deleted_at = datetime.now(timezone.utc)
 
     @classmethod
     def active_query(cls):
