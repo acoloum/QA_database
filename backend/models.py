@@ -152,16 +152,7 @@ class ShippingData(db.Model):
                                    order_by='ShippingMeasurement.group_num, ShippingMeasurement.item')
 
     is_ng = db.Column('是否超差', db.Boolean, default=False, index=True)
-    
-    def get_measurement(self, attr_prefix, group, is_minmax):
-        """Get measurement block for a specific group and prefix"""
-        if is_minmax:
-            v_min = getattr(self, f"{attr_prefix}{group}_min", None)
-            v_max = getattr(self, f"{attr_prefix}{group}_max", None)
-            return (v_min, v_max)
-        else:
-            return getattr(self, f"{attr_prefix}{group}", None)
-            
+
     def compute_is_ng(self, tolerances):
         """Evaluate if record is out of tolerance"""
         if not tolerances:
