@@ -148,8 +148,8 @@ class ReworkService:
                     "審核人員姓名": r.reviewer.name if r.reviewer else "",
                     "ncmr_description": ncmr.description if ncmr else "",
                     "ncmr_number": ncmr.ncmr_number if ncmr else "",
-                    "廠商": ncmr.vendor if ncmr else "",
-                    "材質": ncmr.material if ncmr else "",
+                    "廠商": r.vendor if r.vendor else (ncmr.vendor if ncmr else ""),
+                    "材質": r.material if r.material else (ncmr.material if ncmr else ""),
                     # "產品資訊" already in ReworkRequest, but also in NCMR.
                     # Legacy query selected n."產品資訊" AS "產品資訊" but Rework also has "產品資訊" column.
                     # Legacy code selected r.* then overwritten by n."產品資訊" if collision?
@@ -205,7 +205,9 @@ class ReworkService:
                 quantity=data.get('重工數量'),
                 reason=data.get('申請原因'),
                 expected_date=data.get('預計完成日期') or None,
-                status='申請中'
+                status='申請中',
+                vendor=data.get('廠商') or (ncmr.vendor if ncmr else None),
+                material=data.get('材質') or (ncmr.material if ncmr else None),
             )
             
             db.session.add(req)
@@ -237,6 +239,7 @@ class ReworkService:
                 urgency      = '普通',
                 department   = '',
                 status       = '申請中',
+                material     = complaint.material,
             )
             db.session.add(req)
             db.session.commit()
@@ -260,8 +263,20 @@ class ReworkService:
             mapping = {
                 '部門': 'department', '緊急程度': 'urgency', '產品資訊': 'product_info',
                 '批號': 'batch_num', '重工數量': 'quantity', '申請原因': 'reason',
-                '預計完成日期': 'expected_date'
+                '預計完成日期': 'expected_date',
+                '廠商': 'vendor', '材質': 'material',
             }
+
+            # 申請人員姓名 -> applicant_id 反查
+            if '申請人員姓名' in data:
+                applicant_name = (data.get('申請人員姓名') or '').strip()
+                if applicant_name:
+                    applicant = Inspector.query.filter_by(name=applicant_name).first()
+                    if not applicant:
+                        raise ValueError(f"找不到申請人員：{applicant_name}")
+                    req.applicant_id = applicant.id
+                else:
+                    req.applicant_id = None
             # Note: Legacy updated '廠商', '材質' in ReworkRequest? 
             # ReworkRequest model doesn't have 'vendor' or 'material'. 
             # Legacy update SQL had them in field_mapping but maybe they don't exist in table?
@@ -381,7 +396,15 @@ class ReworkService:
             yield_rate = ((comp - defect) / comp * 100) if comp > 0 else None
 
             # Date parsing
-            def parse_dt(s): return datetime.strptime(s.replace('T', ' '), '%Y-%m-%d %H:%M:%S') if s else None
+            def parse_dt(s):
+                if not s: return None
+                s = s.replace('T', ' ')
+                for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M'):
+                    try:
+                        return datetime.strptime(s, fmt)
+                    except ValueError:
+                        continue
+                raise ValueError(f"時間格式錯誤：{s}")
             
             start_time = parse_dt(data.get('開始時間')) if data.get('開始時間') else None
             est_end = parse_dt(data.get('預計完成時間')) if data.get('預計完成時間') else None
@@ -468,7 +491,15 @@ class ReworkService:
                 if k in data: setattr(e, attr, data[k])
 
             # Dates
-            def parse_dt(s): return datetime.strptime(s.replace('T', ' '), '%Y-%m-%d %H:%M:%S') if s else None
+            def parse_dt(s):
+                if not s: return None
+                s = s.replace('T', ' ')
+                for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M'):
+                    try:
+                        return datetime.strptime(s, fmt)
+                    except ValueError:
+                        continue
+                raise ValueError(f"時間格式錯誤：{s}")
             
             if '開始時間' in data: e.start_time = parse_dt(data['開始時間'])
             if '預計完成時間' in data: e.est_end_time = parse_dt(data['預計完成時間'])

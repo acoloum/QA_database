@@ -489,6 +489,8 @@ class ReworkRequest(SoftDeleteMixin, db.Model):
     created_at = db.Column('申請日期', db.DateTime, default=datetime.utcnow)
     actual_finish_date = db.Column('實際完成日期', db.DateTime)
     complaint_id = db.Column('客訴_ID', db.Integer, nullable=True)
+    vendor = db.Column('廠商', db.String, nullable=True)
+    material = db.Column('材質', db.String, nullable=True)
 
     __table_args__ = (
         db.Index('idx_rework_status_created', '狀態', '申請日期'),

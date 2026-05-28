@@ -377,7 +377,7 @@ const ReworkPage = () => {
                                             <td>{item.申請日期?.substring(0, 10)}</td>
                                             <td>
                                                 <span className="badge bg-secondary">
-                                                    {item.ncmr_number || `#${item.NCMR_ID}`}
+                                                    {item.ncmr_number || item.客訴單號 || (item.NCMR_ID ? `#${item.NCMR_ID}` : '-')}
                                                 </span>
                                             </td>
                                             <td>{item.申請人員姓名}</td>
@@ -477,8 +477,8 @@ const ReworkPage = () => {
                                                 <p>{selectedReworkDetail.申請日期}</p>
                                             </div>
                                             <div className="col-md-6 mb-3">
-                                                <label className="form-label fw-bold">NCMR單號</label>
-                                                <p>{selectedReworkDetail.ncmr_number || `#${selectedReworkDetail.NCMR_ID}`}</p>
+                                                <label className="form-label fw-bold">{selectedReworkDetail.客訴單號 && !selectedReworkDetail.ncmr_number ? '客訴單號' : 'NCMR單號'}</label>
+                                                <p>{selectedReworkDetail.ncmr_number || selectedReworkDetail.客訴單號 || (selectedReworkDetail.NCMR_ID ? `#${selectedReworkDetail.NCMR_ID}` : '-')}</p>
                                             </div>
                                             <div className="col-md-6 mb-3">
                                                 <label className="form-label fw-bold">申請人員</label>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import api from '../../services/api';
-import type { ReworkApplication } from '../../types';
+import type { ReworkApplication, Inspector } from '../../types';
 
 interface EditBasicInfoModalProps {
   show: boolean;
@@ -12,7 +12,9 @@ interface EditBasicInfoModalProps {
 
 const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditBasicInfoModalProps) => {
   const [loading, setLoading] = useState(false);
+  const [inspectors, setInspectors] = useState<Inspector[]>([]);
 
+  const [applicant, setApplicant] = useState('');
   const [department, setDepartment] = useState('製造部');
   // 明確型別以確保與 ReworkApplication.緊急程度 聯合型別相符
   const [urgency, setUrgency] = useState<'普通' | '重要' | '緊急'>('普通');
@@ -26,6 +28,7 @@ const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditB
 
   const loadApplicationData = useCallback(() => {
     if (!application) return;
+    setApplicant(application.申請人員姓名 || '');
     setDepartment(application.部門 || '製造部');
     setUrgency(application.緊急程度 || '普通');
     setVendor(application.廠商 || '');
@@ -48,6 +51,13 @@ const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditB
     }
   }, [show, application, loadApplicationData]);
 
+  useEffect(() => {
+    if (!show) return;
+    api.get<Inspector[]>('/inspectors')
+      .then((res) => setInspectors(res.data))
+      .catch((err) => console.error('Failed to load inspectors', err));
+  }, [show]);
+
   const handleSubmit = async () => {
     if (!application) return;
 
@@ -55,6 +65,7 @@ const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditB
     try {
       const payload: Partial<ReworkApplication> = {};
 
+      if (applicant !== undefined) payload.申請人員姓名 = applicant;
       if (department) payload.部門 = department;
       if (urgency) payload.緊急程度 = urgency;
       if (vendor !== undefined) payload.廠商 = vendor;
@@ -97,6 +108,17 @@ const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditB
           <Row>
             <Col md={6}>
               <Form.Group className="mb-3">
+                <Form.Label>申請人員</Form.Label>
+                <Form.Select value={applicant} onChange={(e) => setApplicant(e.target.value)}>
+                  <option value="">請選擇</option>
+                  {inspectors.map((i, idx) => (
+                    <option key={idx} value={i.name}>{i.name}</option>
+                  ))}
+                </Form.Select>
+              </Form.Group>
+            </Col>
+            <Col md={6}>
+              <Form.Group className="mb-3">
                 <Form.Label>部門</Form.Label>
                 <Form.Select value={department} onChange={(e) => setDepartment(e.target.value)}>
                   <option value="製造部">製造部</option>
@@ -105,6 +127,9 @@ const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditB
                 </Form.Select>
               </Form.Group>
             </Col>
+          </Row>
+
+          <Row>
             <Col md={6}>
               <Form.Group className="mb-3">
                 <Form.Label>緊急程度</Form.Label>

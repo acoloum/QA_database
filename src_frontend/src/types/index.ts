@@ -50,6 +50,8 @@ export interface ReworkApplication {
     申請日期: string;
     NCMR_ID: number;
     ncmr_number?: string;
+    客訴_ID?: number | null;
+    客訴單號?: string;
     申請人員姓名: string;
     部門: string;
     產品資訊: string;
@@ -205,9 +207,9 @@ export interface NCMRUpdateInput extends NCMRCreateInput {
 export interface ShippingMeasurementItem {
   lower_limit?: number | null;
   upper_limit?: number | null;
-  value_min?: number | null;
-  value_max?: number | null;
-  value_single?: number | null;
+  value_min?: number | string | null;
+  value_max?: number | string | null;
+  value_single?: number | string | null;
   is_ng: boolean;
 }
 

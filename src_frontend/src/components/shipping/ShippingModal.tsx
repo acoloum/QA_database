@@ -293,16 +293,19 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                 if (item.type === 'minmax') {
                     const vkMin = `${gKey}:${item.key}:value_min`;
                     const vkMax = `${gKey}:${item.key}:value_max`;
-                    if (measItem.value_min != null && !isNaN(measItem.value_min)) {
-                        if (measItem.value_min < lsl || measItem.value_min > usl) newViolations[vkMin] = true;
+                    const minNum = measItem.value_min != null ? Number(measItem.value_min) : NaN;
+                    const maxNum = measItem.value_max != null ? Number(measItem.value_max) : NaN;
+                    if (!isNaN(minNum)) {
+                        if (minNum < lsl || minNum > usl) newViolations[vkMin] = true;
                     }
-                    if (measItem.value_max != null && !isNaN(measItem.value_max)) {
-                        if (measItem.value_max < lsl || measItem.value_max > usl) newViolations[vkMax] = true;
+                    if (!isNaN(maxNum)) {
+                        if (maxNum < lsl || maxNum > usl) newViolations[vkMax] = true;
                     }
                 } else {
                     const vk = `${gKey}:${item.key}:value_single`;
-                    if (measItem.value_single != null && !isNaN(measItem.value_single)) {
-                        if (measItem.value_single < lsl || measItem.value_single > usl) newViolations[vk] = true;
+                    const valNum = measItem.value_single != null ? Number(measItem.value_single) : NaN;
+                    if (!isNaN(valNum)) {
+                        if (valNum < lsl || valNum > usl) newViolations[vk] = true;
                     }
                 }
             });
@@ -342,7 +345,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                 ...prev[gKey],
                 [itemKey]: {
                     ...prev[gKey]?.[itemKey],
-                    [field]: value === '' ? null : Number(value),
+                    [field]: value === '' ? null : value,
                 },
             },
         }));
