@@ -429,12 +429,14 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             const groupOut: Record<string, ShippingMeasurementItem> = {};
             ITEMS.forEach(item => {
                 const m = groupData[item.key] ?? {};
+                const toNum = (v: number | string | null | undefined) =>
+                    v != null && v !== '' ? Number(v) : null;
                 groupOut[item.key] = {
                     lower_limit: m.lower_limit ?? null,
                     upper_limit: m.upper_limit ?? null,
-                    value_min: item.type === 'minmax' ? (m.value_min ?? null) : null,
-                    value_max: item.type === 'minmax' ? (m.value_max ?? null) : null,
-                    value_single: item.type === 'single' ? (m.value_single ?? null) : null,
+                    value_min: item.type === 'minmax' ? toNum(m.value_min) : null,
+                    value_max: item.type === 'minmax' ? toNum(m.value_max) : null,
+                    value_single: item.type === 'single' ? toNum(m.value_single) : null,
                     is_ng: m.is_ng ?? false,
                 };
             });
