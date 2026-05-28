@@ -21,6 +21,7 @@ const ComplaintPage = () => {
     // 篩選
     const [customerFilter,  setCustomerFilter]  = useState('');
     const [materialFilter,  setMaterialFilter]  = useState('');
+    const [specFilter,      setSpecFilter]      = useState('');
     const [statusFilter,    setStatusFilter]    = useState('');
     const [typeFilter,      setTypeFilter]      = useState('');
     const [dateFromFilter,  setDateFromFilter]  = useState('');
@@ -35,6 +36,7 @@ const ComplaintPage = () => {
     const params = {
         customer:       customerFilter  || undefined,
         material:       materialFilter  || undefined,
+        spec:           specFilter      || undefined,
         status:         statusFilter    || undefined,
         complaint_type: typeFilter      || undefined,
         date_from:      dateFromFilter  || undefined,
@@ -86,6 +88,7 @@ const ComplaintPage = () => {
     const handleReset = () => {
         setCustomerFilter('');
         setMaterialFilter('');
+        setSpecFilter('');
         setStatusFilter('');
         setTypeFilter('');
         setDateFromFilter('');
@@ -128,6 +131,11 @@ const ComplaintPage = () => {
                                 value={materialFilter} onChange={e => { setMaterialFilter(e.target.value); setPage(1); }} />
                         </Col>
                         <Col xs={6} md={2}>
+                            <Form.Label className="small mb-1">規格</Form.Label>
+                            <Form.Control size="sm" placeholder="搜尋規格…"
+                                value={specFilter} onChange={e => { setSpecFilter(e.target.value); setPage(1); }} />
+                        </Col>
+                        <Col xs={6} md={2}>
                             <Form.Label className="small mb-1">狀態</Form.Label>
                             <Form.Select size="sm" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
                                 <option value="">全部</option>
@@ -142,15 +150,7 @@ const ComplaintPage = () => {
                             </Form.Select>
                         </Col>
                         <Col xs={6} md={2}>
-                            <Form.Label className="small mb-1">重複客訴</Form.Label>
-                            <Form.Select size="sm" value={repeatFilter} onChange={e => { setRepeatFilter(e.target.value as '' | 'true' | 'false'); setPage(1); }}>
-                                <option value="">全部</option>
-                                <option value="true">僅重複</option>
-                                <option value="false">非重複</option>
-                            </Form.Select>
-                        </Col>
-                        <Col xs={6} md={1}>
-                            <Button variant="outline-secondary" size="sm" className="w-100" onClick={handleReset}>清除</Button>
+                            <Button variant="outline-secondary" size="sm" className="w-100 mt-4" onClick={handleReset}>清除</Button>
                         </Col>
                     </Row>
                     <Row className="g-2 mt-1">
@@ -163,6 +163,14 @@ const ComplaintPage = () => {
                             <Form.Label className="small mb-1">日期（迄）</Form.Label>
                             <Form.Control type="date" size="sm" value={dateToFilter}
                                 onChange={e => { setDateToFilter(e.target.value); setPage(1); }} />
+                        </Col>
+                        <Col xs={6} md={3}>
+                            <Form.Label className="small mb-1">重複客訴</Form.Label>
+                            <Form.Select size="sm" value={repeatFilter} onChange={e => { setRepeatFilter(e.target.value as '' | 'true' | 'false'); setPage(1); }}>
+                                <option value="">全部</option>
+                                <option value="true">僅重複</option>
+                                <option value="false">非重複</option>
+                            </Form.Select>
                         </Col>
                     </Row>
                 </Card.Body>

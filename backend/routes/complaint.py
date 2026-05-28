@@ -17,6 +17,7 @@ def list_complaints(current_user):
         result = ComplaintService.list_complaints(
             customer       = request.args.get('customer'),
             material       = request.args.get('material'),
+            spec           = request.args.get('spec'),
             status         = request.args.get('status'),
             complaint_type = request.args.get('complaint_type'),
             date_from      = _parse_date(request.args.get('date_from')),

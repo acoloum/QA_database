@@ -6,6 +6,7 @@ import type { CustomerComplaint, PaginatedResponse } from '../types';
 export interface ComplaintListParams {
     customer?: string;
     material?: string;
+    spec?: string;
     status?: string;
     complaint_type?: string;
     date_from?: string;

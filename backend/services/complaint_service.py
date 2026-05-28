@@ -94,6 +94,7 @@ class ComplaintService:
     def list_complaints(
         customer: Optional[str] = None,
         material: Optional[str] = None,
+        spec: Optional[str] = None,
         status: Optional[str] = None,
         complaint_type: Optional[str] = None,
         date_from: Optional[date] = None,
@@ -107,6 +108,8 @@ class ComplaintService:
             q = q.filter(CustomerComplaint.customer.ilike(f'%{customer}%'))
         if material:
             q = q.filter(CustomerComplaint.material.ilike(f'%{material}%'))
+        if spec:
+            q = q.filter(CustomerComplaint.spec.ilike(f'%{spec}%'))
         if status:
             q = q.filter_by(status=status)
         if complaint_type:
