@@ -186,11 +186,11 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                             if (item.type === 'minmax') {
                                 const minRaw = raw[`${item.key}${g}-min`];
                                 const maxRaw = raw[`${item.key}${g}-max`];
-                                entry.value_min = minRaw != null ? Number(minRaw) : null;
-                                entry.value_max = maxRaw != null ? Number(maxRaw) : null;
+                                entry.value_min = minRaw != null && minRaw !== '' ? Number(minRaw) : null;
+                                entry.value_max = maxRaw != null && maxRaw !== '' ? Number(maxRaw) : null;
                             } else {
                                 const valRaw = raw[`${item.key}${g}`];
-                                entry.value_single = valRaw != null ? Number(valRaw) : null;
+                                entry.value_single = valRaw != null && valRaw !== '' ? Number(valRaw) : null;
                             }
                             groupData[item.key] = entry;
                         });
