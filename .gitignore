@@ -15,3 +15,6 @@ database_backup/
 
 # 附件上傳儲存目錄
 backend/uploads/
+
+# SPC 回歸基準快照（本地產生、體積大，不進版控）
+backend/scripts/spc_baseline.json
