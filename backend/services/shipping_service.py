@@ -758,27 +758,83 @@ class ShippingService:
             shipping_data.order_num = data.get('訂單號碼')
             shipping_data.group_count = int(data.get('組數', 5))
 
-            # Set dynamic columns (groups 1-10)
-            def get_val(k):
-                val = data.get(k)
-                if val is None or val == "":
-                    return None
-                return str(val)
+            # 量測項目 -> 扁平欄位前綴對應（minmax 項目存 -min/-max，single 項目存單值）
+            ITEM_FLAT_MAP = {
+                '外徑': ('od', True), '內徑': ('id', True), '厚度': ('th', True),
+                '同心度': ('concentricity', False), '長度': ('length', False),
+                '硬度': ('hardness', False), '韋伯氏硬度': ('vickers', False),
+                '真直度': ('straightness', False), '真圓度': ('roundness', False),
+            }
 
-            for i in range(1, 11):
-                setattr(shipping_data, f"od{i}_min", get_val(f'外徑{i}-min'))
-                setattr(shipping_data, f"od{i}_max", get_val(f'外徑{i}-max'))
-                setattr(shipping_data, f"id{i}_min", get_val(f'內徑{i}-min'))
-                setattr(shipping_data, f"id{i}_max", get_val(f'內徑{i}-max'))
-                setattr(shipping_data, f"th{i}_min", get_val(f'厚度{i}-min'))
-                setattr(shipping_data, f"th{i}_max", get_val(f'厚度{i}-max'))
-                
-                setattr(shipping_data, f"concentricity{i}", get_val(f'同心度{i}'))
-                setattr(shipping_data, f"length{i}", get_val(f'長度{i}'))
-                setattr(shipping_data, f"hardness{i}", get_val(f'硬度{i}'))
-                setattr(shipping_data, f"vickers{i}", get_val(f'韋伯氏硬度{i}'))
-                setattr(shipping_data, f"straightness{i}", get_val(f'真直度{i}'))
-                setattr(shipping_data, f"roundness{i}", get_val(f'真圓度{i}'))
+            def to_str(v):
+                if v is None or v == "":
+                    return None
+                return str(v)
+
+            measurements = data.get('measurements')
+            if measurements:
+                # 新格式：巢狀 measurements 物件。先清空所有扁平欄位，再依資料回填，
+                # 同時重建子表明細（出貨巡檢量測明細）供詳情/編輯顯示。
+                for i in range(1, 11):
+                    for prefix, is_minmax in ITEM_FLAT_MAP.values():
+                        if is_minmax:
+                            setattr(shipping_data, f"{prefix}{i}_min", None)
+                            setattr(shipping_data, f"{prefix}{i}_max", None)
+                        else:
+                            setattr(shipping_data, f"{prefix}{i}", None)
+
+                # 清除舊子表明細（cascade delete-orphan）
+                shipping_data.measurements = []
+
+                for g_str, items in measurements.items():
+                    try:
+                        g = int(g_str)
+                    except (ValueError, TypeError):
+                        continue
+                    if not (1 <= g <= 10):
+                        continue
+                    for item_name, vals in (items or {}).items():
+                        mapping = ITEM_FLAT_MAP.get(item_name)
+                        if not mapping:
+                            continue
+                        prefix, is_minmax = mapping
+                        v_min    = vals.get('value_min')
+                        v_max    = vals.get('value_max')
+                        v_single = vals.get('value_single')
+
+                        if is_minmax:
+                            setattr(shipping_data, f"{prefix}{g}_min", to_str(v_min))
+                            setattr(shipping_data, f"{prefix}{g}_max", to_str(v_max))
+                        else:
+                            setattr(shipping_data, f"{prefix}{g}", to_str(v_single))
+
+                        # 僅在有任一量測值時才建立子表明細
+                        if v_min is not None or v_max is not None or v_single is not None:
+                            shipping_data.measurements.append(ShippingMeasurement(
+                                group_num=g,
+                                item=item_name,
+                                lower_limit=vals.get('lower_limit'),
+                                upper_limit=vals.get('upper_limit'),
+                                value_min=v_min,
+                                value_max=v_max,
+                                value_single=v_single,
+                                is_ng=bool(vals.get('is_ng', False)),
+                            ))
+            else:
+                # 舊格式回退：直接讀取扁平鍵（匯入或舊版前端）
+                for i in range(1, 11):
+                    setattr(shipping_data, f"od{i}_min", to_str(data.get(f'外徑{i}-min')))
+                    setattr(shipping_data, f"od{i}_max", to_str(data.get(f'外徑{i}-max')))
+                    setattr(shipping_data, f"id{i}_min", to_str(data.get(f'內徑{i}-min')))
+                    setattr(shipping_data, f"id{i}_max", to_str(data.get(f'內徑{i}-max')))
+                    setattr(shipping_data, f"th{i}_min", to_str(data.get(f'厚度{i}-min')))
+                    setattr(shipping_data, f"th{i}_max", to_str(data.get(f'厚度{i}-max')))
+                    setattr(shipping_data, f"concentricity{i}", to_str(data.get(f'同心度{i}')))
+                    setattr(shipping_data, f"length{i}", to_str(data.get(f'長度{i}')))
+                    setattr(shipping_data, f"hardness{i}", to_str(data.get(f'硬度{i}')))
+                    setattr(shipping_data, f"vickers{i}", to_str(data.get(f'韋伯氏硬度{i}')))
+                    setattr(shipping_data, f"straightness{i}", to_str(data.get(f'真直度{i}')))
+                    setattr(shipping_data, f"roundness{i}", to_str(data.get(f'真圓度{i}')))
 
             # Compute is_ng
             from .tolerance_service import ToleranceService
