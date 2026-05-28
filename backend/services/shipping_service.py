@@ -671,31 +671,59 @@ class ShippingService:
         except Exception as e:
             raise ValueError(f"檔案讀取失敗: {str(e)}")
 
+        from .tolerance_service import ToleranceService
+
+        # 量測項目與其型別（minmax 讀 -min/-max，single 讀單值）；量測值只寫子表
+        IMPORT_ITEMS = (
+            ('外徑', True), ('內徑', True), ('厚度', True),
+            ('同心度', False), ('長度', False), ('硬度', False),
+            ('韋伯氏硬度', False), ('真直度', False), ('真圓度', False),
+        )
+
+        def parse_num(s):
+            if s is None:
+                return None
+            try:
+                return float(s)
+            except (ValueError, TypeError):
+                return None
+
+        def get_val(md, k):
+            val = md.get(k)
+            if pd.isna(val) or val is None or str(val).strip() == "":
+                return None
+            return str(val)
+
+        # 同批匯入常有重複的人員/廠商/規格，以快取避免逐列重複查詢
+        inspector_cache: Dict[str, Any] = {}
+        vendor_cache: Dict[str, Any] = {}
+        tol_cache: Dict[tuple, Any] = {}
+
         success_count = 0
         try:
             for row_num, row in enumerate(df.iterrows()):
                 main_data = row[1].to_dict()
-                
+
                 # Cleanup NaNs
                 for k, v in main_data.items():
                     if pd.isna(v): main_data[k] = None
 
                 display_row_num = row_num + 2
 
-                # Lookups
+                # 人員 / 廠商查詢（快取）
                 inspector_name = str(main_data.get('檢驗人員', '')).strip()
-                inspector = Inspector.query.filter_by(name=inspector_name).first()
-                if not inspector and inspector_name:
-                    # Optional: detailed error with list of available inspectors
+                if inspector_name not in inspector_cache:
+                    inspector_cache[inspector_name] = Inspector.query.filter_by(name=inspector_name).first()
+                inspector = inspector_cache[inspector_name]
+                if not inspector:
                     raise ValueError(f"第 {display_row_num} 行: 找不到檢驗人員 '{inspector_name}'")
-                
+
                 vendor_name = str(main_data.get('廠商名稱', '')).strip()
-                vendor = Vendor.query.filter_by(name=vendor_name).first()
-                
-                if not inspector or not vendor:
-                    # Legacy behavior raised error if missing
-                     if not inspector: raise ValueError(f"第 {display_row_num} 行: 檢驗人員不存在")
-                     if not vendor: raise ValueError(f"第 {display_row_num} 行: 廠商不存在")
+                if vendor_name not in vendor_cache:
+                    vendor_cache[vendor_name] = Vendor.query.filter_by(name=vendor_name).first()
+                vendor = vendor_cache[vendor_name]
+                if not vendor:
+                    raise ValueError(f"第 {display_row_num} 行: 廠商不存在")
 
                 # Determine group count from data (default 5)
                 gc_val = main_data.get('組數')
@@ -711,38 +739,16 @@ class ShippingService:
                     group_count=group_count_val
                 )
 
-                # 由 Excel 平鋪欄位建立子表明細（讀取已全面改子表，必須寫入子表，
-                # 且 compute_is_ng 也讀子表），同時保留扁平欄位作為安全網。
-                # 量測項目與其型別（minmax 讀 -min/-max，single 讀單值）；只寫子表
-                IMPORT_ITEMS = (
-                    ('外徑', True), ('內徑', True), ('厚度', True),
-                    ('同心度', False), ('長度', False), ('硬度', False),
-                    ('韋伯氏硬度', False), ('真直度', False), ('真圓度', False),
-                )
-
-                def get_val(k):
-                    val = main_data.get(k)
-                    if pd.isna(val) or val is None or str(val).strip() == "":
-                        return None
-                    return str(val)
-
-                def parse_num(s):
-                    if s is None:
-                        return None
-                    try:
-                        return float(s)
-                    except (ValueError, TypeError):
-                        return None
-
+                # 由 Excel 平鋪欄位建立子表明細（量測值只寫子表 ShippingMeasurement）
                 for g in range(1, 11):
                     for item_name, is_minmax in IMPORT_ITEMS:
                         if is_minmax:
-                            v_min = parse_num(get_val(f'{item_name}{g}-min'))
-                            v_max = parse_num(get_val(f'{item_name}{g}-max'))
+                            v_min = parse_num(get_val(main_data, f'{item_name}{g}-min'))
+                            v_max = parse_num(get_val(main_data, f'{item_name}{g}-max'))
                             v_single = None
                         else:
                             v_min, v_max = None, None
-                            v_single = parse_num(get_val(f'{item_name}{g}'))
+                            v_single = parse_num(get_val(main_data, f'{item_name}{g}'))
 
                         if v_min is not None or v_max is not None or v_single is not None:
                             shipping_data.measurements.append(ShippingMeasurement(
@@ -754,20 +760,23 @@ class ShippingService:
                                 is_ng=False,
                             ))
 
-                from .tolerance_service import ToleranceService
-                tol_res = ToleranceService.check_tolerance({
-                    'material': shipping_data.material,
-                    'spec': shipping_data.spec,
-                    'vendor_id': shipping_data.vendor_id
-                })
-                if tol_res.get('found'):
-                    shipping_data.is_ng = shipping_data.compute_is_ng(tol_res.get('tolerances', []))
-                else:
-                    shipping_data.is_ng = False
+                # 公差查詢（快取）並計算 is_ng
+                tol_key = (shipping_data.material, shipping_data.spec, shipping_data.vendor_id)
+                if tol_key not in tol_cache:
+                    tol_cache[tol_key] = ToleranceService.check_tolerance({
+                        'material': shipping_data.material,
+                        'spec': shipping_data.spec,
+                        'vendor_id': shipping_data.vendor_id
+                    })
+                tol_res = tol_cache[tol_key]
+                shipping_data.is_ng = (
+                    shipping_data.compute_is_ng(tol_res.get('tolerances', []))
+                    if tol_res.get('found') else False
+                )
 
                 db.session.add(shipping_data)
                 success_count += 1
-            
+
             db.session.commit()
             return success_count
         except Exception as e:
@@ -779,7 +788,14 @@ class ShippingService:
         """匯出 Excel"""
         try:
             query = ShippingData.query.outerjoin(Vendor, ShippingData.vendor_id == Vendor.id)
-            
+
+            # eager load 避免 _map_row_to_dict 逐列存取 measurements/inspector/vendor 造成 N+1
+            query = query.options(
+                contains_eager(ShippingData.vendor),
+                joinedload(ShippingData.inspector),
+                joinedload(ShippingData.measurements),
+            )
+
             if args.get('vendor'):   query = query.filter(Vendor.name.like(f"%{args['vendor']}%"))
             if args.get('material'): query = query.filter(ShippingData.material.like(f"%{args['material']}%"))
             if args.get('spec'):     query = query.filter(ShippingData.spec.like(f"%{args['spec']}%"))
@@ -787,7 +803,7 @@ class ShippingService:
             if args.get('end_date'):   query = query.filter(ShippingData.date <= args['end_date'])
 
             query = query.order_by(ShippingData.date.asc())
-            
+
             items = query.all()
             
             if not items:
