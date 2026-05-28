@@ -783,8 +783,12 @@ class ShippingService:
                         else:
                             setattr(shipping_data, f"{prefix}{i}", None)
 
-                # 清除舊子表明細（cascade delete-orphan）
-                shipping_data.measurements = []
+                # 清除舊子表明細（cascade delete-orphan）。
+                # 先 flush 讓 DELETE 實際送出，避免後續 autoflush 先 INSERT 新列、
+                # 再 DELETE 舊列而違反唯一鍵 (出貨檢驗_ID, 組別, 量測項目)。
+                if is_update and shipping_data.measurements:
+                    shipping_data.measurements = []
+                    db.session.flush()
 
                 for g_str, items in measurements.items():
                     try:
