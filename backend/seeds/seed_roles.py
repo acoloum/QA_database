@@ -35,7 +35,7 @@ ROLES = [
         'permissions': {
             'ncmr.create': True, 'ncmr.edit': True, 'ncmr.delete': True, 'ncmr.view': True,
             'capa.create': True, 'capa.edit': True, 'capa.close': True, 'capa.view': True,
-            'rework.create': True, 'rework.approve': True, 'rework.view': True,
+            'rework.create': True, 'rework.approve': True, 'rework.delete': True, 'rework.view': True,
             'complaint.create': True, 'complaint.edit': True, 'complaint.delete': True, 'complaint.view': True,
             'vendor.manage': True, 'report.view': True,
             'shipping.create': True, 'shipping.edit': True, 'shipping.delete': True, 'shipping.view': True,
@@ -47,7 +47,7 @@ ROLES = [
         'permissions': {
             'ncmr.create': True, 'ncmr.edit': True, 'ncmr.delete': True, 'ncmr.view': True,
             'capa.create': True, 'capa.edit': True, 'capa.close': True, 'capa.view': True,
-            'rework.create': True, 'rework.approve': True, 'rework.view': True,
+            'rework.create': True, 'rework.approve': True, 'rework.delete': True, 'rework.view': True,
             'complaint.create': True, 'complaint.edit': True, 'complaint.delete': True, 'complaint.view': True,
             'vendor.manage': True, 'report.view': True,
             'shipping.create': True, 'shipping.edit': True, 'shipping.delete': True, 'shipping.view': True,
