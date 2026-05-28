@@ -38,6 +38,7 @@ ROLES = [
             'rework.create': True, 'rework.approve': True, 'rework.delete': True, 'rework.view': True,
             'complaint.create': True, 'complaint.edit': True, 'complaint.delete': True, 'complaint.view': True,
             'vendor.manage': True, 'report.view': True,
+            'tolerance.manage': True,
             'shipping.create': True, 'shipping.edit': True, 'shipping.delete': True, 'shipping.view': True,
             'patrol.create': True, 'patrol.edit': True, 'patrol.delete': True, 'patrol.view': True,
         }
@@ -50,6 +51,7 @@ ROLES = [
             'rework.create': True, 'rework.approve': True, 'rework.delete': True, 'rework.view': True,
             'complaint.create': True, 'complaint.edit': True, 'complaint.delete': True, 'complaint.view': True,
             'vendor.manage': True, 'report.view': True,
+            'tolerance.manage': True,
             'shipping.create': True, 'shipping.edit': True, 'shipping.delete': True, 'shipping.view': True,
             'patrol.create': True, 'patrol.edit': True, 'patrol.delete': True, 'patrol.view': True,
             'user.manage': True,

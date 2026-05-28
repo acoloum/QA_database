@@ -71,6 +71,7 @@ const PERMISSION_GROUPS: { label: string; perms: { key: string; label: string }[
         label: '廠商 / 報表 / 管理',
         perms: [
             { key: 'vendor.manage', label: '廠商管理' },
+            { key: 'tolerance.manage', label: '公差管理' },
             { key: 'report.view', label: '報表查看' },
             { key: 'user.manage', label: '使用者管理' },
         ],

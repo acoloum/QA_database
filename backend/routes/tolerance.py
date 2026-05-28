@@ -1,7 +1,7 @@
 
 from flask import Blueprint, jsonify, request, send_file
 from ..services.tolerance_service import ToleranceService
-from ..utils import auth_required, handle_db_error
+from ..utils import auth_required, handle_db_error, require_permission
 
 tolerance_bp = Blueprint('tolerance', __name__)
 
@@ -94,7 +94,8 @@ def get_tolerance_detail(id):
 
 @tolerance_bp.route('/api/tolerance/add', methods=['POST'])
 @auth_required
-def add_tolerance():
+@require_permission('tolerance.manage')
+def add_tolerance(current_user):
     """新增公差資料"""
     try:
         new_id = ToleranceService.add_tolerance(request.json)
@@ -104,7 +105,8 @@ def add_tolerance():
 
 @tolerance_bp.route('/api/tolerance/update/<int:id>', methods=['POST'])
 @auth_required
-def update_tolerance(id):
+@require_permission('tolerance.manage')
+def update_tolerance(current_user, id):
     """更新公差資料"""
     try:
         ToleranceService.update_tolerance(id, request.json)
@@ -116,7 +118,8 @@ def update_tolerance(id):
 
 @tolerance_bp.route('/api/tolerance/delete/<int:id>', methods=['POST'])
 @auth_required
-def delete_tolerance(id):
+@require_permission('tolerance.manage')
+def delete_tolerance(current_user, id):
     """刪除公差資料"""
     try:
         ToleranceService.delete_tolerance(id)
