@@ -130,6 +130,32 @@ def list_users():
         return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
 
 
+@auth_bp.route('/api/roles/<string:role_code>', methods=['PATCH'])
+@auth_required
+@require_permission('user.manage')
+def update_role_permissions(current_user, role_code):
+    """更新角色權限（需 user.manage 權限）"""
+    data = request.json
+    if not data or 'permissions' not in data:
+        return jsonify({"error": "請求格式錯誤，需要 permissions 欄位"}), 400
+
+    permissions = data['permissions']
+    if not isinstance(permissions, dict):
+        return jsonify({"error": "permissions 必須為物件格式"}), 400
+
+    try:
+        role = Role.query.filter_by(code=role_code).first()
+        if not role:
+            return jsonify({"error": f"角色不存在：{role_code}"}), 404
+        role.permissions = permissions
+        db.session.commit()
+        return jsonify({'code': role.code, 'name': role.name, 'permissions': role.permissions})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("Update role permissions error: %s", str(e))
+        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+
+
 @auth_bp.route('/api/users/<int:user_id>/role', methods=['PUT'])
 @auth_required
 @require_admin
@@ -140,10 +166,6 @@ def update_user_role(user_id):
         return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
 
     new_role = data.get('role')
-    if new_role not in ('user', 'admin'):
-        return jsonify({"error": "角色值無效，僅允許 'user' 或 'admin'"}), 400
-
-    # 若 Role 表存在對應角色代碼則一併驗證
     role_exists = Role.query.filter_by(code=new_role).first()
     if not role_exists:
         return jsonify({"error": f"角色代碼不存在：{new_role}"}), 400
