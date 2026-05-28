@@ -359,9 +359,10 @@ class ReworkService:
                     "執行部門": e.dept,
                     "負責人員": e.owner_id,
                     "協同人員": e.participants,
-                    "開始時間": format_value(e.start_time),
-                    "預計完成時間": format_value(e.est_end_time),
-                    "實際完成時間": format_value(e.real_end_time),
+                    # 保留完整時間（format_value 只回傳日期會遺失時分，導致前端顯示為 UTC 午夜 08:00）
+                    "開始時間": e.start_time.strftime('%Y-%m-%d %H:%M:%S') if e.start_time else "",
+                    "預計完成時間": e.est_end_time.strftime('%Y-%m-%d %H:%M:%S') if e.est_end_time else "",
+                    "實際完成時間": e.real_end_time.strftime('%Y-%m-%d %H:%M:%S') if e.real_end_time else "",
                     "使用設備": e.equipment,
                     "重工方式": e.method,
                     "SOP編號": e.sop_num,

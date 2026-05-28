@@ -75,7 +75,9 @@ const EditExecutionModal = ({ show, handleClose, onSuccess, execution }: EditExe
         if (!dateStr) return '';
         const date = new Date(dateStr);
         if (isNaN(date.getTime())) return '';
-        return date.toISOString().slice(0, 16);
+        // 以本地時間組字串，避免 toISOString() 轉成 UTC 導致時間偏移
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
     };
 
     const handleSubmit = async () => {
