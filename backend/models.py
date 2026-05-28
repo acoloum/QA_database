@@ -205,43 +205,28 @@ class ShippingData(db.Model):
                 
             std_limits[t_item] = {'lsl': lsl, 'usl': usl}
 
-        items_to_check = ["外徑", "內徑", "真圓度", "厚度", "同心度", "長度", "硬度", "真直度"]
-        gc = self.group_count or 5
+        # 限定要判定的量測項目（與舊版一致；不含韋伯氏硬度）
+        items_to_check = {"外徑", "內徑", "真圓度", "厚度", "同心度", "長度", "硬度", "真直度"}
+        gc = int(self.group_count or 5)
 
         def safe_float(v):
             try: return float(v)
             except (ValueError, TypeError): return None
-            
-        attr_map = {
-            '外徑': 'od',
-            '內徑': 'id',
-            '厚度': 'th',
-            '同心度': 'concentricity',
-            '長度': 'length',
-            '硬度': 'hardness',
-            '真直度': 'straightness',
-            '真圓度': 'roundness'
-        }
 
-        for it in items_to_check:
-            tol = std_limits.get(it)
-            if not tol: continue
+        # 改讀子表明細（ShippingMeasurement）取代舊的扁平欄位
+        for m in self.measurements:
+            if m.group_num > gc:
+                continue
+            if m.item not in items_to_check:
+                continue
+            tol = std_limits.get(m.item)
+            if not tol:
+                continue
+            for raw in (m.value_min, m.value_max, m.value_single):
+                v = safe_float(raw)
+                if v is not None and (v < tol['lsl'] or v > tol['usl']):
+                    return True
 
-            attr_prefix = attr_map[it]
-            is_minmax = it in ["外徑", "內徑", "厚度"]
-            
-            for g in range(1, int(gc) + 1):
-                if is_minmax:
-                    v_min, v_max = self.get_measurement(attr_prefix, g, True)
-                    v_min = safe_float(v_min)
-                    v_max = safe_float(v_max)
-                    if v_min is not None and (v_min < tol['lsl'] or v_min > tol['usl']): return True
-                    if v_max is not None and (v_max < tol['lsl'] or v_max > tol['usl']): return True
-                else:
-                    v = self.get_measurement(attr_prefix, g, False)
-                    v = safe_float(v)
-                    if v is not None and (v < tol['lsl'] or v > tol['usl']): return True
-                    
         return False
 
 class ShippingMeasurement(db.Model):

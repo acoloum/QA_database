@@ -42,23 +42,38 @@ class ShippingService:
             "組數": item.group_count or 5
         }
 
-        # Map dynamic columns (groups 1-10)
+        # 改讀子表：由 ShippingMeasurement 建立查詢表與巢狀結構
+        MINMAX_ITEMS = ('外徑', '內徑', '厚度')
+        SINGLE_ITEMS = ('真圓度', '同心度', '長度', '硬度', '韋伯氏硬度', '真直度')
+
+        meas_lookup = {(m.group_num, m.item): m for m in item.measurements}
+
+        def _num(v):
+            return float(v) if v is not None else ""
+
+        # 平鋪鍵（維持列表/匯出既有契約，值改由子表取得）
         for i in range(1, 11):
-            # Min/Max items
-            res[f"外徑{i}-min"] = format_value(getattr(item, f"od{i}_min"))
-            res[f"外徑{i}-max"] = format_value(getattr(item, f"od{i}_max"))
-            res[f"內徑{i}-min"] = format_value(getattr(item, f"id{i}_min"))
-            res[f"內徑{i}-max"] = format_value(getattr(item, f"id{i}_max"))
-            res[f"真圓度{i}"] = format_value(getattr(item, f"roundness{i}"))
-            res[f"厚度{i}-min"] = format_value(getattr(item, f"th{i}_min"))
-            res[f"厚度{i}-max"] = format_value(getattr(item, f"th{i}_max"))
-             
-            # Single value items
-            res[f"同心度{i}"] = format_value(getattr(item, f"concentricity{i}"))
-            res[f"長度{i}"] = format_value(getattr(item, f"length{i}"))
-            res[f"硬度{i}"] = format_value(getattr(item, f"hardness{i}"))
-            res[f"韋伯氏硬度{i}"] = format_value(getattr(item, f"vickers{i}"))
-            res[f"真直度{i}"] = format_value(getattr(item, f"straightness{i}"))
+            for it in MINMAX_ITEMS:
+                m = meas_lookup.get((i, it))
+                res[f"{it}{i}-min"] = _num(m.value_min) if m else ""
+                res[f"{it}{i}-max"] = _num(m.value_max) if m else ""
+            for it in SINGLE_ITEMS:
+                m = meas_lookup.get((i, it))
+                res[f"{it}{i}"] = _num(m.value_single) if m else ""
+
+        # 巢狀 measurements（供前端編輯載入與列表違規偵測使用）
+        meas_map: Dict[str, Any] = {}
+        for m in item.measurements:
+            g = str(m.group_num)
+            meas_map.setdefault(g, {})[m.item] = {
+                'lower_limit':  float(m.lower_limit)  if m.lower_limit  is not None else None,
+                'upper_limit':  float(m.upper_limit)  if m.upper_limit  is not None else None,
+                'value_min':    float(m.value_min)    if m.value_min    is not None else None,
+                'value_max':    float(m.value_max)    if m.value_max    is not None else None,
+                'value_single': float(m.value_single) if m.value_single is not None else None,
+                'is_ng':        m.is_ng,
+            }
+        res["measurements"] = meas_map
 
         return res
 
@@ -419,27 +434,31 @@ class ShippingService:
 
             is_minmax = field in ['外徑', '內徑', '厚度']
 
-            # Dynamic query selection
-            # Select ID, Date, OrderNum, GroupCount, and the relevant 10 groups columns
-            entities = [ShippingData.id, ShippingData.date, ShippingData.order_num, ShippingData.group_count]
-            for i in range(1, 11):
-                if is_minmax:
-                    entities.append(getattr(ShippingData, f"{attr_prefix}{i}_min"))
-                    entities.append(getattr(ShippingData, f"{attr_prefix}{i}_max"))
-                else:
-                    entities.append(getattr(ShippingData, f"{attr_prefix}{i}"))
-
-            query = db.session.query(*entities).outerjoin(Vendor, ShippingData.vendor_id == Vendor.id)
+            # 改讀子表：先取符合條件的記錄（不再取扁平欄位），再批次撈該量測項目的明細
+            query = db.session.query(
+                ShippingData.id, ShippingData.date, ShippingData.order_num, ShippingData.group_count
+            ).outerjoin(Vendor, ShippingData.vendor_id == Vendor.id)
 
             if vendor:   query = query.filter(Vendor.name.like(f"%{vendor}%"))
             if material: query = query.filter(ShippingData.material.like(f"%{material}%"))
             if spec:     query = query.filter(ShippingData.spec.like(f"%{spec}%"))
             if start_date: query = query.filter(ShippingData.date >= start_date)
             if end_date:   query = query.filter(ShippingData.date <= end_date)
-            
+
             query = query.order_by(ShippingData.date.asc())
-            
-            rows = query.all() # These are tuples now
+
+            rows = query.all()  # tuple: (id, date, order_num, group_count)
+
+            # 批次撈取這些記錄、此量測項目的子表明細 → {record_id: {group_num: measurement}}
+            record_ids = [r[0] for r in rows]
+            meas_by_record = defaultdict(dict)
+            if record_ids:
+                meas_rows = ShippingMeasurement.query.filter(
+                    ShippingMeasurement.shipping_id.in_(record_ids),
+                    ShippingMeasurement.item == field,
+                ).all()
+                for m in meas_rows:
+                    meas_by_record[m.shipping_id][m.group_num] = m
 
             if not rows:
                 return {"labels": [], "avgs": [], "ranges": [], "x_cl":0, "x_ucl":0, "x_lcl":0, "r_cl":0, "r_ucl":0}
@@ -462,35 +481,33 @@ class ShippingService:
                 vals: List[float] = []
                 valid_groups = 0
                 row_group_count = r[3] or 5  # group_count, default 5
-                
-                current_col_idx = 4
-                
+                group_meas = meas_by_record.get(r[0], {})
+
                 for i in range(1, 11):
+                    # 只處理記錄組數範圍內的組
+                    if i > row_group_count:
+                        continue
+                    m = group_meas.get(i)
+                    if not m:
+                        continue
                     try:
                         if is_minmax:
-                            v1_str = r[current_col_idx]
-                            v2_str = r[current_col_idx+1]
-                            current_col_idx += 2
-                            
-                            # Only process groups within the record's group_count
-                            if i <= row_group_count and v1_str and v2_str:
-                                v1 = float(v1_str)
-                                v2 = float(v2_str)
+                            # minmax 項目需 min/max 皆有值才計入（與舊版扁平邏輯一致）
+                            if m.value_min is not None and m.value_max is not None:
+                                v1 = float(m.value_min)
+                                v2 = float(m.value_max)
                                 val = (v1 + v2) / 2
                                 vals.append(val)
                                 all_values.extend([v1, v2])
                                 valid_groups += 1
                         else:
-                            v_str = r[current_col_idx]
-                            current_col_idx += 1
-                            # Only process groups within the record's group_count
-                            if i <= row_group_count and v_str:
-                                v = float(v_str)
+                            if m.value_single is not None:
+                                v = float(m.value_single)
                                 vals.append(v)
                                 all_values.append(v)
                                 valid_groups += 1
                     except (ValueError, TypeError):
-                         pass
+                        pass
 
                 original_idx = len(rows) - 1 - idx
                 

@@ -124,7 +124,11 @@ def diff_values(a, b, abs_tol, rel_tol, path=""):
     diffs = []
 
     if _is_number(a) and _is_number(b):
-        if not math.isclose(float(a), float(b), abs_tol=abs_tol, rel_tol=rel_tol):
+        fa, fb = float(a), float(b)
+        # 兩者皆 NaN 視為相等（量測值全相同時偏度/峰度為 NaN）
+        if math.isnan(fa) and math.isnan(fb):
+            return diffs
+        if not math.isclose(fa, fb, abs_tol=abs_tol, rel_tol=rel_tol):
             diffs.append((path, f"數值不符 baseline={a} new={b}"))
         return diffs
 
