@@ -156,48 +156,17 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                 const savedGroupCount = detailData.組數 ?? detailData.group_count ?? DEFAULT_GROUP_COUNT;
                 setGroupCount(savedGroupCount);
 
-                // 載入量測資料（新格式 measurements 優先）
-                if (detailData.measurements && Object.keys(detailData.measurements).length > 0) {
-                    // 新格式：直接使用 measurements 巢狀資料
-                    setGroups(detailData.measurements as Record<string, GroupMeas>);
-                } else {
-                    // 舊格式回退：從平鋪欄位轉換為新格式
-                    const loadVendor = detailData.廠商中文名稱 ?? detailData.vendor_name;
-                    const loadItems = loadVendor === ANTAI_VENDOR_NAME
-                        ? (() => {
-                            const items = [...BASE_ITEMS];
-                            items.splice(2, 0, ROUNDNESS_ITEM);
-                            const hIdx = items.findIndex(i => i.key === '硬度');
-                            if (hIdx !== -1) {
-                                items[hIdx] = { ...items[hIdx], label: '洛氏硬度(HRB)', toleranceKey: '洛氏硬度' };
-                                items.splice(hIdx + 1, 0, VICKERS_HARDNESS_ITEM);
-                            }
-                            return items;
-                        })()
-                        : BASE_ITEMS;
-
-                    const loaded: Record<string, GroupMeas> = {};
-                    for (let g = 1; g <= savedGroupCount; g++) {
-                        const gKey = String(g);
-                        const groupData: GroupMeas = {};
-                        loadItems.forEach(item => {
-                            const entry: Partial<ShippingMeasurementItem> = { is_ng: false };
-                            const raw = detailData as unknown as Record<string, unknown>;
-                            if (item.type === 'minmax') {
-                                const minRaw = raw[`${item.key}${g}-min`];
-                                const maxRaw = raw[`${item.key}${g}-max`];
-                                entry.value_min = minRaw != null && minRaw !== '' ? Number(minRaw) : null;
-                                entry.value_max = maxRaw != null && maxRaw !== '' ? Number(maxRaw) : null;
-                            } else {
-                                const valRaw = raw[`${item.key}${g}`];
-                                entry.value_single = valRaw != null && valRaw !== '' ? Number(valRaw) : null;
-                            }
-                            groupData[item.key] = entry;
-                        });
-                        loaded[gKey] = groupData;
-                    }
-                    setGroups(loaded);
+                // 載入量測資料：一律使用 measurements 巢狀資料。
+                // 先為 1..組數 建立空組以確保表格欄位顯示，再覆蓋實際量測值。
+                const nested = (detailData.measurements ?? {}) as Record<string, GroupMeas>;
+                const loaded: Record<string, GroupMeas> = {};
+                for (let g = 1; g <= savedGroupCount; g++) {
+                    loaded[String(g)] = {};
                 }
+                for (const [gKey, items] of Object.entries(nested)) {
+                    loaded[gKey] = { ...(loaded[gKey] ?? {}), ...items };
+                }
+                setGroups(loaded);
             } else if (!editId) {
                 resetForm();
             }

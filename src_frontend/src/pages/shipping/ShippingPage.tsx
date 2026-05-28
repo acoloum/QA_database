@@ -147,7 +147,7 @@ const ShippingPage = () => {
         const ALL_ITEMS = ["外徑", "內徑", "真圓度", "厚度", "同心度", "長度", "硬度", "真直度", "韋伯氏硬度"];
         let hasViolation = false;
 
-        // 新格式：使用 measurements 巢狀物件
+        // 量測值一律使用 measurements 巢狀物件
         if (item.measurements && Object.keys(item.measurements).length > 0) {
             outer: for (const [, groupData] of Object.entries(item.measurements)) {
                 for (const itName of ALL_ITEMS) {
@@ -170,27 +170,6 @@ const ShippingPage = () => {
                     } else {
                         const v = measItem.value_single != null ? Number(measItem.value_single) : NaN;
                         if (!isNaN(v) && (v < tol.lsl || v > tol.usl)) {
-                            hasViolation = true;
-                            break outer;
-                        }
-                    }
-                }
-            }
-        } else {
-            // 舊格式回退：從平鋪欄位讀取
-            const gc = (item as unknown as { 組數?: number }).組數 ?? item.group_count ?? 5;
-            outer: for (const it of ALL_ITEMS) {
-                const tol = std[it];
-                if (!tol) continue;
-
-                for (let g = 1; g <= gc; g++) {
-                    const keys = MINMAX_ITEMS.has(it)
-                        ? [`${it}${g}-min`, `${it}${g}-max`]
-                        : [`${it}${g}`];
-
-                    for (const k of keys) {
-                        const val = parseFloat((item as unknown as Record<string, string>)[k]);
-                        if (!isNaN(val) && (val < tol.lsl || val > tol.usl)) {
                             hasViolation = true;
                             break outer;
                         }

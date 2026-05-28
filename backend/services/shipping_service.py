@@ -42,26 +42,7 @@ class ShippingService:
             "組數": item.group_count or 5
         }
 
-        # 改讀子表：由 ShippingMeasurement 建立查詢表與巢狀結構
-        MINMAX_ITEMS = ('外徑', '內徑', '厚度')
-        SINGLE_ITEMS = ('真圓度', '同心度', '長度', '硬度', '韋伯氏硬度', '真直度')
-
-        meas_lookup = {(m.group_num, m.item): m for m in item.measurements}
-
-        def _num(v):
-            return float(v) if v is not None else ""
-
-        # 平鋪鍵（維持列表/匯出既有契約，值改由子表取得）
-        for i in range(1, 11):
-            for it in MINMAX_ITEMS:
-                m = meas_lookup.get((i, it))
-                res[f"{it}{i}-min"] = _num(m.value_min) if m else ""
-                res[f"{it}{i}-max"] = _num(m.value_max) if m else ""
-            for it in SINGLE_ITEMS:
-                m = meas_lookup.get((i, it))
-                res[f"{it}{i}"] = _num(m.value_single) if m else ""
-
-        # 巢狀 measurements（供前端編輯載入與列表違規偵測使用）
+        # 量測值一律以巢狀 measurements 提供（供前端編輯載入、列表違規偵測、匯出使用）
         meas_map: Dict[str, Any] = {}
         for m in item.measurements:
             g = str(m.group_num)
@@ -820,7 +801,15 @@ class ShippingService:
                 export_data = []
                 for item in items:
                     row = ShippingService._map_row_to_dict(item)
-                    # Convert keys to export headers (Legacy export used '最小'/'最大', dict uses 'min'/'max')
+                    meas = row.get('measurements', {})
+
+                    def mv(g, item_name, key):
+                        cell = meas.get(str(g), {}).get(item_name)
+                        if not cell:
+                            return ''
+                        v = cell.get(key)
+                        return v if v is not None else ''
+
                     export_row = {
                         '識別碼': row['識別碼'],
                         '檢驗日期': row['檢驗日期'],
@@ -832,18 +821,18 @@ class ShippingService:
                         '組數': row.get('組數', 5)
                     }
                     for i in range(1, 11):
-                        export_row[f'外徑{i}-最小'] = row.get(f'外徑{i}-min', '')
-                        export_row[f'外徑{i}-最大'] = row.get(f'外徑{i}-max', '')
-                        export_row[f'內徑{i}-最小'] = row.get(f'內徑{i}-min', '')
-                        export_row[f'內徑{i}-最大'] = row.get(f'內徑{i}-max', '')
-                        export_row[f'真圓度{i}'] = row.get(f'真圓度{i}', '')
-                        export_row[f'厚度{i}-最小'] = row.get(f'厚度{i}-min', '')
-                        export_row[f'厚度{i}-最大'] = row.get(f'厚度{i}-max', '')
-                        export_row[f'同心度{i}'] = row.get(f'同心度{i}', '')
-                        export_row[f'長度{i}'] = row.get(f'長度{i}', '')
-                        export_row[f'硬度{i}'] = row.get(f'硬度{i}', '')
-                        export_row[f'真直度{i}'] = row.get(f'真直度{i}', '')
-                    
+                        export_row[f'外徑{i}-最小'] = mv(i, '外徑', 'value_min')
+                        export_row[f'外徑{i}-最大'] = mv(i, '外徑', 'value_max')
+                        export_row[f'內徑{i}-最小'] = mv(i, '內徑', 'value_min')
+                        export_row[f'內徑{i}-最大'] = mv(i, '內徑', 'value_max')
+                        export_row[f'真圓度{i}'] = mv(i, '真圓度', 'value_single')
+                        export_row[f'厚度{i}-最小'] = mv(i, '厚度', 'value_min')
+                        export_row[f'厚度{i}-最大'] = mv(i, '厚度', 'value_max')
+                        export_row[f'同心度{i}'] = mv(i, '同心度', 'value_single')
+                        export_row[f'長度{i}'] = mv(i, '長度', 'value_single')
+                        export_row[f'硬度{i}'] = mv(i, '硬度', 'value_single')
+                        export_row[f'真直度{i}'] = mv(i, '真直度', 'value_single')
+
                     export_data.append(export_row)
                 
                 df = pd.DataFrame(export_data)
