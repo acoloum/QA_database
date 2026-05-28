@@ -599,10 +599,6 @@ class CustomerComplaint(SoftDeleteMixin, db.Model):
     final_reply        = db.Column('最終回覆內容', db.Text,     nullable=True)
     final_reply_date   = db.Column('最終回覆日期', db.DateTime, nullable=True)
 
-    # 客戶滿意度（1-5）
-    satisfaction      = db.Column('客戶滿意度', db.Integer, nullable=True)
-    satisfaction_note = db.Column('滿意度備註', db.Text,    nullable=True)
-
     # 重複客訴警示
     is_repeat   = db.Column('是否重複客訴',   db.Boolean, default=False)
     repeat_refs = db.Column('重複客訴參考單號', JsonType,      nullable=True)

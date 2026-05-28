@@ -598,7 +598,7 @@ const ReworkPage = () => {
                                                             <td>{insp.檢驗項目 || '-'}</td>
                                                             <td>{insp.檢驗結果 || '-'}</td>
                                                             <td>{insp.不良數量 || '0'}</td>
-                                                            <td>{insp.檢驗人員 || '-'}</td>
+                                                            <td>{insp.檢驗人員姓名 || '-'}</td>
                                                             <td>{insp.檢驗日期 || '-'}</td>
                                                             <td>
                                                                 <div className="btn-group btn-group-sm">

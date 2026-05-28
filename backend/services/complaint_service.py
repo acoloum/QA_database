@@ -141,17 +141,13 @@ class ComplaintService:
         if not c:
             raise ValueError('客訴不存在')
 
-        # 結案需要滿意度
-        if data.get('status') == '已結案' and not data.get('satisfaction') and not c.satisfaction:
-            raise ValueError('結案前請填寫客戶滿意度（1-5）')
-
         updatable = (
             'customer', 'complaint_date', 'material', 'spec', 'extrusion_nos',
             'description', 'severity', 'defect_category', 'complaint_type',
             'device_serial', 'usage_env', 'failure_hours',
             'initial_reply_deadline', 'final_reply_deadline',
             'initial_reply', 'final_reply',
-            'satisfaction', 'satisfaction_note', 'status',
+            'status',
         )
         for field in updatable:
             if field in data:
@@ -260,9 +256,6 @@ class ComplaintService:
             'initial_reply_date': c.initial_reply_date.isoformat() if c.initial_reply_date else None,
             'final_reply':        c.final_reply,
             'final_reply_date':   c.final_reply_date.isoformat() if c.final_reply_date else None,
-            # 滿意度
-            'satisfaction':      c.satisfaction,
-            'satisfaction_note': c.satisfaction_note,
             # 重複
             'is_repeat':   c.is_repeat,
             'repeat_refs': c.repeat_refs or [],

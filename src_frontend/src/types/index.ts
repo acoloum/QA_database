@@ -668,8 +668,6 @@ export interface CustomerComplaint {
     initial_reply_date?: string | null;
     final_reply?: string | null;
     final_reply_date?: string | null;
-    satisfaction?: number | null;
-    satisfaction_note?: string | null;
     is_repeat: boolean;
     repeat_refs: string[];
     related_capa_id?: number | null;

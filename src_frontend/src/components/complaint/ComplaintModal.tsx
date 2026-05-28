@@ -67,8 +67,6 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
     const [status,                 setStatus]                 = useState('待處理');
     const [initialReply,           setInitialReply]           = useState('');
     const [finalReply,             setFinalReply]             = useState('');
-    const [satisfaction,           setSatisfaction]           = useState('');
-    const [satisfactionNote,       setSatisfactionNote]       = useState('');
     // 重複客訴警示
     const [repeatWarning,          setRepeatWarning]          = useState(false);
 
@@ -110,8 +108,6 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
                 setStatus(editData.status ?? '待處理');
                 setInitialReply(editData.initial_reply ?? '');
                 setFinalReply(editData.final_reply ?? '');
-                setSatisfaction(editData.satisfaction != null ? String(editData.satisfaction) : '');
-                setSatisfactionNote(editData.satisfaction_note ?? '');
                 setRepeatWarning(editData.is_repeat);
             } else {
                 setCustomer('');
@@ -132,8 +128,6 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
                 setStatus('待處理');
                 setInitialReply('');
                 setFinalReply('');
-                setSatisfaction('');
-                setSatisfactionNote('');
                 setRepeatWarning(false);
             }
         };
@@ -172,8 +166,6 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
         status:                  isEdit ? (status as import('../../types').ComplaintStatus) : undefined,
         initial_reply:           isEdit ? (initialReply.trim() || undefined) : undefined,
         final_reply:             isEdit ? (finalReply.trim() || undefined) : undefined,
-        satisfaction:            isEdit && satisfaction ? Number(satisfaction) : undefined,
-        satisfaction_note:       isEdit ? (satisfactionNote.trim() || undefined) : undefined,
     });
 
     const handleSubmit = async () => {
@@ -412,20 +404,6 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
                                     </Form.Select>
                                 </Form.Group>
                             </Col>
-                            <Col md={4}>
-                                <Form.Group>
-                                    <Form.Label>客戶滿意度（1-5）</Form.Label>
-                                    <Form.Select
-                                        value={satisfaction}
-                                        onChange={e => setSatisfaction(e.target.value)}
-                                    >
-                                        <option value="">—</option>
-                                        {[1, 2, 3, 4, 5].map(n => (
-                                            <option key={n} value={n}>{n}</option>
-                                        ))}
-                                    </Form.Select>
-                                </Form.Group>
-                            </Col>
                             <Col md={12}>
                                 <Form.Group>
                                     <Form.Label>初步回覆內容</Form.Label>
@@ -445,15 +423,6 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
                                         rows={2}
                                         value={finalReply}
                                         onChange={e => setFinalReply(e.target.value)}
-                                    />
-                                </Form.Group>
-                            </Col>
-                            <Col md={12}>
-                                <Form.Group>
-                                    <Form.Label>滿意度備註</Form.Label>
-                                    <Form.Control
-                                        value={satisfactionNote}
-                                        onChange={e => setSatisfactionNote(e.target.value)}
                                     />
                                 </Form.Group>
                             </Col>

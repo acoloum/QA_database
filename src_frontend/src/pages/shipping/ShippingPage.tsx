@@ -157,19 +157,19 @@ const ShippingPage = () => {
                     if (!measItem) continue;
 
                     if (MINMAX_ITEMS.has(itName)) {
-                        const minV = measItem.value_min;
-                        const maxV = measItem.value_max;
-                        if (minV != null && !isNaN(minV) && (minV < tol.lsl || minV > tol.usl)) {
+                        const minV = measItem.value_min != null ? Number(measItem.value_min) : NaN;
+                        const maxV = measItem.value_max != null ? Number(measItem.value_max) : NaN;
+                        if (!isNaN(minV) && (minV < tol.lsl || minV > tol.usl)) {
                             hasViolation = true;
                             break outer;
                         }
-                        if (maxV != null && !isNaN(maxV) && (maxV < tol.lsl || maxV > tol.usl)) {
+                        if (!isNaN(maxV) && (maxV < tol.lsl || maxV > tol.usl)) {
                             hasViolation = true;
                             break outer;
                         }
                     } else {
-                        const v = measItem.value_single;
-                        if (v != null && !isNaN(v) && (v < tol.lsl || v > tol.usl)) {
+                        const v = measItem.value_single != null ? Number(measItem.value_single) : NaN;
+                        if (!isNaN(v) && (v < tol.lsl || v > tol.usl)) {
                             hasViolation = true;
                             break outer;
                         }
