@@ -128,22 +128,10 @@ class ShippingData(db.Model):
     inspector_id = db.Column('檢驗人員', db.Integer, db.ForeignKey('品管人員.識別碼'))
     vendor_id = db.Column('廠商名稱', db.Integer, db.ForeignKey('廠商資料.識別碼'))
     group_count = db.Column('組數', db.Integer, default=5)
-    
-    # Groups 1-10 (expanded from 5 to support variable group counts)
-    for i in range(1, 11):
-        locals()[f'od{i}_min'] = db.Column(f'外徑{i}-min', db.String)
-        locals()[f'od{i}_max'] = db.Column(f'外徑{i}-max', db.String)
-        locals()[f'id{i}_min'] = db.Column(f'內徑{i}-min', db.String)
-        locals()[f'id{i}_max'] = db.Column(f'內徑{i}-max', db.String)
-        locals()[f'th{i}_min'] = db.Column(f'厚度{i}-min', db.String)
-        locals()[f'th{i}_max'] = db.Column(f'厚度{i}-max', db.String)
-        locals()[f'concentricity{i}'] = db.Column(f'同心度{i}', db.String)
-        locals()[f'length{i}'] = db.Column(f'長度{i}', db.String)
-        locals()[f'hardness{i}'] = db.Column(f'硬度{i}', db.String)
-        locals()[f'vickers{i}'] = db.Column(f'韋伯氏硬度{i}', db.String)
-        locals()[f'straightness{i}'] = db.Column(f'真直度{i}', db.String)
-        locals()[f'roundness{i}'] = db.Column(f'真圓度{i}', db.String)
-    
+
+    # 量測值已全面改存子表 ShippingMeasurement（出貨巡檢量測明細），
+    # 原扁平欄位（外徑1-min … 真圓度10）已於 migration 19 移除。
+
     # Relationships
     inspector = db.relationship('Inspector', backref='shipping_data')
     vendor = db.relationship('Vendor', backref='shipping_data')
