@@ -939,26 +939,51 @@ class ShippingService:
                     group_count=group_count_val
                 )
 
-                # Map columns
+                # 由 Excel 平鋪欄位建立子表明細（讀取已全面改子表，必須寫入子表，
+                # 且 compute_is_ng 也讀子表），同時保留扁平欄位作為安全網。
+                ITEM_FLAT_MAP = {
+                    '外徑': ('od', True), '內徑': ('id', True), '厚度': ('th', True),
+                    '同心度': ('concentricity', False), '長度': ('length', False),
+                    '硬度': ('hardness', False), '韋伯氏硬度': ('vickers', False),
+                    '真直度': ('straightness', False), '真圓度': ('roundness', False),
+                }
+
                 def get_val(k):
                     val = main_data.get(k)
                     if pd.isna(val) or val is None or str(val).strip() == "":
                         return None
                     return str(val)
-                
-                for i in range(1, 11):
-                    setattr(shipping_data, f"od{i}_min", get_val(f'外徑{i}-min'))
-                    setattr(shipping_data, f"od{i}_max", get_val(f'外徑{i}-max'))
-                    setattr(shipping_data, f"id{i}_min", get_val(f'內徑{i}-min'))
-                    setattr(shipping_data, f"id{i}_max", get_val(f'內徑{i}-max'))
-                    setattr(shipping_data, f"th{i}_min", get_val(f'厚度{i}-min'))
-                    setattr(shipping_data, f"th{i}_max", get_val(f'厚度{i}-max'))
-                    
-                    setattr(shipping_data, f"concentricity{i}", get_val(f'同心度{i}'))
-                    setattr(shipping_data, f"length{i}", get_val(f'長度{i}'))
-                    setattr(shipping_data, f"hardness{i}", get_val(f'硬度{i}'))
-                    setattr(shipping_data, f"straightness{i}", get_val(f'真直度{i}'))
-                    setattr(shipping_data, f"roundness{i}", get_val(f'真圓度{i}'))
+
+                def parse_num(s):
+                    if s is None:
+                        return None
+                    try:
+                        return float(s)
+                    except (ValueError, TypeError):
+                        return None
+
+                for g in range(1, 11):
+                    for item_name, (prefix, is_minmax) in ITEM_FLAT_MAP.items():
+                        if is_minmax:
+                            smin = get_val(f'{item_name}{g}-min')
+                            smax = get_val(f'{item_name}{g}-max')
+                            setattr(shipping_data, f"{prefix}{g}_min", smin)
+                            setattr(shipping_data, f"{prefix}{g}_max", smax)
+                            v_min, v_max, v_single = parse_num(smin), parse_num(smax), None
+                        else:
+                            sval = get_val(f'{item_name}{g}')
+                            setattr(shipping_data, f"{prefix}{g}", sval)
+                            v_min, v_max, v_single = None, None, parse_num(sval)
+
+                        if v_min is not None or v_max is not None or v_single is not None:
+                            shipping_data.measurements.append(ShippingMeasurement(
+                                group_num=g,
+                                item=item_name,
+                                value_min=v_min,
+                                value_max=v_max,
+                                value_single=v_single,
+                                is_ng=False,
+                            ))
 
                 from .tolerance_service import ToleranceService
                 tol_res = ToleranceService.check_tolerance({
