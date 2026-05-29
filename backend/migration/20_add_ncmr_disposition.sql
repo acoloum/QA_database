@@ -1,5 +1,6 @@
 -- Migration 20：新增不合格品處置明細子表（IATF 16949 §8.7）
 -- 套用：psql -U postgres -d qa_database -f backend/migration/20_add_ncmr_disposition.sql
+BEGIN;
 
 CREATE TABLE IF NOT EXISTS "不合格品處置明細" (
     "識別碼"           SERIAL PRIMARY KEY,
@@ -23,3 +24,5 @@ CREATE TABLE IF NOT EXISTS "不合格品處置明細" (
 
 CREATE INDEX IF NOT EXISTS "idx_ncmr_disp_ncmr" ON "不合格品處置明細" ("NCMR_ID");
 CREATE INDEX IF NOT EXISTS "idx_ncmr_disp_risk" ON "不合格品處置明細" ("是否風險項");
+
+COMMIT;
