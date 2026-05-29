@@ -184,7 +184,11 @@ const NCMRPage = () => {
                                         <td>{item.material || '-'}</td>
                                         <td>{item.product_info || '-'}</td>
                                         <td>{item.defect_qty ?? '-'}</td>
-                                        <td>{item.defect_desc || '-'}</td>
+                                        <td>
+                                            <div className="text-truncate" style={{ maxWidth: '220px' }} title={item.defect_desc || ''}>
+                                                {item.defect_desc || '-'}
+                                            </div>
+                                        </td>
                                         <td>{item.defect_reason ? <Badge bg="info">{item.defect_reason.split(':')[0]}</Badge> : item.defect_category ? <Badge bg="secondary">{item.defect_category}</Badge> : '-'}</td>
                                         <td onClick={() => { setDisposeItem(item); setShowDisposeModal(true); }} style={{ cursor: 'pointer', textDecoration: 'underline' }} title="點擊進行處置">{item.result || '-'}</td>
                                         <td>{renderStatusBadge(item.status)}</td>
