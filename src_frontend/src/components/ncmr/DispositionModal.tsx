@@ -35,7 +35,7 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
     const defectTotal = Number(item?.defect_qty ?? 0);
     const disposed = dispositions.reduce((s, d) => s + Number(d.處置數量 || 0), 0);
     const remaining = defectTotal - disposed;
-    const canClose = remaining === 0 && dispositions.length > 0;
+    const canClose = defectTotal > 0 && remaining === 0 && dispositions.length > 0;
 
     const setField = (k: keyof NcmrDisposition, v: unknown) =>
         setForm(prev => ({ ...prev, [k]: v }));
@@ -55,7 +55,11 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
     const handleDelete = async (id?: number) => {
         if (!id) return;
         if (!window.confirm('確定刪除此處置？')) return;
-        await deleteDisp.mutateAsync(id);
+        try {
+            await deleteDisp.mutateAsync(id);
+        } catch (e) {
+            console.error(e);
+        }
     };
 
     // 結案：呼叫後端結案 gate，失敗由全域 axios 錯誤攔截器顯示 toast
@@ -93,15 +97,17 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
     };
 
     const t = form.處置類型;
+    const concessionNeedsAuth = t === '讓步放行' && !!form.是否超出客戶規格 && !form.授權狀態;
+    const canAdd = Number(form.處置數量) > 0 && !concessionNeedsAuth;
 
     return (
-        <Modal show={show} onHide={handleClose} size="lg">
+        <Modal key={item?.id} show={show} onHide={handleClose} size="lg">
             <Modal.Header closeButton>
                 <Modal.Title>異常處置 (單號: {item?.no || item?.id})</Modal.Title>
             </Modal.Header>
             <Modal.Body>
                 {/* 數量摘要列 */}
-                <Alert variant={remaining === 0 ? 'success' : 'warning'}>
+                <Alert variant={remaining < 0 ? 'danger' : remaining === 0 ? 'success' : 'warning'}>
                     不良總數 {defectTotal}{' | '}已處置 {disposed}{' | '}未處置 {remaining}
                 </Alert>
 
@@ -216,14 +222,14 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
                         onChange={e => setField('備註', e.target.value)} />
 
                     <Button className="mt-2" variant="success" size="sm"
-                        onClick={handleAdd} disabled={createDisp.isPending}>新增此處置</Button>
+                        onClick={handleAdd} disabled={!canAdd || createDisp.isPending}>新增此處置</Button>
                 </Form>
             </Modal.Body>
             <Modal.Footer>
                 <div className="d-flex w-100 justify-content-between">
                     <div>
                         <Button variant="warning" size="sm" className="me-1"
-                            onClick={handleCreateCAPA}>轉開 CAPA</Button>
+                            onClick={handleCreateCAPA} disabled={createCAPA.isPending}>轉開 CAPA</Button>
                         <Button variant="info" size="sm" onClick={convertToRework}>轉重工</Button>
                     </div>
                     {/* 結案按鈕：僅在所有不良品皆已處置時可用 */}
