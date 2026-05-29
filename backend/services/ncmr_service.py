@@ -167,6 +167,7 @@ class NCMRService:
                     raise ValueError('尚有未結案的重工申請單，無法將 NCMR 結案')
 
                 # IATF §8.7 處置 gate
+                # 注意：NcmrDisposition 無軟刪除，此關聯回傳全部處置
                 dispositions = ncmr.dispositions
                 if not dispositions:
                     raise ValueError('尚未填寫不合格品處置，無法結案')
@@ -188,7 +189,10 @@ class NCMRService:
                     elif d.disposition_type == '挑選全檢':
                         if d.pass_qty is None or d.fail_qty is None:
                             raise ValueError('挑選全檢處置須填寫合格數與不合格數')
+                        if int(d.pass_qty) + int(d.fail_qty) != int(d.quantity):
+                            raise ValueError('挑選全檢的合格數與不合格數加總須等於處置數量')
                     elif d.disposition_type == '讓步放行':
+                        # 僅當超出客戶規格時才需授權；未超出屬內部放行、無需授權（依規格 §8.7.1.1 / Q4-Q5）
                         if d.exceed_customer_spec and d.auth_status == '未取得' and not d.unauth_reason:
                             raise ValueError('未授權放行須填寫未授權放行理由')
 

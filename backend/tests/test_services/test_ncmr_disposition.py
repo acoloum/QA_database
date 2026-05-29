@@ -165,3 +165,36 @@ def test_close_ok_rework_closed(app, db_session):
             '處置類型': '矯正重工', '處置數量': 50, '關聯重工單ID': rw.id,
         }, handler_id=None)
         assert _close(n.id) is True
+
+
+def test_close_blocked_sorting_qty_mismatch(app, db_session):
+    with app.app_context():
+        n = _make_ncmr(db_session, defect_quantity=100)
+        # 直接建立合計正確的挑選全檢，再竄改使其不一致以驗證 gate 的縱深防禦
+        did = NCMRService.create_disposition(n.id, {
+            '處置類型': '挑選全檢', '處置數量': 100, '合格數': 70, '不合格數': 30,
+        }, handler_id=None)
+        d = NcmrDisposition.query.get(did)
+        d.fail_qty = 20  # 70 + 20 != 100
+        db.session.commit()
+        with pytest.raises(ValueError, match='挑選全檢'):
+            _close(n.id)
+
+
+def test_close_ok_sorting(app, db_session):
+    with app.app_context():
+        n = _make_ncmr(db_session, defect_quantity=100)
+        NCMRService.create_disposition(n.id, {
+            '處置類型': '挑選全檢', '處置數量': 100, '合格數': 70, '不合格數': 30,
+        }, handler_id=None)
+        assert _close(n.id) is True
+
+
+def test_close_concession_within_customer_spec_ok(app, db_session):
+    with app.app_context():
+        n = _make_ncmr(db_session, defect_quantity=40)
+        # 未超出客戶規格的內部讓步放行 → 無需授權即可結案
+        NCMRService.create_disposition(n.id, {
+            '處置類型': '讓步放行', '處置數量': 40, '是否超出客戶規格': False,
+        }, handler_id=None)
+        assert _close(n.id) is True
