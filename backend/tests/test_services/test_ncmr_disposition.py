@@ -95,3 +95,17 @@ def test_delete_disposition(app, db_session):
         did = NCMRService.create_disposition(n.id, {'處置類型': '報廢', '處置數量': 100}, handler_id=None)
         NCMRService.delete_disposition(did)
         assert NcmrDisposition.query.get(did) is None
+
+
+def test_update_disposition_recomputes_risk(app, db_session):
+    with app.app_context():
+        n = _make_ncmr(db_session)
+        did = NCMRService.create_disposition(n.id, {'處置類型': '報廢', '處置數量': 100}, handler_id=None)
+        # 改為超出客戶規格且未取得授權 → 應重新計算為風險項
+        NCMRService.update_disposition(did, {
+            '處置類型': '讓步放行', '處置數量': 100,
+            '是否超出客戶規格': True, '授權狀態': '未取得', '未授權放行理由': '客戶要求',
+        })
+        d = NcmrDisposition.query.get(did)
+        assert d.disposition_type == '讓步放行'
+        assert d.is_risk is True

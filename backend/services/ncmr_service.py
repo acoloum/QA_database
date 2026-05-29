@@ -280,7 +280,11 @@ class NCMRService:
             pass_qty = data.get('合格數')
             fail_qty = data.get('不合格數')
             if pass_qty is not None and fail_qty is not None:
-                if int(pass_qty) + int(fail_qty) != int(data['處置數量']):
+                try:
+                    p, f, total = int(pass_qty), int(fail_qty), int(data['處置數量'])
+                except (ValueError, TypeError):
+                    raise ValueError('數量格式不合法')
+                if p + f != total:
                     raise ValueError('合格數 + 不合格數 必須等於處置數量')
 
         if dtype == '讓步放行' and data.get('是否超出客戶規格'):
@@ -291,7 +295,8 @@ class NCMRService:
 
     @staticmethod
     def get_dispositions(ncmr_id: int) -> List[Dict[str, Any]]:
-        rows = NcmrDisposition.query.filter_by(ncmr_id=ncmr_id)\
+        rows = NcmrDisposition.query.options(joinedload(NcmrDisposition.handler))\
+            .filter_by(ncmr_id=ncmr_id)\
             .order_by(NcmrDisposition.id).all()
         result = []
         for d in rows:
@@ -314,16 +319,30 @@ class NCMRService:
     @staticmethod
     def _apply_disposition_fields(d: NcmrDisposition, data: Dict[str, Any]) -> None:
         """將輸入資料套用到處置物件（建立/更新共用）"""
+
+        def _to_int(v):
+            """將值轉為整數；空值/None 保留為 None；非數字格式拋出友善錯誤"""
+            if v in (None, ''):
+                return None
+            try:
+                return int(v)
+            except (ValueError, TypeError):
+                raise ValueError('數量格式不合法')
+
         d.disposition_type = data['處置類型']
-        d.quantity = int(data['處置數量'])
+        # 處置數量為必填，直接轉型；非數字時拋出友善錯誤
+        try:
+            d.quantity = int(data['處置數量'])
+        except (ValueError, TypeError):
+            raise ValueError('數量格式不合法')
         d.note = data.get('備註')
         d.rework_id = data.get('關聯重工單ID') or None
-        d.pass_qty = int(data['合格數']) if data.get('合格數') not in (None, '') else None
-        d.fail_qty = int(data['不合格數']) if data.get('不合格數') not in (None, '') else None
+        d.pass_qty = _to_int(data.get('合格數'))
+        d.fail_qty = _to_int(data.get('不合格數'))
         d.exceed_customer_spec = bool(data.get('是否超出客戶規格'))
         d.auth_status = data.get('授權狀態') or None
         d.auth_doc_no = data.get('授權文號') or None
-        d.auth_max_qty = int(data['授權數量上限']) if data.get('授權數量上限') not in (None, '') else None
+        d.auth_max_qty = _to_int(data.get('授權數量上限'))
         valid = data.get('授權有效期')
         d.auth_valid_until = datetime.datetime.strptime(valid, '%Y-%m-%d').date() if valid else None
         d.unauth_reason = data.get('未授權放行理由') or None
@@ -367,6 +386,7 @@ class NCMRService:
             if d:
                 db.session.delete(d)
                 db.session.commit()
+            # 找不到 id 時同樣回傳 True：冪等刪除，符合 RESTful DELETE 語意
             return True
         except Exception:
             db.session.rollback()
