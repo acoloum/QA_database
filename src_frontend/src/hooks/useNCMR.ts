@@ -2,7 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import type { NCMR, NCMRCreateInput, NCMRUpdateInput } from '../types';
+import type { NCMR, NCMRCreateInput, NCMRUpdateInput, NcmrDisposition, RiskRelease } from '../types';
 
 // --- Queries ---
 
@@ -187,6 +187,84 @@ export const useCreateCAPA = () => {
             toast.success('已成功建立 CAPA 單');
             queryClient.invalidateQueries({ queryKey: ['ncmrList'], exact: false });
             queryClient.invalidateQueries({ queryKey: ['ncmrDetail'], exact: false });
+        },
+    });
+};
+
+// --- 不合格品處置（IATF §8.7）---
+
+export const useDispositions = (ncmrId: number | null) => {
+    return useQuery({
+        queryKey: ['ncmrDispositions', ncmrId],
+        queryFn: async () => {
+            if (!ncmrId) return [];
+            const res = await api.get<NcmrDisposition[]>(`/ncmr/${ncmrId}/dispositions`);
+            return res.data;
+        },
+        enabled: !!ncmrId,
+    });
+};
+
+export const useCreateDisposition = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ ncmrId, data }: { ncmrId: number; data: NcmrDisposition }) => {
+            const res = await api.post(`/ncmr/${ncmrId}/dispositions`, data);
+            return res.data;
+        },
+        onSuccess: (_, variables) => {
+            toast.success('已新增處置');
+            queryClient.invalidateQueries({ queryKey: ['ncmrDispositions', variables.ncmrId], exact: false });
+        },
+    });
+};
+
+export const useUpdateDisposition = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ id, data }: { id: number; data: NcmrDisposition }) => {
+            const res = await api.put(`/ncmr/dispositions/${id}`, data);
+            return res.data;
+        },
+        onSuccess: () => {
+            toast.success('已更新處置');
+            queryClient.invalidateQueries({ queryKey: ['ncmrDispositions'], exact: false });
+        },
+    });
+};
+
+export const useDeleteDisposition = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (id: number) => {
+            const res = await api.delete(`/ncmr/dispositions/${id}`);
+            return res.data;
+        },
+        onSuccess: () => {
+            toast.success('已刪除處置');
+            queryClient.invalidateQueries({ queryKey: ['ncmrDispositions'], exact: false });
+        },
+    });
+};
+
+export const useNcmrReworks = (ncmrId: number | null) => {
+    return useQuery({
+        queryKey: ['ncmrReworks', ncmrId],
+        queryFn: async () => {
+            if (!ncmrId) return [];
+            const res = await api.get<{ 識別碼: number; 申請單號: string; 狀態: string }[]>(`/ncmr/${ncmrId}/reworks`);
+            return res.data;
+        },
+        enabled: !!ncmrId,
+    });
+};
+
+export const useRiskReleases = () => {
+    return useQuery({
+        queryKey: ['riskReleases'],
+        queryFn: async () => {
+            const res = await api.get<RiskRelease[]>('/ncmr/risk-releases');
+            return res.data;
         },
     });
 };

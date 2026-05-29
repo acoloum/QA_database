@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional, Union
 from sqlalchemy.orm import joinedload, subqueryload
 from sqlalchemy import desc
 from ..extensions import db
-from ..models import NCMR, CorrectiveAction, Inspector, Vendor, PatrolMain, ShippingData, ReworkRequest, ReworkExecution
+from ..models import NCMR, CorrectiveAction, Inspector, Vendor, PatrolMain, ShippingData, ReworkRequest, ReworkExecution, NcmrDisposition
 from ..utils import (
     format_value,
     handle_db_error,
@@ -166,6 +166,36 @@ class NCMRService:
                 if open_reworks:
                     raise ValueError('尚有未結案的重工申請單，無法將 NCMR 結案')
 
+                # IATF §8.7 處置 gate
+                # 注意：NcmrDisposition 無軟刪除，此關聯回傳全部處置
+                dispositions = ncmr.dispositions
+                if not dispositions:
+                    raise ValueError('尚未填寫不合格品處置，無法結案')
+
+                total_disp = sum(int(d.quantity or 0) for d in dispositions)
+                defect_total = int(ncmr.defect_quantity or 0)
+                if total_disp != defect_total:
+                    raise ValueError(
+                        f'處置數量加總（{total_disp}）與不良總數（{defect_total}）不符，無法結案'
+                    )
+
+                for d in dispositions:
+                    if d.disposition_type == '矯正重工':
+                        if not d.rework_id:
+                            raise ValueError('矯正重工處置須關聯重工單')
+                        rw = db.session.get(ReworkRequest, d.rework_id)
+                        if not rw or rw.status != '已結案':
+                            raise ValueError('關聯重工單尚未結案，無法將 NCMR 結案')
+                    elif d.disposition_type == '挑選全檢':
+                        if d.pass_qty is None or d.fail_qty is None:
+                            raise ValueError('挑選全檢處置須填寫合格數與不合格數')
+                        if int(d.pass_qty) + int(d.fail_qty) != int(d.quantity):
+                            raise ValueError('挑選全檢的合格數與不合格數加總須等於處置數量')
+                    elif d.disposition_type == '讓步放行':
+                        # 僅當超出客戶規格時才需授權；未超出屬內部放行、無需授權（依規格 §8.7.1.1 / Q4-Q5）
+                        if d.exceed_customer_spec and d.auth_status == '未取得' and not d.unauth_reason:
+                            raise ValueError('未授權放行須填寫未授權放行理由')
+
             if data.get('發現人員姓名'):
                 inspector = Inspector.query.filter_by(name=data.get('發現人員姓名')).first()
                 if inspector:
@@ -263,6 +293,172 @@ class NCMRService:
             return info
         except Exception as e:
             raise e
+
+    @staticmethod
+    def get_ncmr_reworks(ncmr_id: int) -> List[Dict[str, Any]]:
+        """列出該 NCMR 的重工申請單（供處置關聯選擇）"""
+        rows = ReworkRequest.query\
+            .filter(ReworkRequest.ncmr_id == ncmr_id)\
+            .filter(ReworkRequest.deleted_at.is_(None))\
+            .order_by(ReworkRequest.id.desc())\
+            .all()
+        return [{
+            '識別碼': r.id,
+            '申請單號': r.rework_number,
+            '狀態': r.status,
+        } for r in rows]
+
+    # ==================================================
+    # 不合格品處置（IATF 16949 §8.7）
+    # ==================================================
+    @staticmethod
+    def _validate_disposition(data: Dict[str, Any]) -> None:
+        """處置寫入驗證；不合法拋 ValueError"""
+        dtype = data.get('處置類型')
+        if dtype not in ('矯正重工', '報廢', '挑選全檢', '讓步放行'):
+            raise ValueError(f'無效的處置類型：{dtype!r}')
+        if data.get('處置數量') in (None, ''):
+            raise ValueError('處置數量為必填')
+
+        if dtype == '挑選全檢':
+            pass_qty = data.get('合格數')
+            fail_qty = data.get('不合格數')
+            if pass_qty is not None and fail_qty is not None:
+                try:
+                    p, f, total = int(pass_qty), int(fail_qty), int(data['處置數量'])
+                except (ValueError, TypeError):
+                    raise ValueError('數量格式不合法')
+                if p + f != total:
+                    raise ValueError('合格數 + 不合格數 必須等於處置數量')
+
+        if dtype == '讓步放行' and data.get('是否超出客戶規格'):
+            if not data.get('授權狀態'):
+                raise ValueError('超出客戶規格時，授權狀態為必填')
+            if data.get('授權狀態') == '未取得' and not data.get('未授權放行理由'):
+                raise ValueError('未取得授權時，未授權放行理由為必填')
+
+    @staticmethod
+    def get_dispositions(ncmr_id: int) -> List[Dict[str, Any]]:
+        rows = NcmrDisposition.query.options(joinedload(NcmrDisposition.handler))\
+            .filter_by(ncmr_id=ncmr_id)\
+            .order_by(NcmrDisposition.id).all()
+        result = []
+        for d in rows:
+            result.append({
+                '識別碼': d.id, 'NCMR_ID': d.ncmr_id,
+                '處置類型': d.disposition_type, '處置數量': d.quantity,
+                '處置人': d.handler_id, '處置人姓名': d.handler.name if d.handler else '',
+                '處置時間': d.handled_at.strftime('%Y-%m-%d %H:%M:%S') if d.handled_at else '',
+                '備註': d.note,
+                '關聯重工單ID': d.rework_id,
+                '合格數': d.pass_qty, '不合格數': d.fail_qty,
+                '是否超出客戶規格': d.exceed_customer_spec,
+                '授權狀態': d.auth_status, '授權文號': d.auth_doc_no,
+                '授權有效期': d.auth_valid_until.strftime('%Y-%m-%d') if d.auth_valid_until else '',
+                '授權數量上限': d.auth_max_qty,
+                '未授權放行理由': d.unauth_reason, '是否風險項': d.is_risk,
+            })
+        return result
+
+    @staticmethod
+    def _apply_disposition_fields(d: NcmrDisposition, data: Dict[str, Any]) -> None:
+        """將輸入資料套用到處置物件（建立/更新共用）"""
+
+        def _to_int(v):
+            """將值轉為整數；空值/None 保留為 None；非數字格式拋出友善錯誤"""
+            if v in (None, ''):
+                return None
+            try:
+                return int(v)
+            except (ValueError, TypeError):
+                raise ValueError('數量格式不合法')
+
+        d.disposition_type = data['處置類型']
+        # 處置數量為必填，直接轉型；非數字時拋出友善錯誤
+        try:
+            d.quantity = int(data['處置數量'])
+        except (ValueError, TypeError):
+            raise ValueError('數量格式不合法')
+        d.note = data.get('備註')
+        d.rework_id = data.get('關聯重工單ID') or None
+        d.pass_qty = _to_int(data.get('合格數'))
+        d.fail_qty = _to_int(data.get('不合格數'))
+        d.exceed_customer_spec = bool(data.get('是否超出客戶規格'))
+        d.auth_status = data.get('授權狀態') or None
+        d.auth_doc_no = data.get('授權文號') or None
+        d.auth_max_qty = _to_int(data.get('授權數量上限'))
+        valid = data.get('授權有效期')
+        d.auth_valid_until = datetime.datetime.strptime(valid, '%Y-%m-%d').date() if valid else None
+        d.unauth_reason = data.get('未授權放行理由') or None
+        # 未取得授權 → 自動標記風險項
+        d.is_risk = bool(d.exceed_customer_spec and d.auth_status == '未取得')
+
+    @staticmethod
+    def create_disposition(ncmr_id: int, data: Dict[str, Any], handler_id: Optional[int]) -> int:
+        try:
+            ncmr = NCMR.active_query().filter_by(id=ncmr_id).first()
+            if not ncmr:
+                raise ValueError('找不到該 NCMR')
+            NCMRService._validate_disposition(data)
+            d = NcmrDisposition(ncmr_id=ncmr_id, handler_id=handler_id)
+            NCMRService._apply_disposition_fields(d, data)
+            db.session.add(d)
+            db.session.commit()
+            return d.id
+        except Exception:
+            db.session.rollback()
+            raise
+
+    @staticmethod
+    def update_disposition(disposition_id: int, data: Dict[str, Any]) -> bool:
+        try:
+            d = NcmrDisposition.query.get(disposition_id)
+            if not d:
+                raise ValueError('找不到該處置記錄')
+            NCMRService._validate_disposition(data)
+            NCMRService._apply_disposition_fields(d, data)
+            db.session.commit()
+            return True
+        except Exception:
+            db.session.rollback()
+            raise
+
+    @staticmethod
+    def delete_disposition(disposition_id: int) -> bool:
+        try:
+            d = NcmrDisposition.query.get(disposition_id)
+            if d:
+                db.session.delete(d)
+                db.session.commit()
+            # 找不到 id 時同樣回傳 True：冪等刪除，符合 RESTful DELETE 語意
+            return True
+        except Exception:
+            db.session.rollback()
+            raise
+
+    @staticmethod
+    def get_risk_releases() -> List[Dict[str, Any]]:
+        """未授權放行清單（風險項）— IATF §8.7.1.1 風險追蹤"""
+        rows = db.session.query(NcmrDisposition, NCMR)\
+            .options(joinedload(NcmrDisposition.handler))\
+            .join(NCMR, NcmrDisposition.ncmr_id == NCMR.id)\
+            .filter(NcmrDisposition.is_risk.is_(True))\
+            .filter(NCMR.deleted_at.is_(None))\
+            .order_by(NcmrDisposition.handled_at.desc())\
+            .all()
+        result = []
+        for d, n in rows:
+            result.append({
+                'NCMR單號': n.ncmr_number,
+                '產品資訊': n.product_info,
+                '材質': n.material,
+                '廠商': n.vendor,
+                '處置數量': d.quantity,
+                '未授權放行理由': d.unauth_reason,
+                '處置人姓名': d.handler.name if d.handler else '',
+                '處置時間': d.handled_at.strftime('%Y-%m-%d %H:%M:%S') if d.handled_at else '',
+            })
+        return result
 
     @staticmethod
     def get_ncmr_info(ncmr_id: int) -> Optional[Dict[str, Any]]:

@@ -325,6 +325,44 @@ class NCMR(SoftDeleteMixin, db.Model):
     inspector = db.relationship('Inspector', backref='ncmr_list')
     corrective_actions = db.relationship('CorrectiveAction', backref='ncmr', cascade="all, delete-orphan")
     rework_requests = db.relationship('ReworkRequest', backref='ncmr', cascade="all, delete-orphan")
+    dispositions = db.relationship('NcmrDisposition', backref='ncmr',
+                                   cascade="all, delete-orphan")
+
+class NcmrDisposition(db.Model):
+    """不合格品處置明細 — 一張 NCMR 可有多筆處置（IATF 16949 §8.7）"""
+    __tablename__ = '不合格品處置明細'
+    __table_args__ = (
+        db.Index('idx_ncmr_disp_ncmr', 'NCMR_ID'),
+        db.Index('idx_ncmr_disp_risk', '是否風險項'),
+    )
+
+    id          = db.Column('識別碼',   db.Integer, primary_key=True)
+    ncmr_id     = db.Column('NCMR_ID', db.Integer, db.ForeignKey('不合格品單.識別碼'), nullable=False)
+    disposition_type = db.Column('處置類型', db.String(20), nullable=False)
+    # '矯正重工' | '報廢' | '挑選全檢' | '讓步放行'
+    quantity    = db.Column('處置數量', db.Integer, nullable=False)
+    handler_id  = db.Column('處置人',   db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
+    handled_at  = db.Column('處置時間', db.DateTime, default=datetime.utcnow)
+    note        = db.Column('備註',     db.Text, nullable=True)
+
+    # 矯正重工專屬
+    rework_id   = db.Column('關聯重工單ID', db.Integer, db.ForeignKey('重工申請單.識別碼'), nullable=True)
+
+    # 挑選全檢專屬
+    pass_qty    = db.Column('合格數',   db.Integer, nullable=True)
+    fail_qty    = db.Column('不合格數', db.Integer, nullable=True)
+
+    # 讓步放行專屬
+    exceed_customer_spec = db.Column('是否超出客戶規格', db.Boolean, default=False)
+    auth_status     = db.Column('授權狀態',       db.String(10), nullable=True)  # '已取得' | '未取得'
+    auth_doc_no     = db.Column('授權文號',       db.String(100), nullable=True)
+    auth_valid_until= db.Column('授權有效期',     db.Date, nullable=True)
+    auth_max_qty    = db.Column('授權數量上限',   db.Integer, nullable=True)
+    unauth_reason   = db.Column('未授權放行理由', db.Text, nullable=True)
+    is_risk         = db.Column('是否風險項',     db.Boolean, default=False, nullable=False)
+
+    handler = db.relationship('Inspector', foreign_keys=[handler_id])
+    rework  = db.relationship('ReworkRequest', foreign_keys=[rework_id])
 
 class CorrectiveAction(SoftDeleteMixin, db.Model):
     """異常矯正單 — CAPA（我方執行矯正，含 D0-D8 完整 8D 流程）"""

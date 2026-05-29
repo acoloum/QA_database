@@ -23,6 +23,7 @@ ROLES = [
         'code': 'qa_supervisor', 'name': 'QA主管',
         'permissions': {
             'ncmr.create': True, 'ncmr.edit': True, 'ncmr.view': True,
+            'ncmr.disposition': True,
             'capa.create': True, 'capa.edit': True, 'capa.view': True,
             'rework.create': True, 'rework.approve': True, 'rework.view': True,
             'complaint.edit': True, 'complaint.view': True,
@@ -34,6 +35,7 @@ ROLES = [
         'code': 'qc_manager', 'name': '品管經理',
         'permissions': {
             'ncmr.create': True, 'ncmr.edit': True, 'ncmr.delete': True, 'ncmr.view': True,
+            'ncmr.disposition': True,
             'capa.create': True, 'capa.edit': True, 'capa.close': True, 'capa.view': True,
             'rework.create': True, 'rework.approve': True, 'rework.delete': True, 'rework.view': True,
             'complaint.create': True, 'complaint.edit': True, 'complaint.delete': True, 'complaint.view': True,
@@ -47,6 +49,7 @@ ROLES = [
         'code': 'admin', 'name': '系統管理員',
         'permissions': {
             'ncmr.create': True, 'ncmr.edit': True, 'ncmr.delete': True, 'ncmr.view': True,
+            'ncmr.disposition': True,
             'capa.create': True, 'capa.edit': True, 'capa.close': True, 'capa.view': True,
             'rework.create': True, 'rework.approve': True, 'rework.delete': True, 'rework.view': True,
             'complaint.create': True, 'complaint.edit': True, 'complaint.delete': True, 'complaint.view': True,

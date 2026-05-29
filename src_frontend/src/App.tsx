@@ -8,6 +8,7 @@ import ReworkPage from './pages/rework/ReworkPage';
 import ShippingPage from './pages/shipping/ShippingPage';
 import PatrolPage from './pages/patrol/PatrolPage';
 import NCMRPage from './pages/ncmr/NCMRPage';
+import RiskReleasePage from './pages/ncmr/RiskReleasePage';
 import CAPAPage from './pages/capa/CAPAPage';
 import TolerancePage from './pages/tolerance/TolerancePage';
 import ExtrusionTolerancePage from './pages/extrusion-tolerance/ExtrusionTolerancePage';
@@ -37,6 +38,7 @@ function App() {
               <Route path="/shipping" element={<ShippingPage />} /> {/* Added ShippingPage route */}
               <Route path="/patrol" element={<PatrolPage />} /> {/* Added PatrolPage route */}
               <Route path="/ncmr" element={<NCMRPage />} /> {/* Added NCMRPage route */}
+              <Route path="/ncmr/risk-releases" element={<RiskReleasePage />} /> {/* 未授權放行風險清單 */}
               <Route path="/capa" element={<CAPAPage />} />
               <Route path="/tasks" element={<TaskListPage />} />
               <Route path="/complaints" element={<ComplaintPage />} />
