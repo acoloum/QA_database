@@ -3,7 +3,7 @@ import { Modal, Button, Form, Table, Alert } from 'react-bootstrap';
 import type { NCMR, NcmrDisposition, DispositionType } from '../../types';
 import {
     useDispositions, useCreateDisposition, useDeleteDisposition,
-    useUpdateNCMR, useCreateCAPA,
+    useUpdateNCMR, useCreateCAPA, useNcmrReworks,
 } from '../../hooks/useNCMR';
 
 interface DispositionModalProps {
@@ -24,6 +24,7 @@ const emptyForm = (): NcmrDisposition => ({
 const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionModalProps) => {
     const ncmrId = item?.id ?? null;
     const { data: dispositions = [] } = useDispositions(show ? ncmrId : null);
+    const { data: reworks = [] } = useNcmrReworks(show ? ncmrId : null);
     const createDisp = useCreateDisposition();
     const deleteDisp = useDeleteDisposition();
     const updateNCMR = useUpdateNCMR();
@@ -98,7 +99,8 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
 
     const t = form.處置類型;
     const concessionNeedsAuth = t === '讓步放行' && !!form.是否超出客戶規格 && !form.授權狀態;
-    const canAdd = Number(form.處置數量) > 0 && !concessionNeedsAuth;
+    const reworkNeedsLink = t === '矯正重工' && !form.關聯重工單ID;
+    const canAdd = Number(form.處置數量) > 0 && !concessionNeedsAuth && !reworkNeedsLink;
 
     return (
         <Modal key={item?.id} show={show} onHide={handleClose} size="lg">
@@ -151,6 +153,25 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
                                 onChange={e => setField('處置數量', Number(e.target.value))} />
                         </div>
                     </div>
+
+                    {/* 矯正重工：選擇關聯重工單 */}
+                    {t === '矯正重工' && (
+                        <div className="mt-2">
+                            <Form.Label>關聯重工單（須已結案才能讓 NCMR 結案）</Form.Label>
+                            <Form.Select value={form.關聯重工單ID ?? ''}
+                                onChange={e => setField('關聯重工單ID', e.target.value ? Number(e.target.value) : null)}>
+                                <option value="">請選擇重工單</option>
+                                {reworks.map(rw => (
+                                    <option key={rw.識別碼} value={rw.識別碼}>
+                                        {rw.申請單號}（{rw.狀態}）
+                                    </option>
+                                ))}
+                            </Form.Select>
+                            {reworks.length === 0 && (
+                                <small className="text-muted">尚無重工單，請先按「轉重工」開立</small>
+                            )}
+                        </div>
+                    )}
 
                     {/* 挑選全檢：顯示合格數 / 不合格數欄位 */}
                     {t === '挑選全檢' && (

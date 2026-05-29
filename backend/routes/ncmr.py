@@ -180,6 +180,15 @@ def get_dispositions(ncmr_id):
         return jsonify({"error": str(e)}), 500
 
 
+@ncmr_bp.route('/api/ncmr/<int:ncmr_id>/reworks', methods=['GET'])
+@auth_required
+def get_ncmr_reworks(ncmr_id):
+    try:
+        return jsonify(NCMRService.get_ncmr_reworks(ncmr_id))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @ncmr_bp.route('/api/ncmr/<int:ncmr_id>/dispositions', methods=['POST'])
 @auth_required
 @require_permission('ncmr.disposition')

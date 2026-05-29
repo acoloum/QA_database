@@ -200,6 +200,20 @@ def test_close_concession_within_customer_spec_ok(app, db_session):
         assert _close(n.id) is True
 
 
+def test_get_ncmr_reworks_lists_active(app, db_session):
+    with app.app_context():
+        n = _make_ncmr(db_session)
+        rw1 = ReworkRequest(ncmr_id=n.id, rework_number='RW-L1', status='已結案')
+        rw2 = ReworkRequest(ncmr_id=n.id, rework_number='RW-L2', status='執行中')
+        db_session.add_all([rw1, rw2])
+        db_session.commit()
+        rows = NCMRService.get_ncmr_reworks(n.id)
+        nums = {r['申請單號'] for r in rows}
+        assert nums == {'RW-L1', 'RW-L2'}
+        # 每筆含 id / 申請單號 / 狀態
+        assert all('識別碼' in r and '狀態' in r for r in rows)
+
+
 def test_risk_releases_only_returns_unauthorized(app, db_session):
     with app.app_context():
         n1 = _make_ncmr(db_session, ncmr_number='NCMR-R1', defect_quantity=10)

@@ -294,6 +294,20 @@ class NCMRService:
         except Exception as e:
             raise e
 
+    @staticmethod
+    def get_ncmr_reworks(ncmr_id: int) -> List[Dict[str, Any]]:
+        """列出該 NCMR 的重工申請單（供處置關聯選擇）"""
+        rows = ReworkRequest.query\
+            .filter(ReworkRequest.ncmr_id == ncmr_id)\
+            .filter(ReworkRequest.deleted_at.is_(None))\
+            .order_by(ReworkRequest.id.desc())\
+            .all()
+        return [{
+            '識別碼': r.id,
+            '申請單號': r.rework_number,
+            '狀態': r.status,
+        } for r in rows]
+
     # ==================================================
     # 不合格品處置（IATF 16949 §8.7）
     # ==================================================

@@ -247,6 +247,18 @@ export const useDeleteDisposition = () => {
     });
 };
 
+export const useNcmrReworks = (ncmrId: number | null) => {
+    return useQuery({
+        queryKey: ['ncmrReworks', ncmrId],
+        queryFn: async () => {
+            if (!ncmrId) return [];
+            const res = await api.get<{ 識別碼: number; 申請單號: string; 狀態: string }[]>(`/ncmr/${ncmrId}/reworks`);
+            return res.data;
+        },
+        enabled: !!ncmrId,
+    });
+};
+
 export const useRiskReleases = () => {
     return useQuery({
         queryKey: ['riskReleases'],
