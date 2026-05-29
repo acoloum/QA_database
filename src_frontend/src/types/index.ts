@@ -778,3 +778,38 @@ export interface VendorPerformance {
   calculated_at?: string;
 }
 
+// 不合格品處置明細（IATF 16949 §8.7）
+export type DispositionType = '矯正重工' | '報廢' | '挑選全檢' | '讓步放行';
+
+export interface NcmrDisposition {
+    識別碼?: number;
+    NCMR_ID?: number;
+    處置類型: DispositionType;
+    處置數量: number;
+    處置人?: number | null;
+    處置人姓名?: string;
+    處置時間?: string;
+    備註?: string | null;
+    關聯重工單ID?: number | null;
+    合格數?: number | null;
+    不合格數?: number | null;
+    是否超出客戶規格?: boolean;
+    授權狀態?: '已取得' | '未取得' | null;
+    授權文號?: string | null;
+    授權有效期?: string | null;
+    授權數量上限?: number | null;
+    未授權放行理由?: string | null;
+    是否風險項?: boolean;
+}
+
+export interface RiskRelease {
+    NCMR單號: string;
+    產品資訊: string;
+    材質: string;
+    廠商: string;
+    處置數量: number;
+    未授權放行理由: string;
+    處置人姓名: string;
+    處置時間: string;
+}
+
