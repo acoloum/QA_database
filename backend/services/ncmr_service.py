@@ -426,6 +426,7 @@ class NCMRService:
     def get_risk_releases() -> List[Dict[str, Any]]:
         """未授權放行清單（風險項）— IATF §8.7.1.1 風險追蹤"""
         rows = db.session.query(NcmrDisposition, NCMR)\
+            .options(joinedload(NcmrDisposition.handler))\
             .join(NCMR, NcmrDisposition.ncmr_id == NCMR.id)\
             .filter(NcmrDisposition.is_risk.is_(True))\
             .filter(NCMR.deleted_at.is_(None))\
