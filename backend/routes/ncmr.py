@@ -126,7 +126,8 @@ def open_capa_from_ncmr(current_user, ncmr_id):
     from ..extensions import db
     data = request.get_json() or {}
     try:
-        ncmr = NCMRModel.query.get(ncmr_id)
+        # 使用 active_query 排除已軟刪除的 NCMR，避免對已刪除單據開立 CAPA
+        ncmr = NCMRModel.active_query().filter_by(id=ncmr_id).first()
         if not ncmr:
             return jsonify({'error': f'NCMR #{ncmr_id} 不存在'}), 404
 
