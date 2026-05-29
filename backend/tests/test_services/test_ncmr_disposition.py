@@ -1,6 +1,6 @@
 import datetime
 import pytest
-from backend.models import NCMR, NcmrDisposition, Inspector
+from backend.models import NCMR, NcmrDisposition, Inspector, ReworkRequest
 from backend.extensions import db
 from backend.services.ncmr_service import NCMRService
 
@@ -109,3 +109,59 @@ def test_update_disposition_recomputes_risk(app, db_session):
         d = NcmrDisposition.query.get(did)
         assert d.disposition_type == '讓步放行'
         assert d.is_risk is True
+
+
+# ==================================================
+# 結案 Gate 測試（IATF 16949 §8.7）
+# ==================================================
+
+def _close(ncmr_id):
+    return NCMRService.update_ncmr({'識別碼': ncmr_id, '狀態': '已結案'})
+
+
+def test_close_blocked_without_disposition(app, db_session):
+    with app.app_context():
+        n = _make_ncmr(db_session)
+        with pytest.raises(ValueError, match='處置'):
+            _close(n.id)
+
+
+def test_close_blocked_qty_mismatch(app, db_session):
+    with app.app_context():
+        n = _make_ncmr(db_session, defect_quantity=100)
+        NCMRService.create_disposition(n.id, {'處置類型': '報廢', '處置數量': 60}, handler_id=None)
+        with pytest.raises(ValueError, match='數量'):
+            _close(n.id)
+
+
+def test_close_ok_scrap_full_qty(app, db_session):
+    with app.app_context():
+        n = _make_ncmr(db_session, defect_quantity=100)
+        NCMRService.create_disposition(n.id, {'處置類型': '報廢', '處置數量': 100}, handler_id=None)
+        assert _close(n.id) is True
+        assert NCMR.query.get(n.id).status == '已結案'
+
+
+def test_close_blocked_rework_not_closed(app, db_session):
+    with app.app_context():
+        n = _make_ncmr(db_session, defect_quantity=50)
+        rw = ReworkRequest(ncmr_id=n.id, rework_number='RW-001', status='執行中')
+        db_session.add(rw)
+        db_session.commit()
+        NCMRService.create_disposition(n.id, {
+            '處置類型': '矯正重工', '處置數量': 50, '關聯重工單ID': rw.id,
+        }, handler_id=None)
+        with pytest.raises(ValueError, match='重工'):
+            _close(n.id)
+
+
+def test_close_ok_rework_closed(app, db_session):
+    with app.app_context():
+        n = _make_ncmr(db_session, defect_quantity=50)
+        rw = ReworkRequest(ncmr_id=n.id, rework_number='RW-002', status='已結案')
+        db_session.add(rw)
+        db_session.commit()
+        NCMRService.create_disposition(n.id, {
+            '處置類型': '矯正重工', '處置數量': 50, '關聯重工單ID': rw.id,
+        }, handler_id=None)
+        assert _close(n.id) is True

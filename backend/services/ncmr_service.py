@@ -166,6 +166,32 @@ class NCMRService:
                 if open_reworks:
                     raise ValueError('尚有未結案的重工申請單，無法將 NCMR 結案')
 
+                # IATF §8.7 處置 gate
+                dispositions = ncmr.dispositions
+                if not dispositions:
+                    raise ValueError('尚未填寫不合格品處置，無法結案')
+
+                total_disp = sum(int(d.quantity or 0) for d in dispositions)
+                defect_total = int(ncmr.defect_quantity or 0)
+                if total_disp != defect_total:
+                    raise ValueError(
+                        f'處置數量加總（{total_disp}）與不良總數（{defect_total}）不符，無法結案'
+                    )
+
+                for d in dispositions:
+                    if d.disposition_type == '矯正重工':
+                        if not d.rework_id:
+                            raise ValueError('矯正重工處置須關聯重工單')
+                        rw = db.session.get(ReworkRequest, d.rework_id)
+                        if not rw or rw.status != '已結案':
+                            raise ValueError('關聯重工單尚未結案，無法將 NCMR 結案')
+                    elif d.disposition_type == '挑選全檢':
+                        if d.pass_qty is None or d.fail_qty is None:
+                            raise ValueError('挑選全檢處置須填寫合格數與不合格數')
+                    elif d.disposition_type == '讓步放行':
+                        if d.exceed_customer_spec and d.auth_status == '未取得' and not d.unauth_reason:
+                            raise ValueError('未授權放行須填寫未授權放行理由')
+
             if data.get('發現人員姓名'):
                 inspector = Inspector.query.filter_by(name=data.get('發現人員姓名')).first()
                 if inspector:
