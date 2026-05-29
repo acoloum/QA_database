@@ -423,6 +423,29 @@ class NCMRService:
             raise
 
     @staticmethod
+    def get_risk_releases() -> List[Dict[str, Any]]:
+        """未授權放行清單（風險項）— IATF §8.7.1.1 風險追蹤"""
+        rows = db.session.query(NcmrDisposition, NCMR)\
+            .join(NCMR, NcmrDisposition.ncmr_id == NCMR.id)\
+            .filter(NcmrDisposition.is_risk.is_(True))\
+            .filter(NCMR.deleted_at.is_(None))\
+            .order_by(NcmrDisposition.handled_at.desc())\
+            .all()
+        result = []
+        for d, n in rows:
+            result.append({
+                'NCMR單號': n.ncmr_number,
+                '產品資訊': n.product_info,
+                '材質': n.material,
+                '廠商': n.vendor,
+                '處置數量': d.quantity,
+                '未授權放行理由': d.unauth_reason,
+                '處置人姓名': d.handler.name if d.handler else '',
+                '處置時間': d.handled_at.strftime('%Y-%m-%d %H:%M:%S') if d.handled_at else '',
+            })
+        return result
+
+    @staticmethod
     def get_ncmr_info(ncmr_id: int) -> Optional[Dict[str, Any]]:
         try:
             n = NCMR.active_query().options(joinedload(NCMR.inspector)).filter_by(id=ncmr_id).first()

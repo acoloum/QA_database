@@ -168,6 +168,83 @@ def get_ncmr_info(ncmr_id):
         return jsonify({"error": str(e)}), 500
 
 # ==================================================
+# 【不合格品處置】Disposition API（IATF 16949 §8.7）
+# ==================================================
+
+@ncmr_bp.route('/api/ncmr/<int:ncmr_id>/dispositions', methods=['GET'])
+@auth_required
+def get_dispositions(ncmr_id):
+    try:
+        return jsonify(NCMRService.get_dispositions(ncmr_id))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@ncmr_bp.route('/api/ncmr/<int:ncmr_id>/dispositions', methods=['POST'])
+@auth_required
+@require_permission('ncmr.disposition')
+def create_disposition(current_user, ncmr_id):
+    try:
+        handler_id = current_user.inspector_id if current_user else None
+        did = NCMRService.create_disposition(ncmr_id, request.json or {}, handler_id)
+        try:
+            log_audit(current_user.id if current_user else None, 'create', 'NCMR_DISPOSITION',
+                      record_id=did, new_val=request.json)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return jsonify({"success": True, "id": did})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@ncmr_bp.route('/api/ncmr/dispositions/<int:disposition_id>', methods=['PUT'])
+@auth_required
+@require_permission('ncmr.disposition')
+def update_disposition(current_user, disposition_id):
+    try:
+        NCMRService.update_disposition(disposition_id, request.json or {})
+        try:
+            log_audit(current_user.id if current_user else None, 'update', 'NCMR_DISPOSITION',
+                      record_id=disposition_id, new_val=request.json)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return jsonify({"success": True})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@ncmr_bp.route('/api/ncmr/dispositions/<int:disposition_id>', methods=['DELETE'])
+@auth_required
+@require_permission('ncmr.disposition')
+def delete_disposition(current_user, disposition_id):
+    try:
+        NCMRService.delete_disposition(disposition_id)
+        try:
+            log_audit(current_user.id if current_user else None, 'delete', 'NCMR_DISPOSITION',
+                      record_id=disposition_id)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@ncmr_bp.route('/api/ncmr/risk-releases', methods=['GET'])
+@auth_required
+def get_risk_releases():
+    try:
+        return jsonify(NCMRService.get_risk_releases())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ==================================================
 # 【異常矯正】CAPA API (8D)
 # ==================================================
 

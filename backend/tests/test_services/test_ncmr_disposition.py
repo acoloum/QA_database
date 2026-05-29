@@ -198,3 +198,20 @@ def test_close_concession_within_customer_spec_ok(app, db_session):
             '處置類型': '讓步放行', '處置數量': 40, '是否超出客戶規格': False,
         }, handler_id=None)
         assert _close(n.id) is True
+
+
+def test_risk_releases_only_returns_unauthorized(app, db_session):
+    with app.app_context():
+        n1 = _make_ncmr(db_session, ncmr_number='NCMR-R1', defect_quantity=10)
+        n2 = _make_ncmr(db_session, ncmr_number='NCMR-R2', defect_quantity=10)
+        # 風險項：超出客戶規格 + 未取得授權
+        NCMRService.create_disposition(n1.id, {
+            '處置類型': '讓步放行', '處置數量': 10,
+            '是否超出客戶規格': True, '授權狀態': '未取得', '未授權放行理由': '趕交期',
+        }, handler_id=None)
+        # 非風險：一般報廢
+        NCMRService.create_disposition(n2.id, {'處置類型': '報廢', '處置數量': 10}, handler_id=None)
+        rows = NCMRService.get_risk_releases()
+        assert len(rows) == 1
+        assert rows[0]['NCMR單號'] == 'NCMR-R1'
+        assert rows[0]['未授權放行理由'] == '趕交期'
