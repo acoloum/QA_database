@@ -159,7 +159,7 @@ const NCMRPage = () => {
                 </Col>
             </FilterBar>
 
-            <Card className="shadow-sm">
+            <Card className="shadow-sm ncmr-list-card">
                 <Card.Body className="p-0">
                     <Table responsive hover className="align-middle table-compact mb-0">
                         <thead className="table-light">

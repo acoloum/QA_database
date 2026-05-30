@@ -199,7 +199,7 @@ h6 {
 
 .table tbody tr:hover {
     background: linear-gradient(90deg, #eff6ff 0%, #e0f2fe 100%) !important;
-    transform: scale(1.005);
+    /* 移除 transform：transform 祖先會讓 position:fixed 的下拉選單被該列裁切（操作選單被遮擋的根因） */
     box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
 }
 
@@ -238,6 +238,11 @@ h6 {
 .action-column-dropdown {
     min-width: 90px !important;
     width: 90px;
+}
+
+/* NCMR 清單卡片停用 hover 位移：transform 祖先會困住操作下拉選單（position:fixed），導致被裁切 */
+.ncmr-list-card:hover {
+    transform: none !important;
 }
 
 .action-buttons {
