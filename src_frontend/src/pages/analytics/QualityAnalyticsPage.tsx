@@ -153,6 +153,20 @@ const QualityAnalyticsPage = () => {
 
 const EmptyState = () => <div className="text-center text-muted py-4">無資料</div>;
 
+const paretoChartOptions = {
+    responsive: true,
+    scales: {
+        x: {
+            ticks: {
+                autoSkip: false,
+                maxRotation: 45,
+                minRotation: 0,
+            },
+        },
+        y: { beginAtZero: true },
+    },
+};
+
 const ParetoCard = ({ title, items }: { title: string; items: { label: string; count: number; cumulative_pct: number }[] }) => (
     <Card className="shadow-sm h-100">
         <Card.Header className="fw-semibold">{title}</Card.Header>
@@ -166,7 +180,7 @@ const ParetoCard = ({ title, items }: { title: string; items: { label: string; c
                             { label: '累積%', data: items.map(i => i.cumulative_pct), backgroundColor: '#f59e0b' },
                         ],
                     }}
-                    options={{ responsive: true, scales: { y: { beginAtZero: true } } }}
+                    options={paretoChartOptions}
                 />
             ) : <EmptyState />}
         </Card.Body>

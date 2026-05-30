@@ -9,6 +9,21 @@ from ..models import CorrectiveAction, CustomerComplaint, NCMR
 from .vendor_performance_service import VendorPerformanceService
 
 
+NCMR_DEFECT_CATEGORY_LABELS = {
+    'M': 'M - 鋁材原料',
+    'E': 'E - 擠型製程',
+    'D': 'D - 抽管製程',
+    'H': 'H - 熱處理',
+    'PO': 'PO - 拋光',
+    'SR': 'SR - 打直',
+    'T': 'T - 模具治具',
+    'S': 'S - 鋸台',
+    'P': 'P - 人員操作',
+    'Q': 'Q - 品管檢驗',
+    'O': 'O - 其他',
+}
+
+
 class QualityAnalyticsService:
     @staticmethod
     def pareto(
@@ -224,7 +239,8 @@ class QualityAnalyticsService:
             return record.defect_category or '未分類'
         if field == 'detail':
             return record.defect_detail or '未分類'
-        return record.defect_category or '未分類'
+        category = record.defect_category or '未分類'
+        return NCMR_DEFECT_CATEGORY_LABELS.get(category, category)
 
     @staticmethod
     def _aging_bucket(age_days: int) -> str:

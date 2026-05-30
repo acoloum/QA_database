@@ -46,6 +46,20 @@ def test_pareto_returns_sorted_counts_and_cumulative_percentage(app, db_session)
         assert result['items'][1]['cumulative_pct'] == 100.0
 
 
+def test_pareto_translates_ncmr_category_codes_to_readable_labels(app, db_session):
+    """Pareto 橫座標應顯示不良大類文字，而不是只顯示代碼。"""
+    with app.app_context():
+        db_session.add_all([
+            _make_ncmr('NCMR-C1', dt.date(2026, 5, 1), 'M', 'M-01: 鋁錠成分不符'),
+            _make_ncmr('NCMR-C2', dt.date(2026, 5, 2), 'M', 'M-02: 鋁棒尺寸超差'),
+        ])
+        db_session.commit()
+
+        result = QualityAnalyticsService.pareto(source='ncmr', field='category')
+
+        assert result['items'][0]['label'] == 'M - 鋁材原料'
+
+
 def test_defect_trends_returns_monthly_counts_by_top_categories(app, db_session):
     """分類趨勢應回傳月份序列與 Top 類別資料集。"""
     with app.app_context():
