@@ -1,5 +1,5 @@
 """CAPA 服務 — D0-D8 完整 8D 流程、gate 機制、D7 任務產生、AIAG 報表"""
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import joinedload
 from ..extensions import db
@@ -282,7 +282,7 @@ class CAPAService:
         ca.d8_confirmation= confirmation
         ca.d8_recognition = recognition
         ca.d8_close_date  = date.today()
-        ca.closed_at      = datetime.utcnow()
+        ca.closed_at      = datetime.now(timezone.utc)
 
         # CAPA 結案時，若來源為 NCMR，自動更新 NCMR 狀態為「矯正完成」
         if ca.ncmr_id:

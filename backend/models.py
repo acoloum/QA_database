@@ -5,6 +5,11 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 
 
+def utc_now():
+    """回傳 timezone-aware UTC 時間，供 SQLAlchemy default/onupdate 使用。"""
+    return datetime.now(timezone.utc)
+
+
 class SoftDeleteMixin:
     """軟刪除 Mixin：加入 deleted_at 欄位，刪除時設時間戳而非真正 DELETE"""
     deleted_at = db.Column('刪除時間', db.DateTime(timezone=True), nullable=True, index=True)
@@ -238,7 +243,7 @@ class SPCCache(db.Model):
     id         = db.Column('識別碼', db.Integer, primary_key=True)
     cache_key  = db.Column('快取鍵',  db.String(255), unique=True, nullable=False)
     result     = db.Column('計算結果', JsonType, nullable=False)
-    created_at = db.Column('建立時間', db.DateTime, default=datetime.utcnow)
+    created_at = db.Column('建立時間', db.DateTime, default=utc_now)
     expires_at = db.Column('過期時間', db.DateTime, nullable=False)
 
 
@@ -342,7 +347,7 @@ class NcmrDisposition(db.Model):
     # '矯正重工' | '報廢' | '挑選全檢' | '讓步放行'
     quantity    = db.Column('處置數量', db.Integer, nullable=False)
     handler_id  = db.Column('處置人',   db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
-    handled_at  = db.Column('處置時間', db.DateTime, default=datetime.utcnow)
+    handled_at  = db.Column('處置時間', db.DateTime, default=utc_now)
     note        = db.Column('備註',     db.Text, nullable=True)
 
     # 矯正重工專屬
@@ -451,7 +456,7 @@ class CorrectiveAction(SoftDeleteMixin, db.Model):
     d8_recognition  = db.Column('D8_團隊表揚',   db.Text, nullable=True)
 
     # --- 時間戳 ---
-    created_at = db.Column('建立時間', db.DateTime, default=datetime.utcnow)
+    created_at = db.Column('建立時間', db.DateTime, default=utc_now)
     closed_at  = db.Column('結案日期_舊', db.DateTime, nullable=True)
 
     __table_args__ = (
@@ -488,7 +493,7 @@ class ReworkRequest(SoftDeleteMixin, db.Model):
     review_time = db.Column('審核時間', db.DateTime)
     review_opinion = db.Column('審核意見', db.String)
     
-    created_at = db.Column('申請日期', db.DateTime, default=datetime.utcnow)
+    created_at = db.Column('申請日期', db.DateTime, default=utc_now)
     actual_finish_date = db.Column('實際完成日期', db.DateTime)
     complaint_id = db.Column('客訴_ID', db.Integer, nullable=True)
     vendor = db.Column('廠商', db.String, nullable=True)
@@ -541,7 +546,7 @@ class ReworkInspection(db.Model):
     result = db.Column('檢驗結果', db.String)
     defect_qty = db.Column('不良數量', db.Float)
     remark = db.Column('檢驗備註', db.String)
-    created_at = db.Column('記錄時間', db.DateTime, default=datetime.utcnow)
+    created_at = db.Column('記錄時間', db.DateTime, default=utc_now)
 
     inspector = db.relationship('Inspector', backref='rework_inspections')
 
@@ -557,7 +562,7 @@ class ReworkCost(db.Model):
     currency = db.Column('成本幣別', db.String, default='TWD')
     recorder_id = db.Column('記錄人員', db.Integer, db.ForeignKey('品管人員.識別碼'))
     remark = db.Column('備註', db.String)
-    created_at = db.Column('記錄日期', db.DateTime, default=datetime.utcnow)
+    created_at = db.Column('記錄日期', db.DateTime, default=utc_now)
 
     recorder = db.relationship('Inspector', backref='rework_costs')
     rework = db.relationship('ReworkRequest', backref='costs')
@@ -614,8 +619,8 @@ class CustomerComplaint(SoftDeleteMixin, db.Model):
 
     # 時間戳
     created_by = db.Column('建立人員', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True)
-    created_at = db.Column('建立時間', db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column('更新時間', db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column('建立時間', db.DateTime, default=utc_now)
+    updated_at = db.Column('更新時間', db.DateTime, default=utc_now, onupdate=utc_now)
 
     __table_args__ = (
         db.Index('idx_complaint_repeat_date', '是否重複客訴', '客訴日期'),
@@ -658,8 +663,8 @@ class ActionTask(db.Model):
     completed_at     = db.Column('完成時間', db.DateTime, nullable=True)
 
     # 時間戳
-    created_at = db.Column('建立時間', db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column('更新時間', db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column('建立時間', db.DateTime, default=utc_now)
+    updated_at = db.Column('更新時間', db.DateTime, default=utc_now, onupdate=utc_now)
 
     assignee = db.relationship('Inspector', backref='assigned_tasks')
 
@@ -686,7 +691,7 @@ class Attachment(db.Model):
 
     # 上傳資訊
     uploaded_by = db.Column('上傳人員', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True)
-    uploaded_at = db.Column('上傳時間', db.DateTime, default=datetime.utcnow)
+    uploaded_at = db.Column('上傳時間', db.DateTime, default=utc_now)
 
     uploader = db.relationship('User', backref='attachments', foreign_keys=[uploaded_by])
 
@@ -711,6 +716,6 @@ class VendorPerformance(db.Model):
     avg_capa_days    = db.Column('平均CAPA結案天數', db.Float,   nullable=True)
     complaint_count  = db.Column('客訴件數',         db.Integer, default=0)
     score            = db.Column('績效評分',         db.Float,   default=100.0)
-    calculated_at    = db.Column('計算時間',         db.DateTime, default=datetime.utcnow)
+    calculated_at    = db.Column('計算時間',         db.DateTime, default=utc_now)
 
     vendor = db.relationship('Vendor', backref='performances')

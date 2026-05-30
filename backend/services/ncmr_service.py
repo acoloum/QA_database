@@ -412,7 +412,7 @@ class NCMRService:
     @staticmethod
     def update_disposition(disposition_id: int, data: Dict[str, Any]) -> bool:
         try:
-            d = NcmrDisposition.query.get(disposition_id)
+            d = db.session.get(NcmrDisposition, disposition_id)
             if not d:
                 raise ValueError('找不到該處置記錄')
             NCMRService._validate_disposition(data)
@@ -426,7 +426,7 @@ class NCMRService:
     @staticmethod
     def delete_disposition(disposition_id: int) -> bool:
         try:
-            d = NcmrDisposition.query.get(disposition_id)
+            d = db.session.get(NcmrDisposition, disposition_id)
             if d:
                 db.session.delete(d)
                 db.session.commit()

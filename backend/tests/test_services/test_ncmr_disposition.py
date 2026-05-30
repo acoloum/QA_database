@@ -29,7 +29,7 @@ def test_disposition_model_relationship(app, db_session):
         d = NcmrDisposition(ncmr_id=n.id, disposition_type='報廢', quantity=100)
         db_session.add(d)
         db_session.commit()
-        fetched = NCMR.query.get(n.id)
+        fetched = db_session.get(NCMR, n.id)
         assert len(fetched.dispositions) == 1
         assert fetched.dispositions[0].disposition_type == '報廢'
         assert fetched.dispositions[0].quantity == 100
@@ -52,7 +52,7 @@ def test_create_disposition_scrap(app, db_session):
         did = NCMRService.create_disposition(n.id, {
             '處置類型': '報廢', '處置數量': 100,
         }, handler_id=None)
-        d = NcmrDisposition.query.get(did)
+        d = db_session.get(NcmrDisposition, did)
         assert d.disposition_type == '報廢'
         assert d.quantity == 100
 
@@ -65,7 +65,7 @@ def test_create_disposition_concession_unauthorized_sets_risk(app, db_session):
             '是否超出客戶規格': True, '授權狀態': '未取得',
             '未授權放行理由': '客戶急需出貨',
         }, handler_id=None)
-        d = NcmrDisposition.query.get(did)
+        d = db_session.get(NcmrDisposition, did)
         assert d.is_risk is True
 
 
@@ -94,7 +94,7 @@ def test_delete_disposition(app, db_session):
         n = _make_ncmr(db_session)
         did = NCMRService.create_disposition(n.id, {'處置類型': '報廢', '處置數量': 100}, handler_id=None)
         NCMRService.delete_disposition(did)
-        assert NcmrDisposition.query.get(did) is None
+        assert db_session.get(NcmrDisposition, did) is None
 
 
 def test_update_disposition_recomputes_risk(app, db_session):
@@ -106,7 +106,7 @@ def test_update_disposition_recomputes_risk(app, db_session):
             '處置類型': '讓步放行', '處置數量': 100,
             '是否超出客戶規格': True, '授權狀態': '未取得', '未授權放行理由': '客戶要求',
         })
-        d = NcmrDisposition.query.get(did)
+        d = db_session.get(NcmrDisposition, did)
         assert d.disposition_type == '讓步放行'
         assert d.is_risk is True
 
@@ -139,7 +139,7 @@ def test_close_ok_scrap_full_qty(app, db_session):
         n = _make_ncmr(db_session, defect_quantity=100)
         NCMRService.create_disposition(n.id, {'處置類型': '報廢', '處置數量': 100}, handler_id=None)
         assert _close(n.id) is True
-        assert NCMR.query.get(n.id).status == '已結案'
+        assert db_session.get(NCMR, n.id).status == '已結案'
 
 
 def test_close_blocked_rework_not_closed(app, db_session):
@@ -174,7 +174,7 @@ def test_close_blocked_sorting_qty_mismatch(app, db_session):
         did = NCMRService.create_disposition(n.id, {
             '處置類型': '挑選全檢', '處置數量': 100, '合格數': 70, '不合格數': 30,
         }, handler_id=None)
-        d = NcmrDisposition.query.get(did)
+        d = db_session.get(NcmrDisposition, did)
         d.fail_qty = 20  # 70 + 20 != 100
         db.session.commit()
         with pytest.raises(ValueError, match='挑選全檢'):

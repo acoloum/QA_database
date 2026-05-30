@@ -245,33 +245,9 @@ class ToleranceService:
 
     @staticmethod
     def parse_spec_values(spec_str: str) -> Dict[str, float]:
-        """Parse spec like '62.5*2.3*450' into dimensional values"""
-        if not spec_str:
-            return {}
-        s = str(spec_str).strip().replace('×', '*').replace('x', '*').replace('X', '*')
-        while '**' in s:
-            s = s.replace('**', '*')
-        parts = s.split('*')
-        result = {}
-        try:
-            nums = [float(p.strip()) for p in parts if p.strip()]
-        except (ValueError, TypeError):
-            return {}
-        
-        if len(nums) >= 2:
-            result['外徑'] = nums[0]
-            val2 = nums[1]
-            if val2 < (nums[0] / 2):
-                result['厚度'] = val2
-                result['內徑'] = nums[0] - (val2 * 2)
-            else:
-                result['內徑'] = val2
-                result['厚度'] = (nums[0] - val2) / 2
-            if len(nums) >= 3:
-                result['長度'] = nums[2]
-        elif len(nums) == 1:
-            result['外徑'] = nums[0]
-        return result
+        """解析規格字串，例如 '62.5*2.3*450'。"""
+        from ..utils import parse_spec_nominals
+        return parse_spec_nominals(spec_str)
 
     @staticmethod
     def check_tolerance(args: Dict[str, Any]) -> Dict[str, Any]:

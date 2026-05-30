@@ -208,7 +208,7 @@ def auth_required(f: Any) -> Any:
             # 注入 User ORM 物件供新式路由使用
             from .models import User
             user_id = payload.get('id') or payload.get('user_id')
-            current_user = User.query.get(user_id) if user_id else None
+            current_user = db.session.get(User, user_id) if user_id else None
             return f(current_user, *args, **kwargs)
 
         return f(*args, **kwargs)
@@ -227,6 +227,9 @@ def require_permission(perm: str):
         def wrapped(current_user, *args, **kwargs):
             if current_user is None:
                 return jsonify({'success': False, 'error': '使用者不存在'}), 401
+            # 保留既有 admin 超級管理員語意，避免尚未建立 Role 資料時鎖死管理功能。
+            if getattr(current_user, 'role', None) == 'admin':
+                return f(current_user, *args, **kwargs)
             from .models import Role
             role = Role.query.filter_by(code=current_user.role).first()
             if not role or not role.has_permission(perm):
@@ -410,6 +413,8 @@ def format_value(val: Any) -> Any:
 
 def validate_date_format(date_str: Optional[str]) -> bool:
     if not date_str:
+        return True
+    if isinstance(date_str, (date, datetime)):
         return True
     try:
         datetime.strptime(date_str, '%Y-%m-%d')

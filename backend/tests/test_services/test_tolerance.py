@@ -36,7 +36,7 @@ def test_add_tolerance(app, db_session):
         assert new_id is not None
         
         # Verify DB
-        t = VendorToleranceMain.query.get(new_id)
+        t = db_session.get(VendorToleranceMain, new_id)
         assert t.material == "SS400"
         assert len(t.details) == 1
         assert t.details[0].item == "OD"
@@ -71,3 +71,14 @@ def test_check_tolerance_not_found(app, db_session):
         result = ToleranceService.check_tolerance(args)
         assert result["success"] is True
         assert result["found"] is False
+
+
+def test_tolerance_parse_spec_values_uses_shared_nominal_parser(app):
+    """公差服務的規格解析應與共用解析器保持一致。"""
+    with app.app_context():
+        assert ToleranceService.parse_spec_values('31.9*2.2*589') == {
+            '外徑': 31.9,
+            '厚度': 2.2,
+            '內徑': 27.5,
+            '長度': 589.0,
+        }

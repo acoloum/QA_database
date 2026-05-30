@@ -33,7 +33,7 @@ def test_create_rework_application(app, db_session):
         # Check Status Update
         assert ncmr.status == "轉重工"
         
-        req = ReworkRequest.query.get(result["rework_id"])
+        req = db_session.get(ReworkRequest, result["rework_id"])
         assert req.status == "申請中"
         assert req.rework_number.startswith("RW-")
 

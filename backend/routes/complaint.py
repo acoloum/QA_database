@@ -1,6 +1,7 @@
 """客訴路由 — CRUD、統計、開立 CAPA"""
 from flask import Blueprint, jsonify, request
 from datetime import date
+from ..extensions import db
 from ..services.complaint_service import ComplaintService
 from ..services.complaint_stats_service import ComplaintStatsService
 from ..utils import auth_required, require_permission, log_audit
@@ -104,7 +105,7 @@ def open_capa_from_complaint(current_user, complaint_id: int):
         )
         # 更新客訴關聯，並將狀態改為「處理中」
         from ..models import CustomerComplaint
-        c = CustomerComplaint.query.get(complaint_id)
+        c = db.session.get(CustomerComplaint, complaint_id)
         if c:
             c.related_capa_id = capa['id']
             c.status = '處理中'

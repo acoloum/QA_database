@@ -29,7 +29,7 @@ import os
 import json
 import math
 import argparse
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
@@ -169,7 +169,7 @@ def cmd_save(args):
         print(f"取樣 {len(combos)} 組合 × {len(fields)} 量測項目 = {len(combos) * len(fields)} 案例", flush=True)
         cases = run_all_cases(combos, fields)
         payload = {
-            'generated_at': datetime.utcnow().isoformat(),
+            'generated_at': datetime.now(timezone.utc).isoformat(),
             'abs_tol': args.abs_tol,
             'rel_tol': args.rel_tol,
             'fields': fields,

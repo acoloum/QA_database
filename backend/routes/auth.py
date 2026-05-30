@@ -10,7 +10,6 @@ from ..utils import (
     verify_password,
     handle_db_error,
     auth_required,
-    require_admin,
     require_permission
 )
 
@@ -18,6 +17,13 @@ _VALID_ROLES = ('user', 'admin')
 _USERNAME_RE = re.compile(r'^[A-Za-z0-9_\-\.]{3,50}$')
 
 auth_bp = Blueprint('auth', __name__)
+
+
+def _role_is_valid(role_code: str) -> bool:
+    """確認角色代碼可用；保留內建角色，同時支援角色表定義的細粒度角色。"""
+    if role_code in _VALID_ROLES:
+        return True
+    return Role.query.filter_by(code=role_code).first() is not None
 
 @auth_bp.route('/api/login', methods=['POST'])
 @limiter.limit("5 per minute")
@@ -109,9 +115,9 @@ def list_roles(current_user):
 
 @auth_bp.route('/api/users', methods=['GET'])
 @auth_required
-@require_admin
-def list_users():
-    """列出所有使用者（需管理員角色）"""
+@require_permission('user.manage')
+def list_users(current_user):
+    """列出所有使用者（需 user.manage 權限）"""
     try:
         users = User.query.order_by(User.id).all()
         return jsonify([
@@ -158,25 +164,24 @@ def update_role_permissions(current_user, role_code):
 
 @auth_bp.route('/api/users/<int:user_id>/role', methods=['PUT'])
 @auth_required
-@require_admin
-def update_user_role(user_id):
-    """修改使用者角色（需管理員角色）"""
+@require_permission('user.manage')
+def update_user_role(current_user, user_id):
+    """修改使用者角色（需 user.manage 權限）"""
     data = request.json
     if not data:
         return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
 
     new_role = data.get('role')
-    role_exists = Role.query.filter_by(code=new_role).first()
-    if not role_exists:
+    if not _role_is_valid(new_role):
         return jsonify({"error": f"角色代碼不存在：{new_role}"}), 400
 
     # 禁止管理員修改自己的角色，避免意外失去管理員權限
-    current_user = getattr(request, 'user', {})
-    if current_user.get('user_id') == user_id:
+    request_user = getattr(request, 'user', {})
+    if request_user.get('user_id') == user_id:
         return jsonify({"error": "無法修改自己的角色"}), 400
 
     try:
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             return jsonify({"error": "找不到使用者"}), 404
         user.role = new_role
@@ -190,19 +195,19 @@ def update_user_role(user_id):
 
 @auth_bp.route('/api/users/<int:user_id>/active', methods=['PUT'])
 @auth_required
-@require_admin
-def update_user_active(user_id):
-    """啟用／停用使用者帳號（需管理員角色）"""
+@require_permission('user.manage')
+def update_user_active(current_user, user_id):
+    """啟用／停用使用者帳號（需 user.manage 權限）"""
     data = request.json
     if not data or 'is_active' not in data:
         return jsonify({"error": "請求格式錯誤，需要 is_active 欄位"}), 400
 
-    current_user = getattr(request, 'user', {})
-    if current_user.get('user_id') == user_id:
+    request_user = getattr(request, 'user', {})
+    if request_user.get('user_id') == user_id:
         return jsonify({"error": "無法停用自己的帳號"}), 400
 
     try:
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if not user:
             return jsonify({"error": "找不到使用者"}), 404
         user.is_active = bool(data['is_active'])
@@ -217,9 +222,9 @@ def update_user_active(user_id):
 
 @auth_bp.route('/api/users', methods=['POST'])
 @auth_required
-@require_admin
-def create_user():
-    """新增使用者（需管理員角色）"""
+@require_permission('user.manage')
+def create_user(current_user):
+    """新增使用者（需 user.manage 權限）"""
     data = request.json
     if not data:
         return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
@@ -237,8 +242,8 @@ def create_user():
     if len(password) < 8:
         return jsonify({"error": "密碼長度至少需要 8 個字元"}), 400
 
-    if new_role not in _VALID_ROLES:
-        return jsonify({"error": "角色值無效，僅允許 'user' 或 'admin'"}), 400
+    if not _role_is_valid(new_role):
+        return jsonify({"error": "角色值無效，請選擇已定義的角色"}), 400
 
     try:
         if User.query.filter_by(username=username).first():

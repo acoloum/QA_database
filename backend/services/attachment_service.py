@@ -44,6 +44,9 @@ class AttachmentService:
         ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
         if ext not in ALLOWED_EXTENSIONS:
             return False, f'不允許的檔案類型 .{ext}，允許類型：{", ".join(sorted(ALLOWED_EXTENSIONS))}'
+        mimetype = (file.mimetype or '').lower()
+        if mimetype and mimetype not in ALLOWED_MIME_TYPES:
+            return False, f'不允許的 MIME 類型 {mimetype}'
         file.seek(0, 2)
         size = file.tell()
         file.seek(0)

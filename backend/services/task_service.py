@@ -1,5 +1,5 @@
 """任務服務 — 橫展任務 CRUD、狀態機、「我的待辦」查詢"""
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import List, Optional, Dict, Any
 from sqlalchemy import and_
 from ..extensions import db
@@ -97,17 +97,17 @@ class TaskService:
             if not completion_proof and not task.completion_proof:
                 raise ValueError('標記完成需提供完成證明')
             task.completion_proof = completion_proof or task.completion_proof
-            task.completed_at = datetime.utcnow()
+            task.completed_at = datetime.now(timezone.utc)
 
         # 豁免需要理由
         if new_status == 'waived':
             if not waiver_reason:
                 raise ValueError('豁免需填寫豁免理由')
             task.waiver_reason = waiver_reason
-            task.completed_at = datetime.utcnow()
+            task.completed_at = datetime.now(timezone.utc)
 
         task.status = new_status
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now(timezone.utc)
         db.session.commit()
         return TaskService._to_dict(task)
 

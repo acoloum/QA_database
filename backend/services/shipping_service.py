@@ -2,14 +2,14 @@
 import pandas as pd
 import numpy as np
 from io import BytesIO
-from datetime import datetime
+from datetime import date, datetime, timezone
 from collections import defaultdict
 from typing import List, Dict, Any, Optional, Union
 from sqlalchemy import or_, text
 from sqlalchemy.orm import contains_eager, joinedload
 from scipy import stats as scipy_stats
 from ..extensions import db
-from ..models import ShippingData, ShippingMeasurement, Inspector, Vendor, VendorToleranceMain, VendorToleranceDetail
+from ..models import ShippingData, ShippingMeasurement, Inspector, Vendor, VendorToleranceMain, VendorToleranceDetail, SPCCache
 from ..utils import (
     format_value,
     validate_inspection_data,
@@ -21,6 +21,20 @@ from .spc_constants import SPC_CONSTANTS
 
 
 class ShippingService:
+    @staticmethod
+    def _invalidate_spc_cache() -> None:
+        """出貨資料異動後清除 SPC 快取，避免統計圖表讀到舊資料。"""
+        SPCCache.query.filter(SPCCache.cache_key.like('spc|%')).delete(synchronize_session=False)
+
+    @staticmethod
+    def _coerce_date(value: Any) -> Any:
+        """將前端 JSON 日期字串轉成 date，保留既有 date 物件與空值。"""
+        if not value or isinstance(value, date):
+            return value
+        if isinstance(value, str):
+            return datetime.strptime(value, '%Y-%m-%d').date()
+        return value
+
     @staticmethod
     def _map_row_to_dict(item: ShippingData) -> Dict[str, Any]:
         """Helper to map ShippingData model to the legacy dictionary format with Chinese keys"""
@@ -132,7 +146,7 @@ class ShippingService:
         )
         try:
             _cached = SPCCache.query.filter_by(cache_key=_cache_key).first()
-            if _cached and _cached.expires_at > datetime.utcnow():
+            if _cached and _cached.expires_at > datetime.now(timezone.utc):
                 return _cached.result
         except Exception:
             # 快取讀取失敗不阻斷主流程
@@ -161,28 +175,7 @@ class ShippingService:
                 if tol_result.get('found'):
                     tolerance_limits["found"] = True
                     # Parse nominal values from spec (e.g. '31.9*2.2*589' → 外徑=31.9)
-                    nominal_from_spec = {}
-                    if spec:
-                        s = str(spec).strip().replace('×', '*').replace('x', '*').replace('X', '*')
-                        while '**' in s: s = s.replace('**', '*')
-                        parts = s.split('*')
-                        try:
-                            nums = [float(p.strip()) for p in parts if p.strip()]
-                            if len(nums) >= 2:
-                                nominal_from_spec['外徑'] = nums[0]
-                                val2 = nums[1]
-                                if val2 < (nums[0] / 2):
-                                    nominal_from_spec['厚度'] = val2
-                                    nominal_from_spec['內徑'] = nums[0] - (val2 * 2)
-                                else:
-                                    nominal_from_spec['內徑'] = val2
-                                    nominal_from_spec['厚度'] = (nums[0] - val2) / 2
-                                if len(nums) >= 3:
-                                    nominal_from_spec['長度'] = nums[2]
-                            elif len(nums) == 1:
-                                nominal_from_spec['外徑'] = nums[0]
-                        except (ValueError, TypeError):
-                            pass
+                    nominal_from_spec = parse_spec_nominals(spec)
 
                     # 欄位別名：公差明細可能用不同名稱儲存同一量測項目
                     FIELD_ALIASES = {
@@ -535,7 +528,7 @@ class ShippingService:
 
             # ── SPCCache 快取寫入（1 小時過期）─────────────────────────────
             try:
-                _now = datetime.utcnow()
+                _now = datetime.now(timezone.utc)
                 _expires = _now + timedelta(hours=1)
                 if _cached:
                     _cached.result = _result
@@ -583,7 +576,7 @@ class ShippingService:
                 shipping_data = ShippingData()
 
             # Set basic fields
-            shipping_data.date = data.get('檢驗日期')
+            shipping_data.date = ShippingService._coerce_date(data.get('檢驗日期'))
             shipping_data.inspector_id = inspector.id
             shipping_data.vendor_id = vendor.id
             shipping_data.spec = data.get('檢驗規格')
@@ -644,6 +637,7 @@ class ShippingService:
             if not is_update:
                 db.session.add(shipping_data)
             
+            ShippingService._invalidate_spc_cache()
             db.session.commit()
             return True
         except Exception as e:
@@ -657,6 +651,7 @@ class ShippingService:
             item = db.session.get(ShippingData, record_id)
             if item:
                 db.session.delete(item)
+                ShippingService._invalidate_spc_cache()
                 db.session.commit()
             return True
         except Exception as e:
@@ -777,6 +772,7 @@ class ShippingService:
                 db.session.add(shipping_data)
                 success_count += 1
 
+            ShippingService._invalidate_spc_cache()
             db.session.commit()
             return success_count
         except Exception as e:

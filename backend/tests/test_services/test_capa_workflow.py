@@ -55,7 +55,7 @@ def test_delete_ncmr_capa_clears_ncmr_link_and_status(app, db_session):
 
         CAPAService.delete(capa.id)
 
-        refreshed = NCMR.query.get(ncmr.id)
+        refreshed = db_session.get(NCMR, ncmr.id)
         assert refreshed.related_capa_id is None
         assert refreshed.related_capa_source is None
         assert refreshed.status == '待處理'

@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request, send_file
 from ..services.shipping_service import ShippingService
 from ..services.spc_report import SpcReportService
-from ..utils import auth_required, handle_db_error
+from ..utils import api_error, auth_required, handle_db_error, validate_upload_file
 
 shipping_bp = Blueprint('shipping', __name__)
 
@@ -12,7 +12,7 @@ def get_data():
         result = ShippingService.get_list(request.args)
         return jsonify(result)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return api_error(str(e), 500)
 
 @shipping_bp.route('/api/data/<int:data_id>', methods=['GET'])
 @auth_required
@@ -21,10 +21,10 @@ def get_shipping_data(data_id):
     try:
         result = ShippingService.get_by_id(data_id)
         if result is None:
-            return jsonify({'error': '資料不存在'}), 404
+            return api_error('資料不存在', 404)
         return jsonify(result)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return api_error(str(e), 500)
 
 @shipping_bp.route('/api/stats', methods=['GET'])
 @auth_required
@@ -36,7 +36,7 @@ def get_shipping_stats():
     except Exception as e:
         from flask import current_app
         current_app.logger.exception("Shipping error: %s", str(e))
-        return jsonify({"error": str(e)}), 500
+        return api_error(str(e), 500)
 
 @shipping_bp.route('/api/spc-report', methods=['GET'])
 @auth_required
@@ -116,7 +116,7 @@ def export_spc_report():
     except Exception as e:
         from flask import current_app
         current_app.logger.exception("Shipping error: %s", str(e))
-        return jsonify({"error": str(e)}), 500
+        return api_error(str(e), 500)
 
 @shipping_bp.route('/api/add', methods=['POST'])
 @shipping_bp.route('/api/update', methods=['POST'])
@@ -127,12 +127,10 @@ def save_data():
         ShippingService.save_data(request.json, is_update=is_update)
         return jsonify({"success": True})
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        return api_error(str(e), 400)
     except Exception as e:
-        import traceback
-        traceback.print_exc()
         db_err = handle_db_error(e)
-        return jsonify({"error": db_err}), 500
+        return api_error(db_err.get('message', '資料庫錯誤'), 500, detail=db_err)
 
 @shipping_bp.route('/api/delete', methods=['POST'])
 @auth_required
@@ -140,12 +138,12 @@ def delete_data():
     try:
         record_id = request.json.get('id')
         if not record_id:
-            return jsonify({"error": "缺少記錄 ID"}), 400
+            return api_error("缺少記錄 ID", 400)
         
         ShippingService.delete_data(record_id)
         return jsonify({"success": True})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return api_error(str(e), 500)
 
 @shipping_bp.route('/api/import', methods=['POST', 'OPTIONS'])
 @auth_required
@@ -154,33 +152,23 @@ def shipping_import():
         return '', 200
 
     if 'file' not in request.files:
-        return jsonify({"error": "沒有上傳檔案"}), 400
+        return api_error("沒有上傳檔案", 400)
 
     file = request.files['file']
     if file.filename == '':
-        return jsonify({"error": "沒有選擇檔案"}), 400
+        return api_error("沒有選擇檔案", 400)
 
-    # Validate file type
-    allowed_extensions = {'.xlsx', '.xls'}
-    import os
-    ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in allowed_extensions:
-        return jsonify({"error": f"不支援的檔案格式: {ext}，僅接受 .xlsx / .xls"}), 400
-
-    # Validate file size (10MB max)
-    file.seek(0, 2)
-    file_size = file.tell()
-    file.seek(0)
-    if file_size > 10 * 1024 * 1024:
-        return jsonify({"error": "檔案大小超過 10MB 限制"}), 400
+    upload_error = validate_upload_file(file)
+    if upload_error:
+        return api_error(upload_error, 400)
 
     try:
         count = ShippingService.import_data(file)
         return jsonify({"success": True, "message": f"匯入成功，共 {count} 筆資料"})
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        return api_error(str(e), 400)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return api_error(str(e), 500)
 
 @shipping_bp.route('/api/export/excel')
 @auth_required
@@ -194,5 +182,5 @@ def export_excel():
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return api_error(str(e), 500)
 

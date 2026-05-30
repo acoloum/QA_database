@@ -3,7 +3,7 @@
 """
 import pytest
 import json
-from backend.models import User
+from backend.models import Role, User
 from backend.utils import hash_password, generate_token
 
 
@@ -75,6 +75,57 @@ def test_create_user_accepts_valid_roles(client, admin_user):
         'role': 'admin'
     })
     assert resp2.status_code == 200
+
+
+def test_create_user_accepts_role_defined_in_role_table(client, admin_user, db_session):
+    """create_user 應接受角色表中已定義的細粒度角色。"""
+    db_session.add(Role(
+        code='qc_manager',
+        name='品管主管',
+        permissions={'user.manage': True},
+    ))
+    db_session.commit()
+
+    headers = make_admin_headers(admin_user)
+    resp = client.post('/api/users', headers=headers, json={
+        'username': 'qc_manager_user',
+        'password': 'password123',
+        'role': 'qc_manager'
+    })
+
+    assert resp.status_code == 200
+    created = User.query.filter_by(username='qc_manager_user').first()
+    assert created.role == 'qc_manager'
+
+
+def test_user_manage_permission_can_create_user(client, db_session):
+    """具備 user.manage 權限的非 admin 角色也應可管理使用者。"""
+    db_session.add(Role(
+        code='qc_manager',
+        name='品管主管',
+        permissions={'user.manage': True},
+    ))
+    manager = User(
+        username='manager_test',
+        password=hash_password('managerpass123'),
+        role='qc_manager',
+        is_active=True
+    )
+    db_session.add(manager)
+    db_session.commit()
+
+    token = generate_token(manager.id, manager.username, manager.role)
+    resp = client.post('/api/users', headers={
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json',
+    }, json={
+        'username': 'managed_user',
+        'password': 'password123',
+        'role': 'user'
+    })
+
+    assert resp.status_code == 200
+    assert User.query.filter_by(username='managed_user').first() is not None
 
 
 # ── 新增使用者：使用者名稱格式驗證 ──────────────────────────────

@@ -1,10 +1,7 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 
-/**
- * AdminRoute — 僅允許 role === 'admin' 的使用者存取
- * 非管理員一律導回首頁
- */
+/** AdminRoute — 允許 admin 或具備 user.manage 權限的使用者存取 */
 const AdminRoute = () => {
     const { isAuthenticated, isLoading, user } = useAuth();
 
@@ -19,7 +16,8 @@ const AdminRoute = () => {
     }
 
     if (!isAuthenticated) return <Navigate to="/login" replace />;
-    if (user?.role !== 'admin') return <Navigate to="/" replace />;
+    const canManageUsers = user?.role === 'admin' || user?.permissions?.['user.manage'];
+    if (!canManageUsers) return <Navigate to="/" replace />;
 
     return <Outlet />;
 };

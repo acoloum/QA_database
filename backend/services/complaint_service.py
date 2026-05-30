@@ -1,5 +1,5 @@
 """客訴服務 — 客訴 CRUD、應答時效、重複客訴偵測"""
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from sqlalchemy import and_, func
 from ..extensions import db
@@ -162,11 +162,11 @@ class ComplaintService:
         # 狀態切換：填初步回覆 → 處理中
         if data.get('initial_reply') and c.status == '待處理':
             c.status = '處理中'
-            c.initial_reply_date = datetime.utcnow()
+            c.initial_reply_date = datetime.now(timezone.utc)
         if data.get('final_reply'):
-            c.final_reply_date = datetime.utcnow()
+            c.final_reply_date = datetime.now(timezone.utc)
 
-        c.updated_at = datetime.utcnow()
+        c.updated_at = datetime.now(timezone.utc)
         db.session.commit()
         return ComplaintService._to_dict(c)
 
