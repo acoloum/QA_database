@@ -245,6 +245,12 @@ h6 {
     transform: none !important;
 }
 
+/* NCMR 清單列移除進場動畫：fadeIn 的 transform keyframe 會讓每列成為 containing block，
+   困住 position:fixed 的操作下拉選單，造成被後續列遮擋。僅限本表，不影響其他表格動畫。 */
+.ncmr-list-card .table tbody tr {
+    animation: none !important;
+}
+
 .action-buttons {
     display: flex;
     flex-wrap: wrap;
