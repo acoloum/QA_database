@@ -196,7 +196,7 @@ const NCMRPage = () => {
                                         <td>
                                             <Dropdown align="end">
                                                 <Dropdown.Toggle variant="outline-secondary" size="sm">操作</Dropdown.Toggle>
-                                                <Dropdown.Menu renderOnMount popperConfig={{ strategy: 'fixed' }}>
+                                                <Dropdown.Menu popperConfig={{ strategy: 'fixed' }}>
                                                     <Dropdown.Item onClick={() => setPrintItem(item)}>列印</Dropdown.Item>
                                                     <Dropdown.Item onClick={() => { setEditId(item.id); setShowModal(true); }}>編輯</Dropdown.Item>
                                                     <Dropdown.Item onClick={() => convertToRework(item.id, item.no || String(item.id))}>轉重工</Dropdown.Item>

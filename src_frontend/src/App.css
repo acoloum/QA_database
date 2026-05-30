@@ -240,15 +240,17 @@ h6 {
     width: 90px;
 }
 
-/* NCMR 清單卡片停用 hover 位移：transform 祖先會困住操作下拉選單（position:fixed），導致被裁切 */
-.ncmr-list-card:hover {
-    transform: none !important;
-}
-
-/* NCMR 清單列移除進場動畫：fadeIn 的 transform keyframe 會讓每列成為 containing block，
-   困住 position:fixed 的操作下拉選單，造成被後續列遮擋。僅限本表，不影響其他表格動畫。 */
+/* NCMR 清單卡片與其列停用 transform/進場動畫：
+   fadeIn 動畫與 hover scale 的 transform 會讓卡片/列成為 containing block，
+   困住 position:fixed 的操作下拉選單，造成被遮擋或裁切。僅限本表，不影響其他卡片/表格。 */
+.ncmr-list-card,
 .ncmr-list-card .table tbody tr {
     animation: none !important;
+}
+
+.ncmr-list-card:hover,
+.ncmr-list-card .table tbody tr:hover {
+    transform: none !important;
 }
 
 .action-buttons {
