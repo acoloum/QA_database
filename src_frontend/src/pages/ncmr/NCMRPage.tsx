@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Button, Card, Table, Badge, Col, Form } from 'react-bootstrap';
+import { Button, Card, Table, Badge, Col, Form, Dropdown } from 'react-bootstrap';
 import type { NCMR } from '../../types';
 import NCMRModal from '../../components/ncmr/NCMRModal';
 import DispositionModal from '../../components/ncmr/DispositionModal';
@@ -166,7 +166,7 @@ const NCMRPage = () => {
                             <tr>
                                 <th>單號</th><th>日期</th><th>來源</th><th>廠商</th><th>材質</th>
                                 <th>規格</th><th>不合格數量</th><th>不良描述</th><th>不良原因</th>
-                                <th>判定結果</th><th>狀態</th><th>處理進度</th><th className="action-column">操作</th>
+                                <th>判定結果</th><th>狀態</th><th>處理進度</th><th className="action-column-dropdown">操作</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -194,13 +194,17 @@ const NCMRPage = () => {
                                         <td>{renderStatusBadge(item.status)}</td>
                                         <td>{renderProgress(item)}</td>
                                         <td>
-                                            <div className="action-buttons">
-                                                <Button variant="outline-dark" size="sm" onClick={() => setPrintItem(item)}>列印</Button>
-                                                <Button variant="outline-primary" size="sm" onClick={() => { setEditId(item.id); setShowModal(true); }}>編輯</Button>
-                                                <Button variant="outline-warning" size="sm" onClick={() => convertToRework(item.id, item.no || String(item.id))}>轉重工</Button>
-                                                <Button variant="outline-success" size="sm" onClick={() => convertTo8D(item.id)}>轉8D</Button>
-                                                <Button variant="outline-danger" size="sm" onClick={() => handleDelete(item.id)}>刪除</Button>
-                                            </div>
+                                            <Dropdown align="end">
+                                                <Dropdown.Toggle variant="outline-secondary" size="sm">操作</Dropdown.Toggle>
+                                                <Dropdown.Menu renderOnMount popperConfig={{ strategy: 'fixed' }}>
+                                                    <Dropdown.Item onClick={() => setPrintItem(item)}>列印</Dropdown.Item>
+                                                    <Dropdown.Item onClick={() => { setEditId(item.id); setShowModal(true); }}>編輯</Dropdown.Item>
+                                                    <Dropdown.Item onClick={() => convertToRework(item.id, item.no || String(item.id))}>轉重工</Dropdown.Item>
+                                                    <Dropdown.Item onClick={() => convertTo8D(item.id)}>轉8D</Dropdown.Item>
+                                                    <Dropdown.Divider />
+                                                    <Dropdown.Item onClick={() => handleDelete(item.id)} className="text-danger">刪除</Dropdown.Item>
+                                                </Dropdown.Menu>
+                                            </Dropdown>
                                         </td>
                                     </tr>
                                 ))

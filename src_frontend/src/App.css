@@ -234,6 +234,12 @@ h6 {
     min-width: 180px !important;
 }
 
+/* 操作收進下拉選單時的窄欄（NCMR 清單），避免整表過寬 */
+.action-column-dropdown {
+    min-width: 90px !important;
+    width: 90px;
+}
+
 .action-buttons {
     display: flex;
     flex-wrap: wrap;
