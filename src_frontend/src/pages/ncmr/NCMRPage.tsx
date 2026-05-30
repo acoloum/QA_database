@@ -161,7 +161,7 @@ const NCMRPage = () => {
 
             <Card className="shadow-sm">
                 <Card.Body className="p-0">
-                    <Table hover className="align-middle table-compact mb-0">
+                    <Table responsive hover className="align-middle table-compact mb-0">
                         <thead className="table-light">
                             <tr>
                                 <th>單號</th><th>日期</th><th>來源</th><th>廠商</th><th>材質</th>
