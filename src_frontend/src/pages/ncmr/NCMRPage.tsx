@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Button, Card, Table, Badge, Col, Form, Dropdown } from 'react-bootstrap';
+import { Button, Card, Table, Badge, Col, Form } from 'react-bootstrap';
+import RowActionMenu from '../../components/common/RowActionMenu';
 import type { NCMR } from '../../types';
 import NCMRModal from '../../components/ncmr/NCMRModal';
 import DispositionModal from '../../components/ncmr/DispositionModal';
@@ -97,7 +98,7 @@ const NCMRPage = () => {
         if (!window.confirm('確定要針對此異常單開立 8D 矯正措施嗎？')) return;
         try {
             const res = await createCAPAMutation.mutateAsync(id);
-            if (res.id) window.location.href = `/capa?editId=${res.id}`;
+            if (res.id) window.location.assign(`/capa?editId=${res.id}`);
         } catch { /* handled by toast */ }
     };
 
@@ -194,17 +195,13 @@ const NCMRPage = () => {
                                         <td>{renderStatusBadge(item.status)}</td>
                                         <td>{renderProgress(item)}</td>
                                         <td>
-                                            <Dropdown align="end">
-                                                <Dropdown.Toggle variant="outline-secondary" size="sm">操作</Dropdown.Toggle>
-                                                <Dropdown.Menu popperConfig={{ strategy: 'fixed' }}>
-                                                    <Dropdown.Item onClick={() => setPrintItem(item)}>列印</Dropdown.Item>
-                                                    <Dropdown.Item onClick={() => { setEditId(item.id); setShowModal(true); }}>編輯</Dropdown.Item>
-                                                    <Dropdown.Item onClick={() => convertToRework(item.id, item.no || String(item.id))}>轉重工</Dropdown.Item>
-                                                    <Dropdown.Item onClick={() => convertTo8D(item.id)}>轉8D</Dropdown.Item>
-                                                    <Dropdown.Divider />
-                                                    <Dropdown.Item onClick={() => handleDelete(item.id)} className="text-danger">刪除</Dropdown.Item>
-                                                </Dropdown.Menu>
-                                            </Dropdown>
+                                            <RowActionMenu items={[
+                                                { label: '列印', onClick: () => setPrintItem(item) },
+                                                { label: '編輯', onClick: () => { setEditId(item.id); setShowModal(true); } },
+                                                { label: '轉重工', onClick: () => convertToRework(item.id, item.no || String(item.id)) },
+                                                { label: '轉8D', onClick: () => convertTo8D(item.id) },
+                                                { label: '刪除', onClick: () => handleDelete(item.id), danger: true },
+                                            ]} />
                                         </td>
                                     </tr>
                                 ))
