@@ -6,7 +6,7 @@ from datetime import date, datetime, timezone
 from collections import defaultdict
 from typing import List, Dict, Any, Optional, Union
 from sqlalchemy import or_, text
-from sqlalchemy.orm import contains_eager, joinedload
+from sqlalchemy.orm import contains_eager, joinedload, selectinload
 from scipy import stats as scipy_stats
 from ..extensions import db
 from ..models import ShippingData, ShippingMeasurement, Inspector, Vendor, VendorToleranceMain, VendorToleranceDetail, SPCCache
@@ -86,7 +86,7 @@ class ShippingService:
             query = query.options(
                 contains_eager(ShippingData.inspector),
                 contains_eager(ShippingData.vendor),
-                joinedload(ShippingData.measurements),
+                selectinload(ShippingData.measurements),
             )
 
             if args.get('id'):
@@ -119,7 +119,11 @@ class ShippingService:
     def get_by_id(data_id: int) -> Optional[Dict[str, Any]]:
         """根據 ID 獲取單筆出貨檢驗資料"""
         try:
-            item = db.session.get(ShippingData, data_id)
+            item = ShippingData.query.options(
+                joinedload(ShippingData.inspector),
+                joinedload(ShippingData.vendor),
+                selectinload(ShippingData.measurements),
+            ).filter_by(id=data_id).first()
             if not item:
                 return None
             return ShippingService._map_row_to_dict(item)
@@ -789,7 +793,7 @@ class ShippingService:
             query = query.options(
                 contains_eager(ShippingData.vendor),
                 joinedload(ShippingData.inspector),
-                joinedload(ShippingData.measurements),
+                selectinload(ShippingData.measurements),
             )
 
             if args.get('vendor'):   query = query.filter(Vendor.name.like(f"%{args['vendor']}%"))

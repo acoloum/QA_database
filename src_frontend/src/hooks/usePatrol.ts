@@ -67,6 +67,7 @@ export const usePatrolList = (params: PatrolSearchParams) => {
             return res.data;
         },
         placeholderData: (previousData) => previousData,
+        staleTime: 60 * 1000,
     });
 };
 
@@ -79,6 +80,7 @@ export const usePatrolDetail = (id: number | null) => {
             return res.data;
         },
         enabled: !!id,
+        staleTime: 60 * 1000,
     });
 };
 
@@ -103,6 +105,7 @@ export const usePatrolStats = (params: PatrolStatsParams) => {
         },
         // Only fetch if item is provided (pos can be empty for "全段")
         enabled: !!params.item,
+        staleTime: 5 * 60 * 1000,
     });
 };
 

@@ -40,6 +40,7 @@ export const useShippingList = (params: ShippingSearchParams) => {
             return res.data;
         },
         placeholderData: (previousData) => previousData,
+        staleTime: 60 * 1000,
     });
 };
 
@@ -62,6 +63,7 @@ export const useShippingStats = (params: ShippingStatsParams) => {
             return res.data;
         },
         enabled: !!(params.vendor || params.material || params.spec),
+        staleTime: 5 * 60 * 1000,
     });
 };
 
@@ -98,6 +100,7 @@ export const useShippingDetail = (id: number | null) => {
             return res.data;
         },
         enabled: !!id,
+        staleTime: 60 * 1000,
     });
 };
 

@@ -1,8 +1,10 @@
 import pytest
 from datetime import date
+from sqlalchemy import event
+from backend.extensions import db
 from backend.services.patrol_service import PatrolService
 from backend.models import (
-    PatrolMain, PatrolDetail,
+    Machine, Operator, Inspector, PatrolMain, PatrolDetail,
     ExtrusionToleranceMain, ExtrusionToleranceDetail,
     VendorToleranceMain, VendorToleranceDetail, Vendor,
 )
@@ -317,3 +319,53 @@ def test_get_history_no_customer_id_unchanged(app, db_session):
         row = result['data'][0]
         assert row['tol_found'] is True
         assert row['is_ng'] is False
+
+
+def test_export_excel_batches_patrol_details(app, db_session):
+    """匯出巡檢 Excel 時，明細應批次載入，避免資料筆數增加就產生 N+1 查詢。"""
+    with app.app_context():
+        machine = Machine(name='M1')
+        operator = Operator(name='OP1')
+        inspector = Inspector(name='I1')
+        vendor = Vendor(name='客戶甲')
+        db_session.add_all([machine, operator, inspector, vendor])
+        db_session.flush()
+
+        for idx in range(5):
+            patrol = PatrolMain(
+                date=date(2026, 1, idx + 1),
+                machine_id=machine.id,
+                operator_id=operator.id,
+                inspector_id=inspector.id,
+                customer_id=vendor.id,
+                material='6061',
+                spec='10*2',
+            )
+            db_session.add(patrol)
+            db_session.flush()
+            db_session.add(PatrolDetail(
+                main_id=patrol.id,
+                group=1,
+                item='外徑',
+                position='前段',
+                min_val=10.0,
+                max_val=10.1,
+            ))
+        db_session.commit()
+
+        statements = []
+
+        def track_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+            statements.append(statement)
+
+        event.listen(db.engine, 'before_cursor_execute', track_sql)
+        try:
+            PatrolService.export_excel({})
+        finally:
+            event.remove(db.engine, 'before_cursor_execute', track_sql)
+
+        detail_selects = [
+            statement for statement in statements
+            if '巡檢子檔' in statement and statement.lstrip().upper().startswith('SELECT')
+        ]
+        assert len(detail_selects) <= 1

@@ -68,6 +68,8 @@ export const useNCMRList = (params: NCMRListParams = {}) => {
                 per_page: res.data.per_page,
             };
         },
+        placeholderData: (previousData) => previousData,
+        staleTime: 60 * 1000,
     });
 };
 
@@ -101,6 +103,8 @@ export const useCAPAList = (params: CAPAListParams = {}) => {
                 per_page: res.data.per_page,
             };
         },
+        placeholderData: (previousData) => previousData,
+        staleTime: 60 * 1000,
     });
 };
 
@@ -113,6 +117,7 @@ export const useNCMRDetail = (id: number | null) => {
             return res.data;
         },
         enabled: !!id,
+        staleTime: 60 * 1000,
     });
 };
 
@@ -202,6 +207,7 @@ export const useDispositions = (ncmrId: number | null) => {
             return res.data;
         },
         enabled: !!ncmrId,
+        staleTime: 60 * 1000,
     });
 };
 
@@ -256,6 +262,7 @@ export const useNcmrReworks = (ncmrId: number | null) => {
             return res.data;
         },
         enabled: !!ncmrId,
+        staleTime: 60 * 1000,
     });
 };
 
@@ -266,5 +273,6 @@ export const useRiskReleases = () => {
             const res = await api.get<RiskRelease[]>('/ncmr/risk-releases');
             return res.data;
         },
+        staleTime: 60 * 1000,
     });
 };

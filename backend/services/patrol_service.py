@@ -809,7 +809,8 @@ class PatrolService:
             .outerjoin(Machine, PatrolMain.machine_id == Machine.id)\
             .outerjoin(Operator, PatrolMain.operator_id == Operator.id)\
             .outerjoin(Inspector, PatrolMain.inspector_id == Inspector.id)\
-            .outerjoin(Vendor, PatrolMain.customer_id == Vendor.id)
+            .outerjoin(Vendor, PatrolMain.customer_id == Vendor.id)\
+            .options(selectinload(PatrolMain.details))
 
             if args.get('s_date'): query = query.filter(PatrolMain.date >= args['s_date'])
             if args.get('e_date'): query = query.filter(PatrolMain.date <= args['e_date'])
