@@ -28,8 +28,12 @@ def test_api_error_handler(app, client, auth_headers):
         assert data["error"]["message"] == "Custom Error"
 
 def test_404_handler(client):
-    """Test 404 handling for non-existent routes"""
-    response = client.get('/non/existent/route')
+    """Test 404 handling for non-existent API routes
+
+    註：非 /api 路徑會由前端 SPA fallback 回 index.html（200），交前端路由處理；
+    故此處改測未定義的 /api 路徑，驗證 JSON 格式的 404 錯誤處理器。
+    """
+    response = client.get('/api/non/existent/route')
     assert response.status_code == 404
     data = response.get_json()
     assert data["success"] is False

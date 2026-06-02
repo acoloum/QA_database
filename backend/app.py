@@ -1,7 +1,7 @@
 import logging
 import os
 from logging.handlers import RotatingFileHandler
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory, abort
 from flask_cors import CORS
 from flasgger import Swagger
 from datetime import datetime
@@ -73,6 +73,30 @@ app.register_blueprint(complaint_bp)
 app.register_blueprint(capa_bp)
 app.register_blueprint(vendor_perf_bp)
 app.register_blueprint(quality_analytics_bp)
+
+# ============================================================
+# 前端 SPA 服務（生產：waitress 單一程序同時服務前端與 /api）
+# 前端執行 `npm run build` 後產生 src_frontend/dist；此處直接由 Flask 服務，
+# 與 /api 同源，故前端無需 proxy、也不會有 CORS 問題。
+# ============================================================
+FRONTEND_DIST = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src_frontend', 'dist'))
+
+
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_frontend(path):
+    """服務前端 SPA：實體靜態檔直接回傳，其餘路徑一律回 index.html 交由前端路由處理。
+
+    註：/api/* 由各 blueprint 處理（路由較精確，會優先匹配）；
+    未定義的 /api/* 在此回 404，避免回傳 HTML 混淆 API 呼叫端。
+    """
+    if path.startswith('api/'):
+        abort(404)
+    target = os.path.join(FRONTEND_DIST, path)
+    if path and os.path.isfile(target):
+        return send_from_directory(FRONTEND_DIST, path)
+    return send_from_directory(FRONTEND_DIST, 'index.html')
+
 
 # Global Error Handler (Optional but recommended)
 # Global Error Handler
