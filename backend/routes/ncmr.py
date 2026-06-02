@@ -123,7 +123,6 @@ def open_capa_from_ncmr(current_user, ncmr_id):
     """
     from ..services.capa_service import CAPAService
     from ..models import NCMR as NCMRModel
-    from ..extensions import db
     data = request.get_json() or {}
     try:
         # 使用 active_query 排除已軟刪除的 NCMR，避免對已刪除單據開立 CAPA

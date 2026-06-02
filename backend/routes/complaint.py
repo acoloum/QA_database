@@ -78,7 +78,6 @@ def delete_complaint(current_user, complaint_id: int):
     """DELETE /api/complaints/<id>"""
     try:
         ComplaintService.delete(complaint_id)
-        from ..extensions import db
         log_audit(current_user.id, 'delete', '客訴', complaint_id)
         db.session.commit()
         return jsonify({'message': '刪除成功'}), 200
@@ -109,7 +108,6 @@ def open_capa_from_complaint(current_user, complaint_id: int):
         if c:
             c.related_capa_id = capa['id']
             c.status = '處理中'
-            from ..extensions import db
             db.session.commit()
         return jsonify(capa), 201
     except ValueError as e:
