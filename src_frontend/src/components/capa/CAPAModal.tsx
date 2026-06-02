@@ -349,15 +349,14 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
     }, [capa]);
 
     // 嚴重度聯動嚴格度（可手動 override）
-    useEffect(() => {
-        if (d0Severity && !isClosed) {
-            let cancelled = false;
-            queueMicrotask(() => {
-                if (!cancelled) setD0Rigor(SEVERITY_TO_RIGOR[d0Severity] ?? '完整8D');
-            });
-            return () => { cancelled = true; };
-        }
-    }, [d0Severity, isClosed]);
+    // 注意：僅在使用者「手動變更」嚴重度時套用預設嚴格度，
+    // 絕不可放在 useEffect 內依賴 d0Severity，否則載入既有資料時
+    // 嚴重度從空值帶入會誤觸發，把使用者存好的 rigor（如 簡化5D）覆蓋掉，
+    // 造成「處理叫出資料時 5D 時有時無變成 8D」的問題。
+    const handleSeverityChange = (val: CAPASeverity | '') => {
+        setD0Severity(val);
+        if (val && !isClosed) setD0Rigor(SEVERITY_TO_RIGOR[val] ?? '完整8D');
+    };
 
     // 顯示的步驟清單
     const steps = useMemo(
@@ -452,7 +451,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                                     <D0Pane
                                         symptom={d0Symptom} setSymptom={setD0Symptom}
                                         criteria={d0Criteria} setCriteria={setD0Criteria}
-                                        severity={d0Severity} setSeverity={setD0Severity}
+                                        severity={d0Severity} setSeverity={handleSeverityChange}
                                         rigor={d0Rigor} setRigor={setD0Rigor}
                                         deadline={d0Deadline} setDeadline={setD0Deadline}
                                         readonly={isClosed}
