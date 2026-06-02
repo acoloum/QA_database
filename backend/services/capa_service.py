@@ -359,7 +359,19 @@ class CAPAService:
     # ── 序列化（列表用）─────────────────────────────────────
     @staticmethod
     def _to_list_dict(ca: CorrectiveAction) -> Dict[str, Any]:
-        ncmr = NCMR.active_query().filter_by(id=ca.source_id or ca.ncmr_id).first() if ca.source_type == 'ncmr' or ca.ncmr_id else None
+        # 依來源類型取得「廠商/客戶」與「不良描述」，供清單顯示
+        vendor = None
+        description = None
+        if ca.source_type == 'ncmr' or ca.ncmr_id:
+            ncmr = NCMR.active_query().filter_by(id=ca.source_id or ca.ncmr_id).first()
+            if ncmr:
+                vendor      = ncmr.vendor
+                description = ncmr.description
+        elif ca.source_type == 'complaint':
+            c = CustomerComplaint.active_query().filter_by(id=ca.source_id).first()
+            if c:
+                vendor      = c.customer       # 客訴以客戶名稱對應「廠商」欄
+                description = c.description
         return {
             'id':              ca.id,
             'no':              ca.eight_d_number,
@@ -372,8 +384,8 @@ class CAPAService:
             'create_date':     ca.created_at.isoformat() if ca.created_at else None,
             'deadline':        ca.d0_deadline.isoformat() if ca.d0_deadline else None,
             'progress_percent': CAPAService._calc_progress(ca)['percent'],
-            'vendor':          ncmr.vendor if ncmr else None,
-            'ncmr_description': ncmr.description if ncmr else None,
+            'vendor':          vendor,
+            'ncmr_description': description,
         }
 
     # ── 序列化（明細用）─────────────────────────────────────
