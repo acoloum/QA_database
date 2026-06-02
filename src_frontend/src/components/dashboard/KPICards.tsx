@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDashboardStats } from '../../hooks/useDashboard';
 import type { DatePeriod } from '../../hooks/useDashboard';
 import type { DashboardStats } from '../../types';
@@ -31,6 +32,7 @@ interface KpiItemConfig {
 
 const KPICards = ({ period = 'this_month', customDateRange }: KPICardsProps) => {
     const { stats, loading } = useDashboardStats(period, customDateRange);
+    const navigate = useNavigate();
 
     const kpiItems: KpiItemConfig[] = [
         {
@@ -148,7 +150,9 @@ const KPICards = ({ period = 'this_month', customDateRange }: KPICardsProps) => 
                             className="text-decoration-none"
                             onClick={(e) => {
                                 e.preventDefault();
-                                window.location.href = item.path;
+                                // 使用 React Router 前端導航，避免整頁重載深層路由
+                                // （整頁重載在內網 IP/dev server 下易失敗而出現 chrome-error）
+                                navigate(item.path);
                             }}
                         >
                             <div 
