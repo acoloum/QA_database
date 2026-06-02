@@ -98,7 +98,7 @@ const NCMRPage = () => {
         if (!window.confirm('確定要針對此異常單開立 8D 矯正措施嗎？')) return;
         try {
             const res = await createCAPAMutation.mutateAsync(id);
-            if (res.id) window.location.assign(`/capa?editId=${res.id}`);
+            if (res.id) navigate(`/capa?editId=${res.id}`);
         } catch { /* handled by toast */ }
     };
 

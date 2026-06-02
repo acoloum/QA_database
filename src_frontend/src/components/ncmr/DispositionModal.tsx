@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Modal, Button, Form, Table, Alert } from 'react-bootstrap';
 import type { NCMR, NcmrDisposition, DispositionType } from '../../types';
 import {
@@ -29,6 +30,7 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
     const deleteDisp = useDeleteDisposition();
     const updateNCMR = useUpdateNCMR();
     const createCAPA = useCreateCAPA();
+    const navigate = useNavigate();
 
     const [form, setForm] = useState<NcmrDisposition>(emptyForm());
 
@@ -91,7 +93,7 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
             const res = await createCAPA.mutateAsync(item.id);
             const capaId = res.id;
             handleClose();
-            window.location.href = `/capa?editId=${capaId}`;
+            navigate(`/capa?editId=${capaId}`);
         } catch (e) {
             console.error(e);
         }
