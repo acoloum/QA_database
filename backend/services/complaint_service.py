@@ -122,7 +122,8 @@ class ComplaintService:
             q = q.filter_by(is_repeat=is_repeat)
 
         total = q.count()
-        items = q.order_by(CustomerComplaint.complaint_date.desc())\
+        # 依開單順序排序：越新開立的單（識別碼越大）排在越上面，方便後續編輯
+        items = q.order_by(CustomerComplaint.id.desc())\
                   .offset((page - 1) * per_page).limit(per_page).all()
         return {
             'data': [ComplaintService._to_dict(c) for c in items],
