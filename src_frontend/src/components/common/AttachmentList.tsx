@@ -1,10 +1,16 @@
+import { useState } from 'react';
 import { Table, Button, Badge, Spinner } from 'react-bootstrap';
 import {
     useAttachments,
     useDeleteAttachment,
     getAttachmentDownloadUrl,
 } from '../../hooks/useAttachment';
+import AttachmentPreviewModal from './AttachmentPreviewModal';
 import type { Attachment } from '../../types';
+
+/** 判斷該 MIME 類型是否可在頁面內預覽（圖片與 PDF） */
+const isPreviewable = (mimeType: string): boolean =>
+    mimeType.startsWith('image/') || mimeType === 'application/pdf';
 
 const ICON_MAP: Record<string, string> = {
     'application/pdf':  'bi-file-pdf text-danger',
@@ -43,6 +49,7 @@ const AttachmentList = ({
 }: AttachmentListProps) => {
     const { data: attachments = [], isLoading } = useAttachments(entityType, entityId, dStep);
     const deleteMutation = useDeleteAttachment(entityType, entityId);
+    const [previewAtt, setPreviewAtt] = useState<Attachment | null>(null);
 
     if (isLoading) {
         return (
@@ -77,6 +84,7 @@ const AttachmentList = ({
     };
 
     return (
+      <>
         <Table size="sm" hover className="mb-0">
             <thead className="table-light">
                 <tr>
@@ -100,6 +108,17 @@ const AttachmentList = ({
                             </td>
                         )}
                         <td>
+                            {isPreviewable(att.mime_type) && (
+                                <Button
+                                    variant="link"
+                                    size="sm"
+                                    className="p-0 me-2"
+                                    title="預覽"
+                                    onClick={() => setPreviewAtt(att)}
+                                >
+                                    <i className="bi bi-eye" />
+                                </Button>
+                            )}
                             <Button
                                 variant="link"
                                 size="sm"
@@ -130,6 +149,12 @@ const AttachmentList = ({
                 ))}
             </tbody>
         </Table>
+
+        <AttachmentPreviewModal
+            attachment={previewAtt}
+            onClose={() => setPreviewAtt(null)}
+        />
+      </>
     );
 };
 
