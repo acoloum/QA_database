@@ -18,3 +18,9 @@ backend/uploads/
 
 # SPC 回歸基準快照（本地產生、體積大，不進版控）
 backend/scripts/spc_baseline.json
+
+# Playwright MCP 測試產物（截圖、頁面快照）
+.playwright-mcp/
+
+# 資料庫備份檔
+backups/
