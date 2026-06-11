@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
     Modal, Button, Form, Nav, Tab, Row, Col, Alert,
-    Badge, ProgressBar, Spinner, Table,
+    Badge, ProgressBar, Spinner, Table, InputGroup,
 } from 'react-bootstrap';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
@@ -201,20 +201,24 @@ const FishboneEditor = ({ value, onChange, readonly }: FishboneEditorProps) => {
                     <div className="border rounded p-2">
                         <div className="fw-semibold small mb-2 text-primary">{label}</div>
                         {(data[key] ?? []).map((item, idx) => (
-                            <div key={idx} className="d-flex gap-1 mb-1">
+                            <InputGroup size="sm" className="mb-1" key={idx}>
                                 <Form.Control
-                                    size="sm"
                                     value={item}
                                     onChange={e => updateItem(key, idx, e.target.value)}
                                     placeholder="原因…"
                                     disabled={readonly}
                                 />
                                 {!readonly && (
-                                    <Button size="sm" variant="outline-danger" onClick={() => removeItem(key, idx)}>
-                                        <i className="bi bi-x" />
+                                    <Button
+                                        variant="outline-danger"
+                                        onClick={() => removeItem(key, idx)}
+                                        tabIndex={-1}
+                                        aria-label="刪除此原因"
+                                    >
+                                        <i className="bi bi-x-lg" />
                                     </Button>
                                 )}
-                            </div>
+                            </InputGroup>
                         ))}
                         {!readonly && (
                             <Button size="sm" variant="outline-secondary" className="w-100 mt-1" onClick={() => addItem(key)}>
