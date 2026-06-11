@@ -21,19 +21,21 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
 
     # ---------- 待處理計數（點時間，無法合併，保留原本四個函式）----------
 
+    # 注意：須與各清單頁一致，使用 active_query() 排除軟刪除紀錄
+
     def count_pending_ncmr():
-        return NCMR.query.filter(
+        return NCMR.active_query().filter(
             NCMR.status.notin_(['已結案', 'CAR已完成'])
         ).count()
 
     def count_pending_capa():
-        return CorrectiveAction.query.filter(
+        return CorrectiveAction.active_query().filter(
             CorrectiveAction.eight_d_number != None,
             CorrectiveAction.status.in_(['待處理', '進行中'])
         ).count()
 
     def count_pending_rework():
-        return ReworkRequest.query.filter(
+        return ReworkRequest.active_query().filter(
             ReworkRequest.status.notin_(['已完成', '已拒絕'])
         ).count()
 
@@ -84,7 +86,7 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
     ).scalar() or 0
     _patrol_ng = int(_patrol_ng)
 
-    # ---------- NCMR：一次查詢同時取得 current / previous ----------
+    # ---------- NCMR：一次查詢同時取得 current / previous（排除軟刪除）----------
     ncmr_row = db.session.query(
         func.sum(case(
             (and_(NCMR.date >= start_date, NCMR.date <= end_date), 1),
@@ -94,7 +96,7 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
             (and_(NCMR.date >= compare_start, NCMR.date <= compare_end), 1),
             else_=0
         )).label('previous'),
-    ).first()
+    ).filter(NCMR.deleted_at.is_(None)).first()
     _ncmr_current = int(ncmr_row.current or 0)
     _ncmr_previous = int(ncmr_row.previous or 0)
 
@@ -112,7 +114,7 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
                   CorrectiveAction.eight_d_number != None), 1),
             else_=0
         )).label('previous'),
-    ).first()
+    ).filter(CorrectiveAction.deleted_at.is_(None)).first()
     _capa_current = int(capa_row.current or 0)
     _capa_previous = int(capa_row.previous or 0)
 
@@ -128,7 +130,7 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
                   ReworkRequest.created_at <= compare_end), 1),
             else_=0
         )).label('previous'),
-    ).first()
+    ).filter(ReworkRequest.deleted_at.is_(None)).first()
     _rework_current = int(rework_row.current or 0)
     _rework_previous = int(rework_row.previous or 0)
 
@@ -238,7 +240,7 @@ def get_dashboard_todos():
     try:
         todos = []
 
-        pending_ncmrs = NCMR.query.filter(NCMR.status == '待處理').order_by(NCMR.date.desc()).limit(5).all()
+        pending_ncmrs = NCMR.active_query().filter(NCMR.status == '待處理').order_by(NCMR.date.desc()).limit(5).all()
         for n in pending_ncmrs:
             todos.append({
                 "type": "ncmr",
@@ -251,7 +253,7 @@ def get_dashboard_todos():
             })
 
         # CAPA 項目（8D 編號存在）
-        pending_capas = CorrectiveAction.query.filter(
+        pending_capas = CorrectiveAction.active_query().filter(
             CorrectiveAction.eight_d_number != None,
             CorrectiveAction.status.in_(['待處理', '進行中'])
         ).order_by(CorrectiveAction.created_at.desc()).limit(5).all()
@@ -266,7 +268,7 @@ def get_dashboard_todos():
                 "path": "/capa"
             })
 
-        pending_reworks = ReworkRequest.query.filter(
+        pending_reworks = ReworkRequest.active_query().filter(
             ReworkRequest.status.in_(['待審核', '已通過', '進行中'])
         ).order_by(ReworkRequest.created_at.desc()).limit(5).all()
         for r in pending_reworks:
