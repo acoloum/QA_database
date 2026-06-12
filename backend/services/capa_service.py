@@ -224,13 +224,13 @@ class CAPAService:
 
         new_categories = {a['type'] for a in actions if a.get('checked')}
 
-        # 新增尚未存在的任務
+        # 新增尚未存在的任務；已存在者同步更新指派人/期限/說明
         for action in actions:
             atype = action.get('type')
             if not action.get('checked') or atype not in D7_TYPE_CATEGORY:
                 continue
+            due = _parse_date(action.get('due_date'))
             if atype not in existing:
-                due = _parse_date(action.get('due_date'))
                 TaskService.create(
                     source_type  = 'capa',
                     source_id    = ca.id,
@@ -240,6 +240,15 @@ class CAPAService:
                     description  = action.get('description'),
                     part_nos     = action.get('part_nos'),
                 )
+            else:
+                task = existing[atype]
+                # 已完成/豁免的任務視為定案，不再回寫
+                if task.status in ('pending', 'in_progress'):
+                    task.assignee_id = action.get('assignee_id')
+                    task.due_date    = due
+                    task.description = action.get('description')
+                    if action.get('part_nos') is not None:
+                        task.part_nos = action.get('part_nos')
 
         # 取消勾選 → 依狀態決定是否刪除
         for atype, task in existing.items():
