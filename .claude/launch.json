@@ -5,7 +5,7 @@
       "name": "Frontend (Vite)",
       "runtimeExecutable": "node",
       "runtimeArgs": ["node_modules/vite/bin/vite.js"],
-      "port": 80,
+      "port": 5173,
       "cwd": "src_frontend"
     },
     {

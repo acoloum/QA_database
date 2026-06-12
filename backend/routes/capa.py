@@ -113,8 +113,10 @@ def check_close_gate(current_user, capa_id: int):
     try:
         gate = TaskService.check_close_gate('capa', capa_id)
         d6   = CAPAService.check_d6_gate(capa_id)
+        missing = CAPAService.get_missing_step_labels(capa_id)
         gate['d6_passed'] = d6
-        gate['can_close'] = gate['can_close'] and d6
+        gate['missing_steps'] = missing
+        gate['can_close'] = gate['can_close'] and d6 and not missing
         return jsonify(gate), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500

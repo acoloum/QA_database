@@ -1194,7 +1194,7 @@ interface D8Props {
     capaId: number;
     confirmation: string; setConfirmation: (v: string) => void;
     recognition: string; setRecognition: (v: string) => void;
-    closeGateData?: { can_close: boolean; d6_passed: boolean; blocking_tasks: unknown[] } | null;
+    closeGateData?: { can_close: boolean; d6_passed: boolean; blocking_tasks: unknown[]; missing_steps?: string[] } | null;
     closeGateLoading: boolean;
     isClosed: boolean; closeDate?: string | null;
     onClose: () => void; closing: boolean;
@@ -1223,6 +1223,12 @@ const D8Pane = ({ confirmation, setConfirmation, recognition, setRecognition, cl
                         <Alert variant="warning" className="py-2 small">
                             <i className="bi bi-exclamation-triangle-fill me-2" />
                             D6 尚未勾選「驗證通過」，無法結案。
+                        </Alert>
+                    )}
+                    {(closeGateData?.missing_steps?.length ?? 0) > 0 && (
+                        <Alert variant="warning" className="py-2 small">
+                            <i className="bi bi-exclamation-triangle-fill me-2" />
+                            以下步驟尚未完成，無法結案：{closeGateData!.missing_steps!.join('、')}
                         </Alert>
                     )}
                     {blockCount > 0 && (

@@ -16,6 +16,13 @@ SEVERITY_RIGOR_MAP = {
 
 VALID_SOURCE_TYPES = {'ncmr', 'complaint'}
 
+# 各 D 步驟顯示名稱（結案檢查訊息用）
+D_STEP_LABELS = {
+    0: 'D0 緊急應對', 1: 'D1 成立團隊', 2: 'D2 問題描述',
+    3: 'D3 暫時對策', 4: 'D4 根本原因', 5: 'D5 永久對策',
+    6: 'D6 實施驗證', 7: 'D7 橫向展開', 8: 'D8 結案確認',
+}
+
 # D7 橫展類型對應任務 category
 D7_TYPE_CATEGORY = {
     'pfmea':           'pfmea',
@@ -257,6 +264,22 @@ class CAPAService:
         ca = CorrectiveAction.active_query().filter_by(id=capa_id).first()
         return bool(ca and ca.d6_verified)
 
+    # ── 步驟完成度檢查 ────────────────────────────────────────
+    @staticmethod
+    def _missing_steps(ca: CorrectiveAction) -> List[int]:
+        """回傳該嚴格度下尚未完成的步驟編號。
+        不含 D6（另有專屬 gate）與 D8（於結案動作時填寫）。"""
+        progress = CAPAService._calc_progress(ca)
+        steps = [0, 1, 2, 3, 4, 5, 6, 7, 8] if ca.rigor == '完整8D' else [2, 3, 4, 6, 8]
+        return [s for s in steps if s not in (6, 8) and not progress['step_status'][str(s)]]
+
+    @staticmethod
+    def get_missing_step_labels(capa_id: int) -> List[str]:
+        ca = CorrectiveAction.active_query().filter_by(id=capa_id).first()
+        if not ca:
+            return []
+        return [D_STEP_LABELS[s] for s in CAPAService._missing_steps(ca)]
+
     # ── D8 結案 ──────────────────────────────────────────────
     @staticmethod
     def close(capa_id: int, confirmation: str, recognition: Optional[str] = None) -> Dict[str, Any]:
@@ -269,6 +292,12 @@ class CAPAService:
         # D6 gate
         if not ca.d6_verified:
             raise ValueError('D6 驗證尚未通過，無法結案')
+
+        # 步驟完成度 gate：所有步驟（依嚴格度）皆須完成，避免結案後進度未達 100%
+        missing = CAPAService._missing_steps(ca)
+        if missing:
+            labels = '、'.join(D_STEP_LABELS[s] for s in missing)
+            raise ValueError(f'以下步驟尚未完成，無法結案：{labels}')
 
         # 任務 gate
         gate = TaskService.check_close_gate('capa', capa_id)
@@ -336,12 +365,20 @@ class CAPAService:
             if is_full
             else [2, 3, 4, 6, 8]  # 簡化 5D
         )
+        # D4 視為完成：彙整欄位、舊欄位、或分析工具（5Why／魚骨圖）任一有內容
+        d4_tool_filled = (
+            any(
+                (w.get('why') or w.get('answer'))
+                for w in (ca.d4_five_why or []) if isinstance(w, dict)
+            )
+            or any(v for v in (ca.d4_fishbone or {}).values() if v)
+        )
         completed = []
         if ca.d0_symptom or ca.d0_severity:   completed.append(0)
         if ca.d1_leader_id:                    completed.append(1)
         if ca.d2_what or ca.d2:                completed.append(2)
         if ca.d3_action or ca.d3:              completed.append(3)
-        if ca.d4_root_cause or ca.d4:          completed.append(4)
+        if ca.d4_root_cause or ca.d4 or d4_tool_filled: completed.append(4)
         if ca.d5_action or ca.d5:              completed.append(5)
         if ca.d6_verified:                     completed.append(6)
         if ca.d7_actions:                      completed.append(7)

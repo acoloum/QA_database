@@ -60,6 +60,9 @@ export const useUpdateCapaStep = () => {
             toast.success('儲存成功');
             qc.invalidateQueries({ queryKey: ['capaDetail', vars.id] });
             qc.invalidateQueries({ queryKey: ['capaList'] });
+            // D6 驗證通過 / D7 任務變動會影響 D8 結案條件，須一併重新查詢
+            qc.invalidateQueries({ queryKey: ['capaCloseGate', vars.id] });
+            qc.invalidateQueries({ queryKey: ['d6Gate', vars.id] });
         },
         onError: (err: Error) => {
             toast.error(`儲存失敗：${err.message}`);
@@ -88,6 +91,7 @@ export const useCapaCloseGate = (capaId: number | null) => {
                 can_close: boolean;
                 d6_passed: boolean;
                 blocking_tasks: unknown[];
+                missing_steps: string[];
             }>(`/capas/${capaId}/close-gate`);
             return res.data;
         },
