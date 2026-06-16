@@ -11,6 +11,20 @@ interface Props { editId: number | null; onClose: () => void; onSaved: () => voi
 const emptyTusPoint = (): TusPoint => ({ 點位: '', 熱電偶編號: '', 修正值: '', 最高溫: '', 最低溫: '' });
 const emptySatPoint = (): SatPoint => ({ 控溫區: '', 控制儀表讀值: '', 校正測試儀表讀值: '', 修正值: '' });
 
+const computeRangeStats = (
+  數值: Record<string, number[]>,
+  start: number,
+  end: number,
+): { 名稱: string; 最高溫: number; 最低溫: number }[] =>
+  Object.keys(數值).map(ch => {
+    const slice = 數值[ch].slice(start, end + 1).filter((v): v is number => v !== null && v !== undefined);
+    return {
+      名稱: ch,
+      最高溫: slice.length ? Math.max(...slice) : 0,
+      最低溫: slice.length ? Math.min(...slice) : 0,
+    };
+  });
+
 const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const [furnaceId, setFurnaceId] = useState('');
   const [testType, setTestType] = useState<'TUS' | 'SAT'>('TUS');
@@ -28,6 +42,8 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const [error, setError] = useState('');
   const [chartData, setChartData] = useState<{ 時間: string[]; 數值: Record<string, number[]> } | null>(null);
   const [furnaceChartData, setFurnaceChartData] = useState<{ 數值: Record<string, number[]> } | null>(null);
+  const [rangeStart, setRangeStart] = useState(0);
+  const [rangeEnd, setRangeEnd] = useState(0);
 
   const { data: furnaces } = useQuery({
     queryKey: ['furnaces-active'],
@@ -78,6 +94,17 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const updateSat = (i: number, k: keyof SatPoint, v: string) =>
     setSatPoints(prev => prev.map((p, idx) => idx === i ? { ...p, [k]: v } : p));
 
+  // 套用選定時間區間 → 重新計算各通道 max/min → 回填量測點
+  const applyRange = () => {
+    if (!chartData) return;
+    const stats = computeRangeStats(chartData.數值, rangeStart, rangeEnd);
+    setTusPoints(prev => prev.map((p, i) => {
+      const ch = stats[i];
+      if (!ch) return p;
+      return { ...p, 最高溫: String(ch.最高溫), 最低溫: String(ch.最低溫) };
+    }));
+  };
+
   const handleFileUpload = async (file: File, isFurnaceData: boolean) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -93,8 +120,11 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
       if (isFurnaceData) {
         setFurnaceChartData({ 數值: r.data.data.數值 });
       } else {
+        const lastIdx = r.data.data.時間.length - 1;
         setChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
-        // 自動回填 TUS 量測點（依通道順序對應 P1..Pn）
+        setRangeStart(0);
+        setRangeEnd(lastIdx);
+        // 初始自動回填（全範圍）
         if (testType === 'TUS') {
           setTusPoints(prev => prev.map((p, i) => {
             const ch = r.data.data.通道[i];
@@ -130,6 +160,8 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
       setSaving(false);
     }
   };
+
+  const timeLabels = chartData?.時間 ?? [];
 
   return (
     <Modal show onHide={onClose} size="xl">
@@ -203,16 +235,62 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                 <input className="form-control form-control-sm" type="file" accept=".csv,.xlsx,.xls"
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, true); }} />
               </Col>
+
               {chartData && (
-                <Col md={12}>
-                  <TusChart
-                    時間={chartData.時間}
-                    數值={chartData.數值}
-                    爐體數值={furnaceChartData?.數值}
-                    設定溫度={Number(setpoint) || 180}
-                    公差={Number(tolerance) || 10}
-                  />
-                </Col>
+                <>
+                  <Col md={12}>
+                    <TusChart
+                      時間={chartData.時間}
+                      數值={chartData.數值}
+                      爐體數值={furnaceChartData?.數值}
+                      設定溫度={Number(setpoint) || 180}
+                      公差={Number(tolerance) || 10}
+                      startIdx={rangeStart}
+                      endIdx={rangeEnd}
+                    />
+                  </Col>
+
+                  {/* 時間區間選取列 */}
+                  <Col md={12}>
+                    <div className="d-flex align-items-center gap-3 p-2 bg-light rounded border">
+                      <span className="fw-semibold text-nowrap" style={{ fontSize: 13 }}>
+                        恆溫穩定期：
+                      </span>
+                      <div className="d-flex align-items-center gap-1">
+                        <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>開始</Form.Label>
+                        <Form.Select
+                          size="sm"
+                          style={{ minWidth: 120 }}
+                          value={rangeStart}
+                          onChange={e => setRangeStart(Number(e.target.value))}
+                        >
+                          {timeLabels.map((t, i) => (
+                            <option key={i} value={i}>{t}</option>
+                          ))}
+                        </Form.Select>
+                      </div>
+                      <div className="d-flex align-items-center gap-1">
+                        <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>結束</Form.Label>
+                        <Form.Select
+                          size="sm"
+                          style={{ minWidth: 120 }}
+                          value={rangeEnd}
+                          onChange={e => setRangeEnd(Number(e.target.value))}
+                        >
+                          {timeLabels.map((t, i) => (
+                            <option key={i} value={i}>{t}</option>
+                          ))}
+                        </Form.Select>
+                      </div>
+                      <Button size="sm" variant="primary" onClick={applyRange}>
+                        套用並回填量測點
+                      </Button>
+                      <span className="text-muted" style={{ fontSize: 11 }}>
+                        共 {rangeEnd >= rangeStart ? rangeEnd - rangeStart + 1 : 0} 筆
+                      </span>
+                    </div>
+                  </Col>
+                </>
               )}
             </Row>
           )}

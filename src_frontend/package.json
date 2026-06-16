@@ -18,6 +18,7 @@
     "axios": "^1.13.5",
     "bootstrap": "^5.3.8",
     "chart.js": "^4.5.1",
+    "chartjs-plugin-annotation": "^3.1.0",
     "react": "^19.2.0",
     "react-bootstrap": "^2.10.10",
     "react-chartjs-2": "^5.3.1",
@@ -42,6 +43,9 @@
     "vite": "^8.0.0"
   },
   "lint-staged": {
-    "*.{ts,tsx}": ["tsc -b --noEmit --pretty false 2>&1 | head -20", "node scripts/lint-staged-new.mjs"]
+    "*.{ts,tsx}": [
+      "tsc -b --noEmit --pretty false 2>&1 | head -20",
+      "node scripts/lint-staged-new.mjs"
+    ]
   }
 }
