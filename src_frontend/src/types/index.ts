@@ -831,3 +831,35 @@ export interface Furnace {
   啟用狀態: boolean;
   備註: string;
 }
+
+export interface PyrometryTestRow {
+  識別碼: number;
+  爐號: string;
+  測試類型: 'TUS' | 'SAT';
+  季別: string;
+  測試日期: string;
+  是否合格: boolean;
+  測試人員姓名: string;
+}
+
+export interface TusPoint {
+  識別碼?: number;
+  點位: string;
+  熱電偶編號: string;
+  修正值: string | number | null;
+  最高溫: string | number | null;
+  最低溫: string | number | null;
+  最大偏差?: string | number | null;
+  是否合格?: boolean;
+}
+
+export interface SatPoint {
+  識別碼?: number;
+  控溫區: string;
+  控制儀表讀值: string | number | null;
+  校正測試儀表讀值: string | number | null;
+  差值?: string | number | null;
+  修正值: string | number | null;
+  偏差?: string | number | null;
+  是否合格?: boolean;
+}
