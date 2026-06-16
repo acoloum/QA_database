@@ -691,6 +691,7 @@ class Attachment(db.Model):
 
     # 上傳資訊
     uploaded_by = db.Column('上傳人員', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True)
+    purpose     = db.Column('用途',     db.String(30), nullable=True)  # test_data|furnace_data|scan|cert|other
     uploaded_at = db.Column('上傳時間', db.DateTime, default=utc_now)
 
     uploader = db.relationship('User', backref='attachments', foreign_keys=[uploaded_by])

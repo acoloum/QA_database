@@ -76,4 +76,7 @@ CREATE TABLE IF NOT EXISTS "SAT量測點明細" (
     "是否合格"         BOOLEAN DEFAULT TRUE
 );
 
+-- ⑤ 既有附件表加「用途」欄位
+ALTER TABLE "附件" ADD COLUMN IF NOT EXISTS "用途" VARCHAR(30);
+
 COMMIT;

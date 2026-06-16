@@ -28,7 +28,7 @@ ALLOWED_EXTENSIONS = {
 }
 
 MAX_FILE_SIZE    = 10 * 1024 * 1024
-VALID_ENTITY_TYPES = {'capa', 'task', 'complaint'}
+VALID_ENTITY_TYPES = {'capa', 'task', 'complaint', 'pyrometry'}
 
 
 def _get_storage():
@@ -61,6 +61,7 @@ class AttachmentService:
         entity_id: int,
         d_step: Optional[int],
         uploader_id: Optional[int],
+        purpose: Optional[str] = None,
     ) -> Dict[str, Any]:
         if entity_type not in VALID_ENTITY_TYPES:
             raise ValueError(f'無效的實體類型：{entity_type}')
@@ -85,6 +86,7 @@ class AttachmentService:
             mime_type=file.mimetype or '',
             file_size=file_size,
             uploaded_by=uploader_id,
+            purpose=purpose,
         )
         db.session.add(att)
         db.session.commit()
@@ -148,5 +150,6 @@ class AttachmentService:
             'mime_type':   att.mime_type,
             'file_size':   att.file_size,
             'uploaded_by': att.uploaded_by,
+            'purpose':     att.purpose,
             'uploaded_at': att.uploaded_at.isoformat() if att.uploaded_at else None,
         }

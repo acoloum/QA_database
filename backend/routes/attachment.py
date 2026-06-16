@@ -28,6 +28,7 @@ def upload_attachment(current_user):
     entity_type = request.form.get('entity_type', '')
     entity_id   = request.form.get('entity_id', '')
     d_step_raw  = request.form.get('d_step')
+    purpose = request.form.get('purpose') or None
 
     if not entity_type or not entity_id:
         return jsonify({'error': '缺少 entity_type 或 entity_id'}), 400
@@ -41,6 +42,7 @@ def upload_attachment(current_user):
             entity_id=entity_id_int,
             d_step=d_step,
             uploader_id=current_user.id,
+            purpose=purpose,
         )
         return jsonify(result), 201
     except ValueError as e:

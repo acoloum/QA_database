@@ -126,3 +126,8 @@ def test_due_status_overdue(app, db_session):
         status = PyrometryService.furnace_due_status(fid)
         assert status["TUS"]["下次應測日"] == "2025-04-01"
         assert status["TUS"]["狀態"] == "逾期"
+
+
+def test_attachment_accepts_pyrometry(app, db_session):
+    from backend.services.attachment_service import VALID_ENTITY_TYPES
+    assert 'pyrometry' in VALID_ENTITY_TYPES
