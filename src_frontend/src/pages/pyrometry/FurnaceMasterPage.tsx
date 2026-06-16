@@ -3,6 +3,19 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Table, Modal, Form, Row, Col, Badge } from 'react-bootstrap';
 import api from '../../services/api';
 import type { Furnace } from '../../types';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+import { Line } from 'react-chartjs-2';
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 const PROCESS_TYPES = ['T6時效', 'T4', '退火'];
 
@@ -18,10 +31,22 @@ const FurnaceMasterPage = () => {
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<Partial<Furnace>>(emptyForm());
   const [msg, setMsg] = useState('');
+  const [showTrend, setShowTrend] = useState(false);
+  const [trendFurnaceId, setTrendFurnaceId] = useState<number | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['furnaces'],
     queryFn: () => api.get<{ data: Furnace[] }>('/pyrometry/furnaces').then(r => r.data.data),
+  });
+
+  const { data: trendData } = useQuery({
+    queryKey: ['tus-trend', trendFurnaceId],
+    queryFn: () => trendFurnaceId
+      ? api.get<{ data: { 測試日期: string; 均勻度極差: string | number; 最大正偏差: string | number; 最大負偏差: string | number; 是否合格: boolean }[] }>(
+          `/pyrometry/furnaces/${trendFurnaceId}/tus-trend`
+        ).then(r => r.data.data)
+      : Promise.resolve(null),
+    enabled: !!trendFurnaceId,
   });
 
   const saveMutation = useMutation({
@@ -87,6 +112,8 @@ const FurnaceMasterPage = () => {
                     <td>
                       <Button size="sm" variant="outline-primary" className="me-1" onClick={() => openEdit(f)}>編輯</Button>
                       <Button size="sm" variant="outline-danger" onClick={() => handleDelete(f.識別碼)}>刪除</Button>
+                      <Button size="sm" variant="outline-info" className="ms-1"
+                        onClick={() => { setTrendFurnaceId(f.識別碼); setShowTrend(true); }}>趨勢</Button>
                     </td>
                   </tr>
                 ))}
@@ -169,6 +196,32 @@ const FurnaceMasterPage = () => {
           <Button variant="primary" onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending}>
             {saveMutation.isPending ? '儲存中…' : '儲存'}
           </Button>
+        </Modal.Footer>
+      </Modal>
+      <Modal show={showTrend} onHide={() => setShowTrend(false)} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>歷年 TUS 趨勢</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {trendData && trendData.length > 0 ? (
+            <Line
+              data={{
+                labels: trendData.map(t => t.測試日期),
+                datasets: [
+                  { label: '均勻度極差', data: trendData.map(t => Number(t.均勻度極差) || 0), borderColor: '#e6194b', tension: 0.3 },
+                  { label: '最大正偏差', data: trendData.map(t => Number(t.最大正偏差) || 0), borderColor: '#3cb44b', tension: 0.3 },
+                  { label: '最大負偏差', data: trendData.map(t => Number(t.最大負偏差) || 0), borderColor: '#4363d8', tension: 0.3 },
+                ],
+              }}
+              options={{
+                responsive: true,
+                plugins: { legend: { position: 'bottom' as const }, title: { display: true, text: 'TUS 歷年趨勢（°C）' } },
+              }}
+            />
+          ) : <p className="text-muted">尚無 TUS 測試紀錄。</p>}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowTrend(false)}>關閉</Button>
         </Modal.Footer>
       </Modal>
     </div>
