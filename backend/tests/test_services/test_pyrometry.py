@@ -114,3 +114,15 @@ def test_create_sat_test_auto_judges(app, db_session):
         detail = PyrometryService.get_test(tid)
         assert detail["main"]["是否合格"] is False
         assert len(detail["sat_points"]) == 1
+
+
+def test_due_status_overdue(app, db_session):
+    with app.app_context():
+        fid = PyrometryService.add_furnace({"爐號": "F-D", "名稱": "到期測試爐", "TUS頻率_月": 3})
+        # 最近一次 TUS 在 2025-01-01，每季 → 早已逾期（相對 today）
+        PyrometryService.create_test({
+            "爐子ID": fid, "測試類型": "TUS", "測試日期": "2025-01-01",
+            "設定溫度": 180, "允許公差": 10, "points": [{"最高溫": 181, "最低溫": 179}]})
+        status = PyrometryService.furnace_due_status(fid)
+        assert status["TUS"]["下次應測日"] == "2025-04-01"
+        assert status["TUS"]["狀態"] == "逾期"

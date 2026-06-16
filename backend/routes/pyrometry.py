@@ -54,3 +54,53 @@ def delete_furnace(fid):
         return jsonify({"error": str(e)}), 404
     except Exception as e:
         return jsonify({"error": handle_db_error(e)}), 500
+
+
+# ---------- 測試紀錄 ----------
+@pyrometry_bp.route('/api/pyrometry/tests', methods=['GET'])
+@auth_required
+def search_tests():
+    return jsonify(PyrometryService.search_tests(request.args))
+
+
+@pyrometry_bp.route('/api/pyrometry/tests/<int:tid>', methods=['GET'])
+@auth_required
+def get_test(tid):
+    try:
+        return jsonify(PyrometryService.get_test(tid))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+
+
+@pyrometry_bp.route('/api/pyrometry/tests', methods=['POST'])
+@auth_required
+def create_test():
+    try:
+        new_id = PyrometryService.create_test(request.json)
+        return jsonify({"success": True, "id": new_id})
+    except Exception as e:
+        return jsonify({"error": handle_db_error(e)}), 500
+
+
+@pyrometry_bp.route('/api/pyrometry/tests/<int:tid>', methods=['PUT'])
+@auth_required
+def update_test(tid):
+    try:
+        PyrometryService.update_test(tid, request.json)
+        return jsonify({"success": True})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": handle_db_error(e)}), 500
+
+
+@pyrometry_bp.route('/api/pyrometry/tests/<int:tid>', methods=['DELETE'])
+@auth_required
+def delete_test(tid):
+    try:
+        PyrometryService.delete_test(tid)
+        return jsonify({"success": True})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": handle_db_error(e)}), 500

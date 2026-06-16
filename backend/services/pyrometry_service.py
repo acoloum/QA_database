@@ -360,3 +360,35 @@ class PyrometryService:
         } for t in pg.items]
         return {"success": True, "data": data, "total": total, "page": page,
                 "page_size": page_size, "total_pages": pg.pages}
+
+    # ---------- 到期計算 ----------
+    @staticmethod
+    def _due_for(furnace_id: int, test_type: str, freq_months: int, today=None) -> Dict[str, Any]:
+        from ..models import PyrometryTest
+        today = today or date.today()
+        last = PyrometryTest.query.filter(
+            PyrometryTest.furnace_id == furnace_id,
+            PyrometryTest.test_type == test_type,
+            PyrometryTest.deleted_at.is_(None),
+        ).order_by(PyrometryTest.test_date.desc()).first()
+        if not last:
+            return {"最近測試日": None, "下次應測日": None, "狀態": "尚無紀錄"}
+        next_due = last.test_date + relativedelta(months=int(freq_months or 3))
+        if next_due < today:
+            status = "逾期"
+        elif next_due - today <= timedelta(days=14):
+            status = "即將到期"
+        else:
+            status = "正常"
+        return {"最近測試日": format_value(last.test_date),
+                "下次應測日": format_value(next_due), "狀態": status}
+
+    @staticmethod
+    def furnace_due_status(furnace_id: int, today=None) -> Dict[str, Any]:
+        f = db.session.get(Furnace, furnace_id)
+        if not f:
+            raise ValueError("找不到該爐子設備")
+        return {
+            "TUS": PyrometryService._due_for(furnace_id, "TUS", f.tus_freq_months, today),
+            "SAT": PyrometryService._due_for(furnace_id, "SAT", f.sat_freq_months, today),
+        }
