@@ -25,3 +25,23 @@ def test_furnace_list_only_active_by_default(app, db_session):
         rows = PyrometryService.list_furnaces(active_only=True)
         codes = [r["爐號"] for r in rows]
         assert "F-A" in codes and "F-B" not in codes
+
+
+def _auth_header(client, db_session):
+    """建立測試使用者並回傳 Authorization header"""
+    from backend.models import User
+    from backend.utils import hash_password, generate_token
+    u = User(username="pyro_tester", password=hash_password("pw"), role="admin")
+    db_session.add(u)
+    db_session.commit()
+    token = generate_token(u.id, u.username, u.role)
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_furnace_api_crud(client, db_session):
+    headers = _auth_header(client, db_session)
+    r = client.post("/api/pyrometry/furnaces", json={"爐號": "F-09", "名稱": "退火爐"}, headers=headers)
+    assert r.status_code == 200
+    fid = r.get_json()["id"]
+    r = client.get("/api/pyrometry/furnaces", headers=headers)
+    assert any(x["爐號"] == "F-09" for x in r.get_json()["data"])
