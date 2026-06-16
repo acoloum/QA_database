@@ -24,3 +24,4 @@ backend/scripts/spc_baseline.json
 
 # 資料庫備份檔
 backups/
+.superpowers/
