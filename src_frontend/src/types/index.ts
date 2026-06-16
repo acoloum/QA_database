@@ -813,3 +813,21 @@ export interface RiskRelease {
     處置時間: string;
 }
 
+// CQI-9 爐溫測試
+export interface Furnace {
+  識別碼: number;
+  爐號: string;
+  名稱: string;
+  製程類型: string;
+  TUS點數: number;
+  SAT點數: number;
+  TUS頻率_月: number;
+  SAT頻率_月: number;
+  TUS允許公差: string;
+  SAT允許誤差: string;
+  有效加熱區尺寸: string;
+  儀器型式: string;
+  CQI9等級: string;
+  啟用狀態: boolean;
+  備註: string;
+}

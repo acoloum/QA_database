@@ -22,6 +22,7 @@ const ComplaintPage = lazy(() => import('./pages/complaint/ComplaintPage'));
 const ComplaintStatsPage = lazy(() => import('./pages/complaint/ComplaintStatsPage'));
 const VendorPerformancePage = lazy(() => import('./pages/vendor/VendorPerformancePage'));
 const QualityAnalyticsPage = lazy(() => import('./pages/analytics/QualityAnalyticsPage'));
+const FurnaceMasterPage = lazy(() => import('./pages/pyrometry/FurnaceMasterPage'));
 
 const PageFallback = () => (
   <div className="d-flex align-items-center justify-content-center py-5 text-muted">
@@ -57,6 +58,7 @@ function App() {
                 <Route path="/extrusion-tolerance" element={<ExtrusionTolerancePage />} />
                 <Route path="/vendor-performance" element={<VendorPerformancePage />} />
                 <Route path="/quality-analytics" element={<QualityAnalyticsPage />} />
+                <Route path="/pyrometry/furnaces" element={<FurnaceMasterPage />} />
               </Route>
             </Route>
 

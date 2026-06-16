@@ -43,6 +43,12 @@ const Sidebar = () => {
             ]
         },
         {
+            title: '爐溫測試 (CQI-9)',
+            items: [
+                { title: '設備主檔', path: '/pyrometry/furnaces', icon: 'fa-fire' },
+            ]
+        },
+        {
             title: '系統管理',
             adminOnly: true,
             items: [
