@@ -719,3 +719,32 @@ class VendorPerformance(db.Model):
     calculated_at    = db.Column('計算時間',         db.DateTime, default=utc_now)
 
     vendor = db.relationship('Vendor', backref='performances')
+
+
+# ============================================================
+# CQI-9 爐溫測試模組
+# ============================================================
+class Furnace(db.Model):
+    """爐子設備主檔 — CQI-9 納管的熱處理爐"""
+    __tablename__ = '爐子設備'
+
+    id              = db.Column('識別碼',   db.Integer, primary_key=True)
+    code            = db.Column('爐號',     db.String(50), unique=True, nullable=False)
+    name            = db.Column('名稱',     db.String(100), nullable=False)
+    process_type    = db.Column('製程類型', db.String(20), nullable=True)   # T6時效/T4/退火
+    tus_points      = db.Column('TUS點數',  db.Integer, default=12)
+    sat_points      = db.Column('SAT點數',  db.Integer, default=2)
+    tus_freq_months = db.Column('TUS頻率_月', db.Integer, default=3)        # 每季=3
+    sat_freq_months = db.Column('SAT頻率_月', db.Integer, default=3)
+    tus_tolerance   = db.Column('TUS允許公差', db.Numeric(6, 2), nullable=True)  # ±°C
+    sat_tolerance   = db.Column('SAT允許誤差', db.Numeric(6, 2), nullable=True)  # ±°C
+    work_zone       = db.Column('有效加熱區尺寸', db.String(100), nullable=True)
+    instrument_type = db.Column('儀器型式', db.String(10), nullable=True)   # CQI-9 A~E
+    cqi9_class      = db.Column('CQI9等級', db.String(10), nullable=True)   # 1~6
+    is_active       = db.Column('啟用狀態', db.Boolean, default=True, nullable=False)
+    note            = db.Column('備註',     db.Text, nullable=True)
+    created_at      = db.Column('建立時間', db.DateTime, default=utc_now)
+    updated_at      = db.Column('更新時間', db.DateTime, default=utc_now, onupdate=utc_now)
+
+    def __repr__(self):
+        return f'<Furnace {self.code}>'
