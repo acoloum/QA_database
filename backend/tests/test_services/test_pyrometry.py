@@ -165,3 +165,29 @@ def test_parse_upload_route(client, db_session):
     assert body["success"] is True
     ch = {c["名稱"]: c for c in body["data"]["通道"]}
     assert ch["TC-01"]["最高溫"] == 186
+
+
+def test_dashboard_lists_all_furnaces_with_due(app, db_session):
+    with app.app_context():
+        fid = PyrometryService.add_furnace({"爐號": "F-DB", "名稱": "看板爐", "TUS頻率_月": 3})
+        PyrometryService.create_test({
+            "爐子ID": fid, "測試類型": "TUS", "測試日期": "2025-01-01",
+            "設定溫度": 180, "允許公差": 10, "points": [{"最高溫": 181, "最低溫": 179}]})
+        board = PyrometryService.dashboard()
+        row = next(r for r in board if r["爐號"] == "F-DB")
+        assert row["TUS"]["狀態"] == "逾期"
+        assert "最近結果" in row
+
+
+def test_trend_returns_tus_history(app, db_session):
+    with app.app_context():
+        fid = PyrometryService.add_furnace({"爐號": "F-TR", "名稱": "趨勢爐"})
+        for d, hi in [("2026-01-10", 185), ("2026-04-10", 188)]:
+            PyrometryService.create_test({
+                "爐子ID": fid, "測試類型": "TUS", "測試日期": d,
+                "設定溫度": 180, "允許公差": 10,
+                "points": [{"最高溫": hi, "最低溫": 178}]})
+        trend = PyrometryService.tus_trend(fid)
+        assert len(trend) == 2
+        assert trend[0]["測試日期"] <= trend[1]["測試日期"]
+        assert "均勻度極差" in trend[0]

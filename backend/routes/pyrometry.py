@@ -122,3 +122,16 @@ def parse_data():
         return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": handle_db_error(e)}), 500
+
+
+# ---------- 看板與趨勢 ----------
+@pyrometry_bp.route('/api/pyrometry/dashboard', methods=['GET'])
+@auth_required
+def dashboard():
+    return jsonify({"success": True, "data": PyrometryService.dashboard()})
+
+
+@pyrometry_bp.route('/api/pyrometry/furnaces/<int:fid>/tus-trend', methods=['GET'])
+@auth_required
+def tus_trend(fid):
+    return jsonify({"success": True, "data": PyrometryService.tus_trend(fid)})

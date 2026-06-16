@@ -392,3 +392,38 @@ class PyrometryService:
             "TUS": PyrometryService._due_for(furnace_id, "TUS", f.tus_freq_months, today),
             "SAT": PyrometryService._due_for(furnace_id, "SAT", f.sat_freq_months, today),
         }
+
+    # ---------- 看板與趨勢 ----------
+    @staticmethod
+    def dashboard(today=None) -> List[Dict[str, Any]]:
+        from ..models import PyrometryTest
+        rows = []
+        for f in Furnace.query.filter(Furnace.is_active.is_(True)).order_by(Furnace.code).all():
+            due = PyrometryService.furnace_due_status(f.id, today)
+            last = PyrometryTest.query.filter(
+                PyrometryTest.furnace_id == f.id, PyrometryTest.deleted_at.is_(None)
+            ).order_by(PyrometryTest.test_date.desc()).first()
+            rows.append({
+                "爐子ID": f.id, "爐號": f.code, "名稱": f.name,
+                "製程類型": f.process_type or "",
+                "TUS": due["TUS"], "SAT": due["SAT"],
+                "最近結果": ({"測試類型": last.test_type, "測試日期": format_value(last.test_date),
+                            "是否合格": last.is_pass} if last else None),
+            })
+        return rows
+
+    @staticmethod
+    def tus_trend(furnace_id: int) -> List[Dict[str, Any]]:
+        from ..models import PyrometryTest
+        tests = PyrometryTest.query.filter(
+            PyrometryTest.furnace_id == furnace_id,
+            PyrometryTest.test_type == "TUS",
+            PyrometryTest.deleted_at.is_(None),
+        ).order_by(PyrometryTest.test_date.asc()).all()
+        return [{
+            "測試日期": format_value(t.test_date), "季別": t.quarter or "",
+            "均勻度極差": format_value(t.tus_range),
+            "最大正偏差": format_value(t.tus_max_pos),
+            "最大負偏差": format_value(t.tus_max_neg),
+            "是否合格": t.is_pass,
+        } for t in tests]
