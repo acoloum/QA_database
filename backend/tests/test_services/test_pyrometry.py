@@ -131,3 +131,21 @@ def test_due_status_overdue(app, db_session):
 def test_attachment_accepts_pyrometry(app, db_session):
     from backend.services.attachment_service import VALID_ENTITY_TYPES
     assert 'pyrometry' in VALID_ENTITY_TYPES
+
+
+def test_parse_timeseries_csv_summary(tmp_path):
+    from backend.services.pyrometry_parser import parse_temperature_file
+    csv = tmp_path / "tus.csv"
+    csv.write_text(
+        "時間,TC-01,TC-02\n"
+        "0,178,179\n"
+        "1,186,183\n"
+        "2,182,180\n", encoding="utf-8")
+    with open(csv, "rb") as f:
+        result = parse_temperature_file(f, filename="tus.csv")
+    assert result["時間"] == ["0", "1", "2"]
+    channels = {c["名稱"]: c for c in result["通道"]}
+    assert channels["TC-01"]["最高溫"] == 186
+    assert channels["TC-01"]["最低溫"] == 178
+    assert channels["TC-02"]["最高溫"] == 183
+    assert result["數值"]["TC-01"] == [178, 186, 182]
