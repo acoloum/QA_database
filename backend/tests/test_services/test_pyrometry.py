@@ -149,3 +149,19 @@ def test_parse_timeseries_csv_summary(tmp_path):
     assert channels["TC-01"]["最低溫"] == 178
     assert channels["TC-02"]["最高溫"] == 183
     assert result["數值"]["TC-01"] == [178, 186, 182]
+
+
+import io
+
+def test_parse_upload_route(client, db_session):
+    headers = _auth_header(client, db_session)
+    data = {
+        "file": (io.BytesIO("時間,TC-01,TC-02\n0,178,179\n1,186,183\n".encode("utf-8")), "tus.csv"),
+    }
+    r = client.post("/api/pyrometry/parse-data", data=data,
+                    headers=headers, content_type="multipart/form-data")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["success"] is True
+    ch = {c["名稱"]: c for c in body["data"]["通道"]}
+    assert ch["TC-01"]["最高溫"] == 186

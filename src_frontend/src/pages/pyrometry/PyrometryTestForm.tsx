@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Modal, Form, Row, Col, Button, Table } from 'react-bootstrap';
 import api from '../../services/api';
 import type { Furnace, TusPoint, SatPoint } from '../../types';
+import TusChart from '../../components/pyrometry/TusChart';
 
 interface Inspector { id: number; name: string; }
 interface Props { editId: number | null; onClose: () => void; onSaved: () => void; }
@@ -25,6 +26,8 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const [satPoints, setSatPoints] = useState<SatPoint[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [chartData, setChartData] = useState<{ 時間: string[]; 數值: Record<string, number[]> } | null>(null);
+  const [furnaceChartData, setFurnaceChartData] = useState<{ 數值: Record<string, number[]> } | null>(null);
 
   const { data: furnaces } = useQuery({
     queryKey: ['furnaces-active'],
@@ -74,6 +77,34 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     setTusPoints(prev => prev.map((p, idx) => idx === i ? { ...p, [k]: v } : p));
   const updateSat = (i: number, k: keyof SatPoint, v: string) =>
     setSatPoints(prev => prev.map((p, idx) => idx === i ? { ...p, [k]: v } : p));
+
+  const handleFileUpload = async (file: File, isFurnaceData: boolean) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const r = await api.post<{
+      success: boolean;
+      data: {
+        時間: string[];
+        通道: { 名稱: string; 最高溫: number; 最低溫: number }[];
+        數值: Record<string, number[]>;
+      };
+    }>('/pyrometry/parse-data', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+    if (r.data.success) {
+      if (isFurnaceData) {
+        setFurnaceChartData({ 數值: r.data.data.數值 });
+      } else {
+        setChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
+        // 自動回填 TUS 量測點（依通道順序對應 P1..Pn）
+        if (testType === 'TUS') {
+          setTusPoints(prev => prev.map((p, i) => {
+            const ch = r.data.data.通道[i];
+            if (!ch) return p;
+            return { ...p, 最高溫: String(ch.最高溫), 最低溫: String(ch.最低溫) };
+          }));
+        }
+      }
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true); setError('');
@@ -159,6 +190,32 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
               <Form.Control as="textarea" rows={2} size="sm" value={note} onChange={e => setNote(e.target.value)} />
             </Col>
           </Row>
+
+          {testType === 'TUS' && (
+            <Row className="g-2 mb-3">
+              <Col md={6}>
+                <Form.Label>測試儀器數據（基準，CSV/Excel）</Form.Label>
+                <input className="form-control form-control-sm" type="file" accept=".csv,.xlsx,.xls"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, false); }} />
+              </Col>
+              <Col md={6}>
+                <Form.Label>爐體記錄數據（對照，選配）</Form.Label>
+                <input className="form-control form-control-sm" type="file" accept=".csv,.xlsx,.xls"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, true); }} />
+              </Col>
+              {chartData && (
+                <Col md={12}>
+                  <TusChart
+                    時間={chartData.時間}
+                    數值={chartData.數值}
+                    爐體數值={furnaceChartData?.數值}
+                    設定溫度={Number(setpoint) || 180}
+                    公差={Number(tolerance) || 10}
+                  />
+                </Col>
+              )}
+            </Row>
+          )}
 
           {testType === 'TUS' && tusPoints.length > 0 && (
             <>

@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 from ..services.pyrometry_service import PyrometryService
 from ..utils import auth_required, handle_db_error
+from ..services.pyrometry_parser import parse_temperature_file
 
 pyrometry_bp = Blueprint('pyrometry', __name__)
 
@@ -102,5 +103,22 @@ def delete_test(tid):
         return jsonify({"success": True})
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": handle_db_error(e)}), 500
+
+
+# ---------- 資料解析 ----------
+@pyrometry_bp.route('/api/pyrometry/parse-data', methods=['POST'])
+@auth_required
+def parse_data():
+    """上傳時間序列資料檔，回傳通道摘要與繪圖資料（不落地，僅解析）"""
+    file = request.files.get('file')
+    if not file:
+        return jsonify({"error": "缺少檔案"}), 400
+    try:
+        result = parse_temperature_file(file.stream, filename=file.filename)
+        return jsonify({"success": True, "data": result})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": handle_db_error(e)}), 500
