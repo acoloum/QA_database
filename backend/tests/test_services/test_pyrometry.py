@@ -191,3 +191,15 @@ def test_trend_returns_tus_history(app, db_session):
         assert len(trend) == 2
         assert trend[0]["測試日期"] <= trend[1]["測試日期"]
         assert "均勻度極差" in trend[0]
+
+
+def test_export_test_xlsx(app, db_session):
+    with app.app_context():
+        fid = PyrometryService.add_furnace({"爐號": "F-EX", "名稱": "匯出爐", "TUS允許公差": 10})
+        tid = PyrometryService.create_test({
+            "爐子ID": fid, "測試類型": "TUS", "測試日期": "2026-04-15",
+            "設定溫度": 180, "允許公差": 10,
+            "points": [{"點位": "P1", "最高溫": 186, "最低溫": 178}]})
+        content = PyrometryService.export_test_xlsx(tid)
+        assert isinstance(content, (bytes, bytearray))
+        assert content[:2] == b"PK"      # xlsx 為 zip 容器

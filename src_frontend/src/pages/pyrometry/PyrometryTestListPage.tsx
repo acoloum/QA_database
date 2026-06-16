@@ -117,6 +117,16 @@ const PyrometryTestListPage = () => {
                           onClick={() => { setEditId(r.識別碼); setShowForm(true); }}>編輯</Button>
                         <Button size="sm" variant="outline-danger"
                           onClick={() => { if (window.confirm('確定刪除？')) deleteMutation.mutate(r.識別碼); }}>刪除</Button>
+                        <Button size="sm" variant="outline-secondary" className="ms-1"
+                          onClick={async () => {
+                            const res = await api.get(`/pyrometry/tests/${r.識別碼}/export`, { responseType: 'blob' });
+                            const url = URL.createObjectURL(res.data as Blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `pyrometry_${r.識別碼}.xlsx`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          }}>匯出</Button>
                       </td>
                     </tr>
                   ))}

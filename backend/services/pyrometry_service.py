@@ -427,3 +427,35 @@ class PyrometryService:
             "最大負偏差": format_value(t.tus_max_neg),
             "是否合格": t.is_pass,
         } for t in tests]
+
+    # ---------- 報告匯出 ----------
+    @staticmethod
+    def export_test_xlsx(test_id: int) -> bytes:
+        import io
+        from openpyxl import Workbook
+        detail = PyrometryService.get_test(test_id)
+        main = detail["main"]
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "爐溫測試報告"
+        ws.append(["爐溫測試報告", main["測試類型"]])
+        ws.append(["爐號", main["爐號"], "測試日期", main["測試日期"]])
+        ws.append(["設定溫度", main["設定溫度"], "允許公差", main["允許公差"]])
+        ws.append(["季別", main["季別"], "判定", "合格" if main["是否合格"] else "不合格"])
+        ws.append([])
+        if main["測試類型"] == "TUS":
+            ws.append(["均勻度極差", main["TUS均勻度極差"], "最大正偏差", main["TUS最大正偏差"],
+                       "最大負偏差", main["TUS最大負偏差"]])
+            ws.append([])
+            ws.append(["點位", "熱電偶編號", "修正值", "最高溫", "最低溫", "最大偏差", "判定"])
+            for p in detail["tus_points"]:
+                ws.append([p["點位"], p["熱電偶編號"], p["修正值"], p["最高溫"],
+                           p["最低溫"], p["最大偏差"], "合格" if p["是否合格"] else "不合格"])
+        else:
+            ws.append(["控溫區", "控制儀表讀值", "校正測試儀表讀值", "差值", "修正值", "偏差", "判定"])
+            for p in detail["sat_points"]:
+                ws.append([p["控溫區"], p["控制儀表讀值"], p["校正測試儀表讀值"], p["差值"],
+                           p["修正值"], p["偏差"], "合格" if p["是否合格"] else "不合格"])
+        buf = io.BytesIO()
+        wb.save(buf)
+        return buf.getvalue()

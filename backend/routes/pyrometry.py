@@ -1,4 +1,5 @@
-from flask import Blueprint, jsonify, request
+import io as _io
+from flask import Blueprint, jsonify, request, send_file
 from ..services.pyrometry_service import PyrometryService
 from ..utils import auth_required, handle_db_error
 from ..services.pyrometry_parser import parse_temperature_file
@@ -135,3 +136,20 @@ def dashboard():
 @auth_required
 def tus_trend(fid):
     return jsonify({"success": True, "data": PyrometryService.tus_trend(fid)})
+
+
+# ---------- 報告匯出 ----------
+@pyrometry_bp.route('/api/pyrometry/tests/<int:tid>/export', methods=['GET'])
+@auth_required
+def export_test(tid):
+    try:
+        content = PyrometryService.export_test_xlsx(tid)
+        return send_file(
+            _io.BytesIO(content),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'pyrometry_{tid}.xlsx')
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": handle_db_error(e)}), 500
