@@ -51,7 +51,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     } else {
       setSatPoints(Array.from({ length: n }, (_, i) => ({ ...emptySatPoint(), 控溫區: `Zone${i + 1}` })));
     }
-  }, [furnaceId, testType]);
+  }, [selectedFurnace, testType]);
 
   // 若是編輯，載入既有資料
   useEffect(() => {
