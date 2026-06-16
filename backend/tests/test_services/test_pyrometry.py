@@ -81,3 +81,36 @@ def test_evaluate_sat_pass_and_fail():
     assert result["points"][0]["是否合格"] is True
     assert result["points"][1]["是否合格"] is False
     assert result["是否合格"] is False
+
+
+def _make_furnace(tol=10):
+    return PyrometryService.add_furnace({"爐號": "F-T", "名稱": "測試爐", "TUS允許公差": tol})
+
+
+def test_create_tus_test_auto_judges(app, db_session):
+    with app.app_context():
+        fid = _make_furnace(tol=10)
+        tid = PyrometryService.create_test({
+            "爐子ID": fid, "測試類型": "TUS", "測試日期": "2026-04-15",
+            "設定溫度": 180, "允許公差": 10,
+            "points": [{"點位": "P1", "最高溫": 186, "最低溫": 178},
+                       {"點位": "P2", "最高溫": 183, "最低溫": 179}],
+        })
+        detail = PyrometryService.get_test(tid)
+        assert detail["main"]["是否合格"] is True
+        assert detail["main"]["季別"] == "2026Q2"          # 由日期自動帶
+        assert detail["main"]["TUS均勻度極差"] == 8
+        assert len(detail["tus_points"]) == 2
+
+
+def test_create_sat_test_auto_judges(app, db_session):
+    with app.app_context():
+        fid = PyrometryService.add_furnace({"爐號": "F-S", "名稱": "退火爐", "SAT允許誤差": 5})
+        tid = PyrometryService.create_test({
+            "爐子ID": fid, "測試類型": "SAT", "測試日期": "2026-04-15",
+            "設定溫度": 180, "允許公差": 5,
+            "points": [{"控溫區": "Z1", "控制儀表讀值": 180, "校正測試儀表讀值": 187}],
+        })
+        detail = PyrometryService.get_test(tid)
+        assert detail["main"]["是否合格"] is False
+        assert len(detail["sat_points"]) == 1
