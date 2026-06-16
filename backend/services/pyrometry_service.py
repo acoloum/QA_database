@@ -103,3 +103,59 @@ class PyrometryService:
         except Exception as e:
             db.session.rollback()
             raise e
+
+    # ---------- 判定邏輯 ----------
+    @staticmethod
+    def evaluate_tus(setpoint: float, tolerance: float, points: List[Dict[str, Any]]) -> Dict[str, Any]:
+        sp = float(setpoint)
+        tol = float(tolerance)
+        out_points = []
+        all_max, all_min = [], []
+        overall_pass = True
+        for p in points:
+            tmax = p.get("最高溫")
+            tmin = p.get("最低溫")
+            tmax = float(tmax) if tmax is not None else None
+            tmin = float(tmin) if tmin is not None else None
+            dev_candidates = []
+            if tmax is not None:
+                dev_candidates.append(tmax - sp); all_max.append(tmax)
+            if tmin is not None:
+                dev_candidates.append(tmin - sp); all_min.append(tmin)
+            # 最大偏差 = 絕對值最大的偏差（保留正負號）
+            max_dev = max(dev_candidates, key=abs) if dev_candidates else None
+            pt_pass = max_dev is None or abs(max_dev) <= tol
+            overall_pass = overall_pass and pt_pass
+            np_point = dict(p)
+            np_point["最大偏差"] = round(max_dev, 2) if max_dev is not None else None
+            np_point["是否合格"] = pt_pass
+            out_points.append(np_point)
+        tus_range = round(max(all_max) - min(all_min), 2) if all_max and all_min else None
+        max_pos = round(max(all_max) - sp, 2) if all_max else None
+        max_neg = round(min(all_min) - sp, 2) if all_min else None
+        return {
+            "是否合格": overall_pass, "TUS均勻度極差": tus_range,
+            "TUS最大正偏差": max_pos, "TUS最大負偏差": max_neg, "points": out_points,
+        }
+
+    @staticmethod
+    def evaluate_sat(tolerance: float, points: List[Dict[str, Any]]) -> Dict[str, Any]:
+        tol = float(tolerance)
+        out_points = []
+        overall_pass = True
+        for p in points:
+            ctrl = p.get("控制儀表讀值")
+            test = p.get("校正測試儀表讀值")
+            corr = p.get("修正值") or 0
+            diff = None
+            if ctrl is not None and test is not None:
+                diff = round(float(test) - float(ctrl), 2)
+            deviation = round(diff + float(corr), 2) if diff is not None else None
+            pt_pass = deviation is None or abs(deviation) <= tol
+            overall_pass = overall_pass and pt_pass
+            np_point = dict(p)
+            np_point["差值"] = diff
+            np_point["偏差"] = deviation
+            np_point["是否合格"] = pt_pass
+            out_points.append(np_point)
+        return {"是否合格": overall_pass, "points": out_points}

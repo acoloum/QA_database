@@ -45,3 +45,39 @@ def test_furnace_api_crud(client, db_session):
     fid = r.get_json()["id"]
     r = client.get("/api/pyrometry/furnaces", headers=headers)
     assert any(x["爐號"] == "F-09" for x in r.get_json()["data"])
+
+
+def test_evaluate_tus_pass():
+    """設定溫度180、公差±10：各點偏差皆在內 → 合格，並算均勻度極差"""
+    points = [
+        {"最高溫": 186, "最低溫": 178},
+        {"最高溫": 183, "最低溫": 179},
+    ]
+    result = PyrometryService.evaluate_tus(setpoint=180, tolerance=10, points=points)
+    assert result["是否合格"] is True
+    assert result["TUS均勻度極差"] == 8        # 186 - 178
+    assert result["TUS最大正偏差"] == 6         # 186 - 180
+    assert result["TUS最大負偏差"] == -2        # 178 - 180
+    assert result["points"][0]["最大偏差"] == 6
+    assert result["points"][0]["是否合格"] is True
+
+
+def test_evaluate_tus_fail():
+    """某點最高溫191 → 偏差+11 超過±10 → 不合格"""
+    points = [{"最高溫": 191, "最低溫": 175}]
+    result = PyrometryService.evaluate_tus(setpoint=180, tolerance=10, points=points)
+    assert result["是否合格"] is False
+    assert result["points"][0]["是否合格"] is False
+
+
+def test_evaluate_sat_pass_and_fail():
+    """SAT：偏差=測試-控制；公差±5"""
+    points = [
+        {"控制儀表讀值": 180, "校正測試儀表讀值": 183},   # diff +3 OK
+        {"控制儀表讀值": 180, "校正測試儀表讀值": 187},   # diff +7 NG
+    ]
+    result = PyrometryService.evaluate_sat(tolerance=5, points=points)
+    assert result["points"][0]["差值"] == 3
+    assert result["points"][0]["是否合格"] is True
+    assert result["points"][1]["是否合格"] is False
+    assert result["是否合格"] is False
