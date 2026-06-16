@@ -743,8 +743,8 @@ class Furnace(db.Model):
     cqi9_class      = db.Column('CQI9等級', db.String(10), nullable=True)   # 1~6
     is_active       = db.Column('啟用狀態', db.Boolean, default=True, nullable=False)
     note            = db.Column('備註',     db.Text, nullable=True)
-    created_at      = db.Column('建立時間', db.DateTime, default=utc_now)
-    updated_at      = db.Column('更新時間', db.DateTime, default=utc_now, onupdate=utc_now)
+    created_at      = db.Column('建立時間', db.DateTime(timezone=True), default=utc_now)
+    updated_at      = db.Column('更新時間', db.DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     def __repr__(self):
         return f'<Furnace {self.code}>'
