@@ -748,3 +748,67 @@ class Furnace(db.Model):
 
     def __repr__(self):
         return f'<Furnace {self.code}>'
+
+
+class PyrometryTest(SoftDeleteMixin, db.Model):
+    """爐溫測試主檔 — 每次 TUS 或 SAT 一筆"""
+    __tablename__ = '爐溫測試'
+
+    id              = db.Column('識別碼',       db.Integer, primary_key=True)
+    furnace_id      = db.Column('爐子ID',       db.Integer, db.ForeignKey('爐子設備.識別碼'), nullable=False)
+    test_type       = db.Column('測試類型',     db.String(10), nullable=False)   # TUS / SAT
+    quarter         = db.Column('季別',         db.String(10), nullable=True)    # 2026Q2
+    test_date       = db.Column('測試日期',     db.Date, nullable=False, index=True)
+    setpoint        = db.Column('設定溫度',     db.Numeric(8, 2), nullable=False)
+    tolerance       = db.Column('允許公差',     db.Numeric(6, 2), nullable=True)
+    tester_id       = db.Column('測試人員',     db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
+    test_instrument = db.Column('測試儀器編號', db.String(100), nullable=True)
+    std_instrument  = db.Column('標準校正儀器編號', db.String(100), nullable=True)
+    cal_due_date    = db.Column('儀器校正到期日', db.Date, nullable=True)
+    is_pass         = db.Column('是否合格',     db.Boolean, default=False, index=True)
+    tus_range       = db.Column('TUS均勻度極差', db.Numeric(8, 2), nullable=True)
+    tus_max_pos     = db.Column('TUS最大正偏差', db.Numeric(8, 2), nullable=True)
+    tus_max_neg     = db.Column('TUS最大負偏差', db.Numeric(8, 2), nullable=True)
+    note            = db.Column('備註',         db.Text, nullable=True)
+    created_by      = db.Column('建立人',       db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True)
+    created_at      = db.Column('建立時間',     db.DateTime(timezone=True), default=utc_now)
+    updated_at      = db.Column('更新時間',     db.DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    __table_args__ = (
+        db.Index('idx_pyro_furnace_type_date', '爐子ID', '測試類型', '測試日期'),
+    )
+
+    furnace    = db.relationship('Furnace', backref='tests')
+    tester     = db.relationship('Inspector', foreign_keys=[tester_id])
+    tus_points = db.relationship('TusPoint', backref='test', cascade='all, delete-orphan')
+    sat_points = db.relationship('SatPoint', backref='test', cascade='all, delete-orphan')
+
+
+class TusPoint(db.Model):
+    """TUS 量測點明細 — 每筆=一支熱電偶"""
+    __tablename__ = 'TUS量測點明細'
+
+    id         = db.Column('識別碼',   db.Integer, primary_key=True)
+    test_id    = db.Column('測試ID',   db.Integer, db.ForeignKey('爐溫測試.識別碼'), nullable=False)
+    position   = db.Column('點位',     db.String(20), nullable=True)   # P1~P12
+    tc_no      = db.Column('熱電偶編號', db.String(50), nullable=True)
+    correction = db.Column('修正值',   db.Numeric(8, 2), nullable=True)
+    temp_max   = db.Column('最高溫',   db.Numeric(8, 2), nullable=True)
+    temp_min   = db.Column('最低溫',   db.Numeric(8, 2), nullable=True)
+    max_dev    = db.Column('最大偏差', db.Numeric(8, 2), nullable=True)
+    is_pass    = db.Column('是否合格', db.Boolean, default=True)
+
+
+class SatPoint(db.Model):
+    """SAT 量測點明細 — 每筆=一個控溫區"""
+    __tablename__ = 'SAT量測點明細'
+
+    id           = db.Column('識別碼',         db.Integer, primary_key=True)
+    test_id      = db.Column('測試ID',         db.Integer, db.ForeignKey('爐溫測試.識別碼'), nullable=False)
+    zone         = db.Column('控溫區',         db.String(20), nullable=True)
+    control_read = db.Column('控制儀表讀值',   db.Numeric(8, 2), nullable=True)
+    test_read    = db.Column('校正測試儀表讀值', db.Numeric(8, 2), nullable=True)
+    diff         = db.Column('差值',           db.Numeric(8, 2), nullable=True)
+    correction   = db.Column('修正值',         db.Numeric(8, 2), nullable=True)
+    deviation    = db.Column('偏差',           db.Numeric(8, 2), nullable=True)
+    is_pass      = db.Column('是否合格',       db.Boolean, default=True)
