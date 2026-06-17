@@ -4,9 +4,21 @@
   TUS → QRA073 均勻性紀錄表 + 原始數據與曲線圖（超限點紅標）
   SAT → QRA074 系統準確度紀錄表
 """
+import re
 from typing import Dict, Any, Optional
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from openpyxl.chart import LineChart, Reference
+
+
+def _sort_channels(keys):
+    """通道排序：TUS-1…TUS-12 在前，接著 SAT-1…SAT-6，其餘依字母；同群依數字遞增"""
+    def rank(name):
+        m = re.match(r'^([A-Za-z]+)[-_ ]?(\d+)?', name)
+        prefix = (m.group(1) if m else name).upper()
+        num = int(m.group(2)) if (m and m.group(2)) else 0
+        pri = 0 if prefix == 'TUS' else 1 if prefix == 'SAT' else 2
+        return (pri, prefix, num)
+    return sorted(keys, key=rank)
 
 _THIN = Side(style='thin', color='999999')
 _BORDER = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
@@ -285,7 +297,7 @@ def build_raw_chart_sheet(wb, times, values: Dict[str, Any], setpoint: float, to
     if not times:
         return
     values = values or {}
-    channels = list(values.keys())
+    channels = _sort_channels(list(values.keys()))
     if not channels:
         return
     highlight = s_start is not None and s_end is not None

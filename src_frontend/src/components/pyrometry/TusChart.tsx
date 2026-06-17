@@ -10,6 +10,7 @@ import {
 } from 'chart.js';
 import annotationPlugin from 'chartjs-plugin-annotation';
 import { Line } from 'react-chartjs-2';
+import { sortChannels } from './channelSort';
 
 ChartJS.register(
   CategoryScale, LinearScale, PointElement, LineElement,
@@ -33,7 +34,7 @@ const COLORS = [
 ];
 
 const TusChart = ({ 時間, 數值, 設定溫度, 公差, startIdx, endIdx, 標題 }: TusChartProps) => {
-  const channels = Object.keys(數值);
+  const channels = sortChannels(Object.keys(數值));
   const upper = 設定溫度 + 公差;
   const lower = 設定溫度 - 公差;
   const hasRange = startIdx !== undefined && endIdx !== undefined;

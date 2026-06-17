@@ -1,4 +1,5 @@
 import { Table } from 'react-bootstrap';
+import { sortChannels } from './channelSort';
 
 interface Props {
   時間: string[];
@@ -11,7 +12,7 @@ interface Props {
 
 /** 詳細時間×通道溫度表；恆溫穩定期內超出設定溫度±公差的點以紅底標示 */
 const TusDataTable = ({ 時間, 數值, 設定溫度, 公差, 穩定開始, 穩定結束 }: Props) => {
-  const channels = Object.keys(數值);
+  const channels = sortChannels(Object.keys(數值));
   const hi = 設定溫度 + 公差;
   const lo = 設定溫度 - 公差;
 
