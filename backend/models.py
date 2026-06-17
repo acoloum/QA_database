@@ -808,13 +808,14 @@ class SatPoint(db.Model):
 
     id           = db.Column('識別碼',         db.Integer, primary_key=True)
     test_id      = db.Column('測試ID',         db.Integer, db.ForeignKey('爐溫測試.識別碼'), nullable=False)
-    zone         = db.Column('控溫區',         db.String(20), nullable=True)
-    control_read = db.Column('控制儀表讀值',   db.Numeric(8, 2), nullable=True)
-    test_read    = db.Column('校正測試儀表讀值', db.Numeric(8, 2), nullable=True)
-    diff         = db.Column('差值',           db.Numeric(8, 2), nullable=True)
-    correction   = db.Column('修正值',         db.Numeric(8, 2), nullable=True)
-    deviation    = db.Column('偏差',           db.Numeric(8, 2), nullable=True)
-    is_pass      = db.Column('是否合格',       db.Boolean, default=True)
+    zone          = db.Column('控溫區',         db.String(20), nullable=True)
+    control_read  = db.Column('控制儀表讀值',   db.Numeric(8, 2), nullable=True)
+    test_read_max = db.Column('校正測試最高溫', db.Numeric(8, 2), nullable=True)
+    test_read_min = db.Column('校正測試最低溫', db.Numeric(8, 2), nullable=True)
+    diff          = db.Column('差值',           db.Numeric(8, 2), nullable=True)
+    correction    = db.Column('修正值',         db.Numeric(8, 2), nullable=True)
+    deviation     = db.Column('偏差',           db.Numeric(8, 2), nullable=True)
+    is_pass       = db.Column('是否合格',       db.Boolean, default=True)
 
 
 class Recorder(db.Model):

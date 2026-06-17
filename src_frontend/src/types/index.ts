@@ -857,7 +857,8 @@ export interface SatPoint {
   識別碼?: number;
   控溫區: string;
   控制儀表讀值: string | number | null;
-  校正測試儀表讀值: string | number | null;
+  校正測試最高溫: string | number | null;
+  校正測試最低溫: string | number | null;
   差值?: string | number | null;
   修正值: string | number | null;
   偏差?: string | number | null;

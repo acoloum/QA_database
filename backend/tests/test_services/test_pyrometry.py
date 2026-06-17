@@ -166,13 +166,13 @@ def test_compute_corrections_sat_channel_offset_and_clamp(app, db_session):
 
 
 def test_evaluate_sat_pass_and_fail():
-    """SAT：偏差=測試-控制；公差±5"""
+    """SAT：偏差取最高/最低溫偏差之絕對值較大者；公差±5"""
     points = [
-        {"控制儀表讀值": 180, "校正測試儀表讀值": 183},   # diff +3 OK
-        {"控制儀表讀值": 180, "校正測試儀表讀值": 187},   # diff +7 NG
+        {"控制儀表讀值": 180, "校正測試最高溫": 183, "校正測試最低溫": 181},  # 最高差+3 OK
+        {"控制儀表讀值": 180, "校正測試最高溫": 187, "校正測試最低溫": 185},  # 最高差+7 NG
     ]
     result = PyrometryService.evaluate_sat(tolerance=5, points=points)
-    assert result["points"][0]["差值"] == 3
+    assert result["points"][0]["差值"] == 3   # diff = max - ctrl = 183-180
     assert result["points"][0]["是否合格"] is True
     assert result["points"][1]["是否合格"] is False
     assert result["是否合格"] is False
@@ -236,7 +236,7 @@ def test_create_sat_test_auto_judges(app, db_session):
         tid = PyrometryService.create_test({
             "爐子ID": fid, "測試類型": "SAT", "測試日期": "2026-04-15",
             "設定溫度": 180, "允許公差": 5,
-            "points": [{"控溫區": "Z1", "控制儀表讀值": 180, "校正測試儀表讀值": 187}],
+            "points": [{"控溫區": "Z1", "控制儀表讀值": 180, "校正測試最高溫": 187, "校正測試最低溫": 185}],
         })
         detail = PyrometryService.get_test(tid)
         assert detail["main"]["是否合格"] is False
