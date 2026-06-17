@@ -55,19 +55,19 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     queryFn: () => api.get<{ id: number; name: string }[]>('/inspectors').then(r => r.data),
   });
 
-  const selectedFurnace = (furnaces || []).find(f => String(f.識別碼) === furnaceId);
-
-  // 選爐子或類型後自動帶公差與點數
-  useEffect(() => {
-    if (!selectedFurnace) return;
-    setTolerance(testType === 'TUS' ? selectedFurnace.TUS允許公差 : selectedFurnace.SAT允許誤差);
-    const n = testType === 'TUS' ? selectedFurnace.TUS點數 : selectedFurnace.SAT點數;
-    if (testType === 'TUS') {
+  // 由使用者「主動」選爐子或切類型時，才帶出公差並重建量測點模板。
+  // 不放在 useEffect：否則編輯載入或清單 refetch 時會誤觸發，把已載入/已上傳的量測點清空。
+  const applyFurnaceDefaults = (fid: string, type: 'TUS' | 'SAT') => {
+    const f = (furnaces || []).find(x => String(x.識別碼) === fid);
+    if (!f) return;
+    setTolerance(type === 'TUS' ? f.TUS允許公差 : f.SAT允許誤差);
+    const n = type === 'TUS' ? f.TUS點數 : f.SAT點數;
+    if (type === 'TUS') {
       setTusPoints(Array.from({ length: n }, (_, i) => ({ ...emptyTusPoint(), 點位: `P${i + 1}` })));
     } else {
       setSatPoints(Array.from({ length: n }, (_, i) => ({ ...emptySatPoint(), 控溫區: `Zone${i + 1}` })));
     }
-  }, [selectedFurnace, testType]);
+  };
 
   // 若是編輯，載入既有資料
   useEffect(() => {
@@ -190,14 +190,16 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
           <Row className="g-2 mb-3">
             <Col md={3}>
               <Form.Label>爐子 *</Form.Label>
-              <Form.Select size="sm" value={furnaceId} onChange={e => setFurnaceId(e.target.value)}>
+              <Form.Select size="sm" value={furnaceId}
+                onChange={e => { setFurnaceId(e.target.value); applyFurnaceDefaults(e.target.value, testType); }}>
                 <option value="">請選擇</option>
                 {(furnaces || []).map(f => <option key={f.識別碼} value={f.識別碼}>{f.爐號} {f.名稱}</option>)}
               </Form.Select>
             </Col>
             <Col md={2}>
               <Form.Label>類型 *</Form.Label>
-              <Form.Select size="sm" value={testType} onChange={e => setTestType(e.target.value as 'TUS' | 'SAT')}>
+              <Form.Select size="sm" value={testType}
+                onChange={e => { const v = e.target.value as 'TUS' | 'SAT'; setTestType(v); applyFurnaceDefaults(furnaceId, v); }}>
                 <option value="TUS">TUS</option>
                 <option value="SAT">SAT</option>
               </Form.Select>
