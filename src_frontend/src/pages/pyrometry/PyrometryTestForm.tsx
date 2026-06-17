@@ -45,6 +45,8 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const [furnaceChartData, setFurnaceChartData] = useState<{ 時間: string[]; 數值: Record<string, number[]> } | null>(null);
   const [rangeStart, setRangeStart] = useState(0);
   const [rangeEnd, setRangeEnd] = useState(0);
+  const [furnaceRangeStart, setFurnaceRangeStart] = useState(0);
+  const [furnaceRangeEnd, setFurnaceRangeEnd] = useState(0);
   const [showDetail, setShowDetail] = useState(false);
   const [showFurnaceDetail, setShowFurnaceDetail] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -94,7 +96,12 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
       setSatPoints(sat_points);
       if (cd && cd.時間) {
         setChartData({ 時間: cd.時間, 數值: cd.數值 });
-        if (cd.爐體數值) setFurnaceChartData({ 時間: cd.爐體時間 || cd.時間, 數值: cd.爐體數值 });
+        if (cd.爐體數值) {
+          setFurnaceChartData({ 時間: cd.爐體時間 || cd.時間, 數值: cd.爐體數值 });
+          const fLen = (cd.爐體時間 || cd.時間).length;
+          setFurnaceRangeStart(cd.爐體穩定開始 ?? 0);
+          setFurnaceRangeEnd(cd.爐體穩定結束 ?? (fLen - 1));
+        }
         setRangeStart(cd.穩定開始 ?? 0);
         setRangeEnd(cd.穩定結束 ?? (cd.時間.length - 1));
       }
@@ -147,7 +154,10 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     }>('/pyrometry/parse-data', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
     if (r.data.success) {
       if (isFurnaceData) {
+        const lastIdx = r.data.data.時間.length - 1;
         setFurnaceChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
+        setFurnaceRangeStart(0);
+        setFurnaceRangeEnd(lastIdx);
       } else {
         const lastIdx = r.data.data.時間.length - 1;
         setChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
@@ -182,6 +192,8 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
           爐體數值: furnaceChartData?.數值 || null,
           穩定開始: rangeStart,
           穩定結束: rangeEnd,
+          爐體穩定開始: furnaceChartData ? furnaceRangeStart : null,
+          爐體穩定結束: furnaceChartData ? furnaceRangeEnd : null,
         } : null,
         報告欄位: reportMeta,
       };
@@ -389,14 +401,60 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                       數值={furnaceChartData.數值}
                       設定溫度={Number(setpoint) || 180}
                       公差={Number(tolerance) || 10}
+                      startIdx={furnaceRangeStart}
+                      endIdx={furnaceRangeEnd}
                       標題="爐體記錄溫度曲線"
                     />
                   </Col>
+
+                  {/* 爐體恆溫穩定期選取列 */}
+                  <Col md={12}>
+                    <div className="d-flex align-items-center gap-3 p-2 bg-light rounded border">
+                      <span className="fw-semibold text-nowrap" style={{ fontSize: 13 }}>
+                        爐體恆溫穩定期：
+                      </span>
+                      <div className="d-flex align-items-center gap-1">
+                        <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>開始</Form.Label>
+                        <Form.Select
+                          size="sm"
+                          style={{ minWidth: 120 }}
+                          value={furnaceRangeStart}
+                          onChange={e => setFurnaceRangeStart(Number(e.target.value))}
+                        >
+                          {furnaceChartData.時間.map((t, i) => (
+                            <option key={i} value={i}>{t}</option>
+                          ))}
+                        </Form.Select>
+                      </div>
+                      <div className="d-flex align-items-center gap-1">
+                        <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>結束</Form.Label>
+                        <Form.Select
+                          size="sm"
+                          style={{ minWidth: 120 }}
+                          value={furnaceRangeEnd}
+                          onChange={e => setFurnaceRangeEnd(Number(e.target.value))}
+                        >
+                          {furnaceChartData.時間.map((t, i) => (
+                            <option key={i} value={i}>{t}</option>
+                          ))}
+                        </Form.Select>
+                      </div>
+                      <span className="text-muted" style={{ fontSize: 11 }}>
+                        共 {furnaceRangeEnd >= furnaceRangeStart ? furnaceRangeEnd - furnaceRangeStart + 1 : 0} 筆
+                      </span>
+                    </div>
+                  </Col>
+
                   <Col md={12}>
                     <div className="d-flex align-items-center gap-2 mb-1">
                       <Button size="sm" variant="outline-secondary" onClick={() => setShowFurnaceDetail(v => !v)}>
                         {showFurnaceDetail ? '隱藏爐體詳細數據表' : '顯示爐體詳細數據表'}
                       </Button>
+                      <span className="text-muted" style={{ fontSize: 11 }}>
+                        恆溫穩定期內：
+                        <span style={{ background: '#f8d7da', color: '#842029', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>紅底＝超上限</span>
+                        <span style={{ background: '#cfe2ff', color: '#084298', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>藍底＝低於下限</span>
+                      </span>
                     </div>
                     {showFurnaceDetail && (
                       <TusDataTable
@@ -404,8 +462,8 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                         數值={furnaceChartData.數值}
                         設定溫度={Number(setpoint) || 180}
                         公差={Number(tolerance) || 10}
-                        穩定開始={0}
-                        穩定結束={-1}
+                        穩定開始={furnaceRangeStart}
+                        穩定結束={furnaceRangeEnd}
                       />
                     )}
                   </Col>
