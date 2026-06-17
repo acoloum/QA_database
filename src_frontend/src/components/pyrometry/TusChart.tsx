@@ -38,16 +38,28 @@ const TusChart = ({ 時間, 數值, 爐體數值, 設定溫度, 公差, startIdx
   const lower = 設定溫度 - 公差;
   const hasRange = startIdx !== undefined && endIdx !== undefined;
 
+  // 恆溫穩定期內、超出上下限的點 → 紅色警示
+  const inSoak = (j: number) =>
+    hasRange && j >= (startIdx as number) && j <= (endIdx as number);
+  const isOut = (v: number | null) => v != null && (v > upper || v < lower);
+
   const datasets = [
-    ...channels.map((ch, i) => ({
-      label: ch,
-      data: 數值[ch],
-      borderColor: COLORS[i % COLORS.length],
-      backgroundColor: 'transparent',
-      borderWidth: 2,
-      pointRadius: 2,
-      tension: 0.3,
-    })),
+    ...channels.map((ch, i) => {
+      const base = COLORS[i % COLORS.length];
+      const ptColor = 數值[ch].map((v, j) => (inSoak(j) && isOut(v) ? '#dc3545' : base));
+      const ptRadius = 數值[ch].map((v, j) => (inSoak(j) && isOut(v) ? 4 : 2));
+      return {
+        label: ch,
+        data: 數值[ch],
+        borderColor: base,
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        pointBackgroundColor: ptColor,
+        pointBorderColor: ptColor,
+        pointRadius: ptRadius,
+        tension: 0.3,
+      };
+    }),
     ...(爐體數值
       ? Object.keys(爐體數值).map((ch, i) => ({
           label: `${ch}（爐體）`,

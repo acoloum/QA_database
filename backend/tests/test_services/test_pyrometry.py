@@ -198,6 +198,23 @@ def test_create_tus_test_auto_judges(app, db_session):
         assert len(detail["tus_points"]) == 2
 
 
+def test_create_test_persists_chart_data(app, db_session):
+    """上傳的時間序列（曲線資料）存檔後可重現"""
+    with app.app_context():
+        fid = _make_furnace(tol=10)
+        tid = PyrometryService.create_test({
+            "爐子ID": fid, "測試類型": "TUS", "測試日期": "2026-04-15",
+            "設定溫度": 180, "允許公差": 10,
+            "points": [{"點位": "P1", "最高溫": 186, "最低溫": 178}],
+            "曲線資料": {"時間": ["11:36", "11:38"], "數值": {"TUS-1": [178, 186]},
+                       "穩定開始": 0, "穩定結束": 1},
+        })
+        detail = PyrometryService.get_test(tid)
+        assert detail["曲線資料"]["時間"] == ["11:36", "11:38"]
+        assert detail["曲線資料"]["數值"]["TUS-1"] == [178, 186]
+        assert detail["曲線資料"]["穩定開始"] == 0
+
+
 def test_create_sat_test_auto_judges(app, db_session):
     with app.app_context():
         fid = PyrometryService.add_furnace({"爐號": "F-S", "名稱": "退火爐", "SAT允許誤差": 5})

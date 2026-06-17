@@ -444,6 +444,7 @@ class PyrometryService:
                 tus_range=judged.get("TUS均勻度極差"),
                 tus_max_pos=judged.get("TUS最大正偏差"),
                 tus_max_neg=judged.get("TUS最大負偏差"),
+                chart_data=data.get("曲線資料") or None,
                 note=data.get("備註") or None,
                 created_by=data.get("建立人") or None,
             )
@@ -504,7 +505,8 @@ class PyrometryService:
             "修正值": format_value(p.correction), "偏差": format_value(p.deviation),
             "是否合格": p.is_pass,
         } for p in sorted(t.sat_points, key=lambda x: x.id)]
-        return {"success": True, "main": main, "tus_points": tus_points, "sat_points": sat_points}
+        return {"success": True, "main": main, "tus_points": tus_points,
+                "sat_points": sat_points, "曲線資料": t.chart_data}
 
     @staticmethod
     def update_test(test_id: int, data: Dict[str, Any]) -> bool:
@@ -535,6 +537,8 @@ class PyrometryService:
             t.tus_range = judged.get("TUS均勻度極差")
             t.tus_max_pos = judged.get("TUS最大正偏差")
             t.tus_max_neg = judged.get("TUS最大負偏差")
+            if "曲線資料" in data:
+                t.chart_data = data.get("曲線資料") or None
             t.note = data.get("備註") or None
 
             TusPoint.query.filter_by(test_id=test_id).delete()

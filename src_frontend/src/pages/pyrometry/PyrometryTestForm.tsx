@@ -4,6 +4,7 @@ import { Modal, Form, Row, Col, Button, Table } from 'react-bootstrap';
 import api from '../../services/api';
 import type { Furnace, TusPoint, SatPoint } from '../../types';
 import TusChart from '../../components/pyrometry/TusChart';
+import TusDataTable from '../../components/pyrometry/TusDataTable';
 
 interface Inspector { id: number; name: string; }
 interface Props { editId: number | null; onClose: () => void; onSaved: () => void; }
@@ -44,6 +45,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const [furnaceChartData, setFurnaceChartData] = useState<{ 數值: Record<string, number[]> } | null>(null);
   const [rangeStart, setRangeStart] = useState(0);
   const [rangeEnd, setRangeEnd] = useState(0);
+  const [showDetail, setShowDetail] = useState(false);
 
   const { data: furnaces } = useQuery({
     queryKey: ['furnaces-active'],
@@ -74,6 +76,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     if (!editId) return;
     api.get(`/pyrometry/tests/${editId}`).then(r => {
       const { main, tus_points, sat_points } = r.data;
+      const cd = r.data.曲線資料;
       setFurnaceId(String(main.爐子ID));
       setTestType(main.測試類型);
       setTestDate(main.測試日期);
@@ -86,6 +89,12 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
       setNote(main.備註);
       setTusPoints(tus_points);
       setSatPoints(sat_points);
+      if (cd && cd.時間) {
+        setChartData({ 時間: cd.時間, 數值: cd.數值 });
+        if (cd.爐體數值) setFurnaceChartData({ 數值: cd.爐體數值 });
+        setRangeStart(cd.穩定開始 ?? 0);
+        setRangeEnd(cd.穩定結束 ?? (cd.時間.length - 1));
+      }
     });
   }, [editId]);
 
@@ -162,6 +171,13 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
         測試儀器編號: testInstrument, 標準校正儀器編號: stdInstrument,
         儀器校正到期日: calDueDate || null, 備註: note,
         points: testType === 'TUS' ? tusPoints : satPoints,
+        曲線資料: (testType === 'TUS' && chartData) ? {
+          時間: chartData.時間,
+          數值: chartData.數值,
+          爐體數值: furnaceChartData?.數值 || null,
+          穩定開始: rangeStart,
+          穩定結束: rangeEnd,
+        } : null,
       };
       if (editId) {
         await api.put(`/pyrometry/tests/${editId}`, payload);
@@ -307,6 +323,30 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                         共 {rangeEnd >= rangeStart ? rangeEnd - rangeStart + 1 : 0} 筆
                       </span>
                     </div>
+                  </Col>
+
+                  {/* 詳細數據表 */}
+                  <Col md={12}>
+                    <div className="d-flex align-items-center gap-2 mb-1">
+                      <Button size="sm" variant="outline-secondary" onClick={() => setShowDetail(v => !v)}>
+                        {showDetail ? '隱藏詳細數據表' : '顯示詳細數據表'}
+                      </Button>
+                      <span className="text-muted" style={{ fontSize: 11 }}>
+                        恆溫穩定期內超出 設定溫度 ± 公差 的點以
+                        <span style={{ background: '#f8d7da', color: '#842029', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>紅底</span>
+                        標示
+                      </span>
+                    </div>
+                    {showDetail && (
+                      <TusDataTable
+                        時間={chartData.時間}
+                        數值={chartData.數值}
+                        設定溫度={Number(setpoint) || 180}
+                        公差={Number(tolerance) || 10}
+                        穩定開始={rangeStart}
+                        穩定結束={rangeEnd}
+                      />
+                    )}
                   </Col>
                 </>
               )}

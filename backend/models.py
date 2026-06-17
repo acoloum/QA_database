@@ -770,6 +770,7 @@ class PyrometryTest(SoftDeleteMixin, db.Model):
     tus_range       = db.Column('TUS均勻度極差', db.Numeric(8, 2), nullable=True)
     tus_max_pos     = db.Column('TUS最大正偏差', db.Numeric(8, 2), nullable=True)
     tus_max_neg     = db.Column('TUS最大負偏差', db.Numeric(8, 2), nullable=True)
+    chart_data      = db.Column('曲線資料',     db.JSON, nullable=True)   # 時間序列原始數據（供曲線/詳細表重現）
     note            = db.Column('備註',         db.Text, nullable=True)
     created_by      = db.Column('建立人',       db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True)
     created_at      = db.Column('建立時間',     db.DateTime(timezone=True), default=utc_now)
