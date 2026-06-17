@@ -616,13 +616,12 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
               </div>
               <Table bordered size="sm">
                 <thead className="table-secondary">
-                  <tr><th>點位</th><th>熱電偶編號</th><th>修正值</th><th>最高溫</th><th>最低溫</th></tr>
+                  <tr><th>點位</th><th>修正值</th><th>最高溫</th><th>最低溫</th></tr>
                 </thead>
                 <tbody>
                   {tusPoints.map((p, i) => (
                     <tr key={i}>
                       <td><Form.Control size="sm" value={p.點位} onChange={e => updateTus(i, '點位', e.target.value)} /></td>
-                      <td><Form.Control size="sm" value={p.熱電偶編號} onChange={e => updateTus(i, '熱電偶編號', e.target.value)} /></td>
                       <td><Form.Control size="sm" value={String(p.修正值 ?? '')} onChange={e => updateTus(i, '修正值', e.target.value)} /></td>
                       <td><Form.Control size="sm" value={String(p.最高溫 ?? '')} onChange={e => updateTus(i, '最高溫', e.target.value)} /></td>
                       <td><Form.Control size="sm" value={String(p.最低溫 ?? '')} onChange={e => updateTus(i, '最低溫', e.target.value)} /></td>
