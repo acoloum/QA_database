@@ -105,6 +105,22 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     }));
   };
 
+  // 依設定溫度向後端取各點修正值（熱電偶+記錄器補正）並回填
+  const applyCorrections = async (type: 'TUS' | 'SAT') => {
+    const count = type === 'TUS' ? tusPoints.length : satPoints.length;
+    if (!count) return;
+    const r = await api.get<{ success: boolean; data: number[] }>(
+      `/pyrometry/corrections?setpoint=${Number(setpoint) || 0}&type=${type}&count=${count}`,
+    );
+    if (r.data.success) {
+      if (type === 'TUS') {
+        setTusPoints(prev => prev.map((p, i) => ({ ...p, 修正值: String(r.data.data[i] ?? '') })));
+      } else {
+        setSatPoints(prev => prev.map((p, i) => ({ ...p, 修正值: String(r.data.data[i] ?? '') })));
+      }
+    }
+  };
+
   const handleFileUpload = async (file: File, isFurnaceData: boolean) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -297,7 +313,15 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
 
           {testType === 'TUS' && tusPoints.length > 0 && (
             <>
-              <h6>TUS 量測點明細</h6>
+              <div className="d-flex justify-content-between align-items-center">
+                <h6 className="mb-0">TUS 量測點明細</h6>
+                <Button size="sm" variant="outline-secondary" onClick={() => applyCorrections('TUS')}>
+                  帶入儀器校正補正值
+                </Button>
+              </div>
+              <div className="text-muted mb-1" style={{ fontSize: 11 }}>
+                修正值＝熱電偶補正＋記錄器補正（依設定溫度內插）；校正後溫度＝量測值＋修正值
+              </div>
               <Table bordered size="sm">
                 <thead className="table-secondary">
                   <tr><th>點位</th><th>熱電偶編號</th><th>修正值</th><th>最高溫</th><th>最低溫</th></tr>
@@ -319,7 +343,15 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
 
           {testType === 'SAT' && satPoints.length > 0 && (
             <>
-              <h6>SAT 量測點明細</h6>
+              <div className="d-flex justify-content-between align-items-center">
+                <h6 className="mb-0">SAT 量測點明細</h6>
+                <Button size="sm" variant="outline-secondary" onClick={() => applyCorrections('SAT')}>
+                  帶入儀器校正補正值
+                </Button>
+              </div>
+              <div className="text-muted mb-1" style={{ fontSize: 11 }}>
+                偏差＝（校正測試讀值＋修正值）− 控制讀值
+              </div>
               <Table bordered size="sm">
                 <thead className="table-secondary">
                   <tr><th>控溫區</th><th>控制儀表讀值</th><th>校正測試儀表讀值</th><th>修正值</th></tr>

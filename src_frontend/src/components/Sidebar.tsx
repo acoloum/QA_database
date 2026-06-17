@@ -48,6 +48,7 @@ const Sidebar = () => {
                 { title: '爐溫總覽', path: '/pyrometry', icon: 'fa-gauge' },
                 { title: '測試紀錄', path: '/pyrometry/tests', icon: 'fa-temperature-high' },
                 { title: '設備主檔', path: '/pyrometry/furnaces', icon: 'fa-fire' },
+                { title: '記錄器校正', path: '/pyrometry/recorders', icon: 'fa-ruler' },
             ]
         },
         {

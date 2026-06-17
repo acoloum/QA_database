@@ -47,6 +47,32 @@ def test_furnace_api_crud(client, db_session):
     assert any(x["爐號"] == "F-09" for x in r.get_json()["data"])
 
 
+def test_recorder_api_crud(client, db_session):
+    headers = _auth_header(client, db_session)
+    r = client.post("/api/pyrometry/recorders", json={
+        "編號": "REC-1", "熱電偶補正值": -1.15,
+        "校正點": [{"頻道": 1, "標準溫度": 500, "器差值": 0.1}],
+    }, headers=headers)
+    assert r.status_code == 200
+    rid = r.get_json()["id"]
+    r = client.get("/api/pyrometry/recorders", headers=headers)
+    assert any(x["編號"] == "REC-1" for x in r.get_json()["data"])
+    r = client.get(f"/api/pyrometry/recorders/{rid}", headers=headers)
+    assert r.get_json()["data"]["校正點"][0]["頻道"] == 1
+
+
+def test_corrections_endpoint(client, db_session):
+    headers = _auth_header(client, db_session)
+    client.post("/api/pyrometry/recorders", json={
+        "編號": "REC-C", "熱電偶補正值": -1.15,
+        "校正點": [{"頻道": 1, "標準溫度": 500, "器差值": 0.1},
+                   {"頻道": 1, "標準溫度": 600, "器差值": 0.2}],
+    }, headers=headers)
+    r = client.get("/api/pyrometry/corrections?setpoint=520&type=TUS&count=1", headers=headers)
+    assert r.status_code == 200
+    assert r.get_json()["data"][0] == -1.27
+
+
 def test_evaluate_tus_pass():
     """設定溫度180、公差±10：各點偏差皆在內 → 合格，並算均勻度極差"""
     points = [
@@ -68,6 +94,45 @@ def test_evaluate_tus_fail():
     result = PyrometryService.evaluate_tus(setpoint=180, tolerance=10, points=points)
     assert result["是否合格"] is False
     assert result["points"][0]["是否合格"] is False
+
+
+def test_evaluate_tus_applies_correction():
+    """修正值補正：校正後溫度=量測值+修正值，再對設定溫度算偏差與均勻度"""
+    points = [{"最高溫": 186, "最低溫": 178, "修正值": -2}]
+    result = PyrometryService.evaluate_tus(setpoint=180, tolerance=10, points=points)
+    # 校正後 184/176 → 偏差 +4/-4，取絕對值最大 → +4
+    assert result["points"][0]["最大偏差"] == 4
+    assert result["TUS最大正偏差"] == 4         # 184 - 180
+    assert result["TUS最大負偏差"] == -4        # 176 - 180
+    assert result["TUS均勻度極差"] == 8         # 184 - 176
+
+
+def _make_recorder(tc=-1.15):
+    return PyrometryService.add_recorder({
+        "編號": "23B230004", "熱電偶補正值": tc,
+        "校正點": [
+            {"頻道": 1, "標準溫度": 500, "器差值": 0.1},
+            {"頻道": 1, "標準溫度": 600, "器差值": 0.2},
+            {"頻道": 13, "標準溫度": 500, "器差值": -0.2},
+            {"頻道": 13, "標準溫度": 600, "器差值": -0.2},
+        ],
+    })
+
+
+def test_compute_corrections_interpolates_tus(app, db_session):
+    """TUS-1→CH1：設定520在500/600間內插器差值=0.12，修正值=-1.15-0.12=-1.27"""
+    with app.app_context():
+        _make_recorder()
+        corr = PyrometryService.compute_corrections(setpoint=520, test_type="TUS", count=1)
+        assert corr[0] == -1.27
+
+
+def test_compute_corrections_sat_channel_offset_and_clamp(app, db_session):
+    """SAT-1→CH13；設定溫度700超出校正範圍 → 夾擠取600端點器差值-0.2，修正值=-1.15+0.2=-0.95"""
+    with app.app_context():
+        _make_recorder()
+        corr = PyrometryService.compute_corrections(setpoint=700, test_type="SAT", count=1)
+        assert corr[0] == -0.95
 
 
 def test_evaluate_sat_pass_and_fail():

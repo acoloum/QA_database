@@ -3,7 +3,7 @@ from typing import Dict, Any, List
 from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
 from ..extensions import db
-from ..models import Furnace
+from ..models import Furnace, Recorder, RecorderCalPoint
 from ..utils import format_value
 
 
@@ -32,6 +32,38 @@ def _furnace_to_dict(f: Furnace) -> Dict[str, Any]:
         "儀器型式": f.instrument_type or "", "CQI9等級": f.cqi9_class or "",
         "啟用狀態": f.is_active, "備註": f.note or "",
     }
+
+
+def _recorder_to_dict(r: Recorder, with_points: bool = False) -> Dict[str, Any]:
+    d = {
+        "識別碼": r.id, "編號": r.serial,
+        "校正日期": format_value(r.cal_date), "到期日": format_value(r.cal_due_date),
+        "熱電偶補正值": format_value(r.tc_correction),
+        "啟用狀態": r.is_active, "備註": r.note or "",
+    }
+    if with_points:
+        d["校正點"] = [
+            {"頻道": cp.channel, "標準溫度": format_value(cp.std_temp), "器差值": format_value(cp.error)}
+            for cp in sorted(r.cal_points, key=lambda x: (x.channel, float(x.std_temp)))
+        ]
+    return d
+
+
+def _interp_error(points: List, setpoint: float) -> float:
+    """以(標準溫度, 器差值)點集對 setpoint 線性內插；超出範圍夾擠取端點。"""
+    if not points:
+        return 0.0
+    pts = sorted(points, key=lambda p: p[0])
+    if setpoint <= pts[0][0]:
+        return pts[0][1]
+    if setpoint >= pts[-1][0]:
+        return pts[-1][1]
+    for (t0, e0), (t1, e1) in zip(pts, pts[1:]):
+        if t0 <= setpoint <= t1:
+            if t1 == t0:
+                return e0
+            return e0 + (setpoint - t0) / (t1 - t0) * (e1 - e0)
+    return pts[-1][1]
 
 
 class PyrometryService:
@@ -117,6 +149,114 @@ class PyrometryService:
             db.session.rollback()
             raise e
 
+    # ---------- 溫度記錄器校正 ----------
+    @staticmethod
+    def list_recorders(active_only: bool = False) -> List[Dict[str, Any]]:
+        q = Recorder.query
+        if active_only:
+            q = q.filter(Recorder.is_active.is_(True))
+        return [_recorder_to_dict(r) for r in q.order_by(Recorder.serial).all()]
+
+    @staticmethod
+    def get_recorder(recorder_id: int) -> Dict[str, Any]:
+        r = db.session.get(Recorder, recorder_id)
+        if not r:
+            raise ValueError("找不到該記錄器")
+        return _recorder_to_dict(r, with_points=True)
+
+    @staticmethod
+    def add_recorder(data: Dict[str, Any]) -> int:
+        try:
+            r = Recorder(
+                serial=data.get("編號"),
+                cal_date=_parse_date(data.get("校正日期")),
+                cal_due_date=_parse_date(data.get("到期日")),
+                tc_correction=data.get("熱電偶補正值") or 0,
+                is_active=bool(data.get("啟用狀態", True)),
+                note=data.get("備註") or None,
+            )
+            db.session.add(r)
+            db.session.flush()
+            for cp in data.get("校正點", []):
+                db.session.add(RecorderCalPoint(
+                    recorder_id=r.id, channel=int(cp["頻道"]),
+                    std_temp=cp["標準溫度"], error=cp["器差值"],
+                ))
+            db.session.commit()
+            return r.id
+        except Exception as e:
+            db.session.rollback()
+            raise e
+
+    @staticmethod
+    def update_recorder(recorder_id: int, data: Dict[str, Any]) -> bool:
+        try:
+            r = db.session.get(Recorder, recorder_id)
+            if not r:
+                raise ValueError("找不到該記錄器")
+            r.serial = data.get("編號")
+            r.cal_date = _parse_date(data.get("校正日期"))
+            r.cal_due_date = _parse_date(data.get("到期日"))
+            r.tc_correction = data.get("熱電偶補正值") or 0
+            r.is_active = bool(data.get("啟用狀態", True))
+            r.note = data.get("備註") or None
+            if "校正點" in data:
+                RecorderCalPoint.query.filter_by(recorder_id=recorder_id).delete()
+                for cp in data.get("校正點", []):
+                    db.session.add(RecorderCalPoint(
+                        recorder_id=recorder_id, channel=int(cp["頻道"]),
+                        std_temp=cp["標準溫度"], error=cp["器差值"],
+                    ))
+            db.session.commit()
+            return True
+        except ValueError:
+            raise
+        except Exception as e:
+            db.session.rollback()
+            raise e
+
+    @staticmethod
+    def delete_recorder(recorder_id: int) -> bool:
+        try:
+            r = db.session.get(Recorder, recorder_id)
+            if not r:
+                raise ValueError("找不到該記錄器")
+            db.session.delete(r)
+            db.session.commit()
+            return True
+        except ValueError:
+            raise
+        except Exception as e:
+            db.session.rollback()
+            raise e
+
+    @staticmethod
+    def compute_corrections(setpoint: float, test_type: str, count: int,
+                            recorder_id: int = None) -> List[float]:
+        """依設定溫度算各量測點的修正值。
+        修正值 = 熱電偶補正 + 記錄器補正(−內插器差值)。
+        頻道位置對應：TUS-i→CH i；SAT-i→CH (12+i)。
+        無啟用記錄器時回傳全 0（向後相容）。
+        """
+        if recorder_id is not None:
+            r = db.session.get(Recorder, recorder_id)
+        else:
+            r = Recorder.query.filter(Recorder.is_active.is_(True)).order_by(Recorder.id.desc()).first()
+        if not r:
+            return [0.0] * count
+        tc = float(r.tc_correction or 0)
+        offset = 0 if test_type == "TUS" else 12
+        # 預先依頻道整理校正點
+        by_channel: Dict[int, List] = {}
+        for cp in r.cal_points:
+            by_channel.setdefault(cp.channel, []).append((float(cp.std_temp), float(cp.error)))
+        out = []
+        for i in range(count):
+            ch = offset + i + 1
+            err = _interp_error(by_channel.get(ch, []), float(setpoint))
+            out.append(round(tc - err, 2))
+        return out
+
     # ---------- 判定邏輯 ----------
     @staticmethod
     def evaluate_tus(setpoint: float, tolerance: float, points: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -128,8 +268,10 @@ class PyrometryService:
         for p in points:
             tmax = p.get("最高溫")
             tmin = p.get("最低溫")
-            tmax = float(tmax) if tmax is not None else None
-            tmin = float(tmin) if tmin is not None else None
+            corr = float(p.get("修正值") or 0)   # 熱電偶+記錄器補正
+            # 校正後溫度 = 量測值 + 修正值
+            tmax = float(tmax) + corr if tmax is not None else None
+            tmin = float(tmin) + corr if tmin is not None else None
             dev_candidates = []
             if tmax is not None:
                 dev_candidates.append(tmax - sp); all_max.append(tmax)

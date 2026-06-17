@@ -813,3 +813,38 @@ class SatPoint(db.Model):
     correction   = db.Column('修正值',         db.Numeric(8, 2), nullable=True)
     deviation    = db.Column('偏差',           db.Numeric(8, 2), nullable=True)
     is_pass      = db.Column('是否合格',       db.Boolean, default=True)
+
+
+class Recorder(db.Model):
+    """溫度記錄器主檔 — 18 頻道無紙記錄器，含熱電偶線補正值與校正資料"""
+    __tablename__ = '記錄器'
+
+    id             = db.Column('識別碼',     db.Integer, primary_key=True)
+    serial         = db.Column('編號',       db.String(50), unique=True, nullable=False)  # 序號
+    cal_date       = db.Column('校正日期',   db.Date, nullable=True)
+    cal_due_date   = db.Column('到期日',     db.Date, nullable=True)
+    tc_correction  = db.Column('熱電偶補正值', db.Numeric(6, 2), default=0)   # 熱電偶線補正，預設 -1.15
+    is_active      = db.Column('啟用狀態',   db.Boolean, default=True, nullable=False)
+    note           = db.Column('備註',       db.Text, nullable=True)
+    created_at     = db.Column('建立時間',   db.DateTime(timezone=True), default=utc_now)
+    updated_at     = db.Column('更新時間',   db.DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    cal_points = db.relationship('RecorderCalPoint', backref='recorder', cascade='all, delete-orphan')
+
+    def __repr__(self):
+        return f'<Recorder {self.serial}>'
+
+
+class RecorderCalPoint(db.Model):
+    """記錄器校正點 — 每筆=某頻道在某標準溫度下的器差值（器示值−標準值）"""
+    __tablename__ = '記錄器校正點'
+
+    id          = db.Column('識別碼',   db.Integer, primary_key=True)
+    recorder_id = db.Column('記錄器ID', db.Integer, db.ForeignKey('記錄器.識別碼'), nullable=False)
+    channel     = db.Column('頻道',     db.Integer, nullable=False)        # 1~18
+    std_temp    = db.Column('標準溫度', db.Numeric(8, 2), nullable=False)  # 100~600
+    error       = db.Column('器差值',   db.Numeric(8, 2), nullable=False)  # 器示值−標準值
+
+    __table_args__ = (
+        db.Index('idx_recorder_cal', '記錄器ID', '頻道', '標準溫度'),
+    )

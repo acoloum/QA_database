@@ -108,6 +108,73 @@ def delete_test(tid):
         return jsonify({"error": handle_db_error(e)}), 500
 
 
+# ---------- 溫度記錄器校正 ----------
+@pyrometry_bp.route('/api/pyrometry/recorders', methods=['GET'])
+@auth_required
+def list_recorders():
+    active_only = request.args.get('active_only') == '1'
+    return jsonify({"success": True, "data": PyrometryService.list_recorders(active_only)})
+
+
+@pyrometry_bp.route('/api/pyrometry/recorders/<int:rid>', methods=['GET'])
+@auth_required
+def get_recorder(rid):
+    try:
+        return jsonify({"success": True, "data": PyrometryService.get_recorder(rid)})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+
+
+@pyrometry_bp.route('/api/pyrometry/recorders', methods=['POST'])
+@auth_required
+def add_recorder():
+    try:
+        new_id = PyrometryService.add_recorder(request.json)
+        return jsonify({"success": True, "id": new_id})
+    except Exception as e:
+        return jsonify({"error": handle_db_error(e)}), 500
+
+
+@pyrometry_bp.route('/api/pyrometry/recorders/<int:rid>', methods=['PUT'])
+@auth_required
+def update_recorder(rid):
+    try:
+        PyrometryService.update_recorder(rid, request.json)
+        return jsonify({"success": True})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": handle_db_error(e)}), 500
+
+
+@pyrometry_bp.route('/api/pyrometry/recorders/<int:rid>', methods=['DELETE'])
+@auth_required
+def delete_recorder(rid):
+    try:
+        PyrometryService.delete_recorder(rid)
+        return jsonify({"success": True})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": handle_db_error(e)}), 500
+
+
+@pyrometry_bp.route('/api/pyrometry/corrections', methods=['GET'])
+@auth_required
+def corrections():
+    """依設定溫度回傳各量測點的修正值（熱電偶+記錄器補正）"""
+    try:
+        setpoint = float(request.args.get('setpoint') or 0)
+        test_type = request.args.get('type', 'TUS')
+        count = int(request.args.get('count') or 0)
+        rid = request.args.get('recorder_id')
+        rid = int(rid) if rid else None
+        data = PyrometryService.compute_corrections(setpoint, test_type, count, rid)
+        return jsonify({"success": True, "data": data})
+    except Exception as e:
+        return jsonify({"error": handle_db_error(e)}), 500
+
+
 # ---------- 資料解析 ----------
 @pyrometry_bp.route('/api/pyrometry/parse-data', methods=['POST'])
 @auth_required

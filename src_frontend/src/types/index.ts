@@ -863,3 +863,20 @@ export interface SatPoint {
   偏差?: string | number | null;
   是否合格?: boolean;
 }
+
+export interface RecorderCalPoint {
+  頻道: number;
+  標準溫度: string | number;
+  器差值: string | number;
+}
+
+export interface Recorder {
+  識別碼: number;
+  編號: string;
+  校正日期: string | null;
+  到期日: string | null;
+  熱電偶補正值: string | number;
+  啟用狀態: boolean;
+  備註: string;
+  校正點?: RecorderCalPoint[];
+}
