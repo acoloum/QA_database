@@ -188,7 +188,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     setTolerance(type === 'TUS' ? f.TUS允許公差 : f.SAT允許誤差);
     const n = type === 'TUS' ? f.TUS點數 : f.SAT點數;
     if (type === 'TUS') {
-      setTusPoints(Array.from({ length: n }, (_, i) => ({ ...emptyTusPoint(), 點位: `P${i + 1}` })));
+      setTusPoints(Array.from({ length: n }, (_, i) => ({ ...emptyTusPoint(), 點位: `TUS-${i + 1}` })));
     } else {
       setSatPoints(Array.from({ length: n }, (_, i) => ({ ...emptySatPoint(), 控溫區: `Zone${i + 1}` })));
       setActiveZone(0);
