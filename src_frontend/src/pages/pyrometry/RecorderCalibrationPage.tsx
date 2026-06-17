@@ -12,7 +12,7 @@ type Grid = Record<string, string>;   // key: `${channel}_${temp}` → 器差值
 const cellKey = (ch: number, t: number) => `${ch}_${t}`;
 
 const emptyMeta = () => ({
-  編號: '', 校正日期: '', 到期日: '', 熱電偶補正值: '-1.15', 啟用狀態: true, 備註: '',
+  編號: '', 校正日期: '', 到期日: '', 啟用狀態: true, 備註: '',
 });
 
 const RecorderCalibrationPage = () => {
@@ -59,7 +59,6 @@ const RecorderCalibrationPage = () => {
       編號: detail.編號 || '',
       校正日期: detail.校正日期 || '',
       到期日: detail.到期日 || '',
-      熱電偶補正值: String(detail.熱電偶補正值 ?? ''),
       啟用狀態: detail.啟用狀態,
       備註: detail.備註 || '',
     });
@@ -105,7 +104,7 @@ const RecorderCalibrationPage = () => {
               <thead className="table-secondary">
                 <tr>
                   <th>編號</th><th>校正日期</th><th>到期日</th>
-                  <th>熱電偶補正值(°C)</th><th>狀態</th><th>操作</th>
+                  <th>狀態</th><th>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -114,7 +113,6 @@ const RecorderCalibrationPage = () => {
                     <td>{r.編號}</td>
                     <td>{r.校正日期 || '—'}</td>
                     <td>{r.到期日 || '—'}</td>
-                    <td>{r.熱電偶補正值}</td>
                     <td>
                       <Badge bg={r.啟用狀態 ? 'success' : 'secondary'}>
                         {r.啟用狀態 ? '啟用' : '停用'}
@@ -150,10 +148,6 @@ const RecorderCalibrationPage = () => {
               <Col md={2}>
                 <Form.Label>到期日</Form.Label>
                 <Form.Control size="sm" type="date" value={meta.到期日} onChange={e => setMeta({ ...meta, 到期日: e.target.value })} />
-              </Col>
-              <Col md={2}>
-                <Form.Label>熱電偶補正值(°C)</Form.Label>
-                <Form.Control size="sm" value={meta.熱電偶補正值} onChange={e => setMeta({ ...meta, 熱電偶補正值: e.target.value })} />
               </Col>
               <Col md={3} className="d-flex align-items-end">
                 <Form.Check type="checkbox" label="啟用" checked={meta.啟用狀態} onChange={e => setMeta({ ...meta, 啟用狀態: e.target.checked })} />
