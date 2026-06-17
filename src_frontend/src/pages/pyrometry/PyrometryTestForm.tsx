@@ -311,17 +311,6 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                       標題="測試儀器（記錄器）溫度曲線"
                     />
                   </Col>
-                  {furnaceChartData && (
-                    <Col md={12}>
-                      <TusChart
-                        時間={furnaceChartData.時間}
-                        數值={furnaceChartData.數值}
-                        設定溫度={Number(setpoint) || 180}
-                        公差={Number(tolerance) || 10}
-                        標題="爐體記錄溫度曲線"
-                      />
-                    </Col>
-                  )}
 
                   {/* 時間區間選取列 */}
                   <Col md={12}>
@@ -388,6 +377,19 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                     )}
                   </Col>
                 </>
+              )}
+
+              {/* 爐體曲線：獨立於記錄器資料，有上傳即顯示 */}
+              {furnaceChartData && (
+                <Col md={12}>
+                  <TusChart
+                    時間={furnaceChartData.時間}
+                    數值={furnaceChartData.數值}
+                    設定溫度={Number(setpoint) || 180}
+                    公差={Number(tolerance) || 10}
+                    標題="爐體記錄溫度曲線"
+                  />
+                </Col>
               )}
             </Row>
           )}
