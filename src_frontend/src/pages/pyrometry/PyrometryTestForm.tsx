@@ -314,12 +314,12 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const satTimeLabels = satChartData?.時間 ?? [];
   const furnaceTimeLabels = furnaceChartData?.時間 ?? [];
 
-  const furnaceSection = (
+  const furnaceSection = furnaceChartData ? (
     <>
       <Col md={12}>
         <TusChart
-          時間={furnaceChartData!.時間}
-          數值={furnaceChartData!.數值}
+          時間={furnaceChartData.時間}
+          數值={furnaceChartData.數值}
           設定溫度={Number(setpoint) || 180}
           公差={Number(tolerance) || 10}
           startIdx={furnaceRangeStart}
@@ -362,8 +362,8 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
         </div>
         {showFurnaceDetail && (
           <TusDataTable
-            時間={furnaceChartData!.時間}
-            數值={furnaceChartData!.數值}
+            時間={furnaceChartData.時間}
+            數值={furnaceChartData.數值}
             設定溫度={Number(setpoint) || 180}
             公差={Number(tolerance) || 10}
             穩定開始={furnaceRangeStart}
@@ -372,7 +372,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
         )}
       </Col>
     </>
-  );
+  ) : null;
 
   return (
     <Modal show onHide={onClose} size="xl">
