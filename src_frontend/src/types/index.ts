@@ -880,3 +880,19 @@ export interface Recorder {
   備註: string;
   校正點?: RecorderCalPoint[];
 }
+
+export interface ThermocoupleCalPoint {
+  標準溫度: string | number;
+  器差值: string | number;
+}
+
+export interface Thermocouple {
+  識別碼: number;
+  編號: string;
+  型式: string;
+  校正日期: string | null;
+  到期日: string | null;
+  啟用狀態: boolean;
+  備註: string;
+  校正點?: ThermocoupleCalPoint[];
+}

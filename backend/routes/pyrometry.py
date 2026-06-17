@@ -159,6 +159,57 @@ def delete_recorder(rid):
         return jsonify({"error": handle_db_error(e)}), 500
 
 
+# ---------- 熱電偶校正 ----------
+@pyrometry_bp.route('/api/pyrometry/thermocouples', methods=['GET'])
+@auth_required
+def list_thermocouples():
+    active_only = request.args.get('active_only') == '1'
+    return jsonify({"success": True, "data": PyrometryService.list_thermocouples(active_only)})
+
+
+@pyrometry_bp.route('/api/pyrometry/thermocouples/<int:tcid>', methods=['GET'])
+@auth_required
+def get_thermocouple(tcid):
+    try:
+        return jsonify({"success": True, "data": PyrometryService.get_thermocouple(tcid)})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+
+
+@pyrometry_bp.route('/api/pyrometry/thermocouples', methods=['POST'])
+@auth_required
+def add_thermocouple():
+    try:
+        new_id = PyrometryService.add_thermocouple(request.json)
+        return jsonify({"success": True, "id": new_id})
+    except Exception as e:
+        return jsonify({"error": handle_db_error(e)}), 500
+
+
+@pyrometry_bp.route('/api/pyrometry/thermocouples/<int:tcid>', methods=['PUT'])
+@auth_required
+def update_thermocouple(tcid):
+    try:
+        PyrometryService.update_thermocouple(tcid, request.json)
+        return jsonify({"success": True})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": handle_db_error(e)}), 500
+
+
+@pyrometry_bp.route('/api/pyrometry/thermocouples/<int:tcid>', methods=['DELETE'])
+@auth_required
+def delete_thermocouple(tcid):
+    try:
+        PyrometryService.delete_thermocouple(tcid)
+        return jsonify({"success": True})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": handle_db_error(e)}), 500
+
+
 @pyrometry_bp.route('/api/pyrometry/corrections', methods=['GET'])
 @auth_required
 def corrections():

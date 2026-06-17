@@ -3,7 +3,7 @@ from typing import Dict, Any, List
 from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
 from ..extensions import db
-from ..models import Furnace, Recorder, RecorderCalPoint
+from ..models import Furnace, Recorder, RecorderCalPoint, Thermocouple, ThermocoupleCalPoint
 from ..utils import format_value
 
 
@@ -45,6 +45,20 @@ def _recorder_to_dict(r: Recorder, with_points: bool = False) -> Dict[str, Any]:
         d["校正點"] = [
             {"頻道": cp.channel, "標準溫度": format_value(cp.std_temp), "器差值": format_value(cp.error)}
             for cp in sorted(r.cal_points, key=lambda x: (x.channel, float(x.std_temp)))
+        ]
+    return d
+
+
+def _thermocouple_to_dict(t: Thermocouple, with_points: bool = False) -> Dict[str, Any]:
+    d = {
+        "識別碼": t.id, "編號": t.serial, "型式": t.tc_type or "",
+        "校正日期": format_value(t.cal_date), "到期日": format_value(t.cal_due_date),
+        "啟用狀態": t.is_active, "備註": t.note or "",
+    }
+    if with_points:
+        d["校正點"] = [
+            {"標準溫度": format_value(cp.std_temp), "器差值": format_value(cp.error)}
+            for cp in sorted(t.cal_points, key=lambda x: float(x.std_temp))
         ]
     return d
 
@@ -230,12 +244,91 @@ class PyrometryService:
             db.session.rollback()
             raise e
 
+    # ---------- 熱電偶校正 ----------
+    @staticmethod
+    def list_thermocouples(active_only: bool = False) -> List[Dict[str, Any]]:
+        q = Thermocouple.query
+        if active_only:
+            q = q.filter(Thermocouple.is_active.is_(True))
+        return [_thermocouple_to_dict(t) for t in q.order_by(Thermocouple.serial).all()]
+
+    @staticmethod
+    def get_thermocouple(tc_id: int) -> Dict[str, Any]:
+        t = db.session.get(Thermocouple, tc_id)
+        if not t:
+            raise ValueError("找不到該熱電偶")
+        return _thermocouple_to_dict(t, with_points=True)
+
+    @staticmethod
+    def add_thermocouple(data: Dict[str, Any]) -> int:
+        try:
+            t = Thermocouple(
+                serial=data.get("編號"), tc_type=data.get("型式") or None,
+                cal_date=_parse_date(data.get("校正日期")),
+                cal_due_date=_parse_date(data.get("到期日")),
+                is_active=bool(data.get("啟用狀態", True)),
+                note=data.get("備註") or None,
+            )
+            db.session.add(t)
+            db.session.flush()
+            for cp in data.get("校正點", []):
+                db.session.add(ThermocoupleCalPoint(
+                    thermocouple_id=t.id, std_temp=cp["標準溫度"], error=cp["器差值"],
+                ))
+            db.session.commit()
+            return t.id
+        except Exception as e:
+            db.session.rollback()
+            raise e
+
+    @staticmethod
+    def update_thermocouple(tc_id: int, data: Dict[str, Any]) -> bool:
+        try:
+            t = db.session.get(Thermocouple, tc_id)
+            if not t:
+                raise ValueError("找不到該熱電偶")
+            t.serial = data.get("編號")
+            t.tc_type = data.get("型式") or None
+            t.cal_date = _parse_date(data.get("校正日期"))
+            t.cal_due_date = _parse_date(data.get("到期日"))
+            t.is_active = bool(data.get("啟用狀態", True))
+            t.note = data.get("備註") or None
+            if "校正點" in data:
+                ThermocoupleCalPoint.query.filter_by(thermocouple_id=tc_id).delete()
+                for cp in data.get("校正點", []):
+                    db.session.add(ThermocoupleCalPoint(
+                        thermocouple_id=tc_id, std_temp=cp["標準溫度"], error=cp["器差值"],
+                    ))
+            db.session.commit()
+            return True
+        except ValueError:
+            raise
+        except Exception as e:
+            db.session.rollback()
+            raise e
+
+    @staticmethod
+    def delete_thermocouple(tc_id: int) -> bool:
+        try:
+            t = db.session.get(Thermocouple, tc_id)
+            if not t:
+                raise ValueError("找不到該熱電偶")
+            db.session.delete(t)
+            db.session.commit()
+            return True
+        except ValueError:
+            raise
+        except Exception as e:
+            db.session.rollback()
+            raise e
+
     @staticmethod
     def compute_corrections(setpoint: float, test_type: str, count: int,
                             recorder_id: int = None) -> List[float]:
         """依設定溫度算各量測點的修正值。
-        修正值 = 熱電偶補正 + 記錄器補正(−內插器差值)。
+        修正值 = 熱電偶補正(−內插器差值) + 記錄器補正(−內插器差值)。
         頻道位置對應：TUS-i→CH i；SAT-i→CH (12+i)。
+        熱電偶：取啟用中熱電偶的校正曲線內插；若無則回退記錄器舊固定值。
         無啟用記錄器時回傳全 0（向後相容）。
         """
         if recorder_id is not None:
@@ -244,9 +337,17 @@ class PyrometryService:
             r = Recorder.query.filter(Recorder.is_active.is_(True)).order_by(Recorder.id.desc()).first()
         if not r:
             return [0.0] * count
-        tc = float(r.tc_correction or 0)
+
+        # 熱電偶補正：優先用啟用中熱電偶的校正曲線內插
+        tc_obj = Thermocouple.query.filter(Thermocouple.is_active.is_(True)).order_by(Thermocouple.id.desc()).first()
+        if tc_obj:
+            tc_points = [(float(cp.std_temp), float(cp.error)) for cp in tc_obj.cal_points]
+            tc_corr = -_interp_error(tc_points, float(setpoint))
+        else:
+            tc_corr = float(r.tc_correction or 0)   # 向後相容：舊固定值
+
         offset = 0 if test_type == "TUS" else 12
-        # 預先依頻道整理校正點
+        # 預先依頻道整理記錄器校正點
         by_channel: Dict[int, List] = {}
         for cp in r.cal_points:
             by_channel.setdefault(cp.channel, []).append((float(cp.std_temp), float(cp.error)))
@@ -254,7 +355,7 @@ class PyrometryService:
         for i in range(count):
             ch = offset + i + 1
             err = _interp_error(by_channel.get(ch, []), float(setpoint))
-            out.append(round(tc - err, 2))
+            out.append(round(tc_corr - err, 2))
         return out
 
     # ---------- 判定邏輯 ----------

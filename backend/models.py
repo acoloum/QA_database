@@ -848,3 +848,37 @@ class RecorderCalPoint(db.Model):
     __table_args__ = (
         db.Index('idx_recorder_cal', '記錄器ID', '頻道', '標準溫度'),
     )
+
+
+class Thermocouple(db.Model):
+    """熱電偶線主檔 — 作為量測基準的熱電偶，含一條校正曲線（隨溫度內插）"""
+    __tablename__ = '熱電偶'
+
+    id           = db.Column('識別碼',   db.Integer, primary_key=True)
+    serial       = db.Column('編號',     db.String(50), unique=True, nullable=False)  # 序號
+    tc_type      = db.Column('型式',     db.String(20), nullable=True)    # TYPE K 等
+    cal_date     = db.Column('校正日期', db.Date, nullable=True)
+    cal_due_date = db.Column('到期日',   db.Date, nullable=True)
+    is_active    = db.Column('啟用狀態', db.Boolean, default=True, nullable=False)
+    note         = db.Column('備註',     db.Text, nullable=True)
+    created_at   = db.Column('建立時間', db.DateTime(timezone=True), default=utc_now)
+    updated_at   = db.Column('更新時間', db.DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    cal_points = db.relationship('ThermocoupleCalPoint', backref='thermocouple', cascade='all, delete-orphan')
+
+    def __repr__(self):
+        return f'<Thermocouple {self.serial}>'
+
+
+class ThermocoupleCalPoint(db.Model):
+    """熱電偶校正點 — 每筆=某標準溫度下的器差值（器示值−標準值）"""
+    __tablename__ = '熱電偶校正點'
+
+    id              = db.Column('識別碼',     db.Integer, primary_key=True)
+    thermocouple_id = db.Column('熱電偶ID',   db.Integer, db.ForeignKey('熱電偶.識別碼'), nullable=False)
+    std_temp        = db.Column('標準溫度',   db.Numeric(8, 2), nullable=False)
+    error           = db.Column('器差值',     db.Numeric(8, 2), nullable=False)
+
+    __table_args__ = (
+        db.Index('idx_thermocouple_cal', '熱電偶ID', '標準溫度'),
+    )

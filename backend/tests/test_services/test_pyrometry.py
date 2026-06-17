@@ -61,6 +61,20 @@ def test_recorder_api_crud(client, db_session):
     assert r.get_json()["data"]["校正點"][0]["頻道"] == 1
 
 
+def test_thermocouple_api_crud(client, db_session):
+    headers = _auth_header(client, db_session)
+    r = client.post("/api/pyrometry/thermocouples", json={
+        "編號": "220716", "型式": "TYPE K",
+        "校正點": [{"標準溫度": 100, "器差值": 0.42}, {"標準溫度": 200, "器差值": 0.65}],
+    }, headers=headers)
+    assert r.status_code == 200
+    tcid = r.get_json()["id"]
+    r = client.get("/api/pyrometry/thermocouples", headers=headers)
+    assert any(x["編號"] == "220716" for x in r.get_json()["data"])
+    r = client.get(f"/api/pyrometry/thermocouples/{tcid}", headers=headers)
+    assert len(r.get_json()["data"]["校正點"]) == 2
+
+
 def test_corrections_endpoint(client, db_session):
     headers = _auth_header(client, db_session)
     client.post("/api/pyrometry/recorders", json={
@@ -125,6 +139,22 @@ def test_compute_corrections_interpolates_tus(app, db_session):
         _make_recorder()
         corr = PyrometryService.compute_corrections(setpoint=520, test_type="TUS", count=1)
         assert corr[0] == -1.27
+
+
+def test_compute_corrections_uses_thermocouple_curve(app, db_session):
+    """熱電偶補正改為內插曲線：修正值 = −(熱電偶器差值 + 記錄器器差值)"""
+    with app.app_context():
+        PyrometryService.add_recorder({
+            "編號": "R-TC", "熱電偶補正值": -1.15,  # 舊固定值應被熱電偶曲線取代
+            "校正點": [{"頻道": 1, "標準溫度": 200, "器差值": 0.1}],
+        })
+        PyrometryService.add_thermocouple({
+            "編號": "220716", "型式": "TYPE K",
+            "校正點": [{"標準溫度": 100, "器差值": 0.42}, {"標準溫度": 200, "器差值": 0.65}],
+        })
+        corr = PyrometryService.compute_corrections(setpoint=200, test_type="TUS", count=1)
+        # −(0.65 + 0.1) = −0.75（不再用固定 −1.15）
+        assert corr[0] == -0.75
 
 
 def test_compute_corrections_sat_channel_offset_and_clamp(app, db_session):

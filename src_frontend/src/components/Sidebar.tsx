@@ -49,6 +49,7 @@ const Sidebar = () => {
                 { title: '測試紀錄', path: '/pyrometry/tests', icon: 'fa-temperature-high' },
                 { title: '設備主檔', path: '/pyrometry/furnaces', icon: 'fa-fire' },
                 { title: '記錄器校正', path: '/pyrometry/recorders', icon: 'fa-ruler' },
+                { title: '熱電偶校正', path: '/pyrometry/thermocouples', icon: 'fa-bolt' },
             ]
         },
         {
