@@ -513,19 +513,46 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
               <div className="text-muted mb-1" style={{ fontSize: 11 }}>
                 偏差＝（校正測試讀值＋修正值）− 控制讀值
               </div>
-              <Table bordered size="sm">
+              <Table bordered size="sm" className="text-center align-middle">
                 <thead className="table-secondary">
-                  <tr><th>控溫區</th><th>控制儀表讀值</th><th>校正測試儀表讀值</th><th>修正值</th></tr>
+                  <tr>
+                    <th>控溫區</th>
+                    <th>控制儀表讀值</th>
+                    <th>校正測試儀表讀值</th>
+                    <th>修正值</th>
+                    <th>差值</th>
+                    <th>偏差</th>
+                    <th>合格</th>
+                  </tr>
                 </thead>
                 <tbody>
-                  {satPoints.map((p, i) => (
-                    <tr key={i}>
-                      <td><Form.Control size="sm" value={p.控溫區} onChange={e => updateSat(i, '控溫區', e.target.value)} /></td>
-                      <td><Form.Control size="sm" value={String(p.控制儀表讀值 ?? '')} onChange={e => updateSat(i, '控制儀表讀值', e.target.value)} /></td>
-                      <td><Form.Control size="sm" value={String(p.校正測試儀表讀值 ?? '')} onChange={e => updateSat(i, '校正測試儀表讀值', e.target.value)} /></td>
-                      <td><Form.Control size="sm" value={String(p.修正值 ?? '')} onChange={e => updateSat(i, '修正值', e.target.value)} /></td>
-                    </tr>
-                  ))}
+                  {satPoints.map((p, i) => {
+                    const ctrl = parseFloat(String(p.控制儀表讀值));
+                    const test = parseFloat(String(p.校正測試儀表讀值));
+                    const corr = parseFloat(String(p.修正值 ?? 0)) || 0;
+                    const diff = (!isNaN(ctrl) && !isNaN(test)) ? Math.round((test - ctrl) * 100) / 100 : null;
+                    const dev  = diff !== null ? Math.round((diff + corr) * 100) / 100 : null;
+                    const tol  = parseFloat(String(tolerance)) || 0;
+                    const pass = dev !== null ? Math.abs(dev) <= tol : null;
+                    return (
+                      <tr key={i}>
+                        <td><Form.Control size="sm" value={p.控溫區} onChange={e => updateSat(i, '控溫區', e.target.value)} /></td>
+                        <td><Form.Control size="sm" value={String(p.控制儀表讀值 ?? '')} onChange={e => updateSat(i, '控制儀表讀值', e.target.value)} /></td>
+                        <td><Form.Control size="sm" value={String(p.校正測試儀表讀值 ?? '')} onChange={e => updateSat(i, '校正測試儀表讀值', e.target.value)} /></td>
+                        <td><Form.Control size="sm" value={String(p.修正值 ?? '')} onChange={e => updateSat(i, '修正值', e.target.value)} /></td>
+                        <td className="text-muted" style={{ minWidth: 60 }}>{diff ?? '—'}</td>
+                        <td style={{ minWidth: 60, fontWeight: dev !== null ? 600 : undefined,
+                          color: pass === false ? '#842029' : pass === true ? '#0a3622' : undefined }}>
+                          {dev ?? '—'}
+                        </td>
+                        <td>
+                          {pass === null ? '—' : pass
+                            ? <span style={{ color: '#198754', fontWeight: 600 }}>✓</span>
+                            : <span style={{ color: '#dc3545', fontWeight: 600 }}>✗</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </Table>
             </>
