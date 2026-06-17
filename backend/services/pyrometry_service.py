@@ -412,22 +412,16 @@ class PyrometryService:
 
     @staticmethod
     def evaluate_sat(tolerance: float, points: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """SAT 判定：以最高溫/最低溫分別計算偏差，取絕對值最大者判斷合格。"""
+        """SAT 判定：校正測試讀值 vs 控制儀表讀值，計算差值與偏差。"""
         tol = float(tolerance)
         out_points = []
         overall_pass = True
         for p in points:
-            ctrl  = _to_float(p.get("控制儀表讀值"))
-            t_max = _to_float(p.get("校正測試最高溫"))
-            t_min = _to_float(p.get("校正測試最低溫"))
-            corr  = _to_float(p.get("修正值")) or 0.0
-            # 差值 = 最高溫 − 控制讀值（代表最大偏移）
-            diff    = round(t_max - ctrl, 2) if (ctrl is not None and t_max is not None) else None
-            # 偏差：取最高溫/最低溫中絕對值較大者
-            dev_max = round(t_max - ctrl + corr, 2) if (ctrl is not None and t_max is not None) else None
-            dev_min = round(t_min - ctrl + corr, 2) if (ctrl is not None and t_min is not None) else None
-            candidates = [d for d in [dev_max, dev_min] if d is not None]
-            deviation = max(candidates, key=abs) if candidates else None
+            ctrl = _to_float(p.get("控制儀表讀值"))
+            test = _to_float(p.get("校正測試讀值"))
+            corr = _to_float(p.get("修正值")) or 0.0
+            diff      = round(test - ctrl, 2) if (ctrl is not None and test is not None) else None
+            deviation = round(diff + corr, 2) if diff is not None else None
             pt_pass = deviation is None or abs(deviation) <= tol
             overall_pass = overall_pass and pt_pass
             np_point = dict(p)
@@ -485,8 +479,7 @@ class PyrometryService:
                     db.session.add(SatPoint(
                         test_id=t.id, zone=p.get("控溫區"),
                         control_read=p.get("控制儀表讀值"),
-                        test_read_max=p.get("校正測試最高溫"),
-                        test_read_min=p.get("校正測試最低溫"),
+                        test_read=p.get("校正測試讀值"),
                         diff=p.get("差值"), correction=p.get("修正值"),
                         deviation=p.get("偏差"), is_pass=p.get("是否合格", True),
                     ))
@@ -525,8 +518,7 @@ class PyrometryService:
         } for p in sorted(t.tus_points, key=lambda x: x.id)]
         sat_points = [{
             "識別碼": p.id, "控溫區": p.zone or "", "控制儀表讀值": format_value(p.control_read),
-            "校正測試最高溫": format_value(p.test_read_max),
-            "校正測試最低溫": format_value(p.test_read_min),
+            "校正測試讀值": format_value(p.test_read),
             "差值": format_value(p.diff),
             "修正值": format_value(p.correction), "偏差": format_value(p.deviation),
             "是否合格": p.is_pass,
@@ -582,8 +574,7 @@ class PyrometryService:
                     db.session.add(SatPoint(
                         test_id=t.id, zone=p.get("控溫區"),
                         control_read=p.get("控制儀表讀值"),
-                        test_read_max=p.get("校正測試最高溫"),
-                        test_read_min=p.get("校正測試最低溫"),
+                        test_read=p.get("校正測試讀值"),
                         diff=p.get("差值"), correction=p.get("修正值"),
                         deviation=p.get("偏差"), is_pass=p.get("是否合格", True)))
             db.session.commit()

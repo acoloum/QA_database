@@ -250,7 +250,7 @@ def build_sat_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
     worst = None
     for p in detail["sat_points"]:
         ctrl = _num(p.get("控制儀表讀值"))
-        test = _num(p.get("校正測試儀表讀值"))
+        test = _num(p.get("校正測試讀值"))
         diff = _num(p.get("差值"))
         corr = _num(p.get("修正值")) or 0
         dev = _num(p.get("偏差"))

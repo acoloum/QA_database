@@ -10,9 +10,9 @@ interface Inspector { id: number; name: string; }
 interface Props { editId: number | null; onClose: () => void; onSaved: () => void; }
 
 const emptyTusPoint = (): TusPoint => ({ 點位: '', 熱電偶編號: '', 修正值: '', 最高溫: '', 最低溫: '' });
-const emptySatPoint = (): SatPoint => ({ 控溫區: '', 控制儀表讀值: '', 校正測試最高溫: '', 校正測試最低溫: '', 修正值: '' });
+const emptySatPoint = (): SatPoint => ({ 控溫區: '', 控制儀表讀值: '', 校正測試讀值: '', 修正值: '' });
 
-/** SAT 量測點表格（可複用於獨立 SAT 表單與 TUS 內附帶建立） */
+/** SAT 量測點表格 */
 const SatTable = ({
   points, onUpdate, tolerance,
 }: {
@@ -27,42 +27,30 @@ const SatTable = ({
         <tr>
           <th>控溫區</th>
           <th>控制儀表讀值</th>
-          <th>校正測試最高溫</th>
-          <th>校正測試最低溫</th>
+          <th>校正測試讀值</th>
           <th>修正值</th>
-          <th>差值(最高)</th>
-          <th>偏差(最高)</th>
-          <th>差值(最低)</th>
-          <th>偏差(最低)</th>
+          <th>差值</th>
+          <th>偏差</th>
           <th>合格</th>
         </tr>
       </thead>
       <tbody>
         {points.map((p, i) => {
           const ctrl = parseFloat(String(p.控制儀表讀值));
-          const tMax = parseFloat(String(p.校正測試最高溫));
-          const tMin = parseFloat(String(p.校正測試最低溫));
+          const test = parseFloat(String(p.校正測試讀值));
           const corr = parseFloat(String(p.修正值 ?? 0)) || 0;
-          const diffH = (!isNaN(ctrl) && !isNaN(tMax)) ? Math.round((tMax - ctrl) * 100) / 100 : null;
-          const diffL = (!isNaN(ctrl) && !isNaN(tMin)) ? Math.round((tMin - ctrl) * 100) / 100 : null;
-          const devH  = diffH !== null ? Math.round((diffH + corr) * 100) / 100 : null;
-          const devL  = diffL !== null ? Math.round((diffL + corr) * 100) / 100 : null;
-          const devs  = [devH, devL].filter((d): d is number => d !== null);
-          const worst = devs.length ? Math.max(...devs.map(Math.abs)) : null;
-          const pass  = worst !== null ? worst <= tol : null;
-          const devColor = (d: number | null) =>
-            d === null ? undefined : Math.abs(d) > tol ? '#842029' : '#0a3622';
+          const diff = (!isNaN(ctrl) && !isNaN(test)) ? Math.round((test - ctrl) * 100) / 100 : null;
+          const dev  = diff !== null ? Math.round((diff + corr) * 100) / 100 : null;
+          const pass = dev !== null ? Math.abs(dev) <= tol : null;
+          const devColor = dev === null ? undefined : Math.abs(dev) > tol ? '#842029' : '#0a3622';
           return (
             <tr key={i}>
               <td><Form.Control size="sm" value={p.控溫區} onChange={e => onUpdate(i, '控溫區', e.target.value)} /></td>
               <td><Form.Control size="sm" value={String(p.控制儀表讀值 ?? '')} onChange={e => onUpdate(i, '控制儀表讀值', e.target.value)} /></td>
-              <td><Form.Control size="sm" value={String(p.校正測試最高溫 ?? '')} onChange={e => onUpdate(i, '校正測試最高溫', e.target.value)} /></td>
-              <td><Form.Control size="sm" value={String(p.校正測試最低溫 ?? '')} onChange={e => onUpdate(i, '校正測試最低溫', e.target.value)} /></td>
+              <td><Form.Control size="sm" value={String(p.校正測試讀值 ?? '')} onChange={e => onUpdate(i, '校正測試讀值', e.target.value)} /></td>
               <td><Form.Control size="sm" value={String(p.修正值 ?? '')} onChange={e => onUpdate(i, '修正值', e.target.value)} /></td>
-              <td className="text-muted" style={{ minWidth: 55 }}>{diffH ?? '—'}</td>
-              <td style={{ minWidth: 55, fontWeight: devH !== null ? 600 : undefined, color: devColor(devH) }}>{devH ?? '—'}</td>
-              <td className="text-muted" style={{ minWidth: 55 }}>{diffL ?? '—'}</td>
-              <td style={{ minWidth: 55, fontWeight: devL !== null ? 600 : undefined, color: devColor(devL) }}>{devL ?? '—'}</td>
+              <td className="text-muted" style={{ minWidth: 55 }}>{diff ?? '—'}</td>
+              <td style={{ minWidth: 55, fontWeight: dev !== null ? 600 : undefined, color: devColor }}>{dev ?? '—'}</td>
               <td>
                 {pass === null ? '—' : pass
                   ? <span style={{ color: '#198754', fontWeight: 600 }}>✓</span>
@@ -76,17 +64,21 @@ const SatTable = ({
   );
 };
 
+type ChartData = { 時間: string[]; 數值: Record<string, number[]> };
+
 const computeRangeStats = (
   數值: Record<string, number[]>,
   start: number,
   end: number,
-): { 名稱: string; 最高溫: number; 最低溫: number }[] =>
+): { 名稱: string; 最高溫: number; 最低溫: number; 平均溫: number }[] =>
   Object.keys(數值).map(ch => {
     const slice = 數值[ch].slice(start, end + 1).filter((v): v is number => v !== null && v !== undefined);
+    const avg = slice.length ? slice.reduce((a, b) => a + b, 0) / slice.length : 0;
     return {
       名稱: ch,
       最高溫: slice.length ? Math.max(...slice) : 0,
       最低溫: slice.length ? Math.min(...slice) : 0,
+      平均溫: Math.round(avg * 100) / 100,
     };
   });
 
@@ -105,17 +97,26 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const [satPoints, setSatPoints] = useState<SatPoint[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [chartData, setChartData] = useState<{ 時間: string[]; 數值: Record<string, number[]> } | null>(null);
-  const [furnaceChartData, setFurnaceChartData] = useState<{ 時間: string[]; 數值: Record<string, number[]> } | null>(null);
+
+  // TUS：記錄器資料
+  const [chartData, setChartData] = useState<ChartData | null>(null);
   const [rangeStart, setRangeStart] = useState(0);
   const [rangeEnd, setRangeEnd] = useState(0);
+  const [showDetail, setShowDetail] = useState(false);
+
+  // SAT：SAT 儀器詳細資料
+  const [satChartData, setSatChartData] = useState<ChartData | null>(null);
+  const [satRangeStart, setSatRangeStart] = useState(0);
+  const [satRangeEnd, setSatRangeEnd] = useState(0);
+  const [showSatDetail, setShowSatDetail] = useState(false);
+
+  // SAT & TUS（爐體）：爐體記錄數據
+  const [furnaceChartData, setFurnaceChartData] = useState<ChartData | null>(null);
   const [furnaceRangeStart, setFurnaceRangeStart] = useState(0);
   const [furnaceRangeEnd, setFurnaceRangeEnd] = useState(0);
-  const [showDetail, setShowDetail] = useState(false);
   const [showFurnaceDetail, setShowFurnaceDetail] = useState(false);
+
   const [showReport, setShowReport] = useState(false);
-  // TUS 表單內附帶建立 SAT 用
-  const [satForTus, setSatForTus] = useState<SatPoint[]>([]);
   const [reportMeta, setReportMeta] = useState<Record<string, string>>({});
 
   const { data: furnaces } = useQuery({
@@ -128,8 +129,6 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     queryFn: () => api.get<{ id: number; name: string }[]>('/inspectors').then(r => r.data),
   });
 
-  // 由使用者「主動」選爐子或切類型時，才帶出公差並重建量測點模板。
-  // 不放在 useEffect：否則編輯載入或清單 refetch 時會誤觸發，把已載入/已上傳的量測點清空。
   const applyFurnaceDefaults = (fid: string, type: 'TUS' | 'SAT') => {
     const f = (furnaces || []).find(x => String(x.識別碼) === fid);
     if (!f) return;
@@ -142,7 +141,6 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     }
   };
 
-  // 若是編輯，載入既有資料
   useEffect(() => {
     if (!editId) return;
     api.get(`/pyrometry/tests/${editId}`).then(r => {
@@ -160,16 +158,23 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
       setNote(main.備註);
       setTusPoints(tus_points);
       setSatPoints(sat_points);
-      if (cd && cd.時間) {
-        setChartData({ 時間: cd.時間, 數值: cd.數值 });
+      if (cd) {
+        if (main.測試類型 === 'TUS' && cd.時間) {
+          setChartData({ 時間: cd.時間, 數值: cd.數值 });
+          setRangeStart(cd.穩定開始 ?? 0);
+          setRangeEnd(cd.穩定結束 ?? (cd.時間.length - 1));
+        }
+        if (main.測試類型 === 'SAT' && cd.時間) {
+          setSatChartData({ 時間: cd.時間, 數值: cd.數值 });
+          setSatRangeStart(cd.穩定開始 ?? 0);
+          setSatRangeEnd(cd.穩定結束 ?? (cd.時間.length - 1));
+        }
         if (cd.爐體數值) {
           setFurnaceChartData({ 時間: cd.爐體時間 || cd.時間, 數值: cd.爐體數值 });
           const fLen = (cd.爐體時間 || cd.時間).length;
           setFurnaceRangeStart(cd.爐體穩定開始 ?? 0);
           setFurnaceRangeEnd(cd.爐體穩定結束 ?? (fLen - 1));
         }
-        setRangeStart(cd.穩定開始 ?? 0);
-        setRangeEnd(cd.穩定結束 ?? (cd.時間.length - 1));
       }
       setReportMeta(r.data.報告欄位 || {});
     });
@@ -179,32 +184,31 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     setTusPoints(prev => prev.map((p, idx) => idx === i ? { ...p, [k]: v } : p));
   const updateSat = (i: number, k: keyof SatPoint, v: string) =>
     setSatPoints(prev => prev.map((p, idx) => idx === i ? { ...p, [k]: v } : p));
-  const updateSatForTus = (i: number, k: keyof SatPoint, v: string) =>
-    setSatForTus(prev => prev.map((p, idx) => idx === i ? { ...p, [k]: v } : p));
 
-  // 套用選定時間區間 → 重新計算各通道 max/min → 同時回填 TUS 量測點與 SAT 附加量測點
-  const applyRange = () => {
+  // TUS 恆溫穩定期 → 回填最高/最低溫
+  const applyRangeTus = () => {
     if (!chartData) return;
-    const allStats = computeRangeStats(chartData.數值, rangeStart, rangeEnd);
-    const tusStats = allStats.filter(s => s.名稱.toUpperCase().startsWith('TUS'));
-    const satStats = allStats.filter(s => s.名稱.toUpperCase().startsWith('SAT'));
+    const stats = computeRangeStats(chartData.數值, rangeStart, rangeEnd);
     setTusPoints(prev => prev.map((p, i) => {
-      const ch = tusStats[i];
+      const ch = stats[i];
       if (!ch) return p;
       return { ...p, 最高溫: String(ch.最高溫), 最低溫: String(ch.最低溫) };
     }));
-    if (satStats.length > 0) {
-      setSatForTus(prev => prev.map((p, i) => {
-        const ch = satStats[i];
-        if (!ch) return p;
-        return { ...p, 校正測試最高溫: String(ch.最高溫), 校正測試最低溫: String(ch.最低溫) };
-      }));
-    }
   };
 
-  // 依設定溫度向後端取各點修正值（熱電偶+記錄器補正）並回填
-  const applyCorrections = async (type: 'TUS' | 'SAT', forTus = false) => {
-    const count = forTus ? satForTus.length : (type === 'TUS' ? tusPoints.length : satPoints.length);
+  // SAT 恆溫穩定期 → 回填校正測試讀值（取區間平均）
+  const applyRangeSat = () => {
+    if (!satChartData) return;
+    const stats = computeRangeStats(satChartData.數值, satRangeStart, satRangeEnd);
+    setSatPoints(prev => prev.map((p, i) => {
+      const ch = stats[i];
+      if (!ch) return p;
+      return { ...p, 校正測試讀值: String(ch.平均溫) };
+    }));
+  };
+
+  const applyCorrections = async (type: 'TUS' | 'SAT') => {
+    const count = type === 'TUS' ? tusPoints.length : satPoints.length;
     if (!count) return;
     const r = await api.get<{ success: boolean; data: number[] }>(
       `/pyrometry/corrections?setpoint=${Number(setpoint) || 0}&type=${type}&count=${count}`,
@@ -212,15 +216,13 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     if (r.data.success) {
       if (type === 'TUS') {
         setTusPoints(prev => prev.map((p, i) => ({ ...p, 修正值: String(r.data.data[i] ?? '') })));
-      } else if (forTus) {
-        setSatForTus(prev => prev.map((p, i) => ({ ...p, 修正值: String(r.data.data[i] ?? '') })));
       } else {
         setSatPoints(prev => prev.map((p, i) => ({ ...p, 修正值: String(r.data.data[i] ?? '') })));
       }
     }
   };
 
-  const handleFileUpload = async (file: File, isFurnaceData: boolean) => {
+  const handleFileUpload = async (file: File, dest: 'recorder' | 'sat' | 'furnace') => {
     const formData = new FormData();
     formData.append('file', file);
     const r = await api.post<{
@@ -231,46 +233,59 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
         數值: Record<string, number[]>;
       };
     }>('/pyrometry/parse-data', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-    if (r.data.success) {
-      if (isFurnaceData) {
-        const lastIdx = r.data.data.時間.length - 1;
-        setFurnaceChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
-        setFurnaceRangeStart(0);
-        setFurnaceRangeEnd(lastIdx);
-      } else {
-        const lastIdx = r.data.data.時間.length - 1;
-        setChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
-        setRangeStart(0);
-        setRangeEnd(lastIdx);
-        if (testType === 'TUS') {
-          // TUS 頻道回填量測點最高/最低溫（全範圍初始）
-          const tusChannels = r.data.data.通道.filter(ch => ch.名稱.toUpperCase().startsWith('TUS'));
-          setTusPoints(prev => prev.map((p, i) => {
-            const ch = tusChannels[i];
-            if (!ch) return p;
-            return { ...p, 最高溫: String(ch.最高溫), 最低溫: String(ch.最低溫) };
-          }));
-          // SAT 頻道自動建立附加 SAT 量測點（僅新建時）
-          if (!editId) {
-            const satChannels = r.data.data.通道.filter(ch => ch.名稱.toUpperCase().startsWith('SAT'));
-            if (satChannels.length > 0) {
-              setSatForTus(satChannels.map(ch => ({
-                控溫區: ch.名稱,
-                控制儀表讀值: '',
-                校正測試最高溫: String(ch.最高溫),
-                校正測試最低溫: String(ch.最低溫),
-                修正值: '',
-              })));
-            }
-          }
-        }
-      }
+    if (!r.data.success) return;
+    const lastIdx = r.data.data.時間.length - 1;
+    if (dest === 'furnace') {
+      setFurnaceChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
+      setFurnaceRangeStart(0);
+      setFurnaceRangeEnd(lastIdx);
+    } else if (dest === 'recorder') {
+      setChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
+      setRangeStart(0);
+      setRangeEnd(lastIdx);
+      // 初始回填 TUS 量測點（全範圍）
+      setTusPoints(prev => prev.map((p, i) => {
+        const ch = r.data.data.通道[i];
+        if (!ch) return p;
+        return { ...p, 最高溫: String(ch.最高溫), 最低溫: String(ch.最低溫) };
+      }));
+    } else {
+      // dest === 'sat'
+      setSatChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
+      setSatRangeStart(0);
+      setSatRangeEnd(lastIdx);
+      // 初始回填 SAT 量測點（全範圍平均）
+      const stats = computeRangeStats(r.data.data.數值, 0, lastIdx);
+      setSatPoints(prev => prev.map((p, i) => {
+        const ch = stats[i];
+        if (!ch) return p;
+        return { ...p, 校正測試讀值: String(ch.平均溫) };
+      }));
     }
   };
 
   const handleSave = async () => {
     setSaving(true); setError('');
     try {
+      const curveData = testType === 'TUS'
+        ? (chartData ? {
+            時間: chartData.時間, 數值: chartData.數值,
+            穩定開始: rangeStart, 穩定結束: rangeEnd,
+          } : null)
+        : (satChartData ? {
+            時間: satChartData.時間, 數值: satChartData.數值,
+            穩定開始: satRangeStart, 穩定結束: satRangeEnd,
+            爐體時間: furnaceChartData?.時間 || null,
+            爐體數值: furnaceChartData?.數值 || null,
+            爐體穩定開始: furnaceChartData ? furnaceRangeStart : null,
+            爐體穩定結束: furnaceChartData ? furnaceRangeEnd : null,
+          } : (furnaceChartData ? {
+            爐體時間: furnaceChartData.時間,
+            爐體數值: furnaceChartData.數值,
+            爐體穩定開始: furnaceRangeStart,
+            爐體穩定結束: furnaceRangeEnd,
+          } : null));
+
       const payload = {
         爐子ID: Number(furnaceId), 測試類型: testType,
         測試日期: testDate, 設定溫度: setpoint, 允許公差: tolerance,
@@ -278,35 +293,13 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
         測試儀器編號: testInstrument, 標準校正儀器編號: stdInstrument,
         儀器校正到期日: calDueDate || null, 備註: note,
         points: testType === 'TUS' ? tusPoints : satPoints,
-        曲線資料: (testType === 'TUS' && chartData) ? {
-          時間: chartData.時間,
-          數值: chartData.數值,
-          爐體時間: furnaceChartData?.時間 || null,
-          爐體數值: furnaceChartData?.數值 || null,
-          穩定開始: rangeStart,
-          穩定結束: rangeEnd,
-          爐體穩定開始: furnaceChartData ? furnaceRangeStart : null,
-          爐體穩定結束: furnaceChartData ? furnaceRangeEnd : null,
-        } : null,
+        曲線資料: curveData,
         報告欄位: reportMeta,
       };
       if (editId) {
         await api.put(`/pyrometry/tests/${editId}`, payload);
       } else {
         await api.post('/pyrometry/tests', payload);
-        // 若 TUS 表單中 SAT 量測點有控制儀表讀值，同時建立 SAT 紀錄
-        if (testType === 'TUS' && satForTus.some(p => p.控制儀表讀值 !== '' && p.控制儀表讀值 !== null)) {
-          await api.post('/pyrometry/tests', {
-            爐子ID: Number(furnaceId), 測試類型: 'SAT',
-            測試日期: testDate, 設定溫度: setpoint, 允許公差: tolerance,
-            測試人員: testerId ? Number(testerId) : null,
-            測試儀器編號: testInstrument, 標準校正儀器編號: stdInstrument,
-            儀器校正到期日: calDueDate || null, 備註: note,
-            points: satForTus,
-            曲線資料: null,
-            報告欄位: reportMeta,
-          });
-        }
       }
       onSaved();
     } catch (e: unknown) {
@@ -318,6 +311,68 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   };
 
   const timeLabels = chartData?.時間 ?? [];
+  const satTimeLabels = satChartData?.時間 ?? [];
+  const furnaceTimeLabels = furnaceChartData?.時間 ?? [];
+
+  const furnaceSection = (
+    <>
+      <Col md={12}>
+        <TusChart
+          時間={furnaceChartData!.時間}
+          數值={furnaceChartData!.數值}
+          設定溫度={Number(setpoint) || 180}
+          公差={Number(tolerance) || 10}
+          startIdx={furnaceRangeStart}
+          endIdx={furnaceRangeEnd}
+          標題="爐體記錄溫度曲線"
+        />
+      </Col>
+      <Col md={12}>
+        <div className="d-flex align-items-center gap-3 p-2 bg-light rounded border">
+          <span className="fw-semibold text-nowrap" style={{ fontSize: 13 }}>爐體恆溫穩定期：</span>
+          <div className="d-flex align-items-center gap-1">
+            <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>開始</Form.Label>
+            <Form.Select size="sm" style={{ minWidth: 120 }} value={furnaceRangeStart}
+              onChange={e => setFurnaceRangeStart(Number(e.target.value))}>
+              {furnaceTimeLabels.map((t, i) => <option key={i} value={i}>{t}</option>)}
+            </Form.Select>
+          </div>
+          <div className="d-flex align-items-center gap-1">
+            <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>結束</Form.Label>
+            <Form.Select size="sm" style={{ minWidth: 120 }} value={furnaceRangeEnd}
+              onChange={e => setFurnaceRangeEnd(Number(e.target.value))}>
+              {furnaceTimeLabels.map((t, i) => <option key={i} value={i}>{t}</option>)}
+            </Form.Select>
+          </div>
+          <span className="text-muted" style={{ fontSize: 11 }}>
+            共 {furnaceRangeEnd >= furnaceRangeStart ? furnaceRangeEnd - furnaceRangeStart + 1 : 0} 筆
+          </span>
+        </div>
+      </Col>
+      <Col md={12}>
+        <div className="d-flex align-items-center gap-2 mb-1">
+          <Button size="sm" variant="outline-secondary" onClick={() => setShowFurnaceDetail(v => !v)}>
+            {showFurnaceDetail ? '隱藏爐體詳細數據表' : '顯示爐體詳細數據表'}
+          </Button>
+          <span className="text-muted" style={{ fontSize: 11 }}>
+            恆溫穩定期內：
+            <span style={{ background: '#f8d7da', color: '#842029', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>紅底＝超上限</span>
+            <span style={{ background: '#cfe2ff', color: '#084298', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>藍底＝低於下限</span>
+          </span>
+        </div>
+        {showFurnaceDetail && (
+          <TusDataTable
+            時間={furnaceChartData!.時間}
+            數值={furnaceChartData!.數值}
+            設定溫度={Number(setpoint) || 180}
+            公差={Number(tolerance) || 10}
+            穩定開始={furnaceRangeStart}
+            穩定結束={furnaceRangeEnd}
+          />
+        )}
+      </Col>
+    </>
+  );
 
   return (
     <Modal show onHide={onClose} size="xl">
@@ -381,7 +436,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
             </Col>
           </Row>
 
-          {/* 報告表頭欄位（QRA073/074 匯出用） */}
+          {/* 報告表頭欄位 */}
           <div className="mb-3">
             <Button size="sm" variant="outline-secondary" className="mb-2" onClick={() => setShowReport(v => !v)}>
               {showReport ? '隱藏報告欄位' : '報告欄位（客戶/料號/核准等，QRA073/074）'}
@@ -404,17 +459,13 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
             )}
           </div>
 
+          {/* ── TUS 資料上傳區塊 ── */}
           {testType === 'TUS' && (
             <Row className="g-2 mb-3">
-              <Col md={6}>
-                <Form.Label>測試儀器數據（基準，CSV/Excel）</Form.Label>
+              <Col md={12}>
+                <Form.Label>測試儀器數據（CSV/Excel）</Form.Label>
                 <input className="form-control form-control-sm" type="file" accept=".csv,.xlsx,.xls"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, false); }} />
-              </Col>
-              <Col md={6}>
-                <Form.Label>爐體記錄數據（對照，選配）</Form.Label>
-                <input className="form-control form-control-sm" type="file" accept=".csv,.xlsx,.xls"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, true); }} />
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, 'recorder'); }} />
               </Col>
 
               {chartData && (
@@ -430,40 +481,24 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                       標題="測試儀器（記錄器）溫度曲線"
                     />
                   </Col>
-
-                  {/* 時間區間選取列 */}
                   <Col md={12}>
                     <div className="d-flex align-items-center gap-3 p-2 bg-light rounded border">
-                      <span className="fw-semibold text-nowrap" style={{ fontSize: 13 }}>
-                        恆溫穩定期：
-                      </span>
+                      <span className="fw-semibold text-nowrap" style={{ fontSize: 13 }}>恆溫穩定期：</span>
                       <div className="d-flex align-items-center gap-1">
                         <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>開始</Form.Label>
-                        <Form.Select
-                          size="sm"
-                          style={{ minWidth: 120 }}
-                          value={rangeStart}
-                          onChange={e => setRangeStart(Number(e.target.value))}
-                        >
-                          {timeLabels.map((t, i) => (
-                            <option key={i} value={i}>{t}</option>
-                          ))}
+                        <Form.Select size="sm" style={{ minWidth: 120 }} value={rangeStart}
+                          onChange={e => setRangeStart(Number(e.target.value))}>
+                          {timeLabels.map((t, i) => <option key={i} value={i}>{t}</option>)}
                         </Form.Select>
                       </div>
                       <div className="d-flex align-items-center gap-1">
                         <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>結束</Form.Label>
-                        <Form.Select
-                          size="sm"
-                          style={{ minWidth: 120 }}
-                          value={rangeEnd}
-                          onChange={e => setRangeEnd(Number(e.target.value))}
-                        >
-                          {timeLabels.map((t, i) => (
-                            <option key={i} value={i}>{t}</option>
-                          ))}
+                        <Form.Select size="sm" style={{ minWidth: 120 }} value={rangeEnd}
+                          onChange={e => setRangeEnd(Number(e.target.value))}>
+                          {timeLabels.map((t, i) => <option key={i} value={i}>{t}</option>)}
                         </Form.Select>
                       </div>
-                      <Button size="sm" variant="primary" onClick={applyRange}>
+                      <Button size="sm" variant="primary" onClick={applyRangeTus}>
                         套用並回填量測點
                       </Button>
                       <span className="text-muted" style={{ fontSize: 11 }}>
@@ -471,8 +506,6 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                       </span>
                     </div>
                   </Col>
-
-                  {/* 詳細數據表 */}
                   <Col md={12}>
                     <div className="d-flex align-items-center gap-2 mb-1">
                       <Button size="sm" variant="outline-secondary" onClick={() => setShowDetail(v => !v)}>
@@ -497,87 +530,10 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                   </Col>
                 </>
               )}
-
-              {/* 爐體曲線：獨立於記錄器資料，有上傳即顯示 */}
-              {furnaceChartData && (
-                <>
-                  <Col md={12}>
-                    <TusChart
-                      時間={furnaceChartData.時間}
-                      數值={furnaceChartData.數值}
-                      設定溫度={Number(setpoint) || 180}
-                      公差={Number(tolerance) || 10}
-                      startIdx={furnaceRangeStart}
-                      endIdx={furnaceRangeEnd}
-                      標題="爐體記錄溫度曲線"
-                    />
-                  </Col>
-
-                  {/* 爐體恆溫穩定期選取列 */}
-                  <Col md={12}>
-                    <div className="d-flex align-items-center gap-3 p-2 bg-light rounded border">
-                      <span className="fw-semibold text-nowrap" style={{ fontSize: 13 }}>
-                        爐體恆溫穩定期：
-                      </span>
-                      <div className="d-flex align-items-center gap-1">
-                        <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>開始</Form.Label>
-                        <Form.Select
-                          size="sm"
-                          style={{ minWidth: 120 }}
-                          value={furnaceRangeStart}
-                          onChange={e => setFurnaceRangeStart(Number(e.target.value))}
-                        >
-                          {furnaceChartData.時間.map((t, i) => (
-                            <option key={i} value={i}>{t}</option>
-                          ))}
-                        </Form.Select>
-                      </div>
-                      <div className="d-flex align-items-center gap-1">
-                        <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>結束</Form.Label>
-                        <Form.Select
-                          size="sm"
-                          style={{ minWidth: 120 }}
-                          value={furnaceRangeEnd}
-                          onChange={e => setFurnaceRangeEnd(Number(e.target.value))}
-                        >
-                          {furnaceChartData.時間.map((t, i) => (
-                            <option key={i} value={i}>{t}</option>
-                          ))}
-                        </Form.Select>
-                      </div>
-                      <span className="text-muted" style={{ fontSize: 11 }}>
-                        共 {furnaceRangeEnd >= furnaceRangeStart ? furnaceRangeEnd - furnaceRangeStart + 1 : 0} 筆
-                      </span>
-                    </div>
-                  </Col>
-
-                  <Col md={12}>
-                    <div className="d-flex align-items-center gap-2 mb-1">
-                      <Button size="sm" variant="outline-secondary" onClick={() => setShowFurnaceDetail(v => !v)}>
-                        {showFurnaceDetail ? '隱藏爐體詳細數據表' : '顯示爐體詳細數據表'}
-                      </Button>
-                      <span className="text-muted" style={{ fontSize: 11 }}>
-                        恆溫穩定期內：
-                        <span style={{ background: '#f8d7da', color: '#842029', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>紅底＝超上限</span>
-                        <span style={{ background: '#cfe2ff', color: '#084298', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>藍底＝低於下限</span>
-                      </span>
-                    </div>
-                    {showFurnaceDetail && (
-                      <TusDataTable
-                        時間={furnaceChartData.時間}
-                        數值={furnaceChartData.數值}
-                        設定溫度={Number(setpoint) || 180}
-                        公差={Number(tolerance) || 10}
-                        穩定開始={furnaceRangeStart}
-                        穩定結束={furnaceRangeEnd}
-                      />
-                    )}
-                  </Col>
-                </>
-              )}
             </Row>
           )}
 
+          {/* ── TUS 量測點明細 ── */}
           {testType === 'TUS' && tusPoints.length > 0 && (
             <>
               <div className="d-flex justify-content-between align-items-center">
@@ -608,6 +564,90 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
             </>
           )}
 
+          {/* ── SAT 資料上傳區塊 ── */}
+          {testType === 'SAT' && (
+            <Row className="g-2 mb-3">
+              <Col md={6}>
+                <Form.Label>SAT 儀器詳細資料（CSV/Excel，選配）</Form.Label>
+                <input className="form-control form-control-sm" type="file" accept=".csv,.xlsx,.xls"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, 'sat'); }} />
+              </Col>
+              <Col md={6}>
+                <Form.Label>爐體記錄數據（對照，選配）</Form.Label>
+                <input className="form-control form-control-sm" type="file" accept=".csv,.xlsx,.xls"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, 'furnace'); }} />
+              </Col>
+
+              {/* SAT 儀器曲線與穩定期 */}
+              {satChartData && (
+                <>
+                  <Col md={12}>
+                    <TusChart
+                      時間={satChartData.時間}
+                      數值={satChartData.數值}
+                      設定溫度={Number(setpoint) || 180}
+                      公差={Number(tolerance) || 10}
+                      startIdx={satRangeStart}
+                      endIdx={satRangeEnd}
+                      標題="SAT 儀器溫度曲線"
+                    />
+                  </Col>
+                  <Col md={12}>
+                    <div className="d-flex align-items-center gap-3 p-2 bg-light rounded border">
+                      <span className="fw-semibold text-nowrap" style={{ fontSize: 13 }}>SAT 恆溫穩定期：</span>
+                      <div className="d-flex align-items-center gap-1">
+                        <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>開始</Form.Label>
+                        <Form.Select size="sm" style={{ minWidth: 120 }} value={satRangeStart}
+                          onChange={e => setSatRangeStart(Number(e.target.value))}>
+                          {satTimeLabels.map((t, i) => <option key={i} value={i}>{t}</option>)}
+                        </Form.Select>
+                      </div>
+                      <div className="d-flex align-items-center gap-1">
+                        <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>結束</Form.Label>
+                        <Form.Select size="sm" style={{ minWidth: 120 }} value={satRangeEnd}
+                          onChange={e => setSatRangeEnd(Number(e.target.value))}>
+                          {satTimeLabels.map((t, i) => <option key={i} value={i}>{t}</option>)}
+                        </Form.Select>
+                      </div>
+                      <Button size="sm" variant="primary" onClick={applyRangeSat}>
+                        套用並回填校正測試讀值
+                      </Button>
+                      <span className="text-muted" style={{ fontSize: 11 }}>
+                        共 {satRangeEnd >= satRangeStart ? satRangeEnd - satRangeStart + 1 : 0} 筆
+                      </span>
+                    </div>
+                  </Col>
+                  <Col md={12}>
+                    <div className="d-flex align-items-center gap-2 mb-1">
+                      <Button size="sm" variant="outline-secondary" onClick={() => setShowSatDetail(v => !v)}>
+                        {showSatDetail ? '隱藏 SAT 詳細數據表' : '顯示 SAT 詳細數據表'}
+                      </Button>
+                      <span className="text-muted" style={{ fontSize: 11 }}>
+                        恆溫穩定期內：
+                        <span style={{ background: '#f8d7da', color: '#842029', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>紅底＝超上限</span>
+                        <span style={{ background: '#cfe2ff', color: '#084298', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>藍底＝低於下限</span>
+                      </span>
+                    </div>
+                    {showSatDetail && (
+                      <TusDataTable
+                        時間={satChartData.時間}
+                        數值={satChartData.數值}
+                        設定溫度={Number(setpoint) || 180}
+                        公差={Number(tolerance) || 10}
+                        穩定開始={satRangeStart}
+                        穩定結束={satRangeEnd}
+                      />
+                    )}
+                  </Col>
+                </>
+              )}
+
+              {/* 爐體記錄曲線 */}
+              {furnaceChartData && furnaceSection}
+            </Row>
+          )}
+
+          {/* ── SAT 量測點明細 ── */}
           {testType === 'SAT' && satPoints.length > 0 && (
             <>
               <div className="d-flex justify-content-between align-items-center">
@@ -617,25 +657,9 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                 </Button>
               </div>
               <div className="text-muted mb-1" style={{ fontSize: 11 }}>
-                偏差＝（校正測試讀值＋修正值）− 控制讀值；取最高/最低溫偏差之絕對值較大者判斷合格
+                偏差＝（校正測試讀值＋修正值）− 控制讀值；符合公差±{tolerance || '?'}°C 即合格
               </div>
               <SatTable points={satPoints} onUpdate={updateSat} tolerance={tolerance} />
-            </>
-          )}
-
-          {/* TUS 表單內附帶的 SAT 量測點（上傳記錄器檔後自動偵測 SAT 頻道） */}
-          {testType === 'TUS' && !editId && satForTus.length > 0 && (
-            <>
-              <div className="d-flex justify-content-between align-items-center mt-3">
-                <h6 className="mb-0">同步建立 SAT 量測點</h6>
-                <Button size="sm" variant="outline-secondary" onClick={() => applyCorrections('SAT', true)}>
-                  帶入儀器校正補正值
-                </Button>
-              </div>
-              <div className="text-muted mb-1" style={{ fontSize: 11 }}>
-                校正測試最高/最低溫已由恆溫穩定期自動填入；請手動填入控制儀表讀值，儲存後將同時建立 SAT 紀錄
-              </div>
-              <SatTable points={satForTus} onUpdate={updateSatForTus} tolerance={tolerance} />
             </>
           )}
         </Form>
