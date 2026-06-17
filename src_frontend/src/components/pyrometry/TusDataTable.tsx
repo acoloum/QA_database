@@ -32,9 +32,15 @@ const TusDataTable = ({ 時間, 數值, 設定溫度, 公差, 穩定開始, 穩�
                 <td style={{ position: 'sticky', left: 0, background: soak ? '#fcfcfd' : '#fff', whiteSpace: 'nowrap' }}>{t}</td>
                 {channels.map(c => {
                   const v = 數值[c]?.[j];
-                  const out = soak && v != null && (v > hi || v < lo);
+                  const over = soak && v != null && v > hi;
+                  const under = soak && v != null && v < lo;
+                  const style = over
+                    ? { background: '#f8d7da', color: '#842029', fontWeight: 600 }   // 超上限：紅
+                    : under
+                      ? { background: '#cfe2ff', color: '#084298', fontWeight: 600 } // 低於下限：藍
+                      : undefined;
                   return (
-                    <td key={c} style={out ? { background: '#f8d7da', color: '#842029', fontWeight: 600 } : undefined}>
+                    <td key={c} style={style}>
                       {v == null ? '' : v}
                     </td>
                   );

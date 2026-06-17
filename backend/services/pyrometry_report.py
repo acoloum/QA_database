@@ -14,7 +14,8 @@ _CENTER = Alignment(horizontal='center', vertical='center', wrap_text=True)
 _LEFT = Alignment(horizontal='left', vertical='center', wrap_text=True)
 _HDR_FILL = PatternFill('solid', fgColor='D9E1F2')
 _LABEL_FILL = PatternFill('solid', fgColor='F2F2F2')
-_RED_FILL = PatternFill('solid', fgColor='F8D7DA')
+_RED_FILL = PatternFill('solid', fgColor='F8D7DA')    # 超上限
+_BLUE_FILL = PatternFill('solid', fgColor='CFE2FF')   # 低於下限
 _TITLE_FONT = Font(bold=True, size=14)
 _BOLD = Font(bold=True)
 
@@ -304,9 +305,11 @@ def build_raw_chart_sheet(wb, chart_data: Dict[str, Any], setpoint: float, tol: 
             arr = values.get(ch) or []
             v = arr[j] if j < len(arr) else None
             cell = _set(ws, ws.cell(row=row, column=k).coordinate, v)
-            out = (s_start <= j <= s_end) and (v is not None) and (v > upper or v < lower)
-            if out:
-                cell.fill = _RED_FILL
+            if (s_start <= j <= s_end) and (v is not None):
+                if v > upper:
+                    cell.fill = _RED_FILL    # 超上限
+                elif v < lower:
+                    cell.fill = _BLUE_FILL   # 低於下限
         _set(ws, ws.cell(row=row, column=len(channels) + 2).coordinate, upper)
         _set(ws, ws.cell(row=row, column=len(channels) + 3).coordinate, lower)
 

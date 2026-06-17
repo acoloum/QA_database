@@ -38,16 +38,23 @@ const TusChart = ({ 時間, 數值, 爐體數值, 設定溫度, 公差, startIdx
   const lower = 設定溫度 - 公差;
   const hasRange = startIdx !== undefined && endIdx !== undefined;
 
-  // 恆溫穩定期內、超出上下限的點 → 紅色警示
+  // 恆溫穩定期內：超上限→紅、低於下限→藍
   const inSoak = (j: number) =>
     hasRange && j >= (startIdx as number) && j <= (endIdx as number);
-  const isOut = (v: number | null) => v != null && (v > upper || v < lower);
+  const ptStateColor = (v: number | null, j: number, base: string) => {
+    if (!inSoak(j) || v == null) return base;
+    if (v > upper) return '#dc3545';   // 超上限：紅
+    if (v < lower) return '#0d6efd';   // 低於下限：藍
+    return base;
+  };
+  const ptIsOut = (v: number | null, j: number) =>
+    inSoak(j) && v != null && (v > upper || v < lower);
 
   const datasets = [
     ...channels.map((ch, i) => {
       const base = COLORS[i % COLORS.length];
-      const ptColor = 數值[ch].map((v, j) => (inSoak(j) && isOut(v) ? '#dc3545' : base));
-      const ptRadius = 數值[ch].map((v, j) => (inSoak(j) && isOut(v) ? 4 : 2));
+      const ptColor = 數值[ch].map((v, j) => ptStateColor(v, j, base));
+      const ptRadius = 數值[ch].map((v, j) => (ptIsOut(v, j) ? 4 : 2));
       return {
         label: ch,
         data: 數值[ch],

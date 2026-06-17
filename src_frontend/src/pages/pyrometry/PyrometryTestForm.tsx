@@ -359,9 +359,9 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                         {showDetail ? '隱藏詳細數據表' : '顯示詳細數據表'}
                       </Button>
                       <span className="text-muted" style={{ fontSize: 11 }}>
-                        恆溫穩定期內超出 設定溫度 ± 公差 的點以
-                        <span style={{ background: '#f8d7da', color: '#842029', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>紅底</span>
-                        標示
+                        恆溫穩定期內：
+                        <span style={{ background: '#f8d7da', color: '#842029', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>紅底＝超上限</span>
+                        <span style={{ background: '#cfe2ff', color: '#084298', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>藍底＝低於下限</span>
                       </span>
                     </div>
                     {showDetail && (
