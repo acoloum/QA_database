@@ -11,6 +11,13 @@ def _quarter_of(d) -> str:
     return f"{d.year}Q{(d.month - 1) // 3 + 1}"
 
 
+def _to_float(v) -> float | None:
+    """安全轉換為 float；None 或空字串回傳 None。"""
+    if v is None or str(v).strip() == '':
+        return None
+    return float(v)
+
+
 def _parse_date(v):
     if not v:
         return None
@@ -376,12 +383,12 @@ class PyrometryService:
         all_max, all_min = [], []
         overall_pass = True
         for p in points:
-            tmax = p.get("最高溫")
-            tmin = p.get("最低溫")
-            corr = float(p.get("修正值") or 0)   # 熱電偶+記錄器補正
+            tmax = _to_float(p.get("最高溫"))
+            tmin = _to_float(p.get("最低溫"))
+            corr = _to_float(p.get("修正值")) or 0.0   # 熱電偶+記錄器補正
             # 校正後溫度 = 量測值 + 修正值
-            tmax = float(tmax) + corr if tmax is not None else None
-            tmin = float(tmin) + corr if tmin is not None else None
+            tmax = tmax + corr if tmax is not None else None
+            tmin = tmin + corr if tmin is not None else None
             dev_candidates = []
             if tmax is not None:
                 dev_candidates.append(tmax - sp); all_max.append(tmax)
@@ -410,15 +417,15 @@ class PyrometryService:
         out_points = []
         overall_pass = True
         for p in points:
-            ctrl = p.get("控制儀表讀值")
-            t_max = p.get("校正測試最高溫")
-            t_min = p.get("校正測試最低溫")
-            corr = float(p.get("修正值") or 0)
+            ctrl  = _to_float(p.get("控制儀表讀值"))
+            t_max = _to_float(p.get("校正測試最高溫"))
+            t_min = _to_float(p.get("校正測試最低溫"))
+            corr  = _to_float(p.get("修正值")) or 0.0
             # 差值 = 最高溫 − 控制讀值（代表最大偏移）
-            diff = round(float(t_max) - float(ctrl), 2) if (ctrl is not None and t_max is not None) else None
+            diff    = round(t_max - ctrl, 2) if (ctrl is not None and t_max is not None) else None
             # 偏差：取最高溫/最低溫中絕對值較大者
-            dev_max = round(float(t_max) - float(ctrl) + corr, 2) if (ctrl is not None and t_max is not None) else None
-            dev_min = round(float(t_min) - float(ctrl) + corr, 2) if (ctrl is not None and t_min is not None) else None
+            dev_max = round(t_max - ctrl + corr, 2) if (ctrl is not None and t_max is not None) else None
+            dev_min = round(t_min - ctrl + corr, 2) if (ctrl is not None and t_min is not None) else None
             candidates = [d for d in [dev_max, dev_min] if d is not None]
             deviation = max(candidates, key=abs) if candidates else None
             pt_pass = deviation is None or abs(deviation) <= tol
