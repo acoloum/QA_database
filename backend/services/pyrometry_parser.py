@@ -1,17 +1,59 @@
 """溫度記錄器時間序列解析
 
-支援兩種格式：
-  A. 單時間欄：第一欄為時間，其後每欄為一通道溫度（測試儀器格式）
-  B. 雙時間欄：第一欄日期、第二欄時間，其後為通道溫度（爐體記錄格式）
-兩種格式自動偵測，並略過副標題文字列。
+支援兩種格式（自動偵測，且不依賴欄名）：
+  A. 單時間欄：第一欄為時間，其後每欄為一通道溫度
+  B. 雙時間欄：第一欄日期、第二欄時刻，其後為通道溫度
+時間標籤一律輸出為分鐘級（單日 HH:MM；跨日 MM/DD HH:MM），
+方便在前端以分鐘為單位選取恆溫穩定期。並自動略過文字副標題列。
 """
-from typing import Dict, Any, BinaryIO
+from typing import Dict, Any, BinaryIO, List
+import datetime
 import pandas as pd
 
+_TIME_KEYWORDS = ('時間', 'time', '日期', 'date', '時刻')
 
-def _is_time_col(col_name: str) -> bool:
-    s = str(col_name).lower()
-    return any(k in s for k in ('時間', 'time', '日期', 'date'))
+
+def _name_is_time(name) -> bool:
+    s = str(name).lower()
+    return any(k in s for k in _TIME_KEYWORDS)
+
+
+def _is_numeric_series(s: pd.Series) -> bool:
+    """該欄是否為數值欄（通道資料）。日期/時刻欄會回傳 False。"""
+    num = pd.to_numeric(s, errors="coerce")
+    return num.notna().sum() > 0
+
+
+def _to_timestamp(item):
+    """將單一時間值（或 (日期,時刻) tuple）轉為 pandas Timestamp；無法轉換則丟出。"""
+    if isinstance(item, tuple):
+        d, t = item
+        if isinstance(d, (int, float, bool)) or isinstance(t, (int, float, bool)):
+            raise ValueError("數值非時間")
+        return pd.to_datetime(f"{d} {t}")
+    v = item
+    if isinstance(v, bool) or isinstance(v, (int, float)):
+        # 純數值（如 0,1,2 索引）不視為時間，保留原樣
+        raise ValueError("數值非時間")
+    if isinstance(v, datetime.datetime):
+        return pd.Timestamp(v)
+    if isinstance(v, datetime.time):
+        return pd.Timestamp.combine(datetime.date(2000, 1, 1), v)
+    return pd.to_datetime(v)
+
+
+def _build_time_labels(time_raw: List) -> List[str]:
+    """輸出分鐘級時間標籤；若任一值無法解析為時間則整體後備為原字串。"""
+    try:
+        ts = [_to_timestamp(x) for x in time_raw]
+    except Exception:
+        return [
+            f"{x[0]} {x[1]}" if isinstance(x, tuple) else str(x)
+            for x in time_raw
+        ]
+    multi_day = len({t.date() for t in ts}) > 1
+    fmt = "%m/%d %H:%M" if multi_day else "%H:%M"
+    return [t.strftime(fmt) for t in ts]
 
 
 def parse_temperature_file(file_obj: BinaryIO, filename: str) -> Dict[str, Any]:
@@ -19,8 +61,8 @@ def parse_temperature_file(file_obj: BinaryIO, filename: str) -> Dict[str, Any]:
 
     回傳:
       {
-        "時間": [str, ...],
-        "通道": [{"名稱": str, "最高溫": float, "最低溫": float}, ...],
+        "時間": [str, ...],                                   # 分鐘級
+        "通道": [{"名稱", "最高溫", "最低溫"}, ...],
         "數值": {通道名稱: [float | None, ...]},
       }
     """
@@ -37,33 +79,30 @@ def parse_temperature_file(file_obj: BinaryIO, filename: str) -> Dict[str, Any]:
 
     cols = list(raw.columns)
 
-    # 偵測雙時間欄格式（日期欄 + 時間欄）
-    dual_time = (
-        raw.shape[1] >= 3
-        and _is_time_col(cols[0])
-        and _is_time_col(cols[1])
+    # 第二欄是否也是時間欄（日期+時刻雙欄）：欄名含關鍵字、或內容非數值
+    second_is_time = raw.shape[1] >= 3 and (
+        _name_is_time(cols[1]) or not _is_numeric_series(raw.iloc[:, 1])
     )
 
-    if dual_time:
-        time_strs = [
-            f"{str(d)} {str(t)}" if pd.notna(d) and pd.notna(t) else ""
-            for d, t in zip(raw.iloc[:, 0], raw.iloc[:, 1])
-        ]
+    if second_is_time:
+        time_raw = list(zip(raw.iloc[:, 0], raw.iloc[:, 1]))
         channel_cols = cols[2:]
         channel_df = raw.iloc[:, 2:].copy()
     else:
-        time_strs = [str(v) for v in raw.iloc[:, 0]]
+        time_raw = list(raw.iloc[:, 0])
         channel_cols = cols[1:]
         channel_df = raw.iloc[:, 1:].copy()
 
     # 略過副標題列：該列所有通道欄均為非數值（文字或空）
     numeric_mask = channel_df.apply(pd.to_numeric, errors="coerce").notna().any(axis=1)
-    time_strs_filtered = [t for t, keep in zip(time_strs, numeric_mask) if keep]
-    channel_df_filtered = channel_df[numeric_mask].reset_index(drop=True)
+    time_raw = [t for t, keep in zip(time_raw, numeric_mask) if keep]
+    channel_df = channel_df[numeric_mask].reset_index(drop=True)
+
+    time_strs = _build_time_labels(time_raw)
 
     channels, values = [], {}
     for col in channel_cols:
-        numeric = pd.to_numeric(channel_df_filtered[col], errors="coerce")
+        numeric = pd.to_numeric(channel_df[col], errors="coerce")
         non_null = numeric.dropna()
         if non_null.empty:
             continue
@@ -78,4 +117,4 @@ def parse_temperature_file(file_obj: BinaryIO, filename: str) -> Dict[str, Any]:
     if not channels:
         raise ValueError("未找到有效的溫度通道數值")
 
-    return {"時間": time_strs_filtered, "通道": channels, "數值": values}
+    return {"時間": time_strs, "通道": channels, "數值": values}

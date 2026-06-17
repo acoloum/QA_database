@@ -216,6 +216,27 @@ def test_parse_timeseries_csv_summary(tmp_path):
     assert result["數值"]["TC-01"] == [178, 186, 182]
 
 
+def test_parse_minute_labels_from_time_strings(tmp_path):
+    """單時間欄：時間標籤輸出為分鐘級 HH:MM（非整段日期）"""
+    from backend.services.pyrometry_parser import parse_temperature_file
+    csv = tmp_path / "t.csv"
+    csv.write_text("時間,TC-01\n11:36:00,100\n11:38:00,101\n", encoding="utf-8")
+    with open(csv, "rb") as f:
+        r = parse_temperature_file(f, "t.csv")
+    assert r["時間"] == ["11:36", "11:38"]
+
+
+def test_parse_dual_time_detected_by_content(tmp_path):
+    """雙時間欄（日期+時刻）即使欄名不含關鍵字，仍依內容判定並輸出分鐘級標籤"""
+    from backend.services.pyrometry_parser import parse_temperature_file
+    csv = tmp_path / "d.csv"
+    csv.write_text("D,Clock,TC-01\n2026/06/15,11:22:00,100\n2026/06/15,11:24:00,101\n", encoding="utf-8")
+    with open(csv, "rb") as f:
+        r = parse_temperature_file(f, "d.csv")
+    assert r["時間"] == ["11:22", "11:24"]
+    assert [c["名稱"] for c in r["通道"]] == ["TC-01"]
+
+
 import io
 
 def test_parse_upload_route(client, db_session):
