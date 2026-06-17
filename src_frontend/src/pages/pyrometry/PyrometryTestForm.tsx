@@ -210,7 +210,10 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
       setStdInstrument(main.標準校正儀器編號);
       setCalDueDate(main.儀器校正到期日 || '');
       setNote(main.備註);
-      setTusPoints(tus_points);
+      setTusPoints(tus_points.map((p: TusPoint, i: number) => ({
+        ...p,
+        點位: /^P\d+$/.test(p.點位 || '') ? `TUS-${i + 1}` : (p.點位 || `TUS-${i + 1}`),
+      })));
       setSatPoints(sat_points.map((p: SatPoint) => ({
         ...p,
         readings: p.readings?.length ? p.readings : [emptyReading()],
