@@ -46,6 +46,8 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const [rangeStart, setRangeStart] = useState(0);
   const [rangeEnd, setRangeEnd] = useState(0);
   const [showDetail, setShowDetail] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [reportMeta, setReportMeta] = useState<Record<string, string>>({});
 
   const { data: furnaces } = useQuery({
     queryKey: ['furnaces-active'],
@@ -95,6 +97,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
         setRangeStart(cd.穩定開始 ?? 0);
         setRangeEnd(cd.穩定結束 ?? (cd.時間.length - 1));
       }
+      setReportMeta(r.data.報告欄位 || {});
     });
   }, [editId]);
 
@@ -178,6 +181,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
           穩定開始: rangeStart,
           穩定結束: rangeEnd,
         } : null,
+        報告欄位: reportMeta,
       };
       if (editId) {
         await api.put(`/pyrometry/tests/${editId}`, payload);
@@ -256,6 +260,29 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
               <Form.Control as="textarea" rows={2} size="sm" value={note} onChange={e => setNote(e.target.value)} />
             </Col>
           </Row>
+
+          {/* 報告表頭欄位（QRA073/074 匯出用） */}
+          <div className="mb-3">
+            <Button size="sm" variant="outline-secondary" className="mb-2" onClick={() => setShowReport(v => !v)}>
+              {showReport ? '隱藏報告欄位' : '報告欄位（客戶/料號/核准等，QRA073/074）'}
+            </Button>
+            {showReport && (
+              <Row className="g-2 p-2 bg-light rounded border">
+                {([
+                  ['客戶名稱', 3], ['工件料號', 3], ['生產批號', 3], ['內外徑尺寸', 3],
+                  ['長度支數', 3], ['預估總重量', 3], ['測試條件', 3], ['控制器型號', 3],
+                  ['控制器設定值', 3], ['控制器補償', 3], ['溫濕度', 3], ['執行單位', 3],
+                  ['TAF編號', 3], ['核准', 3], ['製表', 3],
+                ] as [string, number][]).map(([k, md]) => (
+                  <Col md={md} key={k}>
+                    <Form.Label className="mb-0" style={{ fontSize: 12 }}>{k}</Form.Label>
+                    <Form.Control size="sm" value={reportMeta[k] || ''}
+                      onChange={e => setReportMeta(prev => ({ ...prev, [k]: e.target.value }))} />
+                  </Col>
+                ))}
+              </Row>
+            )}
+          </div>
 
           {testType === 'TUS' && (
             <Row className="g-2 mb-3">

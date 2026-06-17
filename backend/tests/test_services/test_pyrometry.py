@@ -215,6 +215,21 @@ def test_create_test_persists_chart_data(app, db_session):
         assert detail["曲線資料"]["穩定開始"] == 0
 
 
+def test_create_test_persists_report_meta(app, db_session):
+    """報告表頭欄位（客戶/料號/核准等）存檔後可重現"""
+    with app.app_context():
+        fid = _make_furnace(tol=10)
+        tid = PyrometryService.create_test({
+            "爐子ID": fid, "測試類型": "TUS", "測試日期": "2026-04-15",
+            "設定溫度": 180, "允許公差": 10,
+            "points": [{"點位": "P1", "最高溫": 186, "最低溫": 178}],
+            "報告欄位": {"客戶名稱": "台積電", "工件料號": "ABC-123", "核准": "阮俊銓", "測試條件": "滿爐"},
+        })
+        detail = PyrometryService.get_test(tid)
+        assert detail["報告欄位"]["客戶名稱"] == "台積電"
+        assert detail["報告欄位"]["核准"] == "阮俊銓"
+
+
 def test_create_sat_test_auto_judges(app, db_session):
     with app.app_context():
         fid = PyrometryService.add_furnace({"爐號": "F-S", "名稱": "退火爐", "SAT允許誤差": 5})
@@ -341,12 +356,39 @@ def test_trend_returns_tus_history(app, db_session):
 
 
 def test_export_test_xlsx(app, db_session):
+    """TUS 匯出：QRA073 表 + 原始數據曲線表，含報告欄位"""
+    import io as _io
+    from openpyxl import load_workbook
     with app.app_context():
         fid = PyrometryService.add_furnace({"爐號": "F-EX", "名稱": "匯出爐", "TUS允許公差": 10})
         tid = PyrometryService.create_test({
             "爐子ID": fid, "測試類型": "TUS", "測試日期": "2026-04-15",
             "設定溫度": 180, "允許公差": 10,
-            "points": [{"點位": "P1", "最高溫": 186, "最低溫": 178}]})
+            "points": [{"點位": "P1", "最高溫": 186, "最低溫": 178}],
+            "報告欄位": {"客戶名稱": "台積電", "核准": "阮俊銓"},
+            "曲線資料": {"時間": ["11:36", "11:38"], "數值": {"TUS-1": [178, 186]},
+                       "穩定開始": 0, "穩定結束": 1},
+        })
         content = PyrometryService.export_test_xlsx(tid)
-        assert isinstance(content, (bytes, bytearray))
-        assert content[:2] == b"PK"      # xlsx 為 zip 容器
+        assert content[:2] == b"PK"
+        wb = load_workbook(_io.BytesIO(content))
+        assert "QRA073-TUS均勻性" in wb.sheetnames
+        assert "原始數據" in wb.sheetnames
+        ws = wb["QRA073-TUS均勻性"]
+        assert ws["A1"].value == "必榮實業股份有限公司"
+        # 報告欄位有帶入（客戶名稱）
+        assert any(c.value == "台積電" for row in ws.iter_rows() for c in row)
+
+
+def test_export_sat_xlsx_uses_qra074(app, db_session):
+    import io as _io
+    from openpyxl import load_workbook
+    with app.app_context():
+        fid = PyrometryService.add_furnace({"爐號": "F-ES", "名稱": "SAT匯出爐", "SAT允許誤差": 5})
+        tid = PyrometryService.create_test({
+            "爐子ID": fid, "測試類型": "SAT", "測試日期": "2026-04-15",
+            "設定溫度": 180, "允許公差": 5,
+            "points": [{"控溫區": "Z1", "控制儀表讀值": 180, "校正測試儀表讀值": 183}]})
+        content = PyrometryService.export_test_xlsx(tid)
+        wb = load_workbook(_io.BytesIO(content))
+        assert "QRA074-SAT準確度" in wb.sheetnames

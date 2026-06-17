@@ -323,6 +323,15 @@ class PyrometryService:
             raise e
 
     @staticmethod
+    def thermocouple_correction(setpoint: float) -> float:
+        """啟用中熱電偶於設定溫度的補正值（−內插器差值）；無則回傳 0。"""
+        tc = Thermocouple.query.filter(Thermocouple.is_active.is_(True)).order_by(Thermocouple.id.desc()).first()
+        if not tc:
+            return 0.0
+        pts = [(float(cp.std_temp), float(cp.error)) for cp in tc.cal_points]
+        return round(-_interp_error(pts, float(setpoint)), 2)
+
+    @staticmethod
     def compute_corrections(setpoint: float, test_type: str, count: int,
                             recorder_id: int = None) -> List[float]:
         """依設定溫度算各量測點的修正值。
@@ -445,6 +454,7 @@ class PyrometryService:
                 tus_max_pos=judged.get("TUS最大正偏差"),
                 tus_max_neg=judged.get("TUS最大負偏差"),
                 chart_data=data.get("曲線資料") or None,
+                report_meta=data.get("報告欄位") or None,
                 note=data.get("備註") or None,
                 created_by=data.get("建立人") or None,
             )
@@ -506,7 +516,7 @@ class PyrometryService:
             "是否合格": p.is_pass,
         } for p in sorted(t.sat_points, key=lambda x: x.id)]
         return {"success": True, "main": main, "tus_points": tus_points,
-                "sat_points": sat_points, "曲線資料": t.chart_data}
+                "sat_points": sat_points, "曲線資料": t.chart_data, "報告欄位": t.report_meta}
 
     @staticmethod
     def update_test(test_id: int, data: Dict[str, Any]) -> bool:
@@ -539,6 +549,8 @@ class PyrometryService:
             t.tus_max_neg = judged.get("TUS最大負偏差")
             if "曲線資料" in data:
                 t.chart_data = data.get("曲線資料") or None
+            if "報告欄位" in data:
+                t.report_meta = data.get("報告欄位") or None
             t.note = data.get("備註") or None
 
             TusPoint.query.filter_by(test_id=test_id).delete()
@@ -680,29 +692,23 @@ class PyrometryService:
     def export_test_xlsx(test_id: int) -> bytes:
         import io
         from openpyxl import Workbook
+        from . import pyrometry_report as rpt
         detail = PyrometryService.get_test(test_id)
         main = detail["main"]
+        meta = detail.get("報告欄位") or {}
+        setpoint = float(main.get("設定溫度") or 0)
+        tol = float(main.get("允許公差") or 0)
+        tc_corr = PyrometryService.thermocouple_correction(setpoint)
+
         wb = Workbook()
-        ws = wb.active
-        ws.title = "爐溫測試報告"
-        ws.append(["爐溫測試報告", main["測試類型"]])
-        ws.append(["爐號", main["爐號"], "測試日期", main["測試日期"]])
-        ws.append(["設定溫度", main["設定溫度"], "允許公差", main["允許公差"]])
-        ws.append(["季別", main["季別"], "判定", "合格" if main["是否合格"] else "不合格"])
-        ws.append([])
+        wb.remove(wb.active)   # 移除預設空白表
         if main["測試類型"] == "TUS":
-            ws.append(["均勻度極差", main["TUS均勻度極差"], "最大正偏差", main["TUS最大正偏差"],
-                       "最大負偏差", main["TUS最大負偏差"]])
-            ws.append([])
-            ws.append(["點位", "熱電偶編號", "修正值", "最高溫", "最低溫", "最大偏差", "判定"])
-            for p in detail["tus_points"]:
-                ws.append([p["點位"], p["熱電偶編號"], p["修正值"], p["最高溫"],
-                           p["最低溫"], p["最大偏差"], "合格" if p["是否合格"] else "不合格"])
+            rpt.build_tus_sheet(wb, detail, meta, tc_corr)
+            rpt.build_raw_chart_sheet(wb, detail.get("曲線資料"), setpoint, tol)
         else:
-            ws.append(["控溫區", "控制儀表讀值", "校正測試儀表讀值", "差值", "修正值", "偏差", "判定"])
-            for p in detail["sat_points"]:
-                ws.append([p["控溫區"], p["控制儀表讀值"], p["校正測試儀表讀值"], p["差值"],
-                           p["修正值"], p["偏差"], "合格" if p["是否合格"] else "不合格"])
+            rpt.build_sat_sheet(wb, detail, meta, tc_corr)
+        if not wb.sheetnames:    # 保險：至少一張表
+            wb.create_sheet("報告")
         buf = io.BytesIO()
         wb.save(buf)
         return buf.getvalue()
