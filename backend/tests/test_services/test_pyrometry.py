@@ -237,6 +237,20 @@ def test_parse_dual_time_detected_by_content(tmp_path):
     assert [c["名稱"] for c in r["通道"]] == ["TC-01"]
 
 
+def test_parse_time_with_colon_milliseconds(tmp_path):
+    """真實記錄器時間格式 HH:MM:SS:fff（毫秒以冒號分隔）→ 仍輸出分鐘級 HH:MM"""
+    from backend.services.pyrometry_parser import parse_temperature_file
+    csv = tmp_path / "pen.csv"
+    csv.write_text(
+        "日期,時間,TUS-1\n"
+        "06/15/2026,09:57:39:521,29.3\n"
+        "06/15/2026,09:59:39:521,32.2\n", encoding="utf-8")
+    with open(csv, "rb") as f:
+        r = parse_temperature_file(f, "pen.csv")
+    assert r["時間"] == ["09:57", "09:59"]
+    assert [c["名稱"] for c in r["通道"]] == ["TUS-1"]
+
+
 import io
 
 def test_parse_upload_route(client, db_session):

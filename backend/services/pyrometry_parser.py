@@ -24,13 +24,22 @@ def _is_numeric_series(s: pd.Series) -> bool:
     return num.notna().sum() > 0
 
 
+def _norm_colon_ms(s: str) -> str:
+    """將 HH:MM:SS:fff（毫秒以冒號分隔）正規化為 HH:MM:SS.fff，供 to_datetime 解析。
+    日期部分不含冒號，故整串以冒號切成 4 段即代表含毫秒。"""
+    parts = s.split(':')
+    if len(parts) == 4:
+        return ':'.join(parts[:3]) + '.' + parts[3]
+    return s
+
+
 def _to_timestamp(item):
     """將單一時間值（或 (日期,時刻) tuple）轉為 pandas Timestamp；無法轉換則丟出。"""
     if isinstance(item, tuple):
         d, t = item
         if isinstance(d, (int, float, bool)) or isinstance(t, (int, float, bool)):
             raise ValueError("數值非時間")
-        return pd.to_datetime(f"{d} {t}")
+        return pd.to_datetime(_norm_colon_ms(f"{d} {t}"))
     v = item
     if isinstance(v, bool) or isinstance(v, (int, float)):
         # 純數值（如 0,1,2 索引）不視為時間，保留原樣
@@ -39,7 +48,7 @@ def _to_timestamp(item):
         return pd.Timestamp(v)
     if isinstance(v, datetime.time):
         return pd.Timestamp.combine(datetime.date(2000, 1, 1), v)
-    return pd.to_datetime(v)
+    return pd.to_datetime(_norm_colon_ms(str(v)))
 
 
 def _build_time_labels(time_raw: List) -> List[str]:
