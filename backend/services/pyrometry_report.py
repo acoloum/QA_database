@@ -249,11 +249,20 @@ def build_sat_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
     r = hdr_row + 1
     worst = None
     for p in detail["sat_points"]:
-        ctrl = _num(p.get("控制儀表讀值"))
-        test = _num(p.get("校正測試讀值"))
-        diff = _num(p.get("差值"))
         corr = _num(p.get("修正值")) or 0
-        dev = _num(p.get("偏差"))
+        readings = p.get("readings") or []
+        # 取絕對偏差最大的讀值輸出報告行（向下相容舊格式）
+        if readings:
+            worst_r = max(readings, key=lambda rd: abs(_num(rd.get("偏差")) or 0))
+            ctrl = _num(worst_r.get("控制儀表讀值"))
+            test = _num(worst_r.get("校正測試讀值"))
+            diff = _num(worst_r.get("差值"))
+            dev  = _num(worst_r.get("偏差"))
+        else:
+            ctrl = _num(p.get("控制儀表讀值"))
+            test = _num(p.get("校正測試讀值"))
+            diff = _num(p.get("差值"))
+            dev  = _num(p.get("偏差"))
         corrected = round(test + corr, 2) if test is not None else None
         if dev is not None and (worst is None or abs(dev) > abs(worst)):
             worst = dev

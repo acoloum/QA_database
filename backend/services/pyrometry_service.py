@@ -412,22 +412,46 @@ class PyrometryService:
 
     @staticmethod
     def evaluate_sat(tolerance: float, points: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """SAT 判定：校正測試讀值 vs 控制儀表讀值，計算差值與偏差。"""
+        """SAT 判定：每控溫區含多筆取樣讀值，所有讀值均需在公差內。
+        兼容舊格式（單筆 控制儀表讀值/校正測試讀值）與新格式（readings 陣列）。
+        """
         tol = float(tolerance)
         out_points = []
         overall_pass = True
         for p in points:
-            ctrl = _to_float(p.get("控制儀表讀值"))
-            test = _to_float(p.get("校正測試讀值"))
             corr = _to_float(p.get("修正值")) or 0.0
-            diff      = round(test - ctrl, 2) if (ctrl is not None and test is not None) else None
-            deviation = round(diff + corr, 2) if diff is not None else None
-            pt_pass = deviation is None or abs(deviation) <= tol
-            overall_pass = overall_pass and pt_pass
-            np_point = dict(p)
-            np_point["差值"] = diff
-            np_point["偏差"] = deviation
-            np_point["是否合格"] = pt_pass
+            # 取得讀值列表（新格式 readings 或舊格式單筆）
+            raw_readings: List[Dict[str, Any]] = p.get("readings") or []
+            if not raw_readings:
+                ctrl_s = p.get("控制儀表讀值")
+                test_s = p.get("校正測試讀值")
+                if ctrl_s is not None or test_s is not None:
+                    raw_readings = [{"控制儀表讀值": ctrl_s, "校正測試讀值": test_s}]
+            computed_readings = []
+            worst_diff = None
+            worst_dev = None
+            zone_pass = True
+            for r in raw_readings:
+                ctrl = _to_float(r.get("控制儀表讀值"))
+                test = _to_float(r.get("校正測試讀值"))
+                diff      = round(test - ctrl, 2) if (ctrl is not None and test is not None) else None
+                deviation = round(diff + corr, 2) if diff is not None else None
+                r_pass = deviation is None or abs(deviation) <= tol
+                zone_pass = zone_pass and r_pass
+                if deviation is not None and (worst_dev is None or abs(deviation) > abs(worst_dev)):
+                    worst_dev = deviation
+                    worst_diff = diff
+                cr = {k: v for k, v in r.items() if k not in ("差值", "偏差", "是否合格")}
+                cr["差值"] = diff
+                cr["偏差"] = deviation
+                cr["是否合格"] = r_pass
+                computed_readings.append(cr)
+            overall_pass = overall_pass and zone_pass
+            np_point = {k: v for k, v in p.items() if k not in ("readings", "差值", "偏差", "是否合格")}
+            np_point["readings"] = computed_readings
+            np_point["差值"] = worst_diff
+            np_point["偏差"] = worst_dev
+            np_point["是否合格"] = zone_pass
             out_points.append(np_point)
         return {"是否合格": overall_pass, "points": out_points}
 
@@ -478,8 +502,7 @@ class PyrometryService:
                 else:
                     db.session.add(SatPoint(
                         test_id=t.id, zone=p.get("控溫區"),
-                        control_read=p.get("控制儀表讀值"),
-                        test_read=p.get("校正測試讀值"),
+                        readings=p.get("readings") or None,
                         diff=p.get("差值"), correction=p.get("修正值"),
                         deviation=p.get("偏差"), is_pass=p.get("是否合格", True),
                     ))
@@ -516,12 +539,22 @@ class PyrometryService:
             "最低溫": format_value(p.temp_min), "最大偏差": format_value(p.max_dev),
             "是否合格": p.is_pass,
         } for p in sorted(t.tus_points, key=lambda x: x.id)]
+        def _sat_readings(p):
+            """取得讀值列表；舊格式（單欄）轉為一筆 reading 相容。"""
+            if p.readings:
+                return p.readings
+            if p.control_read is not None or p.test_read is not None:
+                return [{"控制儀表讀值": format_value(p.control_read),
+                         "校正測試讀值": format_value(p.test_read)}]
+            return []
+
         sat_points = [{
-            "識別碼": p.id, "控溫區": p.zone or "", "控制儀表讀值": format_value(p.control_read),
-            "校正測試讀值": format_value(p.test_read),
+            "識別碼": p.id, "控溫區": p.zone or "",
+            "修正值": format_value(p.correction),
             "差值": format_value(p.diff),
-            "修正值": format_value(p.correction), "偏差": format_value(p.deviation),
+            "偏差": format_value(p.deviation),
             "是否合格": p.is_pass,
+            "readings": _sat_readings(p),
         } for p in sorted(t.sat_points, key=lambda x: x.id)]
         return {"success": True, "main": main, "tus_points": tus_points,
                 "sat_points": sat_points, "曲線資料": t.chart_data, "報告欄位": t.report_meta}
@@ -573,8 +606,7 @@ class PyrometryService:
                 else:
                     db.session.add(SatPoint(
                         test_id=t.id, zone=p.get("控溫區"),
-                        control_read=p.get("控制儀表讀值"),
-                        test_read=p.get("校正測試讀值"),
+                        readings=p.get("readings") or None,
                         diff=p.get("差值"), correction=p.get("修正值"),
                         deviation=p.get("偏差"), is_pass=p.get("是否合格", True)))
             db.session.commit()

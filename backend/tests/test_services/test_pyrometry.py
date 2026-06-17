@@ -166,15 +166,20 @@ def test_compute_corrections_sat_channel_offset_and_clamp(app, db_session):
 
 
 def test_evaluate_sat_pass_and_fail():
-    """SAT：校正測試讀值 vs 控制儀表讀值；公差±5"""
+    """SAT：多讀值格式；所有讀值均需在公差內；公差±5"""
     points = [
-        {"控制儀表讀值": 180, "校正測試讀值": 183},  # 差+3 OK
-        {"控制儀表讀值": 180, "校正測試讀值": 187},  # 差+7 NG
+        {"控溫區": "Z1", "修正值": 0, "readings": [
+            {"控制儀表讀值": 180, "校正測試讀值": 183},  # 差+3 OK
+        ]},
+        {"控溫區": "Z2", "修正值": 0, "readings": [
+            {"控制儀表讀值": 180, "校正測試讀值": 183},  # OK
+            {"控制儀表讀值": 180, "校正測試讀值": 187},  # 差+7 NG → zone NG
+        ]},
     ]
     result = PyrometryService.evaluate_sat(tolerance=5, points=points)
-    assert result["points"][0]["差值"] == 3
     assert result["points"][0]["是否合格"] is True
-    assert result["points"][1]["是否合格"] is False
+    assert result["points"][0]["readings"][0]["差值"] == 3
+    assert result["points"][1]["是否合格"] is False   # 有一筆超出
     assert result["是否合格"] is False
 
 
@@ -236,7 +241,9 @@ def test_create_sat_test_auto_judges(app, db_session):
         tid = PyrometryService.create_test({
             "爐子ID": fid, "測試類型": "SAT", "測試日期": "2026-04-15",
             "設定溫度": 180, "允許公差": 5,
-            "points": [{"控溫區": "Z1", "控制儀表讀值": 180, "校正測試讀值": 187}],
+            "points": [{"控溫區": "Z1", "修正值": 0, "readings": [
+                {"控制儀表讀值": 180, "校正測試讀值": 187},
+            ]}],
         })
         detail = PyrometryService.get_test(tid)
         assert detail["main"]["是否合格"] is False
@@ -388,7 +395,9 @@ def test_export_sat_xlsx_uses_qra074(app, db_session):
         tid = PyrometryService.create_test({
             "爐子ID": fid, "測試類型": "SAT", "測試日期": "2026-04-15",
             "設定溫度": 180, "允許公差": 5,
-            "points": [{"控溫區": "Z1", "控制儀表讀值": 180, "校正測試讀值": 183}]})
+            "points": [{"控溫區": "Z1", "修正值": 0, "readings": [
+                {"控制儀表讀值": 180, "校正測試讀值": 183},
+            ]}]})
         content = PyrometryService.export_test_xlsx(tid)
         wb = load_workbook(_io.BytesIO(content))
         assert "QRA074-SAT準確度" in wb.sheetnames

@@ -1,84 +1,137 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Modal, Form, Row, Col, Button, Table } from 'react-bootstrap';
+import { Modal, Form, Row, Col, Button, Table, Nav } from 'react-bootstrap';
 import api from '../../services/api';
-import type { Furnace, TusPoint, SatPoint } from '../../types';
+import type { Furnace, TusPoint, SatPoint, SatReading } from '../../types';
 import TusChart from '../../components/pyrometry/TusChart';
 import TusDataTable from '../../components/pyrometry/TusDataTable';
 
 interface Inspector { id: number; name: string; }
 interface Props { editId: number | null; onClose: () => void; onSaved: () => void; }
 
-const emptyTusPoint = (): TusPoint => ({ 點位: '', 熱電偶編號: '', 修正值: '', 最高溫: '', 最低溫: '' });
-const emptySatPoint = (): SatPoint => ({ 控溫區: '', 控制儀表讀值: '', 校正測試讀值: '', 修正值: '' });
+type ChartData = { 時間: string[]; 數值: Record<string, number[]> };
 
-/** SAT 量測點表格 */
-const SatTable = ({
-  points, onUpdate, tolerance,
+const emptyReading = (): SatReading => ({ 控制儀表讀值: '', 校正測試讀值: '' });
+const emptyTusPoint = (): TusPoint => ({ 點位: '', 熱電偶編號: '', 修正值: '', 最高溫: '', 最低溫: '' });
+const emptySatPoint = (): SatPoint => ({
+  控溫區: '', 修正值: '',
+  readings: Array.from({ length: 10 }, emptyReading),
+});
+
+/** 單一控溫區的讀值表格（含新增/刪除列） */
+const ZoneTab = ({
+  point, tolerance, onUpdateField, onUpdateReading, onAddReading, onRemoveReading,
 }: {
-  points: SatPoint[];
-  onUpdate: (i: number, k: keyof SatPoint, v: string) => void;
+  point: SatPoint;
   tolerance: string;
+  onUpdateField: (k: keyof SatPoint, v: string) => void;
+  onUpdateReading: (ri: number, k: keyof SatReading, v: string) => void;
+  onAddReading: () => void;
+  onRemoveReading: (ri: number) => void;
 }) => {
   const tol = parseFloat(String(tolerance)) || 0;
+  const corr = parseFloat(String(point.修正值 ?? 0)) || 0;
+
+  const validReadings = point.readings.filter(
+    r => r.校正測試讀值 !== '' && r.校正測試讀值 !== null,
+  );
+  const passCount = validReadings.filter(r => {
+    const ctrl = parseFloat(String(r.控制儀表讀值));
+    const test = parseFloat(String(r.校正測試讀值));
+    if (isNaN(ctrl) || isNaN(test)) return false;
+    const dev = Math.round((test - ctrl + corr) * 100) / 100;
+    return Math.abs(dev) <= tol;
+  }).length;
+
   return (
-    <Table bordered size="sm" className="text-center align-middle">
-      <thead className="table-secondary">
-        <tr>
-          <th>控溫區</th>
-          <th>控制儀表讀值</th>
-          <th>校正測試讀值</th>
-          <th>修正值</th>
-          <th>差值</th>
-          <th>偏差</th>
-          <th>合格</th>
-        </tr>
-      </thead>
-      <tbody>
-        {points.map((p, i) => {
-          const ctrl = parseFloat(String(p.控制儀表讀值));
-          const test = parseFloat(String(p.校正測試讀值));
-          const corr = parseFloat(String(p.修正值 ?? 0)) || 0;
-          const diff = (!isNaN(ctrl) && !isNaN(test)) ? Math.round((test - ctrl) * 100) / 100 : null;
-          const dev  = diff !== null ? Math.round((diff + corr) * 100) / 100 : null;
-          const pass = dev !== null ? Math.abs(dev) <= tol : null;
-          const devColor = dev === null ? undefined : Math.abs(dev) > tol ? '#842029' : '#0a3622';
-          return (
-            <tr key={i}>
-              <td><Form.Control size="sm" value={p.控溫區} onChange={e => onUpdate(i, '控溫區', e.target.value)} /></td>
-              <td><Form.Control size="sm" value={String(p.控制儀表讀值 ?? '')} onChange={e => onUpdate(i, '控制儀表讀值', e.target.value)} /></td>
-              <td><Form.Control size="sm" value={String(p.校正測試讀值 ?? '')} onChange={e => onUpdate(i, '校正測試讀值', e.target.value)} /></td>
-              <td><Form.Control size="sm" value={String(p.修正值 ?? '')} onChange={e => onUpdate(i, '修正值', e.target.value)} /></td>
-              <td className="text-muted" style={{ minWidth: 55 }}>{diff ?? '—'}</td>
-              <td style={{ minWidth: 55, fontWeight: dev !== null ? 600 : undefined, color: devColor }}>{dev ?? '—'}</td>
-              <td>
-                {pass === null ? '—' : pass
-                  ? <span style={{ color: '#198754', fontWeight: 600 }}>✓</span>
-                  : <span style={{ color: '#dc3545', fontWeight: 600 }}>✗</span>}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </Table>
+    <>
+      <Row className="g-2 mb-2 align-items-end">
+        <Col md={3}>
+          <Form.Label className="mb-0" style={{ fontSize: 12 }}>控溫區名稱</Form.Label>
+          <Form.Control size="sm" value={point.控溫區}
+            onChange={e => onUpdateField('控溫區', e.target.value)} />
+        </Col>
+        <Col md={2}>
+          <Form.Label className="mb-0" style={{ fontSize: 12 }}>修正值 (°C)</Form.Label>
+          <Form.Control size="sm" value={String(point.修正值 ?? '')}
+            onChange={e => onUpdateField('修正值', e.target.value)} />
+        </Col>
+        <Col md="auto">
+          <Button size="sm" variant="outline-success" onClick={onAddReading}>＋ 新增讀值</Button>
+        </Col>
+        <Col md="auto" className="ms-auto text-end">
+          <span className="text-muted" style={{ fontSize: 12 }}>
+            有效讀值 {validReadings.length} 筆，合格 {passCount} / {validReadings.length}
+          </span>
+        </Col>
+      </Row>
+
+      <Table bordered size="sm" className="text-center align-middle">
+        <thead className="table-secondary">
+          <tr>
+            <th style={{ width: 36 }}>#</th>
+            <th>控制儀表讀值</th>
+            <th>校正測試讀值</th>
+            <th style={{ minWidth: 50 }}>差值</th>
+            <th style={{ minWidth: 50 }}>偏差</th>
+            <th style={{ width: 42 }}>合格</th>
+            <th style={{ width: 36 }}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {point.readings.map((r, ri) => {
+            const ctrl = parseFloat(String(r.控制儀表讀值));
+            const test = parseFloat(String(r.校正測試讀值));
+            const diff = (!isNaN(ctrl) && !isNaN(test)) ? Math.round((test - ctrl) * 100) / 100 : null;
+            const dev  = diff !== null ? Math.round((diff + corr) * 100) / 100 : null;
+            const pass = dev !== null ? Math.abs(dev) <= tol : null;
+            const devColor = dev === null ? undefined : Math.abs(dev) > tol ? '#842029' : '#0a3622';
+            return (
+              <tr key={ri} style={pass === false ? { background: '#fff5f5' } : undefined}>
+                <td className="text-muted" style={{ fontSize: 11 }}>{ri + 1}</td>
+                <td>
+                  <Form.Control size="sm" value={String(r.控制儀表讀值 ?? '')}
+                    onChange={e => onUpdateReading(ri, '控制儀表讀值', e.target.value)} />
+                </td>
+                <td>
+                  <Form.Control size="sm" value={String(r.校正測試讀值 ?? '')}
+                    onChange={e => onUpdateReading(ri, '校正測試讀值', e.target.value)} />
+                </td>
+                <td className="text-muted">{diff ?? '—'}</td>
+                <td style={{ fontWeight: dev !== null ? 600 : undefined, color: devColor }}>
+                  {dev ?? '—'}
+                </td>
+                <td>
+                  {pass === null ? '—' : pass
+                    ? <span style={{ color: '#198754', fontWeight: 700 }}>✓</span>
+                    : <span style={{ color: '#dc3545', fontWeight: 700 }}>✗</span>}
+                </td>
+                <td>
+                  <Button size="sm" variant="outline-danger"
+                    style={{ padding: '1px 5px', fontSize: 11, lineHeight: 1.2 }}
+                    disabled={point.readings.length <= 1}
+                    onClick={() => onRemoveReading(ri)}>✕</Button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </Table>
+    </>
   );
 };
-
-type ChartData = { 時間: string[]; 數值: Record<string, number[]> };
 
 const computeRangeStats = (
   數值: Record<string, number[]>,
   start: number,
   end: number,
-): { 名稱: string; 最高溫: number; 最低溫: number; 平均溫: number }[] =>
+): { 名稱: string; 最高溫: number; 最低溫: number }[] =>
   Object.keys(數值).map(ch => {
     const slice = 數值[ch].slice(start, end + 1).filter((v): v is number => v !== null && v !== undefined);
-    const avg = slice.length ? slice.reduce((a, b) => a + b, 0) / slice.length : 0;
     return {
       名稱: ch,
       最高溫: slice.length ? Math.max(...slice) : 0,
       最低溫: slice.length ? Math.min(...slice) : 0,
-      平均溫: Math.round(avg * 100) / 100,
     };
   });
 
@@ -95,6 +148,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const [note, setNote] = useState('');
   const [tusPoints, setTusPoints] = useState<TusPoint[]>([]);
   const [satPoints, setSatPoints] = useState<SatPoint[]>([]);
+  const [activeZone, setActiveZone] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -110,7 +164,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const [satRangeEnd, setSatRangeEnd] = useState(0);
   const [showSatDetail, setShowSatDetail] = useState(false);
 
-  // SAT & TUS（爐體）：爐體記錄數據
+  // SAT：爐體記錄數據
   const [furnaceChartData, setFurnaceChartData] = useState<ChartData | null>(null);
   const [furnaceRangeStart, setFurnaceRangeStart] = useState(0);
   const [furnaceRangeEnd, setFurnaceRangeEnd] = useState(0);
@@ -123,7 +177,6 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     queryKey: ['furnaces-active'],
     queryFn: () => api.get<{ data: Furnace[] }>('/pyrometry/furnaces?active_only=1').then(r => r.data.data),
   });
-
   const { data: inspectors } = useQuery({
     queryKey: ['inspectors'],
     queryFn: () => api.get<{ id: number; name: string }[]>('/inspectors').then(r => r.data),
@@ -138,6 +191,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
       setTusPoints(Array.from({ length: n }, (_, i) => ({ ...emptyTusPoint(), 點位: `P${i + 1}` })));
     } else {
       setSatPoints(Array.from({ length: n }, (_, i) => ({ ...emptySatPoint(), 控溫區: `Zone${i + 1}` })));
+      setActiveZone(0);
     }
   };
 
@@ -157,7 +211,11 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
       setCalDueDate(main.儀器校正到期日 || '');
       setNote(main.備註);
       setTusPoints(tus_points);
-      setSatPoints(sat_points);
+      setSatPoints(sat_points.map((p: SatPoint) => ({
+        ...p,
+        readings: p.readings?.length ? p.readings : [emptyReading()],
+      })));
+      setActiveZone(0);
       if (cd) {
         if (main.測試類型 === 'TUS' && cd.時間) {
           setChartData({ 時間: cd.時間, 數值: cd.數值 });
@@ -180,10 +238,31 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     });
   }, [editId]);
 
+  // TUS 量測點更新
   const updateTus = (i: number, k: keyof TusPoint, v: string) =>
     setTusPoints(prev => prev.map((p, idx) => idx === i ? { ...p, [k]: v } : p));
-  const updateSat = (i: number, k: keyof SatPoint, v: string) =>
+
+  // SAT zone 欄位更新（控溫區、修正值）
+  const updateSatField = (i: number, k: keyof SatPoint, v: string) =>
     setSatPoints(prev => prev.map((p, idx) => idx === i ? { ...p, [k]: v } : p));
+
+  // SAT 單筆讀值更新
+  const updateSatReading = (i: number, ri: number, k: keyof SatReading, v: string) =>
+    setSatPoints(prev => prev.map((p, idx) =>
+      idx === i
+        ? { ...p, readings: p.readings.map((r, rIdx) => rIdx === ri ? { ...r, [k]: v } : r) }
+        : p,
+    ));
+
+  const addSatReading = (i: number) =>
+    setSatPoints(prev => prev.map((p, idx) =>
+      idx === i ? { ...p, readings: [...p.readings, emptyReading()] } : p,
+    ));
+
+  const removeSatReading = (i: number, ri: number) =>
+    setSatPoints(prev => prev.map((p, idx) =>
+      idx === i ? { ...p, readings: p.readings.filter((_, rIdx) => rIdx !== ri) } : p,
+    ));
 
   // TUS 恆溫穩定期 → 回填最高/最低溫
   const applyRangeTus = () => {
@@ -191,19 +270,27 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     const stats = computeRangeStats(chartData.數值, rangeStart, rangeEnd);
     setTusPoints(prev => prev.map((p, i) => {
       const ch = stats[i];
-      if (!ch) return p;
-      return { ...p, 最高溫: String(ch.最高溫), 最低溫: String(ch.最低溫) };
+      return ch ? { ...p, 最高溫: String(ch.最高溫), 最低溫: String(ch.最低溫) } : p;
     }));
   };
 
-  // SAT 恆溫穩定期 → 回填校正測試讀值（取區間平均）
+  // SAT 恆溫穩定期 → 每個通道的每個時間點變成一筆讀值
   const applyRangeSat = () => {
     if (!satChartData) return;
-    const stats = computeRangeStats(satChartData.數值, satRangeStart, satRangeEnd);
+    const channels = Object.keys(satChartData.數值);
     setSatPoints(prev => prev.map((p, i) => {
-      const ch = stats[i];
+      const ch = channels[i];
       if (!ch) return p;
-      return { ...p, 校正測試讀值: String(ch.平均溫) };
+      const values = satChartData.數值[ch]
+        .slice(satRangeStart, satRangeEnd + 1)
+        .filter((v): v is number => v !== null && v !== undefined);
+      if (!values.length) return p;
+      // 保留既有控制儀表讀值；若讀值筆數有變則以空白補齊或截斷
+      const newReadings: SatReading[] = values.map((v, vi) => ({
+        控制儀表讀值: p.readings[vi]?.控制儀表讀值 ?? '',
+        校正測試讀值: String(Math.round(v * 100) / 100),
+      }));
+      return { ...p, readings: newReadings };
     }));
   };
 
@@ -227,39 +314,40 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     formData.append('file', file);
     const r = await api.post<{
       success: boolean;
-      data: {
-        時間: string[];
-        通道: { 名稱: string; 最高溫: number; 最低溫: number }[];
-        數值: Record<string, number[]>;
-      };
+      data: { 時間: string[]; 通道: { 名稱: string }[]; 數值: Record<string, number[]> };
     }>('/pyrometry/parse-data', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
     if (!r.data.success) return;
     const lastIdx = r.data.data.時間.length - 1;
     if (dest === 'furnace') {
       setFurnaceChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
-      setFurnaceRangeStart(0);
-      setFurnaceRangeEnd(lastIdx);
+      setFurnaceRangeStart(0); setFurnaceRangeEnd(lastIdx);
     } else if (dest === 'recorder') {
       setChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
-      setRangeStart(0);
-      setRangeEnd(lastIdx);
-      // 初始回填 TUS 量測點（全範圍）
+      setRangeStart(0); setRangeEnd(lastIdx);
+      // 初始回填 TUS 量測點（全範圍 max/min）
+      const channels = Object.keys(r.data.data.數值);
       setTusPoints(prev => prev.map((p, i) => {
-        const ch = r.data.data.通道[i];
+        const ch = channels[i];
         if (!ch) return p;
-        return { ...p, 最高溫: String(ch.最高溫), 最低溫: String(ch.最低溫) };
+        const vals = r.data.data.數值[ch].filter((v): v is number => v !== null);
+        return vals.length
+          ? { ...p, 最高溫: String(Math.max(...vals)), 最低溫: String(Math.min(...vals)) }
+          : p;
       }));
     } else {
-      // dest === 'sat'
+      // dest === 'sat'：每個通道每個時間點 → 一筆讀值
       setSatChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
-      setSatRangeStart(0);
-      setSatRangeEnd(lastIdx);
-      // 初始回填 SAT 量測點（全範圍平均）
-      const stats = computeRangeStats(r.data.data.數值, 0, lastIdx);
+      setSatRangeStart(0); setSatRangeEnd(lastIdx);
+      const channels = Object.keys(r.data.data.數值);
       setSatPoints(prev => prev.map((p, i) => {
-        const ch = stats[i];
+        const ch = channels[i];
         if (!ch) return p;
-        return { ...p, 校正測試讀值: String(ch.平均溫) };
+        const values = r.data.data.數值[ch].filter((v): v is number => v !== null);
+        const newReadings: SatReading[] = values.map((v, vi) => ({
+          控制儀表讀值: p.readings[vi]?.控制儀表讀值 ?? '',
+          校正測試讀值: String(Math.round(v * 100) / 100),
+        }));
+        return newReadings.length ? { ...p, readings: newReadings } : p;
       }));
     }
   };
@@ -280,10 +368,8 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
             爐體穩定開始: furnaceChartData ? furnaceRangeStart : null,
             爐體穩定結束: furnaceChartData ? furnaceRangeEnd : null,
           } : (furnaceChartData ? {
-            爐體時間: furnaceChartData.時間,
-            爐體數值: furnaceChartData.數值,
-            爐體穩定開始: furnaceRangeStart,
-            爐體穩定結束: furnaceRangeEnd,
+            爐體時間: furnaceChartData.時間, 爐體數值: furnaceChartData.數值,
+            爐體穩定開始: furnaceRangeStart, 爐體穩定結束: furnaceRangeEnd,
           } : null));
 
       const payload = {
@@ -303,8 +389,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
       }
       onSaved();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '儲存失敗';
-      setError(msg);
+      setError(e instanceof Error ? e.message : '儲存失敗');
     } finally {
       setSaving(false);
     }
@@ -318,12 +403,9 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     <>
       <Col md={12}>
         <TusChart
-          時間={furnaceChartData.時間}
-          數值={furnaceChartData.數值}
-          設定溫度={Number(setpoint) || 180}
-          公差={Number(tolerance) || 10}
-          startIdx={furnaceRangeStart}
-          endIdx={furnaceRangeEnd}
+          時間={furnaceChartData.時間} 數值={furnaceChartData.數值}
+          設定溫度={Number(setpoint) || 180} 公差={Number(tolerance) || 10}
+          startIdx={furnaceRangeStart} endIdx={furnaceRangeEnd}
           標題="爐體記錄溫度曲線"
         />
       </Col>
@@ -355,19 +437,15 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
             {showFurnaceDetail ? '隱藏爐體詳細數據表' : '顯示爐體詳細數據表'}
           </Button>
           <span className="text-muted" style={{ fontSize: 11 }}>
-            恆溫穩定期內：
             <span style={{ background: '#f8d7da', color: '#842029', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>紅底＝超上限</span>
             <span style={{ background: '#cfe2ff', color: '#084298', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>藍底＝低於下限</span>
           </span>
         </div>
         {showFurnaceDetail && (
           <TusDataTable
-            時間={furnaceChartData.時間}
-            數值={furnaceChartData.數值}
-            設定溫度={Number(setpoint) || 180}
-            公差={Number(tolerance) || 10}
-            穩定開始={furnaceRangeStart}
-            穩定結束={furnaceRangeEnd}
+            時間={furnaceChartData.時間} 數值={furnaceChartData.數值}
+            設定溫度={Number(setpoint) || 180} 公差={Number(tolerance) || 10}
+            穩定開始={furnaceRangeStart} 穩定結束={furnaceRangeEnd}
           />
         )}
       </Col>
@@ -382,6 +460,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
       <Modal.Body>
         {error && <div className="alert alert-danger py-1">{error}</div>}
         <Form>
+          {/* ── 基本資料 ── */}
           <Row className="g-2 mb-3">
             <Col md={3}>
               <Form.Label>爐子 *</Form.Label>
@@ -436,7 +515,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
             </Col>
           </Row>
 
-          {/* 報告表頭欄位 */}
+          {/* ── 報告欄位 ── */}
           <div className="mb-3">
             <Button size="sm" variant="outline-secondary" className="mb-2" onClick={() => setShowReport(v => !v)}>
               {showReport ? '隱藏報告欄位' : '報告欄位（客戶/料號/核准等，QRA073/074）'}
@@ -459,7 +538,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
             )}
           </div>
 
-          {/* ── TUS 資料上傳區塊 ── */}
+          {/* ── TUS 資料上傳 ── */}
           {testType === 'TUS' && (
             <Row className="g-2 mb-3">
               <Col md={12}>
@@ -467,17 +546,13 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                 <input className="form-control form-control-sm" type="file" accept=".csv,.xlsx,.xls"
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, 'recorder'); }} />
               </Col>
-
               {chartData && (
                 <>
                   <Col md={12}>
                     <TusChart
-                      時間={chartData.時間}
-                      數值={chartData.數值}
-                      設定溫度={Number(setpoint) || 180}
-                      公差={Number(tolerance) || 10}
-                      startIdx={rangeStart}
-                      endIdx={rangeEnd}
+                      時間={chartData.時間} 數值={chartData.數值}
+                      設定溫度={Number(setpoint) || 180} 公差={Number(tolerance) || 10}
+                      startIdx={rangeStart} endIdx={rangeEnd}
                       標題="測試儀器（記錄器）溫度曲線"
                     />
                   </Col>
@@ -498,9 +573,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                           {timeLabels.map((t, i) => <option key={i} value={i}>{t}</option>)}
                         </Form.Select>
                       </div>
-                      <Button size="sm" variant="primary" onClick={applyRangeTus}>
-                        套用並回填量測點
-                      </Button>
+                      <Button size="sm" variant="primary" onClick={applyRangeTus}>套用並回填量測點</Button>
                       <span className="text-muted" style={{ fontSize: 11 }}>
                         共 {rangeEnd >= rangeStart ? rangeEnd - rangeStart + 1 : 0} 筆
                       </span>
@@ -512,19 +585,15 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                         {showDetail ? '隱藏詳細數據表' : '顯示詳細數據表'}
                       </Button>
                       <span className="text-muted" style={{ fontSize: 11 }}>
-                        恆溫穩定期內：
                         <span style={{ background: '#f8d7da', color: '#842029', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>紅底＝超上限</span>
                         <span style={{ background: '#cfe2ff', color: '#084298', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>藍底＝低於下限</span>
                       </span>
                     </div>
                     {showDetail && (
                       <TusDataTable
-                        時間={chartData.時間}
-                        數值={chartData.數值}
-                        設定溫度={Number(setpoint) || 180}
-                        公差={Number(tolerance) || 10}
-                        穩定開始={rangeStart}
-                        穩定結束={rangeEnd}
+                        時間={chartData.時間} 數值={chartData.數值}
+                        設定溫度={Number(setpoint) || 180} 公差={Number(tolerance) || 10}
+                        穩定開始={rangeStart} 穩定結束={rangeEnd}
                       />
                     )}
                   </Col>
@@ -564,7 +633,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
             </>
           )}
 
-          {/* ── SAT 資料上傳區塊 ── */}
+          {/* ── SAT 資料上傳 ── */}
           {testType === 'SAT' && (
             <Row className="g-2 mb-3">
               <Col md={6}>
@@ -578,17 +647,13 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, 'furnace'); }} />
               </Col>
 
-              {/* SAT 儀器曲線與穩定期 */}
               {satChartData && (
                 <>
                   <Col md={12}>
                     <TusChart
-                      時間={satChartData.時間}
-                      數值={satChartData.數值}
-                      設定溫度={Number(setpoint) || 180}
-                      公差={Number(tolerance) || 10}
-                      startIdx={satRangeStart}
-                      endIdx={satRangeEnd}
+                      時間={satChartData.時間} 數值={satChartData.數值}
+                      設定溫度={Number(setpoint) || 180} 公差={Number(tolerance) || 10}
+                      startIdx={satRangeStart} endIdx={satRangeEnd}
                       標題="SAT 儀器溫度曲線"
                     />
                   </Col>
@@ -610,7 +675,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                         </Form.Select>
                       </div>
                       <Button size="sm" variant="primary" onClick={applyRangeSat}>
-                        套用並回填校正測試讀值
+                        套用並回填讀值
                       </Button>
                       <span className="text-muted" style={{ fontSize: 11 }}>
                         共 {satRangeEnd >= satRangeStart ? satRangeEnd - satRangeStart + 1 : 0} 筆
@@ -622,44 +687,81 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                       <Button size="sm" variant="outline-secondary" onClick={() => setShowSatDetail(v => !v)}>
                         {showSatDetail ? '隱藏 SAT 詳細數據表' : '顯示 SAT 詳細數據表'}
                       </Button>
-                      <span className="text-muted" style={{ fontSize: 11 }}>
-                        恆溫穩定期內：
-                        <span style={{ background: '#f8d7da', color: '#842029', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>紅底＝超上限</span>
-                        <span style={{ background: '#cfe2ff', color: '#084298', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>藍底＝低於下限</span>
-                      </span>
                     </div>
                     {showSatDetail && (
                       <TusDataTable
-                        時間={satChartData.時間}
-                        數值={satChartData.數值}
-                        設定溫度={Number(setpoint) || 180}
-                        公差={Number(tolerance) || 10}
-                        穩定開始={satRangeStart}
-                        穩定結束={satRangeEnd}
+                        時間={satChartData.時間} 數值={satChartData.數值}
+                        設定溫度={Number(setpoint) || 180} 公差={Number(tolerance) || 10}
+                        穩定開始={satRangeStart} 穩定結束={satRangeEnd}
                       />
                     )}
                   </Col>
                 </>
               )}
 
-              {/* 爐體記錄曲線 */}
-              {furnaceChartData && furnaceSection}
+              {furnaceSection}
             </Row>
           )}
 
-          {/* ── SAT 量測點明細 ── */}
+          {/* ── SAT 量測點明細（分頁 Tab） ── */}
           {testType === 'SAT' && satPoints.length > 0 && (
             <>
-              <div className="d-flex justify-content-between align-items-center">
+              <div className="d-flex justify-content-between align-items-center mb-2">
                 <h6 className="mb-0">SAT 量測點明細</h6>
                 <Button size="sm" variant="outline-secondary" onClick={() => applyCorrections('SAT')}>
                   帶入儀器校正補正值
                 </Button>
               </div>
-              <div className="text-muted mb-1" style={{ fontSize: 11 }}>
-                偏差＝（校正測試讀值＋修正值）− 控制讀值；符合公差±{tolerance || '?'}°C 即合格
+              <div className="text-muted mb-2" style={{ fontSize: 11 }}>
+                偏差＝（校正測試讀值＋修正值）− 控制讀值；每筆讀值均需符合公差 ±{tolerance || '?'}°C
               </div>
-              <SatTable points={satPoints} onUpdate={updateSat} tolerance={tolerance} />
+
+              {/* 控溫區 Tab 列 */}
+              <Nav variant="tabs" activeKey={activeZone}
+                onSelect={k => setActiveZone(Number(k))}>
+                {satPoints.map((p, i) => {
+                  const tol = parseFloat(String(tolerance)) || 0;
+                  const corr = parseFloat(String(p.修正值 ?? 0)) || 0;
+                  const allPass = p.readings.every(r => {
+                    const ctrl = parseFloat(String(r.控制儀表讀值));
+                    const test = parseFloat(String(r.校正測試讀值));
+                    if (isNaN(ctrl) || isNaN(test)) return true;
+                    return Math.abs(test - ctrl + corr) <= tol;
+                  });
+                  const hasData = p.readings.some(r => r.校正測試讀值 !== '' && r.校正測試讀值 !== null);
+                  return (
+                    <Nav.Item key={i}>
+                      <Nav.Link eventKey={i} style={{ fontSize: 13, padding: '6px 14px' }}>
+                        {p.控溫區 || `Zone${i + 1}`}
+                        {hasData && (
+                          <span style={{ marginLeft: 6, fontWeight: 700 }}>
+                            {allPass
+                              ? <span style={{ color: '#198754' }}>✓</span>
+                              : <span style={{ color: '#dc3545' }}>✗</span>}
+                          </span>
+                        )}
+                      </Nav.Link>
+                    </Nav.Item>
+                  );
+                })}
+              </Nav>
+
+              {/* 當前 Tab 內容 */}
+              <div className="border border-top-0 rounded-bottom p-3 mb-3">
+                {satPoints.map((p, i) =>
+                  i === activeZone ? (
+                    <ZoneTab
+                      key={i}
+                      point={p}
+                      tolerance={tolerance}
+                      onUpdateField={(k, v) => updateSatField(i, k, v)}
+                      onUpdateReading={(ri, k, v) => updateSatReading(i, ri, k, v)}
+                      onAddReading={() => addSatReading(i)}
+                      onRemoveReading={ri => removeSatReading(i, ri)}
+                    />
+                  ) : null,
+                )}
+              </div>
             </>
           )}
         </Form>

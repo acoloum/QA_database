@@ -853,13 +853,20 @@ export interface TusPoint {
   是否合格?: boolean;
 }
 
-export interface SatPoint {
-  識別碼?: number;
-  控溫區: string;
+export interface SatReading {
   控制儀表讀值: string | number | null;
   校正測試讀值: string | number | null;
   差值?: string | number | null;
+  偏差?: string | number | null;
+  是否合格?: boolean;
+}
+
+export interface SatPoint {
+  識別碼?: number;
+  控溫區: string;
   修正值: string | number | null;
+  readings: SatReading[];
+  差值?: string | number | null;
   偏差?: string | number | null;
   是否合格?: boolean;
 }

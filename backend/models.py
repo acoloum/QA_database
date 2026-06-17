@@ -803,14 +803,15 @@ class TusPoint(db.Model):
 
 
 class SatPoint(db.Model):
-    """SAT 量測點明細 — 每筆=一個控溫區"""
+    """SAT 量測點明細 — 每筆=一個控溫區，包含多筆取樣讀值"""
     __tablename__ = 'SAT量測點明細'
 
     id           = db.Column('識別碼',         db.Integer, primary_key=True)
     test_id      = db.Column('測試ID',         db.Integer, db.ForeignKey('爐溫測試.識別碼'), nullable=False)
     zone          = db.Column('控溫區',         db.String(20), nullable=True)
-    control_read  = db.Column('控制儀表讀值',   db.Numeric(8, 2), nullable=True)
-    test_read     = db.Column('校正測試讀值',   db.Numeric(8, 2), nullable=True)
+    control_read  = db.Column('控制儀表讀值',   db.Numeric(8, 2), nullable=True)  # 舊格式相容保留
+    test_read     = db.Column('校正測試讀值',   db.Numeric(8, 2), nullable=True)  # 舊格式相容保留
+    readings      = db.Column('量測讀值',       JsonType, nullable=True)          # 新格式：多讀值陣列
     diff          = db.Column('差值',           db.Numeric(8, 2), nullable=True)
     correction    = db.Column('修正值',         db.Numeric(8, 2), nullable=True)
     deviation     = db.Column('偏差',           db.Numeric(8, 2), nullable=True)
