@@ -373,7 +373,7 @@ def test_export_test_xlsx(app, db_session):
         assert content[:2] == b"PK"
         wb = load_workbook(_io.BytesIO(content))
         assert "QRA073-TUS均勻性" in wb.sheetnames
-        assert "原始數據" in wb.sheetnames
+        assert "原始數據-記錄器" in wb.sheetnames
         ws = wb["QRA073-TUS均勻性"]
         assert ws["A1"].value == "必榮實業股份有限公司"
         # 報告欄位有帶入（客戶名稱）

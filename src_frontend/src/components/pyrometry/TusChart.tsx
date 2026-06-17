@@ -19,11 +19,11 @@ ChartJS.register(
 interface TusChartProps {
   時間: string[];
   數值: Record<string, number[]>;
-  爐體數值?: Record<string, number[]>;
   設定溫度: number;
   公差: number;
   startIdx?: number;
   endIdx?: number;
+  標題?: string;
 }
 
 const COLORS = [
@@ -32,7 +32,7 @@ const COLORS = [
   '#dcbeff', '#9a6324',
 ];
 
-const TusChart = ({ 時間, 數值, 爐體數值, 設定溫度, 公差, startIdx, endIdx }: TusChartProps) => {
+const TusChart = ({ 時間, 數值, 設定溫度, 公差, startIdx, endIdx, 標題 }: TusChartProps) => {
   const channels = Object.keys(數值);
   const upper = 設定溫度 + 公差;
   const lower = 設定溫度 - 公差;
@@ -67,18 +67,6 @@ const TusChart = ({ 時間, 數值, 爐體數值, 設定溫度, 公差, startIdx
         tension: 0.3,
       };
     }),
-    ...(爐體數值
-      ? Object.keys(爐體數值).map((ch, i) => ({
-          label: `${ch}（爐體）`,
-          data: 爐體數值[ch],
-          borderColor: COLORS[i % COLORS.length],
-          backgroundColor: 'transparent',
-          borderWidth: 2,
-          borderDash: [6, 4],
-          pointRadius: 2,
-          tension: 0.3,
-        }))
-      : []),
     {
       label: `上限 (${upper}°C)`,
       data: Array(時間.length).fill(upper),
@@ -106,7 +94,7 @@ const TusChart = ({ 時間, 數值, 爐體數值, 設定溫度, 公差, startIdx
         responsive: true,
         plugins: {
           legend: { position: 'bottom' as const },
-          title: { display: true, text: 'TUS 溫度曲線' },
+          title: { display: true, text: 標題 || 'TUS 溫度曲線' },
           annotation: hasRange
             ? {
                 annotations: {

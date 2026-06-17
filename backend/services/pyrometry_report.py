@@ -277,21 +277,22 @@ def build_sat_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
 
 
 # ----------------------------------------------------------------------------
-def build_raw_chart_sheet(wb, chart_data: Dict[str, Any], setpoint: float, tol: float):
-    """原始數據（時間×通道）+ 溫度曲線圖；恆溫穩定期內超限點以紅底標示"""
-    if not chart_data or not chart_data.get("時間"):
+def build_raw_chart_sheet(wb, times, values: Dict[str, Any], setpoint: float, tol: float,
+                          sheet_name: str = "原始數據", title: str = "TUS 溫度曲線",
+                          s_start: Optional[int] = None, s_end: Optional[int] = None):
+    """原始數據（時間×通道）+ 溫度曲線圖。
+    若提供恆溫穩定期(s_start/s_end)，期內超限點標色：超上限紅、低於下限藍。"""
+    if not times:
         return
-    times = chart_data["時間"]
-    values = chart_data.get("數值") or {}
+    values = values or {}
     channels = list(values.keys())
     if not channels:
         return
-    s_start = chart_data.get("穩定開始", 0)
-    s_end = chart_data.get("穩定結束", len(times) - 1)
+    highlight = s_start is not None and s_end is not None
     upper = setpoint + tol
     lower = setpoint - tol
 
-    ws = wb.create_sheet("原始數據")
+    ws = wb.create_sheet(sheet_name)
     ws.column_dimensions['A'].width = 14
     # 表頭：時間 + 通道 + 上限/下限
     header = ["時間"] + channels + ["上限", "下限"]
@@ -305,7 +306,7 @@ def build_raw_chart_sheet(wb, chart_data: Dict[str, Any], setpoint: float, tol: 
             arr = values.get(ch) or []
             v = arr[j] if j < len(arr) else None
             cell = _set(ws, ws.cell(row=row, column=k).coordinate, v)
-            if (s_start <= j <= s_end) and (v is not None):
+            if highlight and (s_start <= j <= s_end) and (v is not None):
                 if v > upper:
                     cell.fill = _RED_FILL    # 超上限
                 elif v < lower:
@@ -315,7 +316,7 @@ def build_raw_chart_sheet(wb, chart_data: Dict[str, Any], setpoint: float, tol: 
 
     # 折線圖
     chart = LineChart()
-    chart.title = "TUS 溫度曲線"
+    chart.title = title
     chart.style = 2
     chart.y_axis.title = "溫度 (°C)"
     chart.x_axis.title = "時間"

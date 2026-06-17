@@ -704,7 +704,16 @@ class PyrometryService:
         wb.remove(wb.active)   # 移除預設空白表
         if main["測試類型"] == "TUS":
             rpt.build_tus_sheet(wb, detail, meta, tc_corr)
-            rpt.build_raw_chart_sheet(wb, detail.get("曲線資料"), setpoint, tol)
+            cd = detail.get("曲線資料") or {}
+            if cd.get("時間"):
+                rpt.build_raw_chart_sheet(
+                    wb, cd.get("時間"), cd.get("數值"), setpoint, tol,
+                    sheet_name="原始數據-記錄器", title="測試儀器（記錄器）溫度曲線",
+                    s_start=cd.get("穩定開始", 0), s_end=cd.get("穩定結束", len(cd["時間"]) - 1))
+            if cd.get("爐體數值"):
+                rpt.build_raw_chart_sheet(
+                    wb, cd.get("爐體時間") or cd.get("時間"), cd.get("爐體數值"), setpoint, tol,
+                    sheet_name="原始數據-爐體", title="爐體記錄溫度曲線")
         else:
             rpt.build_sat_sheet(wb, detail, meta, tc_corr)
         if not wb.sheetnames:    # 保險：至少一張表

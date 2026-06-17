@@ -42,7 +42,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [chartData, setChartData] = useState<{ 時間: string[]; 數值: Record<string, number[]> } | null>(null);
-  const [furnaceChartData, setFurnaceChartData] = useState<{ 數值: Record<string, number[]> } | null>(null);
+  const [furnaceChartData, setFurnaceChartData] = useState<{ 時間: string[]; 數值: Record<string, number[]> } | null>(null);
   const [rangeStart, setRangeStart] = useState(0);
   const [rangeEnd, setRangeEnd] = useState(0);
   const [showDetail, setShowDetail] = useState(false);
@@ -93,7 +93,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
       setSatPoints(sat_points);
       if (cd && cd.時間) {
         setChartData({ 時間: cd.時間, 數值: cd.數值 });
-        if (cd.爐體數值) setFurnaceChartData({ 數值: cd.爐體數值 });
+        if (cd.爐體數值) setFurnaceChartData({ 時間: cd.爐體時間 || cd.時間, 數值: cd.爐體數值 });
         setRangeStart(cd.穩定開始 ?? 0);
         setRangeEnd(cd.穩定結束 ?? (cd.時間.length - 1));
       }
@@ -146,7 +146,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     }>('/pyrometry/parse-data', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
     if (r.data.success) {
       if (isFurnaceData) {
-        setFurnaceChartData({ 數值: r.data.data.數值 });
+        setFurnaceChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
       } else {
         const lastIdx = r.data.data.時間.length - 1;
         setChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
@@ -177,6 +177,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
         曲線資料: (testType === 'TUS' && chartData) ? {
           時間: chartData.時間,
           數值: chartData.數值,
+          爐體時間: furnaceChartData?.時間 || null,
           爐體數值: furnaceChartData?.數值 || null,
           穩定開始: rangeStart,
           穩定結束: rangeEnd,
@@ -303,13 +304,24 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
                     <TusChart
                       時間={chartData.時間}
                       數值={chartData.數值}
-                      爐體數值={furnaceChartData?.數值}
                       設定溫度={Number(setpoint) || 180}
                       公差={Number(tolerance) || 10}
                       startIdx={rangeStart}
                       endIdx={rangeEnd}
+                      標題="測試儀器（記錄器）溫度曲線"
                     />
                   </Col>
+                  {furnaceChartData && (
+                    <Col md={12}>
+                      <TusChart
+                        時間={furnaceChartData.時間}
+                        數值={furnaceChartData.數值}
+                        設定溫度={Number(setpoint) || 180}
+                        公差={Number(tolerance) || 10}
+                        標題="爐體記錄溫度曲線"
+                      />
+                    </Col>
+                  )}
 
                   {/* 時間區間選取列 */}
                   <Col md={12}>
