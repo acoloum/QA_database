@@ -46,6 +46,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const [rangeStart, setRangeStart] = useState(0);
   const [rangeEnd, setRangeEnd] = useState(0);
   const [showDetail, setShowDetail] = useState(false);
+  const [showFurnaceDetail, setShowFurnaceDetail] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [reportMeta, setReportMeta] = useState<Record<string, string>>({});
 
@@ -381,15 +382,34 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
 
               {/* 爐體曲線：獨立於記錄器資料，有上傳即顯示 */}
               {furnaceChartData && (
-                <Col md={12}>
-                  <TusChart
-                    時間={furnaceChartData.時間}
-                    數值={furnaceChartData.數值}
-                    設定溫度={Number(setpoint) || 180}
-                    公差={Number(tolerance) || 10}
-                    標題="爐體記錄溫度曲線"
-                  />
-                </Col>
+                <>
+                  <Col md={12}>
+                    <TusChart
+                      時間={furnaceChartData.時間}
+                      數值={furnaceChartData.數值}
+                      設定溫度={Number(setpoint) || 180}
+                      公差={Number(tolerance) || 10}
+                      標題="爐體記錄溫度曲線"
+                    />
+                  </Col>
+                  <Col md={12}>
+                    <div className="d-flex align-items-center gap-2 mb-1">
+                      <Button size="sm" variant="outline-secondary" onClick={() => setShowFurnaceDetail(v => !v)}>
+                        {showFurnaceDetail ? '隱藏爐體詳細數據表' : '顯示爐體詳細數據表'}
+                      </Button>
+                    </div>
+                    {showFurnaceDetail && (
+                      <TusDataTable
+                        時間={furnaceChartData.時間}
+                        數值={furnaceChartData.數值}
+                        設定溫度={Number(setpoint) || 180}
+                        公差={Number(tolerance) || 10}
+                        穩定開始={0}
+                        穩定結束={-1}
+                      />
+                    )}
+                  </Col>
+                </>
               )}
             </Row>
           )}
