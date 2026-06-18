@@ -29,6 +29,28 @@ const STATUS_BADGE: Record<string, string> = {
 
 const STATUS_ORDER: Record<string, number> = { '逾期': 0, '不合格': 0, '即將到期': 1, '尚無紀錄': 2, '正常': 3 };
 
+// 依狀態給定卡片配色（邊條 / 標題列 / 卡片底色）
+interface CardTheme {
+  accent: string;     // 左側邊條與標題文字
+  headerBg: string;   // 標題列底色
+  bodyBg: string;     // 卡片底色
+}
+
+const STATUS_THEME: Record<string, CardTheme> = {
+  '逾期':     { accent: '#dc3545', headerBg: '#fdecea', bodyBg: '#fff8f8' },
+  '不合格':   { accent: '#dc3545', headerBg: '#fdecea', bodyBg: '#fff8f8' },
+  '即將到期': { accent: '#fd7e14', headerBg: '#fff4e8', bodyBg: '#fffcf7' },
+  '正常':     { accent: '#198754', headerBg: '#e9f6ef', bodyBg: '#fafdfb' },
+  '尚無紀錄': { accent: '#6c757d', headerBg: '#f1f3f5', bodyBg: '#fcfcfd' },
+};
+
+// 取 TUS / SAT 中最嚴重的狀態作為整張卡片的代表配色
+const worstStatus = (f: BoardRow): string => {
+  const t = STATUS_ORDER[f.TUS.狀態] ?? 3;
+  const s = STATUS_ORDER[f.SAT.狀態] ?? 3;
+  return (t <= s ? f.TUS.狀態 : f.SAT.狀態);
+};
+
 const PyrometryDashboardPage = () => {
   const navigate = useNavigate();
   const { data: result, isLoading } = useQuery({
@@ -48,12 +70,21 @@ const PyrometryDashboardPage = () => {
     <div>
       <h4 className="mb-3">爐溫測試總覽</h4>
       <Row className="g-3">
-        {rows.map(f => (
+        {rows.map(f => {
+          const theme = STATUS_THEME[worstStatus(f)] ?? STATUS_THEME['尚無紀錄'];
+          return (
           <Col key={f.爐子ID} md={6} lg={4}>
-            <Card className="h-100" style={{ cursor: 'pointer' }}
+            <Card
+              className="h-100 pyrometry-card"
+              style={{
+                cursor: 'pointer',
+                ['--pyro-accent' as string]: theme.accent,
+                ['--pyro-header-bg' as string]: theme.headerBg,
+                ['--pyro-body-bg' as string]: theme.bodyBg,
+              }}
               onClick={() => navigate(`/pyrometry/tests?furnace_id=${f.爐子ID}`)}>
               <Card.Header className="d-flex justify-content-between align-items-center">
-                <strong>{f.爐號}</strong>
+                <strong style={{ color: theme.accent }}>{f.爐號}</strong>
                 <span className="text-muted small">{f.製程類型}</span>
               </Card.Header>
               <Card.Body>
@@ -88,7 +119,8 @@ const PyrometryDashboardPage = () => {
               </Card.Body>
             </Card>
           </Col>
-        ))}
+          );
+        })}
       </Row>
     </div>
   );

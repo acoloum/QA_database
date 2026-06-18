@@ -1781,3 +1781,26 @@ header h1 {
     border-color: #ff6b6b !important;
     box-shadow: 0 0 8px 3px rgba(220, 53, 69, 0.6) !important;
 }
+
+/* 爐溫總覽卡片 - 依測試狀態上色（覆蓋全域 .card 白底規則） */
+/* 選擇器權重需 >= 全域 .card:not([class*="bg-"]):not(.text-white)，否則白底贏不過 */
+.card.pyrometry-card:not([class*="bg-"]) {
+    /* 以左側彩色邊條 + 淡色底色取代單調白卡 */
+    background: var(--pyro-body-bg, #ffffff) !important;
+    border-left: 5px solid var(--pyro-accent, #6c757d) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* hover 時加深陰影並用對應主色描邊 */
+.card.pyrometry-card:not([class*="bg-"]):hover {
+    background: var(--pyro-body-bg, #ffffff) !important;
+    border-color: var(--pyro-accent, #6c757d) !important;
+    box-shadow: 0 16px 28px -8px var(--pyro-accent, rgba(0, 0, 0, 0.15)) !important;
+}
+
+/* 標題列：淡色底 + 主色下緣線（覆蓋全域 .card-header 漸層） */
+.pyrometry-card .card-header {
+    background: var(--pyro-header-bg, #f8fafc) !important;
+    border-bottom: 2px solid var(--pyro-accent, var(--border-color)) !important;
+}
