@@ -340,10 +340,12 @@ class PyrometryService:
 
     @staticmethod
     def compute_corrections(setpoint: float, test_type: str, count: int,
-                            recorder_id: int = None) -> List[float]:
+                            recorder_id: int = None,
+                            channels: List[int] = None) -> List[float]:
         """依設定溫度算各量測點的修正值。
         修正值 = 熱電偶補正(−內插器差值) + 記錄器補正(−內插器差值)。
-        頻道位置對應：TUS-i→CH i；SAT-i→CH (12+i)。
+        頻道預設對應：TUS-i→CH i；SAT-i→CH (12+i)。
+        channels 參數可明確指定每個量測點使用的頻道編號，取代自動推算。
         熱電偶：取啟用中熱電偶的校正曲線內插；若無則回退記錄器舊固定值。
         無啟用記錄器時回傳全 0（向後相容）。
         """
@@ -369,7 +371,7 @@ class PyrometryService:
             by_channel.setdefault(cp.channel, []).append((float(cp.std_temp), float(cp.error)))
         out = []
         for i in range(count):
-            ch = offset + i + 1
+            ch = channels[i] if (channels and i < len(channels)) else (offset + i + 1)
             err = _interp_error(by_channel.get(ch, []), float(setpoint))
             out.append(round(tc_corr - err, 2))
         return out
@@ -493,18 +495,26 @@ class PyrometryService:
 
             for p in judged["points"]:
                 if test_type == "TUS":
+                    tch = p.get("頻道")
                     db.session.add(TusPoint(
                         test_id=t.id, position=p.get("點位"), tc_no=p.get("熱電偶編號"),
-                        correction=p.get("修正值"), temp_max=p.get("最高溫"),
-                        temp_min=p.get("最低溫"), max_dev=p.get("最大偏差"),
+                        channel=int(tch) if tch is not None else None,
+                        correction=_to_float(p.get("修正值")),
+                        temp_max=_to_float(p.get("最高溫")),
+                        temp_min=_to_float(p.get("最低溫")),
+                        max_dev=_to_float(p.get("最大偏差")),
                         is_pass=p.get("是否合格", True),
                     ))
                 else:
+                    ch = p.get("頻道")
                     db.session.add(SatPoint(
                         test_id=t.id, zone=p.get("控溫區"),
+                        channel=int(ch) if ch is not None else None,
                         readings=p.get("readings") or None,
-                        diff=p.get("差值"), correction=p.get("修正值"),
-                        deviation=p.get("偏差"), is_pass=p.get("是否合格", True),
+                        diff=_to_float(p.get("差值")),
+                        correction=_to_float(p.get("修正值")),
+                        deviation=_to_float(p.get("偏差")),
+                        is_pass=p.get("是否合格", True),
                     ))
             db.session.commit()
             return t.id
@@ -535,6 +545,7 @@ class PyrometryService:
         }
         tus_points = [{
             "識別碼": p.id, "點位": p.position or "", "熱電偶編號": p.tc_no or "",
+            "頻道": p.channel,
             "修正值": format_value(p.correction), "最高溫": format_value(p.temp_max),
             "最低溫": format_value(p.temp_min), "最大偏差": format_value(p.max_dev),
             "是否合格": p.is_pass,
@@ -550,6 +561,7 @@ class PyrometryService:
 
         sat_points = [{
             "識別碼": p.id, "控溫區": p.zone or "",
+            "頻道": p.channel,
             "修正值": format_value(p.correction),
             "差值": format_value(p.diff),
             "偏差": format_value(p.deviation),
@@ -598,17 +610,25 @@ class PyrometryService:
             SatPoint.query.filter_by(test_id=test_id).delete()
             for p in judged["points"]:
                 if t.test_type == "TUS":
+                    tch = p.get("頻道")
                     db.session.add(TusPoint(
                         test_id=t.id, position=p.get("點位"), tc_no=p.get("熱電偶編號"),
-                        correction=p.get("修正值"), temp_max=p.get("最高溫"),
-                        temp_min=p.get("最低溫"), max_dev=p.get("最大偏差"),
+                        channel=int(tch) if tch is not None else None,
+                        correction=_to_float(p.get("修正值")),
+                        temp_max=_to_float(p.get("最高溫")),
+                        temp_min=_to_float(p.get("最低溫")),
+                        max_dev=_to_float(p.get("最大偏差")),
                         is_pass=p.get("是否合格", True)))
                 else:
+                    ch = p.get("頻道")
                     db.session.add(SatPoint(
                         test_id=t.id, zone=p.get("控溫區"),
+                        channel=int(ch) if ch is not None else None,
                         readings=p.get("readings") or None,
-                        diff=p.get("差值"), correction=p.get("修正值"),
-                        deviation=p.get("偏差"), is_pass=p.get("是否合格", True)))
+                        diff=_to_float(p.get("差值")),
+                        correction=_to_float(p.get("修正值")),
+                        deviation=_to_float(p.get("偏差")),
+                        is_pass=p.get("是否合格", True)))
             db.session.commit()
             return True
         except Exception as e:

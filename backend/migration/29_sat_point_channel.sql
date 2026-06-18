@@ -1,0 +1,3 @@
+-- 29: SAT 量測點新增記錄器頻道欄位
+ALTER TABLE "SAT量測點明細"
+    ADD COLUMN IF NOT EXISTS "頻道" SMALLINT;

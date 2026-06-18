@@ -1,0 +1,3 @@
+-- 30: TUS 量測點新增記錄器頻道欄位
+ALTER TABLE "TUS量測點明細"
+    ADD COLUMN IF NOT EXISTS "頻道" SMALLINT;

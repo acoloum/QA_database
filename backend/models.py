@@ -793,8 +793,9 @@ class TusPoint(db.Model):
 
     id         = db.Column('識別碼',   db.Integer, primary_key=True)
     test_id    = db.Column('測試ID',   db.Integer, db.ForeignKey('爐溫測試.識別碼'), nullable=False)
-    position   = db.Column('點位',     db.String(20), nullable=True)   # P1~P12
+    position   = db.Column('點位',     db.String(20), nullable=True)
     tc_no      = db.Column('熱電偶編號', db.String(50), nullable=True)
+    channel    = db.Column('頻道',     db.SmallInteger, nullable=True)   # 記錄器頻道編號
     correction = db.Column('修正值',   db.Numeric(8, 2), nullable=True)
     temp_max   = db.Column('最高溫',   db.Numeric(8, 2), nullable=True)
     temp_min   = db.Column('最低溫',   db.Numeric(8, 2), nullable=True)
@@ -809,6 +810,7 @@ class SatPoint(db.Model):
     id           = db.Column('識別碼',         db.Integer, primary_key=True)
     test_id      = db.Column('測試ID',         db.Integer, db.ForeignKey('爐溫測試.識別碼'), nullable=False)
     zone          = db.Column('控溫區',         db.String(20), nullable=True)
+    channel       = db.Column('頻道',           db.SmallInteger, nullable=True)   # 記錄器頻道編號
     control_read  = db.Column('控制儀表讀值',   db.Numeric(8, 2), nullable=True)  # 舊格式相容保留
     test_read     = db.Column('校正測試讀值',   db.Numeric(8, 2), nullable=True)  # 舊格式相容保留
     readings      = db.Column('量測讀值',       JsonType, nullable=True)          # 新格式：多讀值陣列

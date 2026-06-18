@@ -220,7 +220,9 @@ def corrections():
         count = int(request.args.get('count') or 0)
         rid = request.args.get('recorder_id')
         rid = int(rid) if rid else None
-        data = PyrometryService.compute_corrections(setpoint, test_type, count, rid)
+        ch_param = request.args.get('channels')
+        channels = [int(c) for c in ch_param.split(',') if c.strip()] if ch_param else None
+        data = PyrometryService.compute_corrections(setpoint, test_type, count, rid, channels)
         return jsonify({"success": True, "data": data})
     except Exception as e:
         return jsonify({"error": handle_db_error(e)}), 500

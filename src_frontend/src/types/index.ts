@@ -846,6 +846,7 @@ export interface TusPoint {
   識別碼?: number;
   點位: string;
   熱電偶編號: string;
+  頻道?: number | null;
   修正值: string | number | null;
   最高溫: string | number | null;
   最低溫: string | number | null;
@@ -864,6 +865,7 @@ export interface SatReading {
 export interface SatPoint {
   識別碼?: number;
   控溫區: string;
+  頻道?: number | null;
   修正值: string | number | null;
   readings: SatReading[];
   差值?: string | number | null;
