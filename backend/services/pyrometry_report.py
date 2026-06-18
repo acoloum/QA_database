@@ -73,7 +73,7 @@ def build_tus_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
     _set(ws, "J2", "版次：A0", font=_BOLD)
     ws.merge_cells("J2:K2")
 
-    # 參數區
+    # Row 3 — 測試參數
     _set(ws, "A3", "爐具測試溫度 (D) °C", fill=_LABEL_FILL)
     _set(ws, "B3", setpoint)
     _set(ws, "C3", "測試條件", fill=_LABEL_FILL)
@@ -82,35 +82,58 @@ def build_tus_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
     _set(ws, "F3", meta.get("控制器設定值", ""))
     _set(ws, "G3", "控制器器示值補償", fill=_LABEL_FILL)
     _set(ws, "H3", meta.get("控制器補償", ""))
-    _set(ws, "I3", "執行單位/TAF", fill=_LABEL_FILL)
+    _set(ws, "I3", "執行單位", fill=_LABEL_FILL)
     ws.merge_cells("J3:K3")
-    _set(ws, "J3", meta.get("TAF編號", meta.get("執行單位", "")))
+    _set(ws, "J3", meta.get("執行單位", ""))
 
-    _set(ws, "A4", "客戶名稱", fill=_LABEL_FILL)
-    _set(ws, "B4", meta.get("客戶名稱", ""))
-    _set(ws, "C4", "工件料號", fill=_LABEL_FILL)
-    _set(ws, "D4", meta.get("工件料號", ""))
-    _set(ws, "E4", "生產日期/批號", fill=_LABEL_FILL)
-    _set(ws, "F4", meta.get("生產批號", ""))
-    _set(ws, "G4", "內外徑尺寸", fill=_LABEL_FILL)
-    _set(ws, "H4", meta.get("內外徑尺寸", ""))
-    _set(ws, "I4", "長度/支數", fill=_LABEL_FILL)
-    _set(ws, "J4", meta.get("長度支數", ""))
-    _set(ws, "K4", meta.get("預估總重量", ""))
+    # Row 4 — 爐具資訊
+    _set(ws, "A4", "爐具編號", fill=_LABEL_FILL)
+    _set(ws, "B4", main.get("爐號", ""))
+    _set(ws, "C4", "測試日期", fill=_LABEL_FILL)
+    _set(ws, "D4", main.get("測試日期", ""))
+    _set(ws, "E4", "季別", fill=_LABEL_FILL)
+    _set(ws, "F4", main.get("季別", ""))
+    _set(ws, "G4", "測試人員", fill=_LABEL_FILL)
+    _set(ws, "H4", main.get("測試人員姓名", ""))
+    _set(ws, "I4", "測試儀器編號", fill=_LABEL_FILL)
+    ws.merge_cells("J4:K4")
+    _set(ws, "J4", main.get("測試儀器編號", ""))
 
-    _set(ws, "A5", "爐具編號", fill=_LABEL_FILL)
-    _set(ws, "B5", main.get("爐號", ""))
-    _set(ws, "C5", "測試日期", fill=_LABEL_FILL)
-    _set(ws, "D5", main.get("測試日期", ""))
-    _set(ws, "E5", "季別", fill=_LABEL_FILL)
-    _set(ws, "F5", main.get("季別", ""))
-    _set(ws, "G5", "測試人員", fill=_LABEL_FILL)
-    _set(ws, "H5", main.get("測試人員姓名", ""))
-    _set(ws, "I5", "測試儀器編號", fill=_LABEL_FILL)
+    # Row 5 — 客戶資訊
+    _set(ws, "A5", "客戶名稱", fill=_LABEL_FILL)
+    ws.merge_cells("B5:D5")
+    _set(ws, "B5", meta.get("客戶名稱", ""), align=_LEFT)
+    _set(ws, "E5", "預估總重量", fill=_LABEL_FILL)
+    ws.merge_cells("F5:H5")
+    _set(ws, "F5", meta.get("預估總重量", ""), align=_LEFT)
+    _set(ws, "I5", "控制器型號", fill=_LABEL_FILL)
     ws.merge_cells("J5:K5")
-    _set(ws, "J5", main.get("測試儀器編號", ""))
+    _set(ws, "J5", meta.get("控制器型號", ""), align=_LEFT)
 
-    # 測試時間（由曲線資料推估）
+    # Rows 6+ — 工件明細子表
+    items = meta.get("料號批次") or [{}]
+    item_hdr_row = 6
+    _set(ws, f"A{item_hdr_row}", "工件料號", font=_BOLD, fill=_HDR_FILL)
+    ws.merge_cells(f"A{item_hdr_row}:C{item_hdr_row}")
+    _set(ws, f"D{item_hdr_row}", "生產批號", font=_BOLD, fill=_HDR_FILL)
+    ws.merge_cells(f"D{item_hdr_row}:F{item_hdr_row}")
+    _set(ws, f"G{item_hdr_row}", "內外徑尺寸", font=_BOLD, fill=_HDR_FILL)
+    ws.merge_cells(f"G{item_hdr_row}:I{item_hdr_row}")
+    _set(ws, f"J{item_hdr_row}", "支數", font=_BOLD, fill=_HDR_FILL)
+    ws.merge_cells(f"J{item_hdr_row}:K{item_hdr_row}")
+
+    for j, item in enumerate(items):
+        ir = item_hdr_row + 1 + j
+        ws.merge_cells(f"A{ir}:C{ir}")
+        _set(ws, f"A{ir}", item.get("工件料號", ""), align=_LEFT)
+        ws.merge_cells(f"D{ir}:F{ir}")
+        _set(ws, f"D{ir}", item.get("生產批號", ""), align=_LEFT)
+        ws.merge_cells(f"G{ir}:I{ir}")
+        _set(ws, f"G{ir}", item.get("內外徑尺寸", ""), align=_LEFT)
+        ws.merge_cells(f"J{ir}:K{ir}")
+        _set(ws, f"J{ir}", item.get("支數", ""), align=_LEFT)
+
+    # 恆溫穩定期說明
     cd = detail.get("曲線資料") or {}
     soak_txt = ""
     if cd.get("時間"):
@@ -120,11 +143,12 @@ def build_tus_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
             soak_txt = f"恆溫穩定期：{cd['時間'][s]} ~ {cd['時間'][e]}（共 {e - s + 1} 點）"
         except Exception:
             soak_txt = ""
-    ws.merge_cells("A6:K6")
-    _set(ws, "A6", soak_txt, align=_LEFT, fill=_LABEL_FILL)
+    soak_row = item_hdr_row + len(items) + 1
+    ws.merge_cells(f"A{soak_row}:K{soak_row}")
+    _set(ws, f"A{soak_row}", soak_txt, align=_LEFT, fill=_LABEL_FILL)
 
-    # 量測點表頭
-    hdr_row = 8
+    # 量測點表頭（恆溫列下空一列）
+    hdr_row = soak_row + 2
     headers = [
         "測試熱電偶\n位置/編號",
         "綜合顯示\nMin (A)", "綜合顯示\nMax (A)", "單位",
@@ -202,16 +226,16 @@ def build_sat_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
     tol = _num(main.get("允許公差")) or 0
     meta = meta or {}
 
-    widths = [16, 13, 11, 11, 8, 14, 11, 11, 11, 11, 11, 16]
+    widths = [16, 13, 11, 11, 8, 14, 14, 11, 11, 11, 11, 11, 16]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[chr(64 + i)].width = w
 
-    ws.merge_cells("A1:L1")
+    ws.merge_cells("A1:M1")
     _set(ws, "A1", "必榮實業股份有限公司", font=_TITLE_FONT)
-    ws.merge_cells("A2:J2")
+    ws.merge_cells("A2:K2")
     _set(ws, "A2", "爐具系統準確度測試(SAT)紀錄表", font=Font(bold=True, size=12))
-    ws.merge_cells("K2:L2")
-    _set(ws, "K2", "版次：A0", font=_BOLD)
+    ws.merge_cells("L2:M2")
+    _set(ws, "L2", "版次：A0", font=_BOLD)
 
     _set(ws, "A3", "設定測試溫度(E)", fill=_LABEL_FILL)
     _set(ws, "B3", setpoint)
@@ -223,7 +247,7 @@ def build_sat_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
     ws.merge_cells("H3:I3")
     _set(ws, "H3", meta.get("溫濕度", ""))
     _set(ws, "J3", "執行單位", fill=_LABEL_FILL)
-    ws.merge_cells("K3:L3")
+    ws.merge_cells("K3:M3")
     _set(ws, "K3", meta.get("執行單位", ""))
 
     _set(ws, "A4", "爐具編號", fill=_LABEL_FILL)
@@ -234,15 +258,15 @@ def build_sat_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
     _set(ws, "G4", "測試人員", fill=_LABEL_FILL)
     _set(ws, "H4", main.get("測試人員姓名", ""))
     _set(ws, "I4", "測試儀器編號", fill=_LABEL_FILL)
-    ws.merge_cells("J4:L4")
+    ws.merge_cells("J4:M4")
     _set(ws, "J4", main.get("測試儀器編號", ""))
 
     hdr_row = 6
     headers = [
         "控溫區", "控制儀表\n讀值", "校正測試\n讀值", "差值", "單位",
-        "熱電偶補償\n(C)", "修正後\n讀值", "偏差", "判定",
+        "溫度計補償\n(B)", "熱電偶補償\n(C)", "修正後\n讀值", "偏差", "判定",
     ]
-    cols = ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
+    cols = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
     for col, h in zip(cols, headers):
         _set(ws, f"{col}{hdr_row}", h, font=_BOLD, fill=_HDR_FILL)
 
@@ -250,6 +274,8 @@ def build_sat_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
     worst = None
     for p in detail["sat_points"]:
         corr = _num(p.get("修正值")) or 0
+        c_tc = tc_corr or 0
+        b_rec = round(corr - c_tc, 2)   # 溫度計（記錄器）補償 = 總修正 − 熱電偶補償
         readings = p.get("readings") or []
         # 取絕對偏差最大的讀值輸出報告行（向下相容舊格式）
         if readings:
@@ -267,11 +293,11 @@ def build_sat_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
         if dev is not None and (worst is None or abs(dev) > abs(worst)):
             worst = dev
         ok = p.get("是否合格", True)
-        vals = [p.get("控溫區", ""), ctrl, test, diff, "°C", corr, corrected, dev,
+        vals = [p.get("控溫區", ""), ctrl, test, diff, "°C", b_rec, c_tc, corrected, dev,
                 "合格" if ok else "不合格"]
         for col, v in zip(cols, vals):
             cell = _set(ws, f"{col}{r}", v)
-            if not ok and col == "I":
+            if not ok and col == "J":
                 cell.fill = _RED_FILL
         r += 1
 
@@ -282,7 +308,7 @@ def build_sat_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
     _set(ws, f"D{r}", "CQI-9允許(°C)", fill=_LABEL_FILL)
     _set(ws, f"E{r}", f"±{tol}")
     _set(ws, f"F{r}", "判定", fill=_LABEL_FILL)
-    ws.merge_cells(f"G{r}:I{r}")
+    ws.merge_cells(f"G{r}:J{r}")
     jc = _set(ws, f"G{r}", "合格" if main.get("是否合格") else "不合格", font=_BOLD)
     jc.fill = _RED_FILL if not main.get("是否合格") else PatternFill('solid', fgColor='D1E7DD')
 
@@ -292,9 +318,9 @@ def build_sat_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
     _set(ws, f"C{r}", "製表", fill=_LABEL_FILL)
     _set(ws, f"D{r}", meta.get("製表", ""))
     _set(ws, f"E{r}", "備註", fill=_LABEL_FILL)
-    ws.merge_cells(f"F{r}:H{r}")
+    ws.merge_cells(f"F{r}:I{r}")
     _set(ws, f"F{r}", main.get("備註", ""), align=_LEFT)
-    _set(ws, f"I{r}", "QRA074", font=_BOLD)
+    _set(ws, f"J{r}", "QRA074", font=_BOLD)
 
 
 # ----------------------------------------------------------------------------

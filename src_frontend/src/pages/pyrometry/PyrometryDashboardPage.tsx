@@ -6,7 +6,7 @@ import api from '../../services/api';
 interface DueInfo {
   最近測試日: string | null;
   下次應測日: string | null;
-  狀態: '逾期' | '即將到期' | '正常' | '尚無紀錄';
+  狀態: '逾期' | '即將到期' | '正常' | '尚無紀錄' | '不合格';
 }
 
 interface BoardRow {
@@ -24,9 +24,10 @@ const STATUS_BADGE: Record<string, string> = {
   '即將到期': 'warning',
   '正常': 'success',
   '尚無紀錄': 'secondary',
+  '不合格': 'danger',
 };
 
-const STATUS_ORDER: Record<string, number> = { '逾期': 0, '即將到期': 1, '尚無紀錄': 2, '正常': 3 };
+const STATUS_ORDER: Record<string, number> = { '逾期': 0, '不合格': 0, '即將到期': 1, '尚無紀錄': 2, '正常': 3 };
 
 const PyrometryDashboardPage = () => {
   const navigate = useNavigate();

@@ -694,7 +694,9 @@ class PyrometryService:
         if not last:
             return {"最近測試日": None, "下次應測日": None, "狀態": "尚無紀錄"}
         next_due = last.test_date + relativedelta(months=int(freq_months or 3))
-        if next_due < today:
+        if not last.is_pass:
+            status = "不合格"
+        elif next_due < today:
             status = "逾期"
         elif next_due - today <= timedelta(days=14):
             status = "即將到期"
