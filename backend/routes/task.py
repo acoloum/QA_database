@@ -2,7 +2,7 @@
 from flask import Blueprint, jsonify, request
 from datetime import date
 from ..services.task_service import TaskService
-from ..utils import auth_required
+from ..utils import auth_required, require_permission
 
 task_bp = Blueprint('task', __name__)
 
@@ -41,6 +41,7 @@ def my_tasks(current_user):
 
 @task_bp.route('/api/tasks', methods=['POST'])
 @auth_required
+@require_permission('task.create')
 def create_task(current_user):
     """POST /api/tasks — 建立任務（一般用途，D7 有專屬路由）"""
     data = request.get_json() or {}
@@ -68,6 +69,7 @@ def create_task(current_user):
 
 @task_bp.route('/api/tasks/<int:task_id>/status', methods=['PATCH'])
 @auth_required
+@require_permission('task.edit')
 def update_task_status(current_user, task_id: int):
     """PATCH /api/tasks/<id>/status — 狀態切換"""
     data = request.get_json() or {}
@@ -90,6 +92,7 @@ def update_task_status(current_user, task_id: int):
 
 @task_bp.route('/api/tasks/<int:task_id>', methods=['DELETE'])
 @auth_required
+@require_permission('task.delete')
 def delete_task(current_user, task_id: int):
     """DELETE /api/tasks/<id> — 僅 pending 狀態可刪"""
     try:

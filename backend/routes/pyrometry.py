@@ -1,7 +1,7 @@
 import io as _io
 from flask import Blueprint, jsonify, request, send_file
 from ..services.pyrometry_service import PyrometryService
-from ..utils import auth_required, handle_db_error
+from ..utils import auth_required, require_perm, handle_db_error
 from ..services.pyrometry_parser import parse_temperature_file
 
 pyrometry_bp = Blueprint('pyrometry', __name__)
@@ -26,6 +26,7 @@ def get_furnace(fid):
 
 @pyrometry_bp.route('/api/pyrometry/furnaces', methods=['POST'])
 @auth_required
+@require_perm('pyrometry.edit')
 def add_furnace():
     try:
         new_id = PyrometryService.add_furnace(request.json)
@@ -36,6 +37,7 @@ def add_furnace():
 
 @pyrometry_bp.route('/api/pyrometry/furnaces/<int:fid>', methods=['PUT'])
 @auth_required
+@require_perm('pyrometry.edit')
 def update_furnace(fid):
     try:
         PyrometryService.update_furnace(fid, request.json)
@@ -48,6 +50,7 @@ def update_furnace(fid):
 
 @pyrometry_bp.route('/api/pyrometry/furnaces/<int:fid>', methods=['DELETE'])
 @auth_required
+@require_perm('pyrometry.delete')
 def delete_furnace(fid):
     try:
         PyrometryService.delete_furnace(fid)
@@ -76,6 +79,7 @@ def get_test(tid):
 
 @pyrometry_bp.route('/api/pyrometry/tests', methods=['POST'])
 @auth_required
+@require_perm('pyrometry.edit')
 def create_test():
     try:
         new_id = PyrometryService.create_test(request.json)
@@ -86,6 +90,7 @@ def create_test():
 
 @pyrometry_bp.route('/api/pyrometry/tests/<int:tid>', methods=['PUT'])
 @auth_required
+@require_perm('pyrometry.edit')
 def update_test(tid):
     try:
         PyrometryService.update_test(tid, request.json)
@@ -98,6 +103,7 @@ def update_test(tid):
 
 @pyrometry_bp.route('/api/pyrometry/tests/<int:tid>', methods=['DELETE'])
 @auth_required
+@require_perm('pyrometry.delete')
 def delete_test(tid):
     try:
         PyrometryService.delete_test(tid)
@@ -127,6 +133,7 @@ def get_recorder(rid):
 
 @pyrometry_bp.route('/api/pyrometry/recorders', methods=['POST'])
 @auth_required
+@require_perm('pyrometry.edit')
 def add_recorder():
     try:
         new_id = PyrometryService.add_recorder(request.json)
@@ -137,6 +144,7 @@ def add_recorder():
 
 @pyrometry_bp.route('/api/pyrometry/recorders/<int:rid>', methods=['PUT'])
 @auth_required
+@require_perm('pyrometry.edit')
 def update_recorder(rid):
     try:
         PyrometryService.update_recorder(rid, request.json)
@@ -149,6 +157,7 @@ def update_recorder(rid):
 
 @pyrometry_bp.route('/api/pyrometry/recorders/<int:rid>', methods=['DELETE'])
 @auth_required
+@require_perm('pyrometry.delete')
 def delete_recorder(rid):
     try:
         PyrometryService.delete_recorder(rid)
@@ -178,6 +187,7 @@ def get_thermocouple(tcid):
 
 @pyrometry_bp.route('/api/pyrometry/thermocouples', methods=['POST'])
 @auth_required
+@require_perm('pyrometry.edit')
 def add_thermocouple():
     try:
         new_id = PyrometryService.add_thermocouple(request.json)
@@ -188,6 +198,7 @@ def add_thermocouple():
 
 @pyrometry_bp.route('/api/pyrometry/thermocouples/<int:tcid>', methods=['PUT'])
 @auth_required
+@require_perm('pyrometry.edit')
 def update_thermocouple(tcid):
     try:
         PyrometryService.update_thermocouple(tcid, request.json)
@@ -200,6 +211,7 @@ def update_thermocouple(tcid):
 
 @pyrometry_bp.route('/api/pyrometry/thermocouples/<int:tcid>', methods=['DELETE'])
 @auth_required
+@require_perm('pyrometry.delete')
 def delete_thermocouple(tcid):
     try:
         PyrometryService.delete_thermocouple(tcid)
@@ -231,6 +243,7 @@ def corrections():
 # ---------- 資料解析 ----------
 @pyrometry_bp.route('/api/pyrometry/parse-data', methods=['POST'])
 @auth_required
+@require_perm('pyrometry.edit')
 def parse_data():
     """上傳時間序列資料檔，回傳通道摘要與繪圖資料（不落地，僅解析）"""
     file = request.files.get('file')

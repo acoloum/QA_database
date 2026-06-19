@@ -17,6 +17,8 @@ ROLES = [
             'capa.view': True, 'rework.view': True,
             'shipping.create': True, 'shipping.edit_own': True, 'shipping.view': True,
             'patrol.create': True, 'patrol.edit_own': True, 'patrol.view': True,
+            'pyrometry.edit': True, 'pyrometry.view': True,
+            'task.create': True, 'task.edit': True,
         }
     },
     {
@@ -29,6 +31,8 @@ ROLES = [
             'complaint.edit': True, 'complaint.view': True,
             'shipping.create': True, 'shipping.edit': True, 'shipping.view': True,
             'patrol.create': True, 'patrol.edit': True, 'patrol.view': True,
+            'pyrometry.edit': True, 'pyrometry.view': True,
+            'task.create': True, 'task.edit': True,
         }
     },
     {
@@ -43,6 +47,8 @@ ROLES = [
             'tolerance.manage': True,
             'shipping.create': True, 'shipping.edit': True, 'shipping.delete': True, 'shipping.view': True,
             'patrol.create': True, 'patrol.edit': True, 'patrol.delete': True, 'patrol.view': True,
+            'pyrometry.edit': True, 'pyrometry.delete': True, 'pyrometry.view': True,
+            'task.create': True, 'task.edit': True, 'task.delete': True,
         }
     },
     {
@@ -57,6 +63,8 @@ ROLES = [
             'tolerance.manage': True,
             'shipping.create': True, 'shipping.edit': True, 'shipping.delete': True, 'shipping.view': True,
             'patrol.create': True, 'patrol.edit': True, 'patrol.delete': True, 'patrol.view': True,
+            'pyrometry.edit': True, 'pyrometry.delete': True, 'pyrometry.view': True,
+            'task.create': True, 'task.edit': True, 'task.delete': True,
             'user.manage': True,
         }
     },

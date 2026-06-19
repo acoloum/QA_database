@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request, send_file
 from ..services.shipping_service import ShippingService
 from ..services.spc_report import SpcReportService
-from ..utils import api_error, auth_required, handle_db_error, validate_upload_file
+from ..utils import api_error, auth_required, require_perm, handle_db_error, validate_upload_file
 
 shipping_bp = Blueprint('shipping', __name__)
 
@@ -121,6 +121,7 @@ def export_spc_report():
 @shipping_bp.route('/api/add', methods=['POST'])
 @shipping_bp.route('/api/update', methods=['POST'])
 @auth_required
+@require_perm('shipping.create')
 def save_data():
     try:
         is_update = request.path.endswith('update')
@@ -134,6 +135,7 @@ def save_data():
 
 @shipping_bp.route('/api/delete', methods=['POST'])
 @auth_required
+@require_perm('shipping.delete')
 def delete_data():
     try:
         record_id = request.json.get('id')
@@ -147,6 +149,7 @@ def delete_data():
 
 @shipping_bp.route('/api/import', methods=['POST', 'OPTIONS'])
 @auth_required
+@require_perm('shipping.create')
 def shipping_import():
     if request.method == 'OPTIONS':
         return '', 200

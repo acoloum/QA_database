@@ -1,7 +1,7 @@
 
 from flask import Blueprint, jsonify, request
 from ..services.extrusion_tolerance_service import ExtrusionToleranceService
-from ..utils import auth_required, handle_db_error
+from ..utils import auth_required, require_perm, handle_db_error
 
 extrusion_tolerance_bp = Blueprint('extrusion_tolerance', __name__)
 
@@ -28,6 +28,7 @@ def get_detail(id):
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/add', methods=['POST'])
 @auth_required
+@require_perm('tolerance.manage')
 def add():
     """新增擠壓公差"""
     try:
@@ -39,6 +40,7 @@ def add():
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/update/<int:id>', methods=['POST'])
 @auth_required
+@require_perm('tolerance.manage')
 def update(id):
     """更新擠壓公差"""
     try:
@@ -52,6 +54,7 @@ def update(id):
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/delete/<int:id>', methods=['POST'])
 @auth_required
+@require_perm('tolerance.manage')
 def delete(id):
     """刪除擠壓公差"""
     try:

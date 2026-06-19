@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request, send_file
 from ..services.patrol_service import PatrolService
-from ..utils import auth_required, handle_db_error
+from ..utils import auth_required, require_perm, handle_db_error
 
 patrol_bp = Blueprint('patrol', __name__)
 
@@ -35,6 +35,7 @@ def patrol_detail(id):
 
 @patrol_bp.route('/api/patrol/add', methods=['POST', 'OPTIONS'])
 @auth_required
+@require_perm('patrol.create')
 def patrol_add():
     if request.method == 'OPTIONS':
         return '', 200
@@ -48,6 +49,7 @@ def patrol_add():
 
 @patrol_bp.route('/api/patrol/update', methods=['POST'])
 @auth_required
+@require_perm('patrol.create')
 def patrol_update():
     try:
         PatrolService.update_patrol(request.json)
@@ -59,6 +61,7 @@ def patrol_update():
 
 @patrol_bp.route('/api/patrol/delete', methods=['POST'])
 @auth_required
+@require_perm('patrol.delete')
 def patrol_delete():
     try:
         record_id = request.json.get('id')
@@ -101,6 +104,7 @@ def patrol_export():
 
 @patrol_bp.route('/api/patrol/import', methods=['POST', 'OPTIONS'])
 @auth_required
+@require_perm('patrol.create')
 def patrol_import():
     if request.method == 'OPTIONS':
         return '', 200

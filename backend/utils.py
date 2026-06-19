@@ -18,22 +18,6 @@ from sqlalchemy import text
 from .extensions import db
 
 # ==================================================
-# XSS Protection & Sanitization
-# ==================================================
-try:
-    from markupsafe import escape as _escape
-    def escape(s: Optional[Union[str, int, float]]) -> str:
-        if s is None:
-            return ''
-        return _escape(str(s))
-except ImportError:
-    import html
-    def escape(s: Optional[Union[str, int, float]]) -> str:
-        if s is None:
-            return ''
-        return str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#x27;')
-
-# ==================================================
 # API 回傳格式 Helper
 # ==================================================
 def api_success(data=None, message: str = '操作成功', code: int = 200):
@@ -76,48 +60,6 @@ def validate_status_transition(model: str, current: str, new: str) -> None:
     if new not in allowed:
         raise ValueError(f'非法狀態轉移：{model} {current!r} → {new!r}')
 
-
-def sanitize_html(text: Optional[Union[str, int, float]]) -> str:
-    """Remove dangerous HTML tags while preserving safe formatting"""
-    if text is None:
-        return ''
-    text = str(text)
-    
-    # Escape all HTML first
-    escaped = escape(text)
-    
-    # Allow specific safe tags
-    safe_patterns = [
-        (r'&lt;br&gt;', '<br>'),
-        (r'&lt;br/&gt;', '<br/>'),
-        (r'&lt;strong&gt;', '<strong>'),
-        (r'&lt;/strong&gt;', '</strong>'),
-        (r'&lt;em&gt;', '<em>'),
-        (r'&lt;/em&gt;', '</em>'),
-    ]
-    
-    for pattern, replacement in safe_patterns:
-        escaped = re.sub(pattern, replacement, escaped, flags=re.IGNORECASE)
-    
-    return escaped
-
-def sanitize_input(data: Any) -> Any:
-    """Recursively sanitize all string values in a dictionary/list"""
-    if isinstance(data, dict):
-        return {key: sanitize_input(value) for key, value in data.items()}
-    elif isinstance(data, list):
-        return [sanitize_input(item) for item in data]
-    elif isinstance(data, str):
-        return sanitize_html(data)
-    else:
-        return data
-
-def get_sanitized_json() -> Any:
-    """Get and sanitize JSON data from request"""
-    json_data = request.get_json(silent=True)
-    if json_data:
-        return sanitize_input(json_data)
-    return json_data
 
 # ==================================================
 # CSRF Protection
@@ -235,6 +177,27 @@ def require_permission(perm: str):
             if not role or not role.has_permission(perm):
                 return jsonify({'success': False, 'error': '權限不足'}), 403
             return f(current_user, *args, **kwargs)
+        return wrapped
+    return decorator
+
+
+def require_perm(perm: str):
+    """權限裝飾器（舊式路由用）：依 request.user 的角色檢查權限，毋需注入 current_user，
+    因此可直接疊加在既有路由上而不改動函式簽名。須緊接在 @auth_required 之後（其下方）使用。
+    admin 角色一律放行，保留超級管理員語意。
+    """
+    def decorator(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            user = getattr(request, 'user', {}) or {}
+            role_code = user.get('role')
+            if role_code == 'admin':
+                return f(*args, **kwargs)
+            from .models import Role
+            role = Role.query.filter_by(code=role_code).first() if role_code else None
+            if not role or not role.has_permission(perm):
+                return jsonify({'success': False, 'error': '權限不足'}), 403
+            return f(*args, **kwargs)
         return wrapped
     return decorator
 
