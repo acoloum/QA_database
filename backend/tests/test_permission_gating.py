@@ -66,3 +66,19 @@ def test_read_route_open_to_any_authenticated_user(client, db_session, roles):
     viewer = _make_user(db_session, 'viewer2', 'viewer')
     resp = client.get('/api/pyrometry/furnaces', headers=_headers(viewer))
     assert resp.status_code != 403
+
+
+def test_capa_step_update_requires_capa_edit_permission(client, db_session):
+    """CAPA 步驟更新不可只靠登入，需具備 capa.edit 權限。"""
+    db_session.add(Role(code='capa_viewer', name='CAPA 唯讀',
+                        permissions={'capa.view': True}))
+    db_session.commit()
+    viewer = _make_user(db_session, 'capa_viewer1', 'capa_viewer')
+
+    resp = client.patch(
+        '/api/capas/1/step',
+        headers=_headers(viewer),
+        json={'D2_what': '未授權更新'},
+    )
+
+    assert resp.status_code == 403

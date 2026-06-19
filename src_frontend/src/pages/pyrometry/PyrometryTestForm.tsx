@@ -11,6 +11,28 @@ interface Props { editId: number | null; onClose: () => void; onSaved: () => voi
 
 type ChartData = { 時間: string[]; 數值: Record<string, number[]> };
 type ItemRow = { 工件料號: string; 生產批號: string; 內外徑尺寸: string; 支數: string };
+type ReportFieldsResponse = Record<string, string | number | boolean | ItemRow[] | null | undefined>;
+const ITEM_ROW_KEYS: (keyof ItemRow)[] = ['工件料號', '生產批號', '內外徑尺寸', '支數'];
+
+const isItemRow = (value: unknown): value is ItemRow => {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as Record<keyof ItemRow, unknown>;
+  return ITEM_ROW_KEYS.every(key => typeof row[key] === 'string');
+};
+
+const splitReportFields = (raw: ReportFieldsResponse = {}) => {
+  const itemRows = Array.isArray(raw.料號批次)
+    ? raw.料號批次.filter(isItemRow)
+    : [];
+  const meta: Record<string, string> = {};
+  Object.entries(raw).forEach(([key, value]) => {
+    if (key === '料號批次' || value === null || value === undefined) return;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      meta[key] = String(value);
+    }
+  });
+  return { itemRows, meta };
+};
 
 const emptyReading = (): SatReading => ({ 控制儀表讀值: '', 校正測試讀值: '' });
 const emptyItemRow = (): ItemRow => ({ 工件料號: '', 生產批號: '', 內外徑尺寸: '', 支數: '' });
@@ -248,10 +270,9 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
           setFurnaceRangeEnd(cd.爐體穩定結束 ?? (fLen - 1));
         }
       }
-      const rawMeta = r.data.報告欄位 || {};
-      const { 料號批次, ...restMeta } = rawMeta;
-      setItemRows(Array.isArray(料號批次) && 料號批次.length ? 料號批次 : [emptyItemRow()]);
-      setReportMeta(restMeta);
+      const { itemRows: savedItems, meta } = splitReportFields(r.data.報告欄位 || {});
+      setItemRows(savedItems.length ? savedItems : [emptyItemRow()]);
+      setReportMeta(meta);
     });
   }, [editId]);
 
@@ -368,11 +389,10 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
         return;
       }
       const tusId = list.data.data[0].識別碼;
-      const detail = await api.get<{ 報告欄位?: Record<string, any> }>(`/pyrometry/tests/${tusId}`);
-      const raw = detail.data.報告欄位 || {};
-      const { 料號批次, ...restMeta } = raw;
-      setReportMeta(prev => ({ ...prev, ...restMeta }));
-      if (Array.isArray(料號批次) && 料號批次.length) setItemRows(料號批次);
+      const detail = await api.get<{ 報告欄位?: ReportFieldsResponse }>(`/pyrometry/tests/${tusId}`);
+      const { itemRows: inheritedItems, meta } = splitReportFields(detail.data.報告欄位 || {});
+      setReportMeta(prev => ({ ...prev, ...meta }));
+      if (inheritedItems.length) setItemRows(inheritedItems);
     } catch {
       alert('繼承失敗，請稍後再試');
     }

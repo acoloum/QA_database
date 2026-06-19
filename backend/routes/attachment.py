@@ -3,6 +3,7 @@ from flask import Blueprint, jsonify, request, send_file, redirect
 from typing import Optional
 from ..services.attachment_service import AttachmentService
 from ..utils import auth_required
+from ..models import Role
 
 
 def _parse_d_step(raw: Optional[str]) -> Optional[int]:
@@ -12,6 +13,38 @@ def _parse_d_step(raw: Optional[str]) -> Optional[int]:
     return int(raw.lstrip('Dd'))
 
 attachment_bp = Blueprint('attachment', __name__)
+
+
+_ENTITY_PERMISSION_PREFIX = {
+    'capa': 'capa',
+    'task': 'task',
+    'complaint': 'complaint',
+    'pyrometry': 'pyrometry',
+}
+
+
+def _has_entity_permission(current_user, entity_type: str, action: str) -> bool:
+    """依附件所屬實體檢查模組權限，避免只靠 entity_id 猜測讀取附件。"""
+    role_code = getattr(current_user, 'role', None)
+    if role_code in ('admin', 'manager'):
+        return True
+    prefix = _ENTITY_PERMISSION_PREFIX.get(entity_type)
+    if not prefix:
+        return False
+    role = Role.query.filter_by(code=role_code).first() if role_code else None
+    if not role:
+        return False
+    if action == 'view' and role.has_permission(f'{prefix}.edit'):
+        return True
+    return role.has_permission(f'{prefix}.{action}')
+
+
+def _require_entity_permission(current_user, entity_type: str, action: str):
+    if entity_type not in _ENTITY_PERMISSION_PREFIX:
+        return jsonify({'error': f'無效的實體類型：{entity_type}'}), 400
+    if not _has_entity_permission(current_user, entity_type, action):
+        return jsonify({'error': '權限不足'}), 403
+    return None
 
 
 @attachment_bp.route('/api/attachments/upload', methods=['POST'])
@@ -32,6 +65,10 @@ def upload_attachment(current_user):
 
     if not entity_type or not entity_id:
         return jsonify({'error': '缺少 entity_type 或 entity_id'}), 400
+
+    permission_error = _require_entity_permission(current_user, entity_type, 'edit')
+    if permission_error:
+        return permission_error
 
     try:
         entity_id_int = int(entity_id)
@@ -64,6 +101,10 @@ def list_attachments(current_user):
     if not entity_type or not entity_id:
         return jsonify({'error': '缺少 entity_type 或 entity_id'}), 400
 
+    permission_error = _require_entity_permission(current_user, entity_type, 'view')
+    if permission_error:
+        return permission_error
+
     try:
         d_step = _parse_d_step(d_step_raw)
         items = AttachmentService.list_by_entity(
@@ -83,6 +124,10 @@ def download_attachment(current_user, att_id: int):
     att = AttachmentService.get_by_id(att_id)
     if not att:
         return jsonify({'error': '附件不存在'}), 404
+
+    permission_error = _require_entity_permission(current_user, att['entity_type'], 'view')
+    if permission_error:
+        return permission_error
 
     # 本地儲存：直接回傳檔案
     abs_path = AttachmentService.get_file_path(att_id)
@@ -107,6 +152,12 @@ def download_attachment(current_user, att_id: int):
 def delete_attachment(current_user, att_id: int):
     """DELETE /api/attachments/<id>"""
     try:
+        att = AttachmentService.get_by_id(att_id)
+        if not att:
+            return jsonify({'error': '附件不存在'}), 404
+        permission_error = _require_entity_permission(current_user, att['entity_type'], 'edit')
+        if permission_error:
+            return permission_error
         AttachmentService.delete(
             att_id=att_id,
             requester_id=current_user.id,

@@ -67,6 +67,7 @@ def get_capa(current_user, capa_id: int):
 # ── 步驟更新 ─────────────────────────────────────────────────
 @capa_bp.route('/api/capas/<int:capa_id>/step', methods=['PATCH'])
 @auth_required
+@require_permission('capa.edit')
 def update_step(current_user, capa_id: int):
     """PATCH /api/capas/<id>/step — 更新任意 D0-D8 步驟欄位
 
