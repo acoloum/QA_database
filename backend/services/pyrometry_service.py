@@ -27,6 +27,41 @@ def _parse_date(v):
     return _date.fromisoformat(str(v)[:10])
 
 
+class PyrometryValidationError(ValueError):
+    """爐溫測試輸入資料驗證錯誤。"""
+
+
+def _validate_test_payload(data: Dict[str, Any], default_test_type: str | None = None) -> Dict[str, Any]:
+    if not isinstance(data, dict):
+        raise PyrometryValidationError("請提供有效的 JSON 請求內容")
+    required = ("爐子ID", "測試日期", "設定溫度")
+    missing = [field for field in required if data.get(field) in (None, "")]
+    test_type = data.get("測試類型") or default_test_type
+    if not test_type:
+        missing.append("測試類型")
+    if missing:
+        raise PyrometryValidationError(f"缺少必要欄位：{', '.join(missing)}")
+    if test_type not in ("TUS", "SAT"):
+        raise PyrometryValidationError("測試類型必須為 TUS 或 SAT")
+    if not isinstance(data.get("points", []), list):
+        raise PyrometryValidationError("points 必須為陣列")
+    try:
+        float(data.get("設定溫度"))
+        float(data.get("允許公差") or 0)
+        _parse_date(data.get("測試日期"))
+    except (TypeError, ValueError):
+        raise PyrometryValidationError("測試日期、設定溫度或允許公差格式不正確")
+    return {**data, "測試類型": test_type}
+
+
+def _bounded_int(value, default: int, min_value: int, max_value: int) -> int:
+    try:
+        parsed = int(value if value not in (None, "") else default)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(min_value, min(parsed, max_value))
+
+
 def _furnace_to_dict(f: Furnace) -> Dict[str, Any]:
     return {
         "識別碼": f.id, "爐號": f.code, "名稱": f.name,
@@ -462,6 +497,7 @@ class PyrometryService:
     def create_test(data: Dict[str, Any]) -> int:
         from ..models import PyrometryTest, TusPoint, SatPoint
         try:
+            data = _validate_test_payload(data)
             test_date = _parse_date(data.get("測試日期"))
             test_type = data.get("測試類型")
             tolerance = float(data.get("允許公差") or 0)
@@ -578,16 +614,19 @@ class PyrometryService:
             t = db.session.get(PyrometryTest, test_id)
             if not t or t.deleted_at is not None:
                 raise ValueError("找不到該筆爐溫測試")
+            data = _validate_test_payload(data, default_test_type=t.test_type)
             test_date = _parse_date(data.get("測試日期"))
+            test_type = data.get("測試類型")
             tolerance = float(data.get("允許公差") or 0)
             setpoint = float(data.get("設定溫度") or 0)
             raw_points = data.get("points", [])
-            if t.test_type == "TUS":
+            if test_type == "TUS":
                 judged = PyrometryService.evaluate_tus(setpoint, tolerance, raw_points)
             else:
                 judged = PyrometryService.evaluate_sat(tolerance, raw_points)
 
             t.furnace_id = data.get("爐子ID")
+            t.test_type = test_type
             t.quarter = data.get("季別") or _quarter_of(test_date)
             t.test_date = test_date
             t.setpoint = setpoint
@@ -609,7 +648,7 @@ class PyrometryService:
             TusPoint.query.filter_by(test_id=test_id).delete()
             SatPoint.query.filter_by(test_id=test_id).delete()
             for p in judged["points"]:
-                if t.test_type == "TUS":
+                if test_type == "TUS":
                     tch = p.get("頻道")
                     db.session.add(TusPoint(
                         test_id=t.id, position=p.get("點位"), tc_no=p.get("熱電偶編號"),
@@ -667,8 +706,8 @@ class PyrometryService:
             q = q.filter(PyrometryTest.test_date >= _parse_date(args["date_from"]))
         if args.get("date_to"):
             q = q.filter(PyrometryTest.test_date <= _parse_date(args["date_to"]))
-        page = int(args.get("page", 1))
-        page_size = int(args.get("page_size", 20))
+        page = _bounded_int(args.get("page"), 1, 1, 1000000)
+        page_size = _bounded_int(args.get("page_size"), 20, 1, 100)
         total = q.count()
         pg = q.order_by(PyrometryTest.test_date.desc(), PyrometryTest.id.desc()).paginate(
             page=page, per_page=page_size, error_out=False)

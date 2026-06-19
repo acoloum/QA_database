@@ -9,7 +9,8 @@ import SatSection from './SatSection';
 import TusSection from './TusSection';
 import { buildPyrometryPayload } from './pyrometryPayload';
 import {
-  computeRangeStats,
+  applyChartRangeToSatReadings,
+  applyChartRangeToTusPoints,
   emptyItemRow,
   emptyReading,
   emptySatPoint,
@@ -170,49 +171,31 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   // TUS 恆溫穩定期 → 回填最高/最低溫
   const applyRangeTus = () => {
     if (!chartData) return;
-    const stats = computeRangeStats(chartData.數值, rangeStart, rangeEnd);
-    setTusPoints(prev => prev.map((p, i) => {
-      const ch = stats[i];
-      return ch ? { ...p, 最高溫: String(ch.最高溫), 最低溫: String(ch.最低溫) } : p;
-    }));
+    setTusPoints(prev => applyChartRangeToTusPoints(prev, chartData, rangeStart, rangeEnd));
   };
 
   // SAT 恆溫穩定期 → 每個通道的每個時間點填入「校正測試讀值」
   const applyRangeSat = () => {
     if (!satChartData) return;
-    const channels = Object.keys(satChartData.數值);
-    setSatPoints(prev => prev.map((p, i) => {
-      const ch = channels[i];
-      if (!ch) return p;
-      const values = satChartData.數值[ch]
-        .slice(satRangeStart, satRangeEnd + 1)
-        .filter((v): v is number => v !== null && v !== undefined);
-      if (!values.length) return p;
-      const newReadings: SatReading[] = values.map((v, vi) => ({
-        控制儀表讀值: p.readings[vi]?.控制儀表讀值 ?? '',
-        校正測試讀值: String(Math.round(v * 100) / 100),
-      }));
-      return { ...p, readings: newReadings };
-    }));
+    setSatPoints(prev => applyChartRangeToSatReadings(
+      prev,
+      satChartData,
+      satRangeStart,
+      satRangeEnd,
+      '校正測試讀值',
+    ));
   };
 
   // 爐體恆溫穩定期 → 每個通道的每個時間點填入「控制儀表讀值」
   const applyRangeFurnace = () => {
     if (!furnaceChartData) return;
-    const channels = Object.keys(furnaceChartData.數值);
-    setSatPoints(prev => prev.map((p, i) => {
-      const ch = channels[i];
-      if (!ch) return p;
-      const values = furnaceChartData.數值[ch]
-        .slice(furnaceRangeStart, furnaceRangeEnd + 1)
-        .filter((v): v is number => v !== null && v !== undefined);
-      if (!values.length) return p;
-      const newReadings: SatReading[] = values.map((v, vi) => ({
-        控制儀表讀值: String(Math.round(v * 100) / 100),
-        校正測試讀值: p.readings[vi]?.校正測試讀值 ?? '',
-      }));
-      return { ...p, readings: newReadings };
-    }));
+    setSatPoints(prev => applyChartRangeToSatReadings(
+      prev,
+      furnaceChartData,
+      furnaceRangeStart,
+      furnaceRangeEnd,
+      '控制儀表讀值',
+    ));
   };
 
   const applyCorrections = async (type: 'TUS' | 'SAT') => {
@@ -272,30 +255,12 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
       setChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
       setRangeStart(0); setRangeEnd(lastIdx);
       // 初始回填 TUS 量測點（全範圍 max/min）
-      const channels = Object.keys(r.data.data.數值);
-      setTusPoints(prev => prev.map((p, i) => {
-        const ch = channels[i];
-        if (!ch) return p;
-        const vals = r.data.data.數值[ch].filter((v): v is number => v !== null);
-        return vals.length
-          ? { ...p, 最高溫: String(Math.max(...vals)), 最低溫: String(Math.min(...vals)) }
-          : p;
-      }));
+      setTusPoints(prev => applyChartRangeToTusPoints(prev, r.data.data, 0, lastIdx));
     } else {
       // dest === 'sat'：每個通道每個時間點 → 一筆讀值
       setSatChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
       setSatRangeStart(0); setSatRangeEnd(lastIdx);
-      const channels = Object.keys(r.data.data.數值);
-      setSatPoints(prev => prev.map((p, i) => {
-        const ch = channels[i];
-        if (!ch) return p;
-        const values = r.data.data.數值[ch].filter((v): v is number => v !== null);
-        const newReadings: SatReading[] = values.map((v, vi) => ({
-          控制儀表讀值: p.readings[vi]?.控制儀表讀值 ?? '',
-          校正測試讀值: String(Math.round(v * 100) / 100),
-        }));
-        return newReadings.length ? { ...p, readings: newReadings } : p;
-      }));
+      setSatPoints(prev => applyChartRangeToSatReadings(prev, r.data.data, 0, lastIdx, '校正測試讀值'));
     }
   };
 

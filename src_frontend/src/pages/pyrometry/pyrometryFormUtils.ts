@@ -56,3 +56,48 @@ export const computeRangeStats = (
       最低溫: slice.length ? Math.min(...slice) : 0,
     };
   });
+
+const roundTemperature = (value: number): string => String(Math.round(value * 100) / 100);
+
+const chartValuesInRange = (values: number[] = [], start: number, end: number): number[] =>
+  values.slice(start, end + 1).filter((v): v is number => v !== null && v !== undefined);
+
+export const applyChartRangeToTusPoints = (
+  points: TusPoint[],
+  chartData: ChartData,
+  start: number,
+  end: number,
+): TusPoint[] => {
+  const stats = computeRangeStats(chartData.數值, start, end);
+  return points.map((point, index) => {
+    const channelStats = stats[index];
+    return channelStats
+      ? { ...point, 最高溫: String(channelStats.最高溫), 最低溫: String(channelStats.最低溫) }
+      : point;
+  });
+};
+
+export const applyChartRangeToSatReadings = (
+  points: SatPoint[],
+  chartData: ChartData,
+  start: number,
+  end: number,
+  targetField: keyof SatReading,
+): SatPoint[] => {
+  const channels = Object.keys(chartData.數值);
+  return points.map((point, index) => {
+    const channel = channels[index];
+    if (!channel) return point;
+    const values = chartValuesInRange(chartData.數值[channel], start, end);
+    if (!values.length) return point;
+    const readings = values.map((value, readingIndex) => ({
+      控制儀表讀值: targetField === '控制儀表讀值'
+        ? roundTemperature(value)
+        : point.readings[readingIndex]?.控制儀表讀值 ?? '',
+      校正測試讀值: targetField === '校正測試讀值'
+        ? roundTemperature(value)
+        : point.readings[readingIndex]?.校正測試讀值 ?? '',
+    }));
+    return { ...point, readings };
+  });
+};

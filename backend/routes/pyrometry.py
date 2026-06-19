@@ -1,6 +1,6 @@
 import io as _io
 from flask import Blueprint, jsonify, request, send_file
-from ..services.pyrometry_service import PyrometryService
+from ..services.pyrometry_service import PyrometryService, PyrometryValidationError
 from ..utils import auth_required, require_perm, handle_db_error
 from ..services.pyrometry_parser import parse_temperature_file
 
@@ -82,8 +82,10 @@ def get_test(tid):
 @require_perm('pyrometry.edit')
 def create_test():
     try:
-        new_id = PyrometryService.create_test(request.json)
+        new_id = PyrometryService.create_test(request.get_json(silent=True))
         return jsonify({"success": True, "id": new_id})
+    except PyrometryValidationError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": handle_db_error(e)}), 500
 
@@ -93,8 +95,10 @@ def create_test():
 @require_perm('pyrometry.edit')
 def update_test(tid):
     try:
-        PyrometryService.update_test(tid, request.json)
+        PyrometryService.update_test(tid, request.get_json(silent=True))
         return jsonify({"success": True})
+    except PyrometryValidationError as e:
+        return jsonify({"error": str(e)}), 400
     except ValueError as e:
         return jsonify({"error": str(e)}), 404
     except Exception as e:
