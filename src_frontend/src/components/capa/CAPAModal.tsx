@@ -19,6 +19,9 @@ import {
 import AttachmentUploader from '../common/AttachmentUploader';
 import AttachmentList from '../common/AttachmentList';
 import D2Pane from './D2Pane';
+import D3Pane from './D3Pane';
+import D5Pane from './D5Pane';
+import D6Pane from './D6Pane';
 import type { CAPADetail, CAPASeverity, D7Action } from '../../types';
 
 // ── 介面 Props ────────────────────────────────────────────────
@@ -868,43 +871,6 @@ const D1Pane = ({ champion, setChampion, leader, setLeader, members, setMembers,
 };
 
 // ══════════════════════════════════════════════════════════════
-// 子元件：D3 暫時對策
-// ══════════════════════════════════════════════════════════════
-interface D3Props {
-    action: string; setAction: (v: string) => void;
-    effectiveDate: string; setEffectiveDate: (v: string) => void;
-    verification: string; setVerification: (v: string) => void;
-    readonly?: boolean; capaId: number;
-    onSave: () => void; saving: boolean;
-}
-
-const D3Pane = ({ action, setAction, effectiveDate, setEffectiveDate, verification, setVerification, readonly, capaId, onSave, saving }: D3Props) => (
-    <div>
-        <Form.Group className="mb-3">
-            <Form.Label className="fw-semibold">暫時對策內容</Form.Label>
-            <Form.Control as="textarea" rows={4} value={action} onChange={e => setAction(e.target.value)} disabled={readonly} placeholder="請描述暫時對策…" />
-        </Form.Group>
-        <Row className="mb-3">
-            <Col md={4}>
-                <Form.Label className="fw-semibold">生效日期</Form.Label>
-                <Form.Control type="date" value={effectiveDate} onChange={e => setEffectiveDate(e.target.value)} disabled={readonly} />
-            </Col>
-            <Col md={8}>
-                <Form.Label className="fw-semibold">有效性驗證</Form.Label>
-                <Form.Control as="textarea" rows={2} value={verification} onChange={e => setVerification(e.target.value)} disabled={readonly} placeholder="請描述如何驗證暫時對策有效…" />
-            </Col>
-        </Row>
-
-        <hr className="my-3" />
-        <h6 className="mb-2 text-muted small">D3 相關附件</h6>
-        <AttachmentList entityType="capa" entityId={capaId} dStep="D3" />
-        {!readonly && <AttachmentUploader entityType="capa" entityId={capaId} dStep="D3" />}
-
-        <SaveBar onSave={onSave} saving={saving} readonly={readonly} />
-    </div>
-);
-
-// ══════════════════════════════════════════════════════════════
 // 子元件：D4 根本原因分析
 // ══════════════════════════════════════════════════════════════
 interface D4Props {
@@ -938,85 +904,6 @@ const D4Pane = ({ tool, setTool, fiveWhy, setFiveWhy, fishbone, setFishbone, roo
             <Form.Label className="fw-semibold">根本原因（彙整）</Form.Label>
             <Form.Control as="textarea" rows={3} value={rootCause} onChange={e => setRootCause(e.target.value)} disabled={readonly} placeholder="請彙整根本原因…" />
         </Form.Group>
-
-        <SaveBar onSave={onSave} saving={saving} readonly={readonly} />
-    </div>
-);
-
-// ══════════════════════════════════════════════════════════════
-// 子元件：D5 永久對策
-// ══════════════════════════════════════════════════════════════
-interface D5Props {
-    action: string; setAction: (v: string) => void;
-    plannedDate: string; setPlannedDate: (v: string) => void;
-    verifyPlan: string; setVerifyPlan: (v: string) => void;
-    readonly?: boolean;
-    onSave: () => void; saving: boolean;
-}
-
-const D5Pane = ({ action, setAction, plannedDate, setPlannedDate, verifyPlan, setVerifyPlan, readonly, onSave, saving }: D5Props) => (
-    <div>
-        <Form.Group className="mb-3">
-            <Form.Label className="fw-semibold">永久對策內容</Form.Label>
-            <Form.Control as="textarea" rows={4} value={action} onChange={e => setAction(e.target.value)} disabled={readonly} placeholder="請描述永久對策…" />
-        </Form.Group>
-        <Row className="mb-3">
-            <Col md={4}>
-                <Form.Label className="fw-semibold">預計實施日</Form.Label>
-                <Form.Control type="date" value={plannedDate} onChange={e => setPlannedDate(e.target.value)} disabled={readonly} />
-            </Col>
-            <Col md={8}>
-                <Form.Label className="fw-semibold">驗證計畫</Form.Label>
-                <Form.Control as="textarea" rows={2} value={verifyPlan} onChange={e => setVerifyPlan(e.target.value)} disabled={readonly} placeholder="請描述驗證計畫…" />
-            </Col>
-        </Row>
-        <SaveBar onSave={onSave} saving={saving} readonly={readonly} />
-    </div>
-);
-
-// ══════════════════════════════════════════════════════════════
-// 子元件：D6 實施與驗證
-// ══════════════════════════════════════════════════════════════
-interface D6Props {
-    implDate: string; setImplDate: (v: string) => void;
-    result: string; setResult: (v: string) => void;
-    verified: boolean; setVerified: (v: boolean) => void;
-    readonly?: boolean; capaId: number;
-    onSave: () => void; saving: boolean;
-}
-
-const D6Pane = ({ implDate, setImplDate, result, setResult, verified, setVerified, readonly, capaId, onSave, saving }: D6Props) => (
-    <div>
-        <Row className="mb-3">
-            <Col md={4}>
-                <Form.Label className="fw-semibold">實施日期</Form.Label>
-                <Form.Control type="date" value={implDate} onChange={e => setImplDate(e.target.value)} disabled={readonly} />
-            </Col>
-        </Row>
-        <Form.Group className="mb-3">
-            <Form.Label className="fw-semibold">驗證結果</Form.Label>
-            <Form.Control as="textarea" rows={4} value={result} onChange={e => setResult(e.target.value)} disabled={readonly} placeholder="請描述驗證結果…" />
-        </Form.Group>
-        <Form.Check
-            type="switch"
-            id="d6-verified"
-            label={<span className="fw-semibold text-success">✓ 確認驗證通過（開放 D8 結案）</span>}
-            checked={verified}
-            onChange={e => setVerified(e.target.checked)}
-            disabled={readonly}
-            className="mb-3"
-        />
-        {verified && (
-            <Alert variant="success" className="py-2 small">
-                <i className="bi bi-check-circle-fill me-2" />
-                D6 驗證已通過，可進行 D8 結案。
-            </Alert>
-        )}
-
-        <hr className="my-3" />
-        <h6 className="mb-2 text-muted small">D6 相關附件</h6>
-        <AttachmentList entityType="capa" entityId={capaId} dStep="D6" />
-        {!readonly && <AttachmentUploader entityType="capa" entityId={capaId} dStep="D6" />}
 
         <SaveBar onSave={onSave} saving={saving} readonly={readonly} />
     </div>
