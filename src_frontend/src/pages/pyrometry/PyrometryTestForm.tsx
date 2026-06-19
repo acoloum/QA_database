@@ -3,8 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Modal, Form, Row, Col, Button } from 'react-bootstrap';
 import api from '../../services/api';
 import type { Furnace, TusPoint, SatPoint, SatReading } from '../../types';
-import TusChart from '../../components/pyrometry/TusChart';
-import TusDataTable from '../../components/pyrometry/TusDataTable';
+import FurnaceRecorderSection from './FurnaceRecorderSection';
 import ReportFieldsSection from './ReportFieldsSection';
 import SatSection from './SatSection';
 import TusSection from './TusSection';
@@ -345,61 +344,21 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const satTimeLabels = satChartData?.時間 ?? [];
   const furnaceTimeLabels = furnaceChartData?.時間 ?? [];
 
-  const furnaceSection = furnaceChartData ? (
-    <>
-      <Col md={12}>
-        <TusChart
-          時間={furnaceChartData.時間} 數值={furnaceChartData.數值}
-          設定溫度={Number(setpoint) || 180} 公差={Number(tolerance) || 10}
-          startIdx={furnaceRangeStart} endIdx={furnaceRangeEnd}
-          標題="爐體記錄溫度曲線"
-        />
-      </Col>
-      <Col md={12}>
-        <div className="d-flex align-items-center gap-3 p-2 bg-light rounded border">
-          <span className="fw-semibold text-nowrap" style={{ fontSize: 13 }}>爐體恆溫穩定期：</span>
-          <div className="d-flex align-items-center gap-1">
-            <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>開始</Form.Label>
-            <Form.Select size="sm" style={{ minWidth: 120 }} value={furnaceRangeStart}
-              onChange={e => setFurnaceRangeStart(Number(e.target.value))}>
-              {furnaceTimeLabels.map((t, i) => <option key={i} value={i}>{t}</option>)}
-            </Form.Select>
-          </div>
-          <div className="d-flex align-items-center gap-1">
-            <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>結束</Form.Label>
-            <Form.Select size="sm" style={{ minWidth: 120 }} value={furnaceRangeEnd}
-              onChange={e => setFurnaceRangeEnd(Number(e.target.value))}>
-              {furnaceTimeLabels.map((t, i) => <option key={i} value={i}>{t}</option>)}
-            </Form.Select>
-          </div>
-          <Button size="sm" variant="primary" onClick={applyRangeFurnace}>
-            套用並回填控制儀表讀值
-          </Button>
-          <span className="text-muted" style={{ fontSize: 11 }}>
-            共 {furnaceRangeEnd >= furnaceRangeStart ? furnaceRangeEnd - furnaceRangeStart + 1 : 0} 筆
-          </span>
-        </div>
-      </Col>
-      <Col md={12}>
-        <div className="d-flex align-items-center gap-2 mb-1">
-          <Button size="sm" variant="outline-secondary" onClick={() => setShowFurnaceDetail(v => !v)}>
-            {showFurnaceDetail ? '隱藏爐體詳細數據表' : '顯示爐體詳細數據表'}
-          </Button>
-          <span className="text-muted" style={{ fontSize: 11 }}>
-            <span style={{ background: '#f8d7da', color: '#842029', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>紅底＝超上限</span>
-            <span style={{ background: '#cfe2ff', color: '#084298', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>藍底＝低於下限</span>
-          </span>
-        </div>
-        {showFurnaceDetail && (
-          <TusDataTable
-            時間={furnaceChartData.時間} 數值={furnaceChartData.數值}
-            設定溫度={Number(setpoint) || 180} 公差={Number(tolerance) || 10}
-            穩定開始={furnaceRangeStart} 穩定結束={furnaceRangeEnd}
-          />
-        )}
-      </Col>
-    </>
-  ) : null;
+  const furnaceSection = (
+    <FurnaceRecorderSection
+      furnaceChartData={furnaceChartData}
+      setpoint={setpoint}
+      tolerance={tolerance}
+      furnaceRangeStart={furnaceRangeStart}
+      furnaceRangeEnd={furnaceRangeEnd}
+      furnaceTimeLabels={furnaceTimeLabels}
+      showFurnaceDetail={showFurnaceDetail}
+      onFurnaceRangeStartChange={setFurnaceRangeStart}
+      onFurnaceRangeEndChange={setFurnaceRangeEnd}
+      onApplyRangeFurnace={applyRangeFurnace}
+      onToggleFurnaceDetail={() => setShowFurnaceDetail(v => !v)}
+    />
+  );
 
   return (
     <Modal show onHide={onClose} size="xl">
