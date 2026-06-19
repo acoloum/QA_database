@@ -683,14 +683,9 @@ class PyrometryService:
 
     # ---------- 到期計算 ----------
     @staticmethod
-    def _due_for(furnace_id: int, test_type: str, freq_months: int, today=None) -> Dict[str, Any]:
-        from ..models import PyrometryTest
+    def _due_from_last(last, freq_months, today=None) -> Dict[str, Any]:
+        """依「最近一筆測試」計算到期狀態。抽出共用邏輯，供逐筆查詢與看板批次查詢共用。"""
         today = today or date.today()
-        last = PyrometryTest.query.filter(
-            PyrometryTest.furnace_id == furnace_id,
-            PyrometryTest.test_type == test_type,
-            PyrometryTest.deleted_at.is_(None),
-        ).order_by(PyrometryTest.test_date.desc()).first()
         if not last:
             return {"最近測試日": None, "下次應測日": None, "狀態": "尚無紀錄"}
         next_due = last.test_date + relativedelta(months=int(freq_months or 3))
@@ -706,6 +701,16 @@ class PyrometryService:
                 "下次應測日": format_value(next_due), "狀態": status}
 
     @staticmethod
+    def _due_for(furnace_id: int, test_type: str, freq_months: int, today=None) -> Dict[str, Any]:
+        from ..models import PyrometryTest
+        last = PyrometryTest.query.filter(
+            PyrometryTest.furnace_id == furnace_id,
+            PyrometryTest.test_type == test_type,
+            PyrometryTest.deleted_at.is_(None),
+        ).order_by(PyrometryTest.test_date.desc()).first()
+        return PyrometryService._due_from_last(last, freq_months, today)
+
+    @staticmethod
     def furnace_due_status(furnace_id: int, today=None) -> Dict[str, Any]:
         f = db.session.get(Furnace, furnace_id)
         if not f:
@@ -719,16 +724,31 @@ class PyrometryService:
     @staticmethod
     def dashboard(today=None) -> List[Dict[str, Any]]:
         from ..models import PyrometryTest
+        furnaces = Furnace.query.filter(Furnace.is_active.is_(True)).order_by(Furnace.code).all()
+        if not furnaces:
+            return []
+
+        # 一次撈出所有相關測試（依日期新→舊），在記憶體分組，取代原本逐爐 N+1 查詢
+        furnace_ids = [f.id for f in furnaces]
+        tests = PyrometryTest.query.filter(
+            PyrometryTest.furnace_id.in_(furnace_ids),
+            PyrometryTest.deleted_at.is_(None),
+        ).order_by(PyrometryTest.test_date.desc(), PyrometryTest.id.desc()).all()
+
+        latest_by_type: Dict[Any, Any] = {}   # (爐子ID, 測試類型) → 最近一筆
+        latest_overall: Dict[int, Any] = {}   # 爐子ID → 最近一筆（不分類型）
+        for t in tests:
+            latest_overall.setdefault(t.furnace_id, t)
+            latest_by_type.setdefault((t.furnace_id, t.test_type), t)
+
         rows = []
-        for f in Furnace.query.filter(Furnace.is_active.is_(True)).order_by(Furnace.code).all():
-            due = PyrometryService.furnace_due_status(f.id, today)
-            last = PyrometryTest.query.filter(
-                PyrometryTest.furnace_id == f.id, PyrometryTest.deleted_at.is_(None)
-            ).order_by(PyrometryTest.test_date.desc()).first()
+        for f in furnaces:
+            last = latest_overall.get(f.id)
             rows.append({
                 "爐子ID": f.id, "爐號": f.code, "名稱": f.name,
                 "製程類型": f.process_type or "",
-                "TUS": due["TUS"], "SAT": due["SAT"],
+                "TUS": PyrometryService._due_from_last(latest_by_type.get((f.id, "TUS")), f.tus_freq_months, today),
+                "SAT": PyrometryService._due_from_last(latest_by_type.get((f.id, "SAT")), f.sat_freq_months, today),
                 "最近結果": ({"測試類型": last.test_type, "測試日期": format_value(last.test_date),
                             "是否合格": last.is_pass} if last else None),
             })

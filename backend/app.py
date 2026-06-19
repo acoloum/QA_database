@@ -145,13 +145,16 @@ def handle_db_error(error):
 
     app.logger.exception("DB_ERROR: %s", str(error))
 
-    friendly_message = utils_handle_db_error(error)
+    # utils_handle_db_error 回傳 {"message": str, "field"?: str}，需攤平避免
+    # message 變成巢狀物件（前端會顯示成 [object Object] 且無法定位欄位）
+    info = utils_handle_db_error(error)
 
     response = jsonify({
         "success": False,
         "error": {
             "code": "DB_ERROR",
-            "message": friendly_message,
+            "message": info["message"],
+            "field": info.get("field"),
             "details": str(error) if app.debug else None
         }
     })

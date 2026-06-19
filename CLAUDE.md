@@ -131,7 +131,7 @@ DB_PASSWORD=<password>
 SECRET_KEY=<jwt-secret>
 ```
 
-The `.env` file is committed with development credentials — do not commit production secrets.
+The `.env` file is git-ignored (see `.gitignore`) and must be created locally — do not commit it. `SECRET_KEY` is required; the app refuses to start without it (see `config.py`).
 
 ---
 
