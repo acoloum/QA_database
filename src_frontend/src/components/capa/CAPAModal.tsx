@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
     Modal, Button, Form, Nav, Tab, Row, Col, Alert,
-    Badge, ProgressBar, Spinner, Table,
+    Badge, ProgressBar, Spinner,
 } from 'react-bootstrap';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
@@ -16,7 +16,7 @@ import {
     RIGOR_STEPS,
     D_STEP_LABELS,
 } from '../../hooks/useCapa';
-import { groupInspectors, inspectorLabel, type InspectorItem } from './capaInspectors';
+import type { InspectorItem } from './capaInspectors';
 import D0Pane from './D0Pane';
 import D1Pane from './D1Pane';
 import D2Pane from './D2Pane';
@@ -24,6 +24,8 @@ import D3Pane from './D3Pane';
 import D4Pane from './D4Pane';
 import D5Pane from './D5Pane';
 import D6Pane from './D6Pane';
+import D7Pane from './D7Pane';
+import { D7_TYPES } from './capaD7Types';
 import type { CAPADetail, CAPASeverity, D7Action } from '../../types';
 
 // ── 介面 Props ────────────────────────────────────────────────
@@ -39,17 +41,6 @@ const SEVERITY_TO_RIGOR: Record<string, string> = {
     Major:    '完整8D',
     Minor:    '簡化5D',
 };
-
-// ── D7 橫展類型 ───────────────────────────────────────────────
-const D7_TYPES = [
-    { key: 'pfmea',           label: 'PFMEA 更新' },
-    { key: 'control_plan',    label: '管制計畫更新' },
-    { key: 'sop',             label: 'SOP / WI 更新' },
-    { key: 'training',        label: '教育訓練' },
-    { key: 'cross_part',      label: '跨料號水平展開' },
-    { key: 'customer_notify', label: '客戶通知' },
-    { key: 'other',           label: '其他' },
-];
 
 // ── Hook：取得檢驗員清單 ──────────────────────────────────────
 const useInspectors = () =>
@@ -521,132 +512,6 @@ const SourceInfoBanner = ({ capa }: { capa: CAPADetail }) => {
         </Alert>
     );
 };
-
-// ══════════════════════════════════════════════════════════════
-// 子元件：儲存按鈕列
-// ══════════════════════════════════════════════════════════════
-const SaveBar = ({ onSave, saving, readonly }: { onSave: () => void; saving: boolean; readonly?: boolean }) => {
-    if (readonly) return <Alert variant="secondary" className="mt-3 py-2 small">此 CAPA 已結案，無法編輯。</Alert>;
-    return (
-        <div className="d-flex justify-content-end mt-3">
-            <Button variant="primary" size="sm" onClick={onSave} disabled={saving}>
-                {saving ? <Spinner size="sm" animation="border" className="me-1" /> : <i className="bi bi-save me-1" />}
-                儲存此步驟
-            </Button>
-        </div>
-    );
-};
-
-// ══════════════════════════════════════════════════════════════
-// 子元件：D7 橫向展開
-// ══════════════════════════════════════════════════════════════
-interface D7Props {
-    actions: D7Action[];
-    tasks: import('../../types').ActionTask[];
-    inspectors: InspectorItem[];
-    readonly?: boolean;
-    onToggle: (idx: number, checked: boolean) => void;
-    onUpdateField: (idx: number, field: keyof D7Action, val: unknown) => void;
-    onSave: () => void; saving: boolean;
-}
-
-const TASK_STATUS_BADGE: Record<string, string> = {
-    pending: 'secondary', in_progress: 'primary', completed: 'success', waived: 'warning',
-};
-const TASK_STATUS_LABEL: Record<string, string> = {
-    pending: '待處理', in_progress: '進行中', completed: '已完成', waived: '豁免',
-};
-
-const D7Pane = ({ actions, tasks, inspectors, readonly, onToggle, onUpdateField, onSave, saving }: D7Props) => (
-    <div>
-        <Alert variant="info" className="py-2 small">
-            <i className="bi bi-info-circle me-1" />
-            勾選需要橫展的項目，儲存後系統將自動產生對應任務（ActionTask）。
-        </Alert>
-
-        <Table size="sm" bordered>
-            <thead className="table-light">
-                <tr>
-                    <th style={{ width: '30px' }}></th>
-                    <th>橫展類型</th>
-                    <th>指派人</th>
-                    <th>期限</th>
-                    <th>說明</th>
-                    <th>任務狀態</th>
-                </tr>
-            </thead>
-            <tbody>
-                {actions.map((a, idx) => {
-                    const typeLabel = D7_TYPES.find(t => t.key === a.type)?.label ?? a.type;
-                    // 找對應的任務記錄
-                    const relTask = tasks.find(t => t.category === a.type);
-                    return (
-                        <tr key={a.type} className={a.checked ? '' : 'text-muted'}>
-                            <td className="text-center">
-                                <Form.Check
-                                    type="checkbox"
-                                    checked={a.checked}
-                                    onChange={e => onToggle(idx, e.target.checked)}
-                                    disabled={readonly}
-                                />
-                            </td>
-                            <td className="small fw-semibold">{typeLabel}</td>
-                            <td>
-                                {a.checked && (
-                                    <Form.Select
-                                        size="sm"
-                                        value={a.assignee_id ?? ''}
-                                        onChange={e => onUpdateField(idx, 'assignee_id', e.target.value ? Number(e.target.value) : null)}
-                                        disabled={readonly}
-                                    >
-                                        <option value="">請選擇</option>
-                                        {Object.entries(groupInspectors(inspectors)).map(([grp, items]) => (
-                                            <optgroup key={grp} label={grp}>
-                                                {items.map(i => <option key={i.id} value={i.id}>{inspectorLabel(i)}</option>)}
-                                            </optgroup>
-                                        ))}
-                                    </Form.Select>
-                                )}
-                            </td>
-                            <td>
-                                {a.checked && (
-                                    <Form.Control
-                                        type="date" size="sm"
-                                        value={a.due_date ?? ''}
-                                        onChange={e => onUpdateField(idx, 'due_date', e.target.value || null)}
-                                        disabled={readonly}
-                                    />
-                                )}
-                            </td>
-                            <td>
-                                {a.checked && (
-                                    <Form.Control
-                                        size="sm"
-                                        value={a.description ?? ''}
-                                        onChange={e => onUpdateField(idx, 'description', e.target.value)}
-                                        disabled={readonly}
-                                        placeholder="備註…"
-                                    />
-                                )}
-                            </td>
-                            <td>
-                                {relTask ? (
-                                    <Badge bg={TASK_STATUS_BADGE[relTask.status] ?? 'secondary'}>
-                                        {TASK_STATUS_LABEL[relTask.status] ?? relTask.status}
-                                    </Badge>
-                                ) : a.checked ? (
-                                    <span className="small text-muted">儲存後建立</span>
-                                ) : null}
-                            </td>
-                        </tr>
-                    );
-                })}
-            </tbody>
-        </Table>
-
-        <SaveBar onSave={onSave} saving={saving} readonly={readonly} />
-    </div>
-);
 
 // ══════════════════════════════════════════════════════════════
 // 子元件：D8 結案確認
