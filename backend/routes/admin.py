@@ -1,6 +1,5 @@
 from flask import Blueprint, jsonify, request, current_app
-from sqlalchemy import text, func, or_, case, and_
-from dateutil.relativedelta import relativedelta
+from sqlalchemy import text, func, case, and_
 from datetime import datetime, timedelta, date
 from ..extensions import db
 from ..models import Inspector, Vendor, Machine, Operator, ShippingData, PatrolMain, NCMR, CorrectiveAction, ReworkRequest, AuditLog
@@ -236,56 +235,8 @@ def get_dashboard_stats():
 @admin_bp.route('/api/dashboard/todos')
 @auth_required
 def get_dashboard_todos():
-    today = date.today()
-
     try:
-        todos = []
-
-        pending_ncmrs = NCMR.active_query().filter(NCMR.status == '待處理').order_by(NCMR.date.desc()).limit(5).all()
-        for n in pending_ncmrs:
-            todos.append({
-                "type": "ncmr",
-                "id": n.ncmr_number,
-                "title": f"NCMR {n.ncmr_number} 待處理",
-                "description": n.description[:50] + "..." if n.description and len(n.description or "") > 50 else n.description,
-                "date": n.date.isoformat() if n.date else None,
-                "priority": "high",
-                "path": "/ncmr"
-            })
-
-        # CAPA 項目（8D 編號存在）
-        pending_capas = CorrectiveAction.active_query().filter(
-            CorrectiveAction.eight_d_number != None,
-            CorrectiveAction.status.in_(['待處理', '進行中'])
-        ).order_by(CorrectiveAction.created_at.desc()).limit(5).all()
-        for c in pending_capas:
-            todos.append({
-                "type": "capa",
-                "id": c.eight_d_number,
-                "title": f"CAPA {c.eight_d_number} {c.status}",
-                "description": c.d2[:50] + "..." if c.d2 and len(c.d2) > 50 else c.d2,
-                "date": c.created_at.isoformat() if c.created_at else None,
-                "priority": "medium",
-                "path": "/capa"
-            })
-
-        pending_reworks = ReworkRequest.active_query().filter(
-            ReworkRequest.status.in_(['待審核', '已通過', '進行中'])
-        ).order_by(ReworkRequest.created_at.desc()).limit(5).all()
-        for r in pending_reworks:
-            todos.append({
-                "type": "rework",
-                "id": r.rework_number,
-                "title": f"重工 {r.rework_number} {r.status}",
-                "description": r.reason[:50] + "..." if r.reason and len(r.reason) > 50 else r.reason,
-                "date": r.created_at.isoformat() if r.created_at else None,
-                "priority": "medium",
-                "path": "/rework"
-            })
-
-        todos.sort(key=lambda x: x['date'] if x['date'] else '', reverse=True)
-
-        return jsonify(todos[:10])
+        return jsonify(DashboardService.get_todos())
     except Exception as e:
         current_app.logger.exception("載入儀表板待辦事項時發生錯誤: %s", str(e))
         return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500

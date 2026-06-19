@@ -1,6 +1,6 @@
 import datetime
 
-from backend.models import Role, User, ShippingData
+from backend.models import CorrectiveAction, Role, User, ShippingData
 from backend.utils import generate_token, hash_password
 
 
@@ -34,3 +34,20 @@ def test_dashboard_trends_runs_on_sqlite_test_database(client, db_session):
     data = resp.get_json()
     assert len(data['shipping_ok_by_month']) == 6
     assert data['shipping_ok_by_month'][-1]['count'] == 1
+
+
+def test_dashboard_todos_uses_current_capa_problem_fields(client, db_session):
+    """Dashboard 待辦應支援新版 CAPA D2 欄位，不可讀取已移除的 d2 屬性。"""
+    db_session.add(CorrectiveAction(
+        eight_d_number='CAPA-TODO-001',
+        status='進行中',
+        d2_what='外徑尺寸超差',
+    ))
+    db_session.commit()
+
+    resp = client.get('/api/dashboard/todos', headers=_make_headers(db_session))
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    capa_todo = next(item for item in data if item['type'] == 'capa')
+    assert capa_todo['description'] == '外徑尺寸超差'

@@ -6,7 +6,7 @@ from dateutil.relativedelta import relativedelta
 from sqlalchemy import func, or_
 
 from ..extensions import db
-from ..models import NCMR, PatrolMain, ReworkRequest, ShippingData
+from ..models import CorrectiveAction, NCMR, PatrolMain, ReworkRequest, ShippingData
 
 
 def _month_expr(column: Any):
@@ -77,3 +77,67 @@ class DashboardService:
             "patrol_ng_by_month": [{"month": m, "count": patrol_ng_dict.get(m, 0)} for m in months],
             "rework_by_month": [{"month": m, "count": rework_dict.get(m, 0)} for m in months],
         }
+
+    @staticmethod
+    def get_todos() -> list[dict[str, Any]]:
+        """取得 Dashboard 待辦，集中處理各模組摘要欄位相容性。"""
+        todos = []
+
+        pending_ncmrs = NCMR.active_query().filter(NCMR.status == '待處理').order_by(NCMR.date.desc()).limit(5).all()
+        for n in pending_ncmrs:
+            todos.append({
+                "type": "ncmr",
+                "id": n.ncmr_number,
+                "title": f"NCMR {n.ncmr_number} 待處理",
+                "description": _truncate(n.description),
+                "date": n.date.isoformat() if n.date else None,
+                "priority": "high",
+                "path": "/ncmr",
+            })
+
+        pending_capas = CorrectiveAction.active_query().filter(
+            CorrectiveAction.eight_d_number.isnot(None),
+            CorrectiveAction.status.in_(['待處理', '進行中']),
+        ).order_by(CorrectiveAction.created_at.desc()).limit(5).all()
+        for c in pending_capas:
+            todos.append({
+                "type": "capa",
+                "id": c.eight_d_number,
+                "title": f"CAPA {c.eight_d_number} {c.status}",
+                "description": _truncate(_capa_problem_description(c)),
+                "date": c.created_at.isoformat() if c.created_at else None,
+                "priority": "medium",
+                "path": "/capa",
+            })
+
+        pending_reworks = ReworkRequest.active_query().filter(
+            ReworkRequest.status.in_(['待審核', '已通過', '進行中']),
+        ).order_by(ReworkRequest.created_at.desc()).limit(5).all()
+        for r in pending_reworks:
+            todos.append({
+                "type": "rework",
+                "id": r.rework_number,
+                "title": f"重工 {r.rework_number} {r.status}",
+                "description": _truncate(r.reason),
+                "date": r.created_at.isoformat() if r.created_at else None,
+                "priority": "medium",
+                "path": "/rework",
+            })
+
+        todos.sort(key=lambda x: x['date'] if x['date'] else '', reverse=True)
+        return todos[:10]
+
+
+def _truncate(value: str | None, length: int = 50) -> str | None:
+    if not value:
+        return value
+    return value[:length] + "..." if len(value) > length else value
+
+
+def _capa_problem_description(capa: CorrectiveAction) -> str | None:
+    return (
+        capa.d2_what
+        or capa.d0_symptom
+        or capa.d4_root_cause
+        or getattr(capa, 'd2', None)
+    )
