@@ -285,6 +285,32 @@ def test_parse_timeseries_csv_summary(tmp_path):
     assert result["數值"]["TC-01"] == [178, 186, 182]
 
 
+def test_parse_temperature_file_rejects_too_many_rows(tmp_path):
+    from backend.services.pyrometry_parser import parse_temperature_file
+    csv = tmp_path / "too_many_rows.csv"
+    csv.write_text(
+        "時間,TC-01\n" +
+        "\n".join(f"{i},{180 + i}" for i in range(10001)),
+        encoding="utf-8",
+    )
+
+    with open(csv, "rb") as f:
+        with pytest.raises(ValueError, match="列數"):
+            parse_temperature_file(f, "too_many_rows.csv")
+
+
+def test_parse_temperature_file_rejects_too_many_columns(tmp_path):
+    from backend.services.pyrometry_parser import parse_temperature_file
+    csv = tmp_path / "too_many_columns.csv"
+    headers = ["時間"] + [f"TC-{i}" for i in range(129)]
+    values = ["00:00"] + ["180"] * 129
+    csv.write_text(",".join(headers) + "\n" + ",".join(values), encoding="utf-8")
+
+    with open(csv, "rb") as f:
+        with pytest.raises(ValueError, match="欄數"):
+            parse_temperature_file(f, "too_many_columns.csv")
+
+
 def test_parse_minute_labels_from_time_strings(tmp_path):
     """單時間欄：時間標籤輸出為分鐘級 HH:MM（非整段日期）"""
     from backend.services.pyrometry_parser import parse_temperature_file
@@ -334,6 +360,19 @@ def test_parse_upload_route(client, db_session):
     assert body["success"] is True
     ch = {c["名稱"]: c for c in body["data"]["通道"]}
     assert ch["TC-01"]["最高溫"] == 186
+
+
+def test_parse_upload_route_rejects_oversized_file(client, db_session):
+    headers = _auth_header(client, db_session)
+    data = {
+        "file": (io.BytesIO(b"x" * (10 * 1024 * 1024 + 1)), "too_large.csv"),
+    }
+
+    r = client.post("/api/pyrometry/parse-data", data=data,
+                    headers=headers, content_type="multipart/form-data")
+
+    assert r.status_code == 400
+    assert "檔案大小" in r.get_json()["error"]
 
 
 def test_dashboard_lists_all_furnaces_with_due(app, db_session):

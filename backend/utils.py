@@ -28,6 +28,16 @@ def api_error(message: str, code: int = 400, detail=None):
     """統一錯誤回傳格式"""
     return jsonify({'success': False, 'error': message, 'detail': detail}), code
 
+
+def bounded_int(value, default: int, min_value: int, max_value: int) -> int:
+    """將外部整數參數限制在指定範圍內，格式錯誤時回退預設值。"""
+    try:
+        parsed = int(value if value not in (None, "") else default)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(min_value, min(parsed, max_value))
+
+
 # ==================================================
 # 狀態機驗證
 # ==================================================
@@ -225,15 +235,20 @@ def log_audit(user_id, action: str, module: str,
 # ==================================================
 import os as _os
 
-def validate_upload_file(file: Any, max_bytes: int = 10 * 1024 * 1024) -> Optional[str]:
+def validate_upload_file(
+    file: Any,
+    max_bytes: int = 10 * 1024 * 1024,
+    allowed_extensions: Optional[set[str]] = None,
+) -> Optional[str]:
     """
     驗證上傳檔案的副檔名與大小限制（出貨/巡檢匯入共用）
     回傳錯誤訊息字串；無錯誤則回傳 None
     """
-    allowed_extensions = {'.xlsx', '.xls'}
+    allowed_extensions = allowed_extensions or {'.xlsx', '.xls'}
     ext = _os.path.splitext(file.filename)[1].lower()
     if ext not in allowed_extensions:
-        return f"不支援的檔案格式: {ext}，僅接受 .xlsx / .xls"
+        allowed_text = " / ".join(sorted(allowed_extensions))
+        return f"不支援的檔案格式: {ext}，僅接受 {allowed_text}"
     file.seek(0, 2)
     file_size = file.tell()
     file.seek(0)

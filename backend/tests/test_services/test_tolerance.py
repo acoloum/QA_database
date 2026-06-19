@@ -73,6 +73,12 @@ def test_check_tolerance_not_found(app, db_session):
         assert result["found"] is False
 
 
+def test_search_tolerance_clamps_page_size(app, db_session):
+    with app.app_context():
+        result = ToleranceService.search_tolerance({"page_size": "5000"})
+        assert result["page_size"] == 100
+
+
 def test_tolerance_parse_spec_values_uses_shared_nominal_parser(app):
     """公差服務的規格解析應與共用解析器保持一致。"""
     with app.app_context():

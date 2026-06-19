@@ -2,7 +2,7 @@ from typing import Dict, Any
 from sqlalchemy.orm import selectinload, joinedload
 from ..extensions import db
 from ..models import ExtrusionToleranceMain, ExtrusionToleranceDetail, VendorToleranceMain, Vendor
-from ..utils import format_value
+from ..utils import bounded_int, format_value
 from .tolerance_service import ToleranceService
 
 
@@ -67,8 +67,8 @@ class ExtrusionToleranceService:
         if args.get('vendor'):
             query = query.filter(ExtrusionToleranceMain.vendor.like(f"%{args['vendor']}%"))
 
-        page = int(args.get('page', 1))
-        page_size = int(args.get('page_size', 20))
+        page = bounded_int(args.get('page'), 1, 1, 1000000)
+        page_size = bounded_int(args.get('page_size'), 20, 1, 100)
         total = query.count()
         pagination = query.order_by(ExtrusionToleranceMain.id.desc()).paginate(
             page=page, per_page=page_size, error_out=False

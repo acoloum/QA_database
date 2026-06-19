@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
 from ..extensions import db
 from ..models import Furnace, Recorder, RecorderCalPoint, Thermocouple, ThermocoupleCalPoint
-from ..utils import format_value
+from ..utils import bounded_int, format_value
 
 
 def _quarter_of(d) -> str:
@@ -52,14 +52,6 @@ def _validate_test_payload(data: Dict[str, Any], default_test_type: str | None =
     except (TypeError, ValueError):
         raise PyrometryValidationError("測試日期、設定溫度或允許公差格式不正確")
     return {**data, "測試類型": test_type}
-
-
-def _bounded_int(value, default: int, min_value: int, max_value: int) -> int:
-    try:
-        parsed = int(value if value not in (None, "") else default)
-    except (TypeError, ValueError):
-        parsed = default
-    return max(min_value, min(parsed, max_value))
 
 
 def _furnace_to_dict(f: Furnace) -> Dict[str, Any]:
@@ -706,8 +698,8 @@ class PyrometryService:
             q = q.filter(PyrometryTest.test_date >= _parse_date(args["date_from"]))
         if args.get("date_to"):
             q = q.filter(PyrometryTest.test_date <= _parse_date(args["date_to"]))
-        page = _bounded_int(args.get("page"), 1, 1, 1000000)
-        page_size = _bounded_int(args.get("page_size"), 20, 1, 100)
+        page = bounded_int(args.get("page"), 1, 1, 1000000)
+        page_size = bounded_int(args.get("page_size"), 20, 1, 100)
         total = q.count()
         pg = q.order_by(PyrometryTest.test_date.desc(), PyrometryTest.id.desc()).paginate(
             page=page, per_page=page_size, error_out=False)

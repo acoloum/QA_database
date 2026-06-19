@@ -5,7 +5,8 @@ from io import BytesIO
 from sqlalchemy.orm import joinedload
 from ..extensions import db
 from ..models import VendorToleranceMain, VendorToleranceDetail, Vendor
-from ..utils import format_value
+from ..utils import bounded_int, format_value
+
 
 class ToleranceService:
     @staticmethod
@@ -21,8 +22,8 @@ class ToleranceService:
                 query = query.filter(VendorToleranceMain.spec.like(f"%{args['spec']}%"))
             
             # Pagination
-            page = int(args.get('page', 1))
-            page_size = int(args.get('page_size', 20))
+            page = bounded_int(args.get('page'), 1, 1, 1000000)
+            page_size = bounded_int(args.get('page_size'), 20, 1, 100)
             
             total = query.count()
             

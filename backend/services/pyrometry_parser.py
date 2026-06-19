@@ -11,6 +11,8 @@ import datetime
 import pandas as pd
 
 _TIME_KEYWORDS = ('時間', 'time', '日期', 'date', '時刻')
+MAX_TEMPERATURE_ROWS = 10000
+MAX_TEMPERATURE_COLUMNS = 128
 
 
 def _name_is_time(name) -> bool:
@@ -83,6 +85,10 @@ def parse_temperature_file(file_obj: BinaryIO, filename: str) -> Dict[str, Any]:
     else:
         raise ValueError("僅支援 .csv / .xlsx / .xls 檔")
 
+    if raw.shape[0] > MAX_TEMPERATURE_ROWS:
+        raise ValueError(f"溫度資料列數不可超過 {MAX_TEMPERATURE_ROWS} 列")
+    if raw.shape[1] > MAX_TEMPERATURE_COLUMNS:
+        raise ValueError(f"溫度資料欄數不可超過 {MAX_TEMPERATURE_COLUMNS} 欄")
     if raw.shape[1] < 2:
         raise ValueError("檔案需至少包含時間欄與一個熱電偶欄")
 

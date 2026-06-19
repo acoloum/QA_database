@@ -1,7 +1,7 @@
 import io as _io
 from flask import Blueprint, jsonify, request, send_file
 from ..services.pyrometry_service import PyrometryService, PyrometryValidationError
-from ..utils import auth_required, require_perm, handle_db_error
+from ..utils import auth_required, require_perm, handle_db_error, validate_upload_file
 from ..services.pyrometry_parser import parse_temperature_file
 
 pyrometry_bp = Blueprint('pyrometry', __name__)
@@ -253,6 +253,9 @@ def parse_data():
     file = request.files.get('file')
     if not file:
         return jsonify({"error": "缺少檔案"}), 400
+    upload_error = validate_upload_file(file, allowed_extensions={'.csv', '.xlsx', '.xls'})
+    if upload_error:
+        return jsonify({"error": upload_error}), 400
     try:
         result = parse_temperature_file(file.stream, filename=file.filename)
         return jsonify({"success": True, "data": result})
