@@ -3,10 +3,12 @@ import { Card, Badge, Row, Col } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 
+type FurnaceStatus = '逾期' | '即將到期' | '正常' | '尚無紀錄' | '不合格';
+
 interface DueInfo {
   最近測試日: string | null;
   下次應測日: string | null;
-  狀態: '逾期' | '即將到期' | '正常' | '尚無紀錄' | '不合格';
+  狀態: FurnaceStatus;
 }
 
 interface BoardRow {
@@ -19,7 +21,7 @@ interface BoardRow {
   最近結果: { 測試類型: string; 測試日期: string; 是否合格: boolean } | null;
 }
 
-const STATUS_BADGE: Record<string, string> = {
+const STATUS_BADGE: Record<FurnaceStatus, string> = {
   '逾期': 'danger',
   '即將到期': 'warning',
   '正常': 'success',
@@ -27,7 +29,8 @@ const STATUS_BADGE: Record<string, string> = {
   '不合格': 'danger',
 };
 
-const STATUS_ORDER: Record<string, number> = { '逾期': 0, '不合格': 0, '即將到期': 1, '尚無紀錄': 2, '正常': 3 };
+// 數字越小越嚴重，作為排序與「取較嚴重狀態」的依據
+const STATUS_ORDER: Record<FurnaceStatus, number> = { '逾期': 0, '不合格': 0, '即將到期': 1, '尚無紀錄': 2, '正常': 3 };
 
 // 依狀態給定卡片配色（邊條 / 標題列 / 卡片底色）
 interface CardTheme {
@@ -36,7 +39,7 @@ interface CardTheme {
   bodyBg: string;     // 卡片底色
 }
 
-const STATUS_THEME: Record<string, CardTheme> = {
+const STATUS_THEME: Record<FurnaceStatus, CardTheme> = {
   '逾期':     { accent: '#dc3545', headerBg: '#fdecea', bodyBg: '#fff8f8' },
   '不合格':   { accent: '#dc3545', headerBg: '#fdecea', bodyBg: '#fff8f8' },
   '即將到期': { accent: '#fd7e14', headerBg: '#fff4e8', bodyBg: '#fffcf7' },
@@ -44,12 +47,9 @@ const STATUS_THEME: Record<string, CardTheme> = {
   '尚無紀錄': { accent: '#6c757d', headerBg: '#f1f3f5', bodyBg: '#fcfcfd' },
 };
 
-// 取 TUS / SAT 中最嚴重的狀態作為整張卡片的代表配色
-const worstStatus = (f: BoardRow): string => {
-  const t = STATUS_ORDER[f.TUS.狀態] ?? 3;
-  const s = STATUS_ORDER[f.SAT.狀態] ?? 3;
-  return (t <= s ? f.TUS.狀態 : f.SAT.狀態);
-};
+// 取 TUS / SAT 中較嚴重的狀態，作為整張卡片的代表配色與排序依據
+const worstStatus = (f: BoardRow): FurnaceStatus =>
+  STATUS_ORDER[f.TUS.狀態] <= STATUS_ORDER[f.SAT.狀態] ? f.TUS.狀態 : f.SAT.狀態;
 
 const PyrometryDashboardPage = () => {
   const navigate = useNavigate();
@@ -58,11 +58,10 @@ const PyrometryDashboardPage = () => {
     queryFn: () => api.get<{ data: BoardRow[] }>('/pyrometry/dashboard').then(r => r.data.data),
   });
 
-  const rows = [...(result || [])].sort((a, b) => {
-    const worstA = Math.min(STATUS_ORDER[a.TUS.狀態] ?? 3, STATUS_ORDER[a.SAT.狀態] ?? 3);
-    const worstB = Math.min(STATUS_ORDER[b.TUS.狀態] ?? 3, STATUS_ORDER[b.SAT.狀態] ?? 3);
-    return worstA - worstB;
-  });
+  // 依最嚴重狀態排序，讓需關注的爐子（逾期 / 不合格）排在前面
+  const rows = [...(result || [])].sort(
+    (a, b) => STATUS_ORDER[worstStatus(a)] - STATUS_ORDER[worstStatus(b)]
+  );
 
   if (isLoading) return <p>載入中…</p>;
 
@@ -71,7 +70,7 @@ const PyrometryDashboardPage = () => {
       <h4 className="mb-3">爐溫測試總覽</h4>
       <Row className="g-3">
         {rows.map(f => {
-          const theme = STATUS_THEME[worstStatus(f)] ?? STATUS_THEME['尚無紀錄'];
+          const theme = STATUS_THEME[worstStatus(f)];
           return (
           <Col key={f.爐子ID} md={6} lg={4}>
             <Card
@@ -101,20 +100,15 @@ const PyrometryDashboardPage = () => {
                 )}
 
                 <div className="d-flex gap-3">
-                  <div>
-                    <div className="text-muted small">TUS</div>
-                    <Badge bg={STATUS_BADGE[f.TUS.狀態]}>{f.TUS.狀態}</Badge>
-                    {f.TUS.下次應測日 && (
-                      <div className="text-muted" style={{ fontSize: '0.75rem' }}>下次：{f.TUS.下次應測日}</div>
-                    )}
-                  </div>
-                  <div>
-                    <div className="text-muted small">SAT</div>
-                    <Badge bg={STATUS_BADGE[f.SAT.狀態]}>{f.SAT.狀態}</Badge>
-                    {f.SAT.下次應測日 && (
-                      <div className="text-muted" style={{ fontSize: '0.75rem' }}>下次：{f.SAT.下次應測日}</div>
-                    )}
-                  </div>
+                  {([['TUS', f.TUS], ['SAT', f.SAT]] as const).map(([label, info]) => (
+                    <div key={label}>
+                      <div className="text-muted small">{label}</div>
+                      <Badge bg={STATUS_BADGE[info.狀態]}>{info.狀態}</Badge>
+                      {info.下次應測日 && (
+                        <div className="text-muted" style={{ fontSize: '0.75rem' }}>下次：{info.下次應測日}</div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </Card.Body>
             </Card>
