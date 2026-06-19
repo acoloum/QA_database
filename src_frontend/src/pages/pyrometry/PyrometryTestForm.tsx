@@ -87,7 +87,10 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
 
   useEffect(() => {
     if (!editId) return;
+    let active = true;
+    setError('');
     api.get(`/pyrometry/tests/${editId}`).then(r => {
+      if (!active) return;
       const { main, tus_points, sat_points } = r.data;
       const cd = r.data.曲線資料;
       setFurnaceId(String(main.爐子ID));
@@ -132,7 +135,13 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
       const { itemRows: savedItems, meta } = splitReportFields(r.data.報告欄位 || {});
       setItemRows(savedItems.length ? savedItems : [emptyItemRow()]);
       setReportMeta(meta);
+    }).catch(() => {
+      if (active) setError('載入爐溫測試資料失敗');
     });
+
+    return () => {
+      active = false;
+    };
   }, [editId]);
 
   // TUS 量測點更新

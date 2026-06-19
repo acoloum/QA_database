@@ -38,6 +38,35 @@ def bounded_int(value, default: int, min_value: int, max_value: int) -> int:
     return max(min_value, min(parsed, max_value))
 
 
+def parse_optional_int(value, field_name: str) -> Optional[int]:
+    """解析可選整數參數；格式錯誤時回報明確欄位，避免落入 500。"""
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name} 必須為整數")
+
+
+def parse_optional_date(value, field_name: str) -> Optional[date]:
+    """解析可選 YYYY-MM-DD 日期參數；格式錯誤時回報明確欄位。"""
+    if value in (None, ""):
+        return None
+    try:
+        return date.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name} 日期格式錯誤，應為 YYYY-MM-DD")
+
+
+def validate_excel_shape(df: Any, max_rows: int = 5000, max_columns: int = 200) -> None:
+    """限制 Excel 匯入內容規模，避免小檔案但超大工作表拖垮匯入流程。"""
+    rows, columns = df.shape
+    if rows > max_rows:
+        raise ValueError(f"Excel 列數超過 {max_rows} 筆限制")
+    if columns > max_columns:
+        raise ValueError(f"Excel 欄位數超過 {max_columns} 欄限制")
+
+
 # ==================================================
 # 狀態機驗證
 # ==================================================

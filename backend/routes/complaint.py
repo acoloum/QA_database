@@ -1,10 +1,9 @@
 """客訴路由 — CRUD、統計、開立 CAPA"""
 from flask import Blueprint, jsonify, request
-from datetime import date
 from ..extensions import db
 from ..services.complaint_service import ComplaintService
 from ..services.complaint_stats_service import ComplaintStatsService
-from ..utils import auth_required, bounded_int, require_permission, log_audit
+from ..utils import auth_required, bounded_int, parse_optional_date, require_permission, log_audit
 
 complaint_bp = Blueprint('complaint', __name__)
 
@@ -21,13 +20,15 @@ def list_complaints(current_user):
             spec           = request.args.get('spec'),
             status         = request.args.get('status'),
             complaint_type = request.args.get('complaint_type'),
-            date_from      = _parse_date(request.args.get('date_from')),
-            date_to        = _parse_date(request.args.get('date_to')),
+            date_from      = _parse_date(request.args.get('date_from'), 'date_from'),
+            date_to        = _parse_date(request.args.get('date_to'), 'date_to'),
             is_repeat      = _parse_bool(request.args.get('is_repeat')),
             page           = bounded_int(request.args.get('page'), 1, 1, 1000000),
             per_page       = bounded_int(request.args.get('per_page'), 20, 1, 100),
         )
         return jsonify(result), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -184,13 +185,8 @@ def stats_warranty(current_user):
 
 
 # ── 工具函數 ─────────────────────────────────────────────────
-def _parse_date(val):
-    if not val:
-        return None
-    try:
-        return date.fromisoformat(val)
-    except Exception:
-        return None
+def _parse_date(val, field_name='date'):
+    return parse_optional_date(val, field_name)
 
 
 def _parse_bool(val):
@@ -200,7 +196,10 @@ def _parse_bool(val):
 
 
 def _date_params():
-    return (
-        _parse_date(request.args.get('date_from')),
-        _parse_date(request.args.get('date_to')),
-    )
+    try:
+        return (
+            _parse_date(request.args.get('date_from'), 'date_from'),
+            _parse_date(request.args.get('date_to'), 'date_to'),
+        )
+    except ValueError:
+        return (None, None)

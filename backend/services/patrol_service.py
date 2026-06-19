@@ -14,6 +14,7 @@ from .extrusion_tolerance_service import ExtrusionToleranceService
 from ..utils import (
     bounded_int,
     format_value,
+    validate_excel_shape,
     validate_patrol_data,
     handle_db_error
 )
@@ -1026,6 +1027,7 @@ class PatrolService:
             df = pd.read_excel(file, engine='openpyxl')
         except Exception as e:
             raise ValueError(f"檔案讀取失敗: {str(e)}")
+        validate_excel_shape(df)
 
         success_count = 0
         try:

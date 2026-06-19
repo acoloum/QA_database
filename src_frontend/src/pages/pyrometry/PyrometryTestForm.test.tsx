@@ -1,0 +1,117 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+
+import api from '../../services/api';
+import PyrometryTestForm from './PyrometryTestForm';
+
+vi.mock('../../services/api', () => ({
+  default: {
+    get: vi.fn(),
+  },
+}));
+
+vi.mock('./ReportFieldsSection', () => ({
+  default: () => <div data-testid="report-fields" />,
+}));
+
+vi.mock('./TusSection', () => ({
+  default: () => <div data-testid="tus-section" />,
+}));
+
+vi.mock('./SatSection', () => ({
+  default: () => <div data-testid="sat-section" />,
+}));
+
+vi.mock('./FurnaceRecorderSection', () => ({
+  default: () => <div data-testid="furnace-recorder" />,
+}));
+
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+};
+
+const deferred = <T,>(): Deferred<T> => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(res => {
+    resolve = res;
+  });
+  return { promise, resolve };
+};
+
+const testResponse = (id: number, date: string) => ({
+  data: {
+    main: {
+      爐子ID: 1,
+      測試類型: 'TUS',
+      測試日期: date,
+      設定溫度: String(180 + id),
+      允許公差: '10',
+      測試人員: null,
+      測試儀器編號: `INST-${id}`,
+      標準校正儀器編號: '',
+      儀器校正到期日: '',
+      備註: '',
+    },
+    tus_points: [],
+    sat_points: [],
+    曲線資料: null,
+    報告欄位: {},
+  },
+});
+
+const renderForm = (editId: number) => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const result = render(
+    <QueryClientProvider client={queryClient}>
+      <PyrometryTestForm editId={editId} onClose={() => undefined} onSaved={() => undefined} />
+    </QueryClientProvider>,
+  );
+  return { ...result, queryClient };
+};
+
+describe('PyrometryTestForm', () => {
+  it('ignores stale edit detail responses when editId changes', async () => {
+    const first = deferred<ReturnType<typeof testResponse>>();
+    const second = deferred<ReturnType<typeof testResponse>>();
+
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === '/pyrometry/furnaces?active_only=1') {
+        return Promise.resolve({ data: { data: [] } });
+      }
+      if (url === '/inspectors') {
+        return Promise.resolve({ data: [] });
+      }
+      if (url === '/pyrometry/tests/1') return first.promise;
+      if (url === '/pyrometry/tests/2') return second.promise;
+      return Promise.reject(new Error(`unexpected url: ${url}`));
+    });
+
+    const { rerender, queryClient } = renderForm(1);
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/pyrometry/tests/1'));
+
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <PyrometryTestForm editId={2} onClose={() => undefined} onSaved={() => undefined} />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/pyrometry/tests/2'));
+
+    await act(async () => {
+      second.resolve(testResponse(2, '2026-06-02'));
+    });
+    await waitFor(() => expect(screen.getByDisplayValue('2026-06-02')).toBeInTheDocument());
+
+    await act(async () => {
+      first.resolve(testResponse(1, '2026-06-01'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('2026-06-02')).toBeInTheDocument();
+      expect(screen.queryByDisplayValue('2026-06-01')).not.toBeInTheDocument();
+    });
+  });
+});

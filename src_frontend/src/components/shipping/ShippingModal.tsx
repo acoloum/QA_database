@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Modal, Button, Form, Table, Alert } from 'react-bootstrap';
 import toast from 'react-hot-toast';
 import type { ToleranceResult, ShippingCreateInput, ShippingMeasurementItem, ShippingMeasurements } from '../../types';
@@ -63,6 +63,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     const createMutation = useCreateShipping();
     const updateMutation = useUpdateShipping();
     const { mutateAsync: checkToleranceMutate } = useCheckTolerance();
+    const toleranceRequestSeq = useRef(0);
 
     // 表單基本欄位
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -185,6 +186,9 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
 
     // 公差查詢
     useEffect(() => {
+        const requestSeq = ++toleranceRequestSeq.current;
+        const queryKey = `${vendorName}|${material}|${spec}`;
+
         const checkTolerance = async () => {
             if (!material || !spec || !vendorName) {
                 setTolerance(null);
@@ -201,12 +205,19 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                     spec
                 });
 
+                if (requestSeq !== toleranceRequestSeq.current || queryKey !== `${vendorName}|${material}|${spec}`) {
+                    return;
+                }
+
                 if (result.success && result.found) {
                     setTolerance(result);
                 } else {
                     setTolerance(null);
                 }
             } catch (e) {
+                if (requestSeq !== toleranceRequestSeq.current) {
+                    return;
+                }
                 console.error(e);
                 setTolerance(null);
             }

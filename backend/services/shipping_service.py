@@ -11,8 +11,10 @@ from scipy import stats as scipy_stats
 from ..extensions import db
 from ..models import ShippingData, ShippingMeasurement, Inspector, Vendor, VendorToleranceMain, VendorToleranceDetail, SPCCache
 from ..utils import (
+    bounded_int,
     format_value,
     validate_inspection_data,
+    validate_excel_shape,
     handle_db_error,
     parse_spec_nominals
 )
@@ -101,7 +103,7 @@ class ShippingService:
             query = query.order_by(ShippingData.id.desc())
 
             # Pagination
-            page = int(args.get('page', 1))
+            page = bounded_int(args.get('page'), 1, 1, 1000000)
             per_page = 10
             pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
@@ -669,6 +671,7 @@ class ShippingService:
             df = pd.read_excel(file, engine='openpyxl')
         except Exception as e:
             raise ValueError(f"檔案讀取失敗: {str(e)}")
+        validate_excel_shape(df)
 
         from .tolerance_service import ToleranceService
 

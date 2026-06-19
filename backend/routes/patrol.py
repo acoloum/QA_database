@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request, send_file
 from ..services.patrol_service import PatrolService
-from ..utils import auth_required, require_perm, handle_db_error
+from ..utils import auth_required, require_perm, handle_db_error, validate_upload_file
 
 patrol_bp = Blueprint('patrol', __name__)
 
@@ -116,19 +116,9 @@ def patrol_import():
     if file.filename == '':
         return jsonify({"error": "沒有選擇檔案"}), 400
 
-    # Validate file type
-    allowed_extensions = {'.xlsx', '.xls'}
-    import os
-    ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in allowed_extensions:
-        return jsonify({"error": f"不支援的檔案格式: {ext}，僅接受 .xlsx / .xls"}), 400
-
-    # Validate file size (10MB max)
-    file.seek(0, 2)
-    file_size = file.tell()
-    file.seek(0)
-    if file_size > 10 * 1024 * 1024:
-        return jsonify({"error": "檔案大小超過 10MB 限制"}), 400
+    upload_error = validate_upload_file(file)
+    if upload_error:
+        return jsonify({"error": upload_error}), 400
 
     try:
         count = PatrolService.import_data(file)

@@ -1,8 +1,13 @@
 """任務路由 — 橫展任務 CRUD 與我的待辦"""
 from flask import Blueprint, jsonify, request
-from datetime import date
 from ..services.task_service import TaskService
-from ..utils import auth_required, bounded_int, require_permission
+from ..utils import (
+    auth_required,
+    bounded_int,
+    parse_optional_date,
+    parse_optional_int,
+    require_permission,
+)
 
 task_bp = Blueprint('task', __name__)
 
@@ -14,16 +19,18 @@ def list_tasks(current_user):
     try:
         result = TaskService.list_tasks(
             source_type  = request.args.get('source_type'),
-            source_id    = int(request.args['source_id']) if request.args.get('source_id') else None,
-            assignee_id  = int(request.args['assignee_id']) if request.args.get('assignee_id') else None,
+            source_id    = parse_optional_int(request.args.get('source_id'), 'source_id'),
+            assignee_id  = parse_optional_int(request.args.get('assignee_id'), 'assignee_id'),
             status       = request.args.get('status'),
             category     = request.args.get('category'),
-            due_from     = date.fromisoformat(request.args['due_from']) if request.args.get('due_from') else None,
-            due_to       = date.fromisoformat(request.args['due_to']) if request.args.get('due_to') else None,
+            due_from     = parse_optional_date(request.args.get('due_from'), 'due_from'),
+            due_to       = parse_optional_date(request.args.get('due_to'), 'due_to'),
             page         = bounded_int(request.args.get('page'), 1, 1, 1000000),
             per_page     = bounded_int(request.args.get('per_page'), 20, 1, 100),
         )
         return jsonify(result), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -50,7 +57,7 @@ def create_task(current_user):
     if missing:
         return jsonify({'error': f'缺少必填欄位：{missing}'}), 400
     try:
-        due = date.fromisoformat(data['due_date']) if data.get('due_date') else None
+        due = parse_optional_date(data.get('due_date'), 'due_date')
         task = TaskService.create(
             source_type  = data['source_type'],
             source_id    = int(data['source_id']),
