@@ -5,6 +5,8 @@ import api from '../../services/api';
 import type { Furnace, TusPoint, SatPoint, SatReading } from '../../types';
 import TusChart from '../../components/pyrometry/TusChart';
 import TusDataTable from '../../components/pyrometry/TusDataTable';
+import ReportFieldsSection from './ReportFieldsSection';
+import { buildPyrometryPayload } from './pyrometryPayload';
 import {
   computeRangeStats,
   emptyItemRow,
@@ -408,33 +410,31 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const handleSave = async () => {
     setSaving(true); setError('');
     try {
-      const curveData = testType === 'TUS'
-        ? (chartData ? {
-            時間: chartData.時間, 數值: chartData.數值,
-            穩定開始: rangeStart, 穩定結束: rangeEnd,
-          } : null)
-        : (satChartData ? {
-            時間: satChartData.時間, 數值: satChartData.數值,
-            穩定開始: satRangeStart, 穩定結束: satRangeEnd,
-            爐體時間: furnaceChartData?.時間 || null,
-            爐體數值: furnaceChartData?.數值 || null,
-            爐體穩定開始: furnaceChartData ? furnaceRangeStart : null,
-            爐體穩定結束: furnaceChartData ? furnaceRangeEnd : null,
-          } : (furnaceChartData ? {
-            爐體時間: furnaceChartData.時間, 爐體數值: furnaceChartData.數值,
-            爐體穩定開始: furnaceRangeStart, 爐體穩定結束: furnaceRangeEnd,
-          } : null));
-
-      const payload = {
-        爐子ID: Number(furnaceId), 測試類型: testType,
-        測試日期: testDate, 設定溫度: setpoint, 允許公差: tolerance,
-        測試人員: testerId ? Number(testerId) : null,
-        測試儀器編號: testInstrument, 標準校正儀器編號: stdInstrument,
-        儀器校正到期日: calDueDate || null, 備註: note,
-        points: testType === 'TUS' ? tusPoints : satPoints,
-        曲線資料: curveData,
-        報告欄位: { ...reportMeta, 料號批次: itemRows },
-      };
+      const payload = buildPyrometryPayload({
+        furnaceId,
+        testType,
+        testDate,
+        setpoint,
+        tolerance,
+        testerId,
+        testInstrument,
+        stdInstrument,
+        calDueDate,
+        note,
+        tusPoints,
+        satPoints,
+        chartData,
+        rangeStart,
+        rangeEnd,
+        satChartData,
+        satRangeStart,
+        satRangeEnd,
+        furnaceChartData,
+        furnaceRangeStart,
+        furnaceRangeEnd,
+        reportMeta,
+        itemRows,
+      });
       if (editId) {
         await api.put(`/pyrometry/tests/${editId}`, payload);
       } else {
@@ -571,85 +571,20 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
             </Col>
           </Row>
 
-          {/* ── 報告欄位 ── */}
-          <div className="mb-3">
-            <Button size="sm" variant="outline-secondary" className="mb-2" onClick={() => setShowReport(v => !v)}>
-              {showReport ? '隱藏報告欄位' : '報告欄位（客戶/料號/核准等，QRA073/074）'}
-            </Button>
-            {showReport && (
-              <div className="p-2 bg-light rounded border">
-                {testType === 'SAT' && (
-                  <div className="mb-2">
-                    <Button size="sm" variant="outline-info"
-                      disabled={!furnaceId || !testDate}
-                      onClick={inheritFromTus}>
-                      從同日 TUS 繼承報告資料
-                    </Button>
-                    {(!furnaceId || !testDate) && (
-                      <span className="text-muted ms-2" style={{ fontSize: 12 }}>（需先填寫爐號與測試日期）</span>
-                    )}
-                  </div>
-                )}
-                <Row className="g-2 mb-2">
-                  {/* 爐具測試溫度（由設定溫度帶入，唯讀） */}
-                  <Col md={3}>
-                    <Form.Label className="mb-0" style={{ fontSize: 12 }}>爐具測試溫度 (°C)</Form.Label>
-                    <Form.Control size="sm" value={setpoint || ''} readOnly className="bg-white" />
-                  </Col>
-                  {/* 測試條件：三選一 */}
-                  <Col md={4}>
-                    <Form.Label className="mb-0" style={{ fontSize: 12 }}>測試條件</Form.Label>
-                    <div className="d-flex gap-3 pt-1">
-                      {['空爐', '滿爐', '其他'].map(opt => (
-                        <Form.Check key={opt} type="radio" inline label={opt}
-                          checked={reportMeta['測試條件'] === opt}
-                          onChange={() => setReportMeta(prev => ({ ...prev, 測試條件: opt }))} />
-                      ))}
-                    </div>
-                  </Col>
-                  {/* 其他單值欄位 */}
-                  {(['客戶名稱', '預估總重量', '控制器型號', '控制器設定值', '控制器補償', '溫濕度', '執行單位', '核准', '製表'] as const).map(k => (
-                    <Col md={3} key={k}>
-                      <Form.Label className="mb-0" style={{ fontSize: 12 }}>{k}</Form.Label>
-                      <Form.Control size="sm" value={reportMeta[k] || ''}
-                        onChange={e => setReportMeta(prev => ({ ...prev, [k]: e.target.value }))} />
-                    </Col>
-                  ))}
-                </Row>
-                {/* 工件明細表 */}
-                <Form.Label className="mb-1 fw-semibold" style={{ fontSize: 12 }}>工件明細</Form.Label>
-                <Table bordered size="sm" className="mb-1">
-                  <thead className="table-secondary">
-                    <tr>
-                      <th>工件料號</th>
-                      <th>生產批號</th>
-                      <th style={{ width: 130 }}>內外徑尺寸</th>
-                      <th style={{ width: 100 }}>支數</th>
-                      <th style={{ width: 36 }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {itemRows.map((row, idx) => (
-                      <tr key={idx}>
-                        <td><Form.Control size="sm" value={row.工件料號} onChange={e => updateItemRow(idx, '工件料號', e.target.value)} /></td>
-                        <td><Form.Control size="sm" value={row.生產批號} onChange={e => updateItemRow(idx, '生產批號', e.target.value)} /></td>
-                        <td><Form.Control size="sm" value={row.內外徑尺寸} onChange={e => updateItemRow(idx, '內外徑尺寸', e.target.value)} /></td>
-                        <td><Form.Control size="sm" value={row.支數} onChange={e => updateItemRow(idx, '支數', e.target.value)} /></td>
-                        <td className="text-center align-middle">
-                          {itemRows.length > 1 && (
-                            <Button size="sm" variant="outline-danger"
-                              onClick={() => setItemRows(prev => prev.filter((_, i) => i !== idx))}>×</Button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </Table>
-                <Button size="sm" variant="outline-secondary"
-                  onClick={() => setItemRows(prev => [...prev, emptyItemRow()])}>+ 新增工件</Button>
-              </div>
-            )}
-          </div>
+          <ReportFieldsSection
+            showReport={showReport}
+            testType={testType}
+            furnaceId={furnaceId}
+            testDate={testDate}
+            setpoint={setpoint}
+            reportMeta={reportMeta}
+            itemRows={itemRows}
+            onToggle={() => setShowReport(v => !v)}
+            onInheritFromTus={inheritFromTus}
+            onSetReportMeta={setReportMeta}
+            onSetItemRows={setItemRows}
+            onUpdateItemRow={updateItemRow}
+          />
 
           {/* ── TUS 資料上傳 ── */}
           {testType === 'TUS' && (
