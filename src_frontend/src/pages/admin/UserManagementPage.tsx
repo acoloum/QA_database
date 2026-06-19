@@ -68,6 +68,22 @@ const PERMISSION_GROUPS: { label: string; perms: { key: string; label: string }[
         ],
     },
     {
+        label: '爐溫測試 (CQI-9)',
+        perms: [
+            { key: 'pyrometry.view', label: '查看' },
+            { key: 'pyrometry.edit', label: '建立 / 編輯' },
+            { key: 'pyrometry.delete', label: '刪除' },
+        ],
+    },
+    {
+        label: '任務',
+        perms: [
+            { key: 'task.create', label: '建立' },
+            { key: 'task.edit', label: '編輯 / 狀態' },
+            { key: 'task.delete', label: '刪除' },
+        ],
+    },
+    {
         label: '廠商 / 報表 / 管理',
         perms: [
             { key: 'vendor.manage', label: '廠商管理' },
