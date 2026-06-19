@@ -2,7 +2,7 @@
 from flask import Blueprint, jsonify, request
 from ..services.capa_service import CAPAService
 from ..services.task_service import TaskService
-from ..utils import auth_required, require_permission, log_audit
+from ..utils import auth_required, bounded_int, parse_optional_date, require_permission, log_audit
 from ..extensions import db
 
 capa_bp = Blueprint('capa', __name__)
@@ -14,22 +14,18 @@ capa_bp = Blueprint('capa', __name__)
 def list_capas(current_user):
     """GET /api/capas — CAPA 列表，支援多維篩選"""
     try:
-        page     = max(1, int(request.args.get('page', 1)))
-        per_page = min(max(1, int(request.args.get('per_page', 20))), 100)
-    except (ValueError, TypeError):
-        return jsonify({'error': 'page 與 per_page 必須為整數'}), 400
-
-    try:
         result = CAPAService.list_capas(
             source_type = request.args.get('source_type') or None,
             status      = request.args.get('status') or None,
-            date_from   = request.args.get('date_from') or None,
-            date_to     = request.args.get('date_to') or None,
+            date_from   = parse_optional_date(request.args.get('date_from'), 'date_from'),
+            date_to     = parse_optional_date(request.args.get('date_to'), 'date_to'),
             customer    = request.args.get('customer') or None,
-            page        = page,
-            per_page    = per_page,
+            page        = bounded_int(request.args.get('page'), 1, 1, 1000000),
+            per_page    = bounded_int(request.args.get('per_page'), 20, 1, 100),
         )
         return jsonify(result), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

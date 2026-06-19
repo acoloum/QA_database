@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useCallback, Fragment } from 'react';
+import { useState, useEffect, useCallback, Fragment, useMemo } from 'react';
 import { Modal, Button, Form, Row, Col, Table, Alert } from 'react-bootstrap';
 import {
     usePatrolOptions,
@@ -9,6 +9,7 @@ import {
 } from '../../hooks/usePatrol';
 import type { PatrolCreateInput, PatrolUpdateInput } from '../../types';
 import { useExtrusionToleranceCheck } from '../../hooks/useExtrusionTolerance';
+import { parseSpec } from '../../utils/parseSpec';
 
 interface PatrolModalProps {
     show: boolean;
@@ -54,8 +55,6 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     const [showInner, setShowInner] = useState(false);
 
     const resetForm = useCallback(() => {
-         
-        console.log('resetForm called');
         setDate(new Date().toISOString().split('T')[0]);
         setMachine('');
         setOperator('');
@@ -71,26 +70,17 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
 
     // Populate form when detailData loads or when modal opens
     useEffect(() => {
-         
-        console.log('useEffect triggered', { show, editId, detailData });
         if (show) {
             if (editId && detailData) {
                 const d = detailData;
                 // eslint-disable-next-line react-hooks/set-state-in-effect
                 setDate(d.main.檢驗日期);
-                 
                 setMachine(d.main.機台);
-                 
                 setOperator(d.main.主機手);
-                 
                 setInspector(d.main.檢驗人員);
-                 
                 setCustomer(d.main.客戶名稱);
-                 
                 setMaterial(d.main.材質);
-                 
                 setBatch(d.main.原料批號);
-                 
                 setSpec(d.main.擠壓規格);
 
                 // Parse details to state
@@ -101,23 +91,18 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                     min: item.min?.toString() || '',
                     max: item.max?.toString() || ''
                 }));
-                 
                 setDetails(newDetails);
 
                 // Determine group count
                 const groups = new Set(newDetails.map(d => d.group));
-                 
                 setGroupCount(groups.size || 1);
             } else if (!editId) {
-                 
-                console.log('Calling resetForm from useEffect');
                 resetForm();
             }
         }
     }, [show, editId, detailData, resetForm]);
 
     const handleDetailChange = (group: string, pos: string, item: string, type: 'min' | 'max', value: string) => {
-        // console.log(`Change: ${group} ${pos} ${item} ${type} = ${value}`);
         setDetails(prev => {
             const existingIndex = prev.findIndex(d => d.group === group && d.pos === pos && d.item === item);
             if (existingIndex >= 0) {
@@ -138,8 +123,6 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     };
 
     const handleSubmit = async () => {
-        console.log('Current details state:', details);
-
         // Client-side required field validation
         const missingFields: string[] = [];
         if (!date) missingFields.push('日期');
@@ -160,8 +143,6 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
             min: d.min === '' ? null : parseFloat(d.min),
             max: d.max === '' ? null : parseFloat(d.max)
         }));
-
-        console.log('Valid details:', validDetails);
 
         if (validDetails.length === 0) {
             alert('請至少輸入一組測量數值');
@@ -203,13 +184,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
 
     // 從擠壓規格字串解析各量測項目的標準值
     // 例：「85*2.8」→ { 外徑: 85, 厚度: 2.8 }
-    const specStdValues: Record<string, number> = (() => {
-        const parts = spec.replace(/[×Xx]/g, '*').split('*').map((p) => parseFloat(p.trim()));
-        const result: Record<string, number> = {};
-        if (parts.length >= 1 && !isNaN(parts[0])) result['外徑'] = parts[0];
-        if (parts.length >= 2 && !isNaN(parts[1])) result['厚度'] = parts[1];
-        return result;
-    })();
+    const specStdValues = useMemo(() => parseSpec(spec), [spec]);
 
     // 從公差資料計算絕對界限
     // 優先順序：① 尺寸下/上限 → ② 標準值 ± 公差 → ③ 從規格解析標準值 ± 公差
@@ -261,41 +236,6 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         if (effectiveUsl != null && concentricity > effectiveUsl) return true;
         return false;
     };
-
-    // 判斷是否有任何 NG 格（供呼吸動畫 useEffect 使用）
-    const hasNgCells = (() => {
-        const positions = ['前段', '中段', '後段'];
-        const items = ['外徑', ...(showInner ? ['內徑'] : []), '厚度'];
-        for (let i = 1; i <= groupCount; i++) {
-            const gName = `第${i}組`;
-            for (const pos of positions) {
-                for (const item of items) {
-                    if (isCellNG(pos, item, 'min', gName) || isCellNG(pos, item, 'max', gName)) return true;
-                    if (item === '厚度' && isConcentricityNG(pos, gName)) return true;
-                }
-            }
-        }
-        return false;
-    })();
-
-    // 呼吸動畫：與出貨檢驗相同機制
-    useEffect(() => {
-        if (!hasNgCells) {
-            document.querySelectorAll<HTMLInputElement>('.patrol-input.is-invalid-breathing')
-                .forEach(el => el.classList.remove('breathing-active'));
-            return;
-        }
-        let active = false;
-        const interval = setInterval(() => {
-            active = !active;
-            const els = document.querySelectorAll<HTMLInputElement>('.patrol-input.is-invalid-breathing');
-            els.forEach(el => {
-                if (active) el.classList.add('breathing-active');
-                else el.classList.remove('breathing-active');
-            });
-        }, 750);
-        return () => clearInterval(interval);
-    }, [hasNgCells]);
 
     // Render helper
     const renderTableRows = () => {

@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 from marshmallow import Schema, fields, validate, ValidationError, EXCLUDE
 from ..services.ncmr_service import NCMRService
-from ..utils import auth_required, require_permission, log_audit
+from ..utils import auth_required, bounded_int, parse_optional_date, require_permission, log_audit
 from ..extensions import db
 
 ncmr_bp = Blueprint('ncmr', __name__)
@@ -30,17 +30,12 @@ _ncmr_create_schema = NCMRCreateSchema()
 @auth_required
 def get_ncmr_list():
     try:
-        try:
-            page = max(1, int(request.args.get('page', 1)))
-            per_page = min(max(1, int(request.args.get('per_page', 20))), 100)
-        except (ValueError, TypeError):
-            return jsonify({"error": "page 與 per_page 必須為整數"}), 400
         params = {
-            'page': page,
-            'per_page': per_page,
+            'page': bounded_int(request.args.get('page'), 1, 1, 1000000),
+            'per_page': bounded_int(request.args.get('per_page'), 20, 1, 100),
             'status': request.args.get('status') or None,
-            'date_from': request.args.get('date_from') or None,
-            'date_to': request.args.get('date_to') or None,
+            'date_from': parse_optional_date(request.args.get('date_from'), 'date_from'),
+            'date_to': parse_optional_date(request.args.get('date_to'), 'date_to'),
             'source': request.args.get('source') or None,
             'vendor': request.args.get('vendor') or None,
             'material': request.args.get('material') or None,
@@ -48,6 +43,8 @@ def get_ncmr_list():
         }
         result = NCMRService.get_ncmr_list(**params)
         return jsonify(result)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -261,23 +258,20 @@ def get_risk_releases():
 @auth_required
 def get_capa_list():
     try:
-        try:
-            page = max(1, int(request.args.get('page', 1)))
-            per_page = min(max(1, int(request.args.get('per_page', 20))), 100)
-        except (ValueError, TypeError):
-            return jsonify({"error": "page 與 per_page 必須為整數"}), 400
         params = {
-            'page': page,
-            'per_page': per_page,
+            'page': bounded_int(request.args.get('page'), 1, 1, 1000000),
+            'per_page': bounded_int(request.args.get('per_page'), 20, 1, 100),
             'status': request.args.get('status') or None,
-            'date_from': request.args.get('date_from') or None,
-            'date_to': request.args.get('date_to') or None,
+            'date_from': parse_optional_date(request.args.get('date_from'), 'date_from'),
+            'date_to': parse_optional_date(request.args.get('date_to'), 'date_to'),
             'vendor': request.args.get('vendor') or None,
             'material': request.args.get('material') or None,
             'product_info': request.args.get('product_info') or None,
         }
         result = NCMRService.get_capa_list(**params)
         return jsonify(result)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

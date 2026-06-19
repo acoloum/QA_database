@@ -109,8 +109,8 @@ class CAPAService:
     def list_capas(
         source_type: Optional[str] = None,
         status: Optional[str] = None,
-        date_from: Optional[str] = None,
-        date_to: Optional[str] = None,
+        date_from: Optional[date | str] = None,
+        date_to: Optional[date | str] = None,
         customer: Optional[str] = None,
         page: int = 1,
         per_page: int = 20,
@@ -123,9 +123,9 @@ class CAPAService:
         if status:
             q = q.filter_by(status=status)
         if date_from:
-            q = q.filter(CorrectiveAction.created_at >= date_from + 'T00:00:00')
+            q = q.filter(CorrectiveAction.created_at >= datetime.combine(_coerce_date(date_from), datetime.min.time()))
         if date_to:
-            q = q.filter(CorrectiveAction.created_at <= date_to + 'T23:59:59')
+            q = q.filter(CorrectiveAction.created_at <= datetime.combine(_coerce_date(date_to), datetime.max.time()))
 
         total = q.count()
         items = q.order_by(CorrectiveAction.id.desc())\
@@ -535,6 +535,13 @@ def _setif(obj, attr: str, data: dict, key: str, transform=None) -> None:
 def _parse_date(val) -> Optional[date]:
     if not val:
         return None
+    if isinstance(val, date):
+        return val
+    return date.fromisoformat(str(val))
+
+
+def _coerce_date(val) -> date:
+    """相容 route 已解析的 date 與舊呼叫端傳入的 YYYY-MM-DD 字串。"""
     if isinstance(val, date):
         return val
     return date.fromisoformat(str(val))

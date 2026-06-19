@@ -324,16 +324,24 @@ h6 {
     color: #b91c1c !important;
     font-weight: bold !important;
     transition: border-color 0.3s ease-in-out, box-shadow 0.3s ease-in-out, background-color 0.3s ease-in-out !important;
+    animation: patrol-ng-breathing 1.5s ease-in-out infinite;
 }
 .patrol-input.is-invalid-breathing:focus {
     border-color: #ef4444 !important;
     box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2) !important;
     background-color: #fef2f2 !important;
 }
-.patrol-input.is-invalid-breathing.breathing-active {
+@keyframes patrol-ng-breathing {
+  0%, 100% {
     border-color: #ef4444 !important;
-    box-shadow: 0 0 8px 3px rgba(239, 68, 68, 0.4) !important;
     background-color: #fef2f2 !important;
+    box-shadow: none;
+  }
+  50% {
+    border-color: #ef4444 !important;
+    background-color: #fef2f2 !important;
+    box-shadow: 0 0 8px 3px rgba(239, 68, 68, 0.4) !important;
+  }
 }
 
 /* SPC Stats Card Gradient */

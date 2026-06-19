@@ -22,8 +22,8 @@ class NCMRService:
         status: Optional[str] = None,
         page: int = 1,
         per_page: int = 20,
-        date_from: Optional[str] = None,
-        date_to: Optional[str] = None,
+        date_from: Optional[datetime.date | str] = None,
+        date_to: Optional[datetime.date | str] = None,
         source: Optional[str] = None,
         vendor: Optional[str] = None,
         material: Optional[str] = None,
@@ -39,9 +39,9 @@ class NCMRService:
             if status:
                 query = query.filter(NCMR.status == status)
             if date_from:
-                query = query.filter(NCMR.date >= datetime.date.fromisoformat(date_from))
+                query = query.filter(NCMR.date >= _coerce_date(date_from))
             if date_to:
-                query = query.filter(NCMR.date <= datetime.date.fromisoformat(date_to))
+                query = query.filter(NCMR.date <= _coerce_date(date_to))
             if source:
                 query = query.filter(NCMR.source == source)
             if vendor:
@@ -538,8 +538,8 @@ class NCMRService:
     def get_capa_list(
         page: int = 1,
         per_page: int = 20,
-        date_from: Optional[str] = None,
-        date_to: Optional[str] = None,
+        date_from: Optional[datetime.date | str] = None,
+        date_to: Optional[datetime.date | str] = None,
         vendor: Optional[str] = None,
         material: Optional[str] = None,
         product_info: Optional[str] = None,
@@ -554,9 +554,9 @@ class NCMRService:
             if status:
                 query = query.filter(CorrectiveAction.status == status)
             if date_from:
-                query = query.filter(CorrectiveAction.created_at >= datetime.datetime.fromisoformat(date_from + 'T00:00:00'))
+                query = query.filter(CorrectiveAction.created_at >= datetime.datetime.combine(_coerce_date(date_from), datetime.time.min))
             if date_to:
-                query = query.filter(CorrectiveAction.created_at <= datetime.datetime.fromisoformat(date_to + 'T23:59:59'))
+                query = query.filter(CorrectiveAction.created_at <= datetime.datetime.combine(_coerce_date(date_to), datetime.time.max))
             if vendor:
                 query = query.filter(NCMR.vendor.ilike(f'%{vendor}%'))
             if material:
@@ -735,3 +735,10 @@ class NCMRService:
         except Exception as e:
             db.session.rollback()
             raise e
+
+
+def _coerce_date(value: datetime.date | str) -> datetime.date:
+    """相容 route 已解析的 date 與舊呼叫端傳入的 YYYY-MM-DD 字串。"""
+    if isinstance(value, datetime.date):
+        return value
+    return datetime.date.fromisoformat(str(value))

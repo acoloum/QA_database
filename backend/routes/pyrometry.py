@@ -1,7 +1,7 @@
 import io as _io
 from flask import Blueprint, jsonify, request, send_file
 from ..services.pyrometry_service import PyrometryService, PyrometryValidationError
-from ..utils import auth_required, require_perm, handle_db_error, validate_upload_file
+from ..utils import auth_required, require_perm, handle_db_error, parse_optional_int, validate_upload_file
 from ..services.pyrometry_parser import parse_temperature_file
 
 pyrometry_bp = Blueprint('pyrometry', __name__)
@@ -231,15 +231,21 @@ def delete_thermocouple(tcid):
 def corrections():
     """依設定溫度回傳各量測點的修正值（熱電偶+記錄器補正）"""
     try:
-        setpoint = float(request.args.get('setpoint') or 0)
+        try:
+            setpoint = float(request.args.get('setpoint') or 0)
+        except (TypeError, ValueError):
+            raise ValueError('setpoint 必須為數字')
         test_type = request.args.get('type', 'TUS')
-        count = int(request.args.get('count') or 0)
-        rid = request.args.get('recorder_id')
-        rid = int(rid) if rid else None
+        count = parse_optional_int(request.args.get('count'), 'count') or 0
+        if count < 0 or count > 100:
+            raise ValueError('count 必須介於 0 到 100')
+        rid = parse_optional_int(request.args.get('recorder_id'), 'recorder_id')
         ch_param = request.args.get('channels')
-        channels = [int(c) for c in ch_param.split(',') if c.strip()] if ch_param else None
+        channels = [parse_optional_int(c.strip(), 'channels') for c in ch_param.split(',') if c.strip()] if ch_param else None
         data = PyrometryService.compute_corrections(setpoint, test_type, count, rid, channels)
         return jsonify({"success": True, "data": data})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": handle_db_error(e)}), 500
 
