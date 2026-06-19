@@ -381,6 +381,8 @@ h6 {
     color: #b91c1c !important;
     /* Rose 700 */
     font-weight: bold !important;
+    outline: 0 solid rgba(239, 68, 68, 0);
+    animation: shipping-ng-breathing 1.5s ease-in-out infinite;
 }
 
 .shipping-input.is-invalid-breathing:focus {
@@ -1783,13 +1785,24 @@ header h1 {
     box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.25) !important;
 }
 
-/* 超公差：呼吸動畫（JS 驅動 class 切換，繞過 CSS animation 屬性衝突） */
+/* 超公差：呼吸動畫 */
 .shipping-input.is-invalid-breathing {
     border: 2px solid #dc3545 !important;
 }
-.shipping-input.is-invalid-breathing.breathing-active {
-    border-color: #ff6b6b !important;
-    box-shadow: 0 0 8px 3px rgba(220, 53, 69, 0.6) !important;
+
+@keyframes shipping-ng-breathing {
+    0%, 100% {
+        border-color: #dc3545;
+        outline-color: rgba(220, 53, 69, 0);
+        outline-width: 0;
+        box-shadow: none;
+    }
+    50% {
+        border-color: #ff6b6b;
+        outline-color: rgba(220, 53, 69, 0.28);
+        outline-width: 4px;
+        box-shadow: 0 0 10px 4px rgba(220, 53, 69, 0.42);
+    }
 }
 
 /* 爐溫總覽卡片 - 依測試狀態上色（覆蓋全域 .card 白底規則） */

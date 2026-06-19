@@ -39,21 +39,24 @@ const ApplyModal = ({ show, handleClose, onSuccess, initialNcmrId, initialNcmrNo
     };
 
     useEffect(() => {
+        let cancelled = false;
+
         if (show) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
-            loadInspectors();
-            if (initialNcmrId) {
-                 
-                setNcmrId(initialNcmrId);
-                 
-                setNcmrInfo(`從 NCMR #${initialNcmrNo || initialNcmrId} 開立重工`);
-            } else {
-                 
-                setNcmrId('');
-                 
-                setNcmrInfo('');
-            }
+            queueMicrotask(() => {
+                if (cancelled) return;
+                loadInspectors();
+                if (initialNcmrId) {
+                    setNcmrId(initialNcmrId);
+                    setNcmrInfo(`從 NCMR #${initialNcmrNo || initialNcmrId} 開立重工`);
+                } else {
+                    setNcmrId('');
+                    setNcmrInfo('');
+                }
+            });
         }
+        return () => {
+            cancelled = true;
+        };
     }, [show, initialNcmrId, initialNcmrNo]);
 
     const handleNcmrChange = (e: React.ChangeEvent<HTMLInputElement>) => {

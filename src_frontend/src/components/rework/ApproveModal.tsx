@@ -30,16 +30,20 @@ const ApproveModal = ({ show, handleClose, onSuccess, reworkId }: ApproveModalPr
     };
 
     useEffect(() => {
+        let cancelled = false;
+
         if (show) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
-            loadInspectors();
-             
-            setAction('核准');
-             
-            setOpinion('');
-             
-            setReviewerName('');
+            queueMicrotask(() => {
+                if (cancelled) return;
+                loadInspectors();
+                setAction('核准');
+                setOpinion('');
+                setReviewerName('');
+            });
         }
+        return () => {
+            cancelled = true;
+        };
     }, [show]);
 
     const handleSubmit = async () => {

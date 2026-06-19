@@ -70,36 +70,45 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
 
     // Populate form when detailData loads or when modal opens
     useEffect(() => {
+        let cancelled = false;
+
         if (show) {
             if (editId && detailData) {
                 const d = detailData;
-                // eslint-disable-next-line react-hooks/set-state-in-effect
-                setDate(d.main.檢驗日期);
-                setMachine(d.main.機台);
-                setOperator(d.main.主機手);
-                setInspector(d.main.檢驗人員);
-                setCustomer(d.main.客戶名稱);
-                setMaterial(d.main.材質);
-                setBatch(d.main.原料批號);
-                setSpec(d.main.擠壓規格);
+                queueMicrotask(() => {
+                    if (cancelled) return;
+                    setDate(d.main.檢驗日期);
+                    setMachine(d.main.機台);
+                    setOperator(d.main.主機手);
+                    setInspector(d.main.檢驗人員);
+                    setCustomer(d.main.客戶名稱);
+                    setMaterial(d.main.材質);
+                    setBatch(d.main.原料批號);
+                    setSpec(d.main.擠壓規格);
 
-                // Parse details to state
-                const newDetails: PatrolDetailInput[] = d.details.map((item: Record<string, unknown>) => ({
-                    group: item.group,
-                    item: item.item,
-                    pos: item.pos,
-                    min: item.min?.toString() || '',
-                    max: item.max?.toString() || ''
-                }));
-                setDetails(newDetails);
+                    // Parse details to state
+                    const newDetails: PatrolDetailInput[] = d.details.map((item: Record<string, unknown>) => ({
+                        group: item.group,
+                        item: item.item,
+                        pos: item.pos,
+                        min: item.min?.toString() || '',
+                        max: item.max?.toString() || ''
+                    }));
+                    setDetails(newDetails);
 
-                // Determine group count
-                const groups = new Set(newDetails.map(d => d.group));
-                setGroupCount(groups.size || 1);
+                    // Determine group count
+                    const groups = new Set(newDetails.map(d => d.group));
+                    setGroupCount(groups.size || 1);
+                });
             } else if (!editId) {
-                resetForm();
+                queueMicrotask(() => {
+                    if (!cancelled) resetForm();
+                });
             }
         }
+        return () => {
+            cancelled = true;
+        };
     }, [show, editId, detailData, resetForm]);
 
     const handleDetailChange = (group: string, pos: string, item: string, type: 'min' | 'max', value: string) => {

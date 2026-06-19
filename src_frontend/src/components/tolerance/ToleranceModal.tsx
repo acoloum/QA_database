@@ -145,48 +145,50 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
     const createMutation = useCreateTolerance();
     const updateMutation = useUpdateTolerance();
 
-     
-     
     useEffect(() => {
+        let cancelled = false;
+
         if (show) {
             if (editId) {
                 // Wait for data to load
                 if (detailData) {
                     const { main, details: dList } = detailData;
-                    // eslint-disable-next-line react-hooks/set-state-in-effect
-                    setDate(main.建立日期 ? main.建立日期.split('T')[0] : '');
-                     
-                    setMaterial(main.材質 || '');
-                     
-                    setSpec(main.規格 || '');
-                     
-                    setVendorId(main.廠商ID?.toString() || '');
-                     
-                    setRemark(main.備註 || '');
+                    queueMicrotask(() => {
+                        if (cancelled) return;
+                        setDate(main.建立日期 ? main.建立日期.split('T')[0] : '');
+                        setMaterial(main.材質 || '');
+                        setSpec(main.規格 || '');
+                        setVendorId(main.廠商ID?.toString() || '');
+                        setRemark(main.備註 || '');
 
-                    if (dList && dList.length > 0) {
-                        // 將 ToleranceDetailItem 映射為 DetailRow（表單使用的 string 格式）
-                        setDetails(dList.map((d, idx: number) => ({
-                            id: String(idx),
-                            item: d.測量項目 ?? '',
-                            position: d.測量位置 ?? '',
-                            size_min: d.尺寸下限 != null ? String(d.尺寸下限) : '',
-                            size_max: d.尺寸上限 != null ? String(d.尺寸上限) : '',
-                            tol_min: d.公差下限 != null ? String(d.公差下限) : '',
-                            tol_max: d.公差上限 != null ? String(d.公差上限) : '',
-                            std: d.標準值 != null ? String(d.標準值) : '',
-                            unit: d.單位 ?? 'mm',
-                            remark: d.備註 ?? ''
-                        })));
-                    } else {
-                         
-                        setDetails([createEmptyRow()]);
-                    }
+                        if (dList && dList.length > 0) {
+                            // 將 ToleranceDetailItem 映射為 DetailRow（表單使用的 string 格式）
+                            setDetails(dList.map((d, idx: number) => ({
+                                id: String(idx),
+                                item: d.測量項目 ?? '',
+                                position: d.測量位置 ?? '',
+                                size_min: d.尺寸下限 != null ? String(d.尺寸下限) : '',
+                                size_max: d.尺寸上限 != null ? String(d.尺寸上限) : '',
+                                tol_min: d.公差下限 != null ? String(d.公差下限) : '',
+                                tol_max: d.公差上限 != null ? String(d.公差上限) : '',
+                                std: d.標準值 != null ? String(d.標準值) : '',
+                                unit: d.單位 ?? 'mm',
+                                remark: d.備註 ?? ''
+                            })));
+                        } else {
+                            setDetails([createEmptyRow()]);
+                        }
+                    });
                 }
             } else {
-                resetForm();
+                queueMicrotask(() => {
+                    if (!cancelled) resetForm();
+                });
             }
         }
+        return () => {
+            cancelled = true;
+        };
     }, [show, editId, detailData, createEmptyRow, resetForm]);
 
     const handleDetailChange = (index: number, field: keyof DetailRow, value: string) => {

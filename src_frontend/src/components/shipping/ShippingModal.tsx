@@ -295,28 +295,6 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
 
     }, [groups, tolerance, spec, groupKeys, ITEMS]);
 
-    // 呼吸動畫：每 750ms 切換 breathing-active class
-    const hasViolations = Object.keys(violations).length > 0;
-    useEffect(() => {
-        if (!hasViolations) {
-            document.querySelectorAll<HTMLInputElement>('.shipping-input.is-invalid-breathing')
-                .forEach(el => el.classList.remove('breathing-active'));
-            return;
-        }
-
-        let active = false;
-        const interval = setInterval(() => {
-            active = !active;
-            const els = document.querySelectorAll<HTMLInputElement>('.shipping-input.is-invalid-breathing');
-            els.forEach(el => {
-                if (active) el.classList.add('breathing-active');
-                else el.classList.remove('breathing-active');
-            });
-        }, 750);
-
-        return () => clearInterval(interval);
-    }, [hasViolations]);
-
     /** 更新特定組、特定項目的量測值 */
     const updateMeasValue = (gKey: string, itemKey: string, field: keyof ShippingMeasurementItem, value: string) => {
         setGroups(prev => ({

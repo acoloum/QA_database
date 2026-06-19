@@ -18,6 +18,7 @@ import {
 } from '../../hooks/useCapa';
 import AttachmentUploader from '../common/AttachmentUploader';
 import AttachmentList from '../common/AttachmentList';
+import D2Pane from './D2Pane';
 import type { CAPADetail, CAPASeverity, D7Action } from '../../types';
 
 // ── 介面 Props ────────────────────────────────────────────────
@@ -860,61 +861,6 @@ const D1Pane = ({ champion, setChampion, leader, setLeader, members, setMembers,
                     </div>
                 )}
             </Form.Group>
-
-            <SaveBar onSave={onSave} saving={saving} readonly={readonly} />
-        </div>
-    );
-};
-
-// ══════════════════════════════════════════════════════════════
-// 子元件：D2 問題描述（5W2H）
-// ══════════════════════════════════════════════════════════════
-interface D2Props {
-    what: string; setWhat: (v: string) => void;
-    where: string; setWhere: (v: string) => void;
-    when: string; setWhen: (v: string) => void;
-    who: string; setWho: (v: string) => void;
-    why: string; setWhy: (v: string) => void;
-    how: string; setHow: (v: string) => void;
-    howMany: string; setHowMany: (v: string) => void;
-    readonly?: boolean; capaId: number;
-    onSave: () => void; saving: boolean;
-}
-
-const D2Pane = ({ what, setWhat, where, setWhere, when, setWhen, who, setWho, why, setWhy, how, setHow, howMany, setHowMany, readonly, capaId, onSave, saving }: D2Props) => {
-    const fields = [
-        { label: 'What（是什麼）',    value: what,    set: setWhat },
-        { label: 'Where（在哪裡）',   value: where,   set: setWhere },
-        { label: 'When（何時）',      value: when,    set: setWhen },
-        { label: 'Who（誰）',         value: who,     set: setWho },
-        { label: 'Why（為何出現）',   value: why,     set: setWhy },
-        { label: 'How（如何發現）',   value: how,     set: setHow },
-        { label: 'How Many（數量）',  value: howMany, set: setHowMany },
-    ];
-
-    return (
-        <div>
-            <Row className="g-3 mb-3">
-                {fields.map(f => (
-                    <Col md={6} key={f.label}>
-                        <Form.Group>
-                            <Form.Label className="fw-semibold small">{f.label}</Form.Label>
-                            <Form.Control
-                                as="textarea" rows={2}
-                                value={f.value}
-                                onChange={e => f.set(e.target.value)}
-                                disabled={readonly}
-                                placeholder={f.label}
-                            />
-                        </Form.Group>
-                    </Col>
-                ))}
-            </Row>
-
-            <hr className="my-3" />
-            <h6 className="mb-2 text-muted small">D2 相關附件</h6>
-            <AttachmentList entityType="capa" entityId={capaId} dStep="D2" />
-            {!readonly && <AttachmentUploader entityType="capa" entityId={capaId} dStep="D2" />}
 
             <SaveBar onSave={onSave} saving={saving} readonly={readonly} />
         </div>

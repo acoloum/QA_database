@@ -66,39 +66,36 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
     };
 
     useEffect(() => {
+        let cancelled = false;
+
         if (show) {
             if (editId && detailData) {
                 const d = detailData;
-                // eslint-disable-next-line react-hooks/set-state-in-effect
-                setDate(d.日期 || d.發現日期);
-                 
-                setCreateDate(d.建立日期 || new Date().toISOString().split('T')[0]);
-                 
-                setSource(d.來源);
-                 
-                setVendor(d.廠商 || '');
-                 
-                setMaterial(d.材質 || '');
-                 
-                setProductInfo(d.產品資訊 || '');
-
-                setBatch(d.批號 || '');
-                 
-                setDefectQty(d.不合格數量 ? Math.floor(Number(d.不合格數量)).toString() : '');
-                 
-                setDesc(d.不良描述 || '');
-                 
-                setCategory(d.不良原因大類 || '');
-                 
-                setReason(d.不良原因細項 || '');
-                 
-                setInspector(d.發現人員姓名 || '');
-                 
-                setResult(d.判定結果 || '');
+                queueMicrotask(() => {
+                    if (cancelled) return;
+                    setDate(d.日期 || d.發現日期);
+                    setCreateDate(d.建立日期 || new Date().toISOString().split('T')[0]);
+                    setSource(d.來源);
+                    setVendor(d.廠商 || '');
+                    setMaterial(d.材質 || '');
+                    setProductInfo(d.產品資訊 || '');
+                    setBatch(d.批號 || '');
+                    setDefectQty(d.不合格數量 ? Math.floor(Number(d.不合格數量)).toString() : '');
+                    setDesc(d.不良描述 || '');
+                    setCategory(d.不良原因大類 || '');
+                    setReason(d.不良原因細項 || '');
+                    setInspector(d.發現人員姓名 || '');
+                    setResult(d.判定結果 || '');
+                });
             } else {
-                resetForm();
+                queueMicrotask(() => {
+                    if (!cancelled) resetForm();
+                });
             }
         }
+        return () => {
+            cancelled = true;
+        };
     }, [show, editId, detailData]);
 
     const handleSubmit = async () => {
