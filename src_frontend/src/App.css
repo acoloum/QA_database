@@ -323,7 +323,7 @@ h6 {
     background-color: #fef2f2 !important;
     color: #b91c1c !important;
     font-weight: bold !important;
-    transition: border-color 0.3s ease-in-out, box-shadow 0.3s ease-in-out, background-color 0.3s ease-in-out !important;
+    outline: 0 solid rgba(239, 68, 68, 0);
     animation: patrol-ng-breathing 1.5s ease-in-out infinite;
 }
 .patrol-input.is-invalid-breathing:focus {
@@ -333,14 +333,16 @@ h6 {
 }
 @keyframes patrol-ng-breathing {
   0%, 100% {
-    border-color: #ef4444 !important;
-    background-color: #fef2f2 !important;
+    border-color: #ef4444;
+    outline-color: rgba(239, 68, 68, 0);
+    outline-width: 0;
     box-shadow: none;
   }
   50% {
-    border-color: #ef4444 !important;
-    background-color: #fef2f2 !important;
-    box-shadow: 0 0 8px 3px rgba(239, 68, 68, 0.4) !important;
+    border-color: #fb7185;
+    outline-color: rgba(239, 68, 68, 0.28);
+    outline-width: 4px;
+    box-shadow: 0 0 10px 4px rgba(239, 68, 68, 0.42);
   }
 }
 
