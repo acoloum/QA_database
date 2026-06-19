@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Modal, Form, Row, Col, Button, Table, Nav } from 'react-bootstrap';
+import { Modal, Form, Row, Col, Button } from 'react-bootstrap';
 import api from '../../services/api';
 import type { Furnace, TusPoint, SatPoint, SatReading } from '../../types';
 import TusChart from '../../components/pyrometry/TusChart';
 import TusDataTable from '../../components/pyrometry/TusDataTable';
 import ReportFieldsSection from './ReportFieldsSection';
+import SatSection from './SatSection';
+import TusSection from './TusSection';
 import { buildPyrometryPayload } from './pyrometryPayload';
 import {
   computeRangeStats,
@@ -21,115 +23,6 @@ import {
 
 interface Inspector { id: number; name: string; }
 interface Props { editId: number | null; onClose: () => void; onSaved: () => void; }
-
-/** 單一控溫區的讀值表格（含新增/刪除列） */
-const ZoneTab = ({
-  point, tolerance, onUpdateField, onUpdateReading, onAddReading, onRemoveReading,
-}: {
-  point: SatPoint;
-  tolerance: string;
-  onUpdateField: (k: keyof SatPoint, v: string) => void;
-  onUpdateReading: (ri: number, k: keyof SatReading, v: string) => void;
-  onAddReading: () => void;
-  onRemoveReading: (ri: number) => void;
-}) => {
-  const tol = parseFloat(String(tolerance)) || 0;
-  const corr = parseFloat(String(point.修正值 ?? 0)) || 0;
-
-  const validReadings = point.readings.filter(
-    r => r.校正測試讀值 !== '' && r.校正測試讀值 !== null,
-  );
-  const passCount = validReadings.filter(r => {
-    const ctrl = parseFloat(String(r.控制儀表讀值));
-    const test = parseFloat(String(r.校正測試讀值));
-    if (isNaN(ctrl) || isNaN(test)) return false;
-    const dev = Math.round((test - ctrl + corr) * 100) / 100;
-    return Math.abs(dev) <= tol;
-  }).length;
-
-  return (
-    <>
-      <Row className="g-2 mb-2 align-items-end">
-        <Col md={3}>
-          <Form.Label className="mb-0" style={{ fontSize: 12 }}>控溫區名稱</Form.Label>
-          <Form.Control size="sm" value={point.控溫區}
-            onChange={e => onUpdateField('控溫區', e.target.value)} />
-        </Col>
-        <Col md={1}>
-          <Form.Label className="mb-0" style={{ fontSize: 12 }}>頻道</Form.Label>
-          <Form.Control size="sm" type="number" min={1} max={99}
-            value={point.頻道 ?? ''}
-            onChange={e => onUpdateField('頻道', e.target.value)} />
-        </Col>
-        <Col md={2}>
-          <Form.Label className="mb-0" style={{ fontSize: 12 }}>修正值 (°C)</Form.Label>
-          <Form.Control size="sm" value={String(point.修正值 ?? '')}
-            onChange={e => onUpdateField('修正值', e.target.value)} />
-        </Col>
-        <Col md="auto">
-          <Button size="sm" variant="outline-success" onClick={onAddReading}>＋ 新增讀值</Button>
-        </Col>
-        <Col md="auto" className="ms-auto text-end">
-          <span className="text-muted" style={{ fontSize: 12 }}>
-            有效讀值 {validReadings.length} 筆，合格 {passCount} / {validReadings.length}
-          </span>
-        </Col>
-      </Row>
-
-      <Table bordered size="sm" className="text-center align-middle">
-        <thead className="table-secondary">
-          <tr>
-            <th style={{ width: 36 }}>#</th>
-            <th>控制儀表讀值</th>
-            <th>校正測試讀值</th>
-            <th style={{ minWidth: 50 }}>差值</th>
-            <th style={{ minWidth: 50 }}>偏差</th>
-            <th style={{ width: 42 }}>合格</th>
-            <th style={{ width: 36 }}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {point.readings.map((r, ri) => {
-            const ctrl = parseFloat(String(r.控制儀表讀值));
-            const test = parseFloat(String(r.校正測試讀值));
-            const diff = (!isNaN(ctrl) && !isNaN(test)) ? Math.round((test - ctrl) * 100) / 100 : null;
-            const dev  = diff !== null ? Math.round((diff + corr) * 100) / 100 : null;
-            const pass = dev !== null ? Math.abs(dev) <= tol : null;
-            const devColor = dev === null ? undefined : Math.abs(dev) > tol ? '#842029' : '#0a3622';
-            return (
-              <tr key={ri} style={pass === false ? { background: '#fff5f5' } : undefined}>
-                <td className="text-muted" style={{ fontSize: 11 }}>{ri + 1}</td>
-                <td>
-                  <Form.Control size="sm" value={String(r.控制儀表讀值 ?? '')}
-                    onChange={e => onUpdateReading(ri, '控制儀表讀值', e.target.value)} />
-                </td>
-                <td>
-                  <Form.Control size="sm" value={String(r.校正測試讀值 ?? '')}
-                    onChange={e => onUpdateReading(ri, '校正測試讀值', e.target.value)} />
-                </td>
-                <td className="text-muted">{diff ?? '—'}</td>
-                <td style={{ fontWeight: dev !== null ? 600 : undefined, color: devColor }}>
-                  {dev ?? '—'}
-                </td>
-                <td>
-                  {pass === null ? '—' : pass
-                    ? <span style={{ color: '#198754', fontWeight: 700 }}>✓</span>
-                    : <span style={{ color: '#dc3545', fontWeight: 700 }}>✗</span>}
-                </td>
-                <td>
-                  <Button size="sm" variant="outline-danger"
-                    style={{ padding: '1px 5px', fontSize: 11, lineHeight: 1.2 }}
-                    disabled={point.readings.length <= 1}
-                    onClick={() => onRemoveReading(ri)}>✕</Button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </Table>
-    </>
-  );
-};
 
 const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const [furnaceId, setFurnaceId] = useState('');
@@ -586,231 +479,51 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
             onUpdateItemRow={updateItemRow}
           />
 
-          {/* ── TUS 資料上傳 ── */}
           {testType === 'TUS' && (
-            <Row className="g-2 mb-3">
-              <Col md={12}>
-                <Form.Label>測試儀器數據（CSV/Excel）</Form.Label>
-                <input className="form-control form-control-sm" type="file" accept=".csv,.xlsx,.xls"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, 'recorder'); }} />
-              </Col>
-              {chartData && (
-                <>
-                  <Col md={12}>
-                    <TusChart
-                      時間={chartData.時間} 數值={chartData.數值}
-                      設定溫度={Number(setpoint) || 180} 公差={Number(tolerance) || 10}
-                      startIdx={rangeStart} endIdx={rangeEnd}
-                      標題="測試儀器（記錄器）溫度曲線"
-                    />
-                  </Col>
-                  <Col md={12}>
-                    <div className="d-flex align-items-center gap-3 p-2 bg-light rounded border">
-                      <span className="fw-semibold text-nowrap" style={{ fontSize: 13 }}>恆溫穩定期：</span>
-                      <div className="d-flex align-items-center gap-1">
-                        <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>開始</Form.Label>
-                        <Form.Select size="sm" style={{ minWidth: 120 }} value={rangeStart}
-                          onChange={e => setRangeStart(Number(e.target.value))}>
-                          {timeLabels.map((t, i) => <option key={i} value={i}>{t}</option>)}
-                        </Form.Select>
-                      </div>
-                      <div className="d-flex align-items-center gap-1">
-                        <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>結束</Form.Label>
-                        <Form.Select size="sm" style={{ minWidth: 120 }} value={rangeEnd}
-                          onChange={e => setRangeEnd(Number(e.target.value))}>
-                          {timeLabels.map((t, i) => <option key={i} value={i}>{t}</option>)}
-                        </Form.Select>
-                      </div>
-                      <Button size="sm" variant="primary" onClick={applyRangeTus}>套用並回填量測點</Button>
-                      <span className="text-muted" style={{ fontSize: 11 }}>
-                        共 {rangeEnd >= rangeStart ? rangeEnd - rangeStart + 1 : 0} 筆
-                      </span>
-                    </div>
-                  </Col>
-                  <Col md={12}>
-                    <div className="d-flex align-items-center gap-2 mb-1">
-                      <Button size="sm" variant="outline-secondary" onClick={() => setShowDetail(v => !v)}>
-                        {showDetail ? '隱藏詳細數據表' : '顯示詳細數據表'}
-                      </Button>
-                      <span className="text-muted" style={{ fontSize: 11 }}>
-                        <span style={{ background: '#f8d7da', color: '#842029', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>紅底＝超上限</span>
-                        <span style={{ background: '#cfe2ff', color: '#084298', fontWeight: 600, padding: '0 4px', margin: '0 2px' }}>藍底＝低於下限</span>
-                      </span>
-                    </div>
-                    {showDetail && (
-                      <TusDataTable
-                        時間={chartData.時間} 數值={chartData.數值}
-                        設定溫度={Number(setpoint) || 180} 公差={Number(tolerance) || 10}
-                        穩定開始={rangeStart} 穩定結束={rangeEnd}
-                      />
-                    )}
-                  </Col>
-                </>
-              )}
-            </Row>
+            <TusSection
+              tusPoints={tusPoints}
+              setpoint={setpoint}
+              tolerance={tolerance}
+              chartData={chartData}
+              rangeStart={rangeStart}
+              rangeEnd={rangeEnd}
+              showDetail={showDetail}
+              timeLabels={timeLabels}
+              onFileUpload={file => handleFileUpload(file, 'recorder')}
+              onRangeStartChange={setRangeStart}
+              onRangeEndChange={setRangeEnd}
+              onApplyRangeTus={applyRangeTus}
+              onToggleDetail={() => setShowDetail(v => !v)}
+              onUpdateTus={updateTus}
+              onApplyCorrections={() => applyCorrections('TUS')}
+            />
           )}
 
-          {/* ── TUS 量測點明細 ── */}
-          {testType === 'TUS' && tusPoints.length > 0 && (
-            <>
-              <div className="d-flex justify-content-between align-items-center">
-                <h6 className="mb-0">TUS 量測點明細</h6>
-                <Button size="sm" variant="outline-secondary" onClick={() => applyCorrections('TUS')}>
-                  帶入儀器校正補正值
-                </Button>
-              </div>
-              <div className="text-muted mb-1" style={{ fontSize: 11 }}>
-                修正值＝熱電偶補正＋記錄器補正（依設定溫度內插）；校正後溫度＝量測值＋修正值
-              </div>
-              <Table bordered size="sm">
-                <thead className="table-secondary">
-                  <tr><th>點位</th><th style={{ width: 100, minWidth: 100 }}>頻道</th><th>修正值</th><th>最高溫</th><th>最低溫</th></tr>
-                </thead>
-                <tbody>
-                  {tusPoints.map((p, i) => (
-                    <tr key={i}>
-                      <td><Form.Control size="sm" value={p.點位} onChange={e => updateTus(i, '點位', e.target.value)} /></td>
-                      <td><Form.Control size="sm" type="number" min={1} max={99} value={p.頻道 ?? ''} onChange={e => updateTus(i, '頻道', e.target.value)} style={{ minWidth: 70 }} /></td>
-                      <td><Form.Control size="sm" value={String(p.修正值 ?? '')} onChange={e => updateTus(i, '修正值', e.target.value)} /></td>
-                      <td><Form.Control size="sm" value={String(p.最高溫 ?? '')} onChange={e => updateTus(i, '最高溫', e.target.value)} /></td>
-                      <td><Form.Control size="sm" value={String(p.最低溫 ?? '')} onChange={e => updateTus(i, '最低溫', e.target.value)} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </>
-          )}
-
-          {/* ── SAT 資料上傳 ── */}
           {testType === 'SAT' && (
-            <Row className="g-2 mb-3">
-              <Col md={6}>
-                <Form.Label>SAT 儀器詳細資料（CSV/Excel，選配）</Form.Label>
-                <input className="form-control form-control-sm" type="file" accept=".csv,.xlsx,.xls"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, 'sat'); }} />
-              </Col>
-              <Col md={6}>
-                <Form.Label>爐體記錄數據（對照，選配）</Form.Label>
-                <input className="form-control form-control-sm" type="file" accept=".csv,.xlsx,.xls"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, 'furnace'); }} />
-              </Col>
-
-              {satChartData && (
-                <>
-                  <Col md={12}>
-                    <TusChart
-                      時間={satChartData.時間} 數值={satChartData.數值}
-                      設定溫度={Number(setpoint) || 180} 公差={Number(tolerance) || 10}
-                      startIdx={satRangeStart} endIdx={satRangeEnd}
-                      標題="SAT 儀器溫度曲線"
-                    />
-                  </Col>
-                  <Col md={12}>
-                    <div className="d-flex align-items-center gap-3 p-2 bg-light rounded border">
-                      <span className="fw-semibold text-nowrap" style={{ fontSize: 13 }}>SAT 恆溫穩定期：</span>
-                      <div className="d-flex align-items-center gap-1">
-                        <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>開始</Form.Label>
-                        <Form.Select size="sm" style={{ minWidth: 120 }} value={satRangeStart}
-                          onChange={e => setSatRangeStart(Number(e.target.value))}>
-                          {satTimeLabels.map((t, i) => <option key={i} value={i}>{t}</option>)}
-                        </Form.Select>
-                      </div>
-                      <div className="d-flex align-items-center gap-1">
-                        <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>結束</Form.Label>
-                        <Form.Select size="sm" style={{ minWidth: 120 }} value={satRangeEnd}
-                          onChange={e => setSatRangeEnd(Number(e.target.value))}>
-                          {satTimeLabels.map((t, i) => <option key={i} value={i}>{t}</option>)}
-                        </Form.Select>
-                      </div>
-                      <Button size="sm" variant="primary" onClick={applyRangeSat}>
-                        套用並回填讀值
-                      </Button>
-                      <span className="text-muted" style={{ fontSize: 11 }}>
-                        共 {satRangeEnd >= satRangeStart ? satRangeEnd - satRangeStart + 1 : 0} 筆
-                      </span>
-                    </div>
-                  </Col>
-                  <Col md={12}>
-                    <div className="d-flex align-items-center gap-2 mb-1">
-                      <Button size="sm" variant="outline-secondary" onClick={() => setShowSatDetail(v => !v)}>
-                        {showSatDetail ? '隱藏 SAT 詳細數據表' : '顯示 SAT 詳細數據表'}
-                      </Button>
-                    </div>
-                    {showSatDetail && (
-                      <TusDataTable
-                        時間={satChartData.時間} 數值={satChartData.數值}
-                        設定溫度={Number(setpoint) || 180} 公差={Number(tolerance) || 10}
-                        穩定開始={satRangeStart} 穩定結束={satRangeEnd}
-                      />
-                    )}
-                  </Col>
-                </>
-              )}
-
-              {furnaceSection}
-            </Row>
-          )}
-
-          {/* ── SAT 量測點明細（分頁 Tab） ── */}
-          {testType === 'SAT' && satPoints.length > 0 && (
-            <>
-              <div className="d-flex justify-content-between align-items-center mb-2">
-                <h6 className="mb-0">SAT 量測點明細</h6>
-                <Button size="sm" variant="outline-secondary" onClick={() => applyCorrections('SAT')}>
-                  帶入儀器校正補正值
-                </Button>
-              </div>
-              <div className="text-muted mb-2" style={{ fontSize: 11 }}>
-                偏差＝（校正測試讀值＋修正值）− 控制讀值；每筆讀值均需符合公差 ±{tolerance || '?'}°C
-              </div>
-
-              {/* 控溫區 Tab 列 */}
-              <Nav variant="tabs" activeKey={activeZone}
-                onSelect={k => setActiveZone(Number(k))}>
-                {satPoints.map((p, i) => {
-                  const tol = parseFloat(String(tolerance)) || 0;
-                  const corr = parseFloat(String(p.修正值 ?? 0)) || 0;
-                  const allPass = p.readings.every(r => {
-                    const ctrl = parseFloat(String(r.控制儀表讀值));
-                    const test = parseFloat(String(r.校正測試讀值));
-                    if (isNaN(ctrl) || isNaN(test)) return true;
-                    return Math.abs(test - ctrl + corr) <= tol;
-                  });
-                  const hasData = p.readings.some(r => r.校正測試讀值 !== '' && r.校正測試讀值 !== null);
-                  return (
-                    <Nav.Item key={i}>
-                      <Nav.Link eventKey={i} style={{ fontSize: 13, padding: '6px 14px' }}>
-                        {p.控溫區 || `Zone${i + 1}`}
-                        {hasData && (
-                          <span style={{ marginLeft: 6, fontWeight: 700 }}>
-                            {allPass
-                              ? <span style={{ color: '#198754' }}>✓</span>
-                              : <span style={{ color: '#dc3545' }}>✗</span>}
-                          </span>
-                        )}
-                      </Nav.Link>
-                    </Nav.Item>
-                  );
-                })}
-              </Nav>
-
-              {/* 當前 Tab 內容 */}
-              <div className="border border-top-0 rounded-bottom p-3 mb-3">
-                {satPoints.map((p, i) =>
-                  i === activeZone ? (
-                    <ZoneTab
-                      key={i}
-                      point={p}
-                      tolerance={tolerance}
-                      onUpdateField={(k, v) => updateSatField(i, k, v)}
-                      onUpdateReading={(ri, k, v) => updateSatReading(i, ri, k, v)}
-                      onAddReading={() => addSatReading(i)}
-                      onRemoveReading={ri => removeSatReading(i, ri)}
-                    />
-                  ) : null,
-                )}
-              </div>
-            </>
+            <SatSection
+              satPoints={satPoints}
+              activeZone={activeZone}
+              setpoint={setpoint}
+              tolerance={tolerance}
+              satChartData={satChartData}
+              satRangeStart={satRangeStart}
+              satRangeEnd={satRangeEnd}
+              satTimeLabels={satTimeLabels}
+              showSatDetail={showSatDetail}
+              furnaceSection={furnaceSection}
+              onSatFileUpload={file => handleFileUpload(file, 'sat')}
+              onFurnaceFileUpload={file => handleFileUpload(file, 'furnace')}
+              onSatRangeStartChange={setSatRangeStart}
+              onSatRangeEndChange={setSatRangeEnd}
+              onApplyRangeSat={applyRangeSat}
+              onToggleSatDetail={() => setShowSatDetail(v => !v)}
+              onActiveZoneChange={setActiveZone}
+              onUpdateSatField={updateSatField}
+              onUpdateSatReading={updateSatReading}
+              onAddSatReading={addSatReading}
+              onRemoveSatReading={removeSatReading}
+              onApplyCorrections={() => applyCorrections('SAT')}
+            />
           )}
         </Form>
       </Modal.Body>
