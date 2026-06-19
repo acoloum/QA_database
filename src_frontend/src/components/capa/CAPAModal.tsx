@@ -16,8 +16,9 @@ import {
     RIGOR_STEPS,
     D_STEP_LABELS,
 } from '../../hooks/useCapa';
-import AttachmentUploader from '../common/AttachmentUploader';
-import AttachmentList from '../common/AttachmentList';
+import { groupInspectors, inspectorLabel, type InspectorItem } from './capaInspectors';
+import D0Pane from './D0Pane';
+import D1Pane from './D1Pane';
 import D2Pane from './D2Pane';
 import D3Pane from './D3Pane';
 import D4Pane from './D4Pane';
@@ -49,31 +50,6 @@ const D7_TYPES = [
     { key: 'customer_notify', label: '客戶通知' },
     { key: 'other',           label: '其他' },
 ];
-
-// ── 判斷準則選項 ──────────────────────────────────────────────
-const CRITERIA_OPTIONS = [
-    '客戶端發現',
-    '流出至市場',
-    '產線停工',
-    '安全疑慮',
-    '法規要求',
-    '保固索賠',
-    '重複異常',
-    '批量不良',
-];
-
-// ── 人員型別 ──────────────────────────────────────────────────
-interface InspectorItem { id: number; name: string; group: string }
-
-const inspectorLabel = (i: InspectorItem) => i.name;
-
-// 依小組分組 inspectors
-const groupInspectors = (list: InspectorItem[]) =>
-    list.reduce((acc, i) => {
-        const g = i.group || '其他';
-        (acc[g] = acc[g] || []).push(i);
-        return acc;
-    }, {} as Record<string, InspectorItem[]>);
 
 // ── Hook：取得檢驗員清單 ──────────────────────────────────────
 const useInspectors = () =>
@@ -557,165 +533,6 @@ const SaveBar = ({ onSave, saving, readonly }: { onSave: () => void; saving: boo
                 {saving ? <Spinner size="sm" animation="border" className="me-1" /> : <i className="bi bi-save me-1" />}
                 儲存此步驟
             </Button>
-        </div>
-    );
-};
-
-// ══════════════════════════════════════════════════════════════
-// 子元件：D0 緊急應對
-// ══════════════════════════════════════════════════════════════
-interface D0Props {
-    symptom: string; setSymptom: (v: string) => void;
-    criteria: string[]; setCriteria: (v: string[]) => void;
-    severity: CAPASeverity | ''; setSeverity: (v: CAPASeverity | '') => void;
-    rigor: string; setRigor: (v: string) => void;
-    deadline: string; setDeadline: (v: string) => void;
-    readonly?: boolean; capaId: number;
-    onSave: () => void; saving: boolean;
-}
-
-const D0Pane = ({ symptom, setSymptom, criteria, setCriteria, severity, setSeverity, rigor, setRigor, deadline, setDeadline, readonly, capaId, onSave, saving }: D0Props) => {
-    const toggleCriteria = (val: string) => {
-        setCriteria(criteria.includes(val) ? criteria.filter(c => c !== val) : [...criteria, val]);
-    };
-
-    return (
-        <div>
-            <Form.Group className="mb-3">
-                <Form.Label className="fw-semibold">症狀描述</Form.Label>
-                <Form.Control
-                    as="textarea" rows={3}
-                    value={symptom}
-                    onChange={e => setSymptom(e.target.value)}
-                    placeholder="請描述異常症狀…"
-                    disabled={readonly}
-                />
-            </Form.Group>
-
-            <Form.Group className="mb-3">
-                <Form.Label className="fw-semibold">判斷準則（可複選）</Form.Label>
-                <div className="d-flex flex-wrap gap-2">
-                    {CRITERIA_OPTIONS.map(opt => (
-                        <Form.Check
-                            key={opt} type="checkbox" id={`criteria-${opt}`}
-                            label={opt}
-                            checked={criteria.includes(opt)}
-                            onChange={() => toggleCriteria(opt)}
-                            disabled={readonly}
-                        />
-                    ))}
-                </div>
-            </Form.Group>
-
-            <Row className="mb-3">
-                <Col md={4}>
-                    <Form.Label className="fw-semibold">嚴重度</Form.Label>
-                    <Form.Select value={severity} onChange={e => setSeverity(e.target.value as CAPASeverity | '')} disabled={readonly}>
-                        <option value="">請選擇</option>
-                        <option value="Critical">Critical（緊急）</option>
-                        <option value="Major">Major（重要）</option>
-                        <option value="Minor">Minor（輕微）</option>
-                    </Form.Select>
-                </Col>
-                <Col md={4}>
-                    <Form.Label className="fw-semibold">嚴格度（可 Override）</Form.Label>
-                    <Form.Select value={rigor} onChange={e => setRigor(e.target.value)} disabled={readonly}>
-                        <option value="完整8D">完整 8D（D0–D8）</option>
-                        <option value="簡化5D">簡化 5D（D2,D3,D4,D6,D8）</option>
-                    </Form.Select>
-                </Col>
-                <Col md={4}>
-                    <Form.Label className="fw-semibold">客戶要求結案日</Form.Label>
-                    <Form.Control type="date" value={deadline} onChange={e => setDeadline(e.target.value)} disabled={readonly} />
-                </Col>
-            </Row>
-
-            <hr className="my-3" />
-            <h6 className="mb-2 text-muted small">D0 相關附件</h6>
-            <AttachmentList entityType="capa" entityId={capaId} dStep="D0" />
-            {!readonly && <AttachmentUploader entityType="capa" entityId={capaId} dStep="D0" />}
-
-            <SaveBar onSave={onSave} saving={saving} readonly={readonly} />
-        </div>
-    );
-};
-
-// ══════════════════════════════════════════════════════════════
-// 子元件：D1 成立團隊
-// ══════════════════════════════════════════════════════════════
-interface D1Props {
-    champion: number | ''; setChampion: (v: number | '') => void;
-    leader: number | ''; setLeader: (v: number | '') => void;
-    members: number[]; setMembers: (v: number[]) => void;
-    inspectors: InspectorItem[];
-    readonly?: boolean;
-    onSave: () => void; saving: boolean;
-}
-
-const D1Pane = ({ champion, setChampion, leader, setLeader, members, setMembers, inspectors, readonly, onSave, saving }: D1Props) => {
-    const toggleMember = (id: number) => {
-        setMembers(members.includes(id) ? members.filter(m => m !== id) : [...members, id]);
-    };
-    const grouped = groupInspectors(inspectors);
-
-    return (
-        <div>
-            <Row className="mb-3">
-                <Col md={6}>
-                    <Form.Label className="fw-semibold">Champion（指導者）</Form.Label>
-                    <Form.Select value={champion} onChange={e => setChampion(e.target.value ? Number(e.target.value) : '')} disabled={readonly}>
-                        <option value="">請選擇</option>
-                        {Object.entries(grouped).map(([grp, items]) => (
-                            <optgroup key={grp} label={grp}>
-                                {items.map(i => <option key={i.id} value={i.id}>{inspectorLabel(i)}</option>)}
-                            </optgroup>
-                        ))}
-                    </Form.Select>
-                </Col>
-                <Col md={6}>
-                    <Form.Label className="fw-semibold">Team Leader（負責人）</Form.Label>
-                    <Form.Select value={leader} onChange={e => setLeader(e.target.value ? Number(e.target.value) : '')} disabled={readonly}>
-                        <option value="">請選擇</option>
-                        {Object.entries(grouped).map(([grp, items]) => (
-                            <optgroup key={grp} label={grp}>
-                                {items.map(i => <option key={i.id} value={i.id}>{inspectorLabel(i)}</option>)}
-                            </optgroup>
-                        ))}
-                    </Form.Select>
-                </Col>
-            </Row>
-
-            <Form.Group className="mb-3">
-                <Form.Label className="fw-semibold">團隊成員（可複選）</Form.Label>
-                <div>
-                    {Object.entries(grouped).map(([grp, items]) => (
-                        <div key={grp} className="mb-2">
-                            <div className="text-muted small fw-semibold mb-1">{grp}</div>
-                            <div className="d-flex flex-wrap gap-3 ps-2">
-                                {items.map(i => (
-                                    <Form.Check
-                                        key={i.id} type="checkbox" id={`member-${i.id}`}
-                                        label={inspectorLabel(i)}
-                                        checked={members.includes(i.id)}
-                                        onChange={() => toggleMember(i.id)}
-                                        disabled={readonly}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-                {members.length > 0 && (
-                    <div className="mt-2 d-flex flex-wrap gap-1">
-                        {members.map(mid => {
-                            const insp = inspectors.find(i => i.id === mid);
-                            return insp ? <Badge key={mid} bg="secondary">{inspectorLabel(insp)}</Badge> : null;
-                        })}
-                    </div>
-                )}
-            </Form.Group>
-
-            <SaveBar onSave={onSave} saving={saving} readonly={readonly} />
         </div>
     );
 };
