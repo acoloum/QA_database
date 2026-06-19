@@ -2,7 +2,7 @@
 from flask import Blueprint, jsonify, request
 from datetime import date
 from ..services.task_service import TaskService
-from ..utils import auth_required, require_permission
+from ..utils import auth_required, bounded_int, require_permission
 
 task_bp = Blueprint('task', __name__)
 
@@ -20,8 +20,8 @@ def list_tasks(current_user):
             category     = request.args.get('category'),
             due_from     = date.fromisoformat(request.args['due_from']) if request.args.get('due_from') else None,
             due_to       = date.fromisoformat(request.args['due_to']) if request.args.get('due_to') else None,
-            page         = int(request.args.get('page', 1)),
-            per_page     = int(request.args.get('per_page', 20)),
+            page         = bounded_int(request.args.get('page'), 1, 1, 1000000),
+            per_page     = bounded_int(request.args.get('per_page'), 20, 1, 100),
         )
         return jsonify(result), 200
     except Exception as e:

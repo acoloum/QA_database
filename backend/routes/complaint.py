@@ -4,7 +4,7 @@ from datetime import date
 from ..extensions import db
 from ..services.complaint_service import ComplaintService
 from ..services.complaint_stats_service import ComplaintStatsService
-from ..utils import auth_required, require_permission, log_audit
+from ..utils import auth_required, bounded_int, require_permission, log_audit
 
 complaint_bp = Blueprint('complaint', __name__)
 
@@ -24,8 +24,8 @@ def list_complaints(current_user):
             date_from      = _parse_date(request.args.get('date_from')),
             date_to        = _parse_date(request.args.get('date_to')),
             is_repeat      = _parse_bool(request.args.get('is_repeat')),
-            page           = int(request.args.get('page', 1)),
-            per_page       = int(request.args.get('per_page', 20)),
+            page           = bounded_int(request.args.get('page'), 1, 1, 1000000),
+            per_page       = bounded_int(request.args.get('per_page'), 20, 1, 100),
         )
         return jsonify(result), 200
     except Exception as e:
@@ -143,7 +143,7 @@ def overdue_complaints(current_user):
 @auth_required
 def recent_repeat_complaints(current_user):
     """GET /api/complaints/recent-repeats — 近 30 天重複客訴"""
-    days = int(request.args.get('days', 30))
+    days = bounded_int(request.args.get('days'), 30, 1, 365)
     return jsonify(ComplaintService.recent_repeats(days=days)), 200
 
 

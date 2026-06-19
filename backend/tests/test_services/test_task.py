@@ -1,5 +1,6 @@
 from backend.models import ActionTask, Inspector, User
 from backend.services.task_service import TaskService
+from backend.utils import generate_token
 
 
 def test_my_tasks_for_user_uses_linked_inspector_id(app, db_session):
@@ -36,3 +37,27 @@ def test_my_tasks_for_user_uses_linked_inspector_id(app, db_session):
         tasks = TaskService.my_tasks_for_user(user)
 
         assert [t['task_no'] for t in tasks] == ['TASK-OWN']
+
+
+def test_task_list_route_clamps_per_page(client, db_session):
+    user = User(username='task_list_user', password='pw', role='viewer', is_active=True)
+    db_session.add(user)
+    db_session.commit()
+    token = generate_token(user.id, user.username, user.role)
+
+    response = client.get('/api/tasks?per_page=5000', headers={'Authorization': f'Bearer {token}'})
+
+    assert response.status_code == 200
+    assert response.get_json()['per_page'] == 100
+
+
+def test_task_list_route_uses_default_for_invalid_page(client, db_session):
+    user = User(username='task_list_bad_page', password='pw', role='viewer', is_active=True)
+    db_session.add(user)
+    db_session.commit()
+    token = generate_token(user.id, user.username, user.role)
+
+    response = client.get('/api/tasks?page=abc', headers={'Authorization': f'Bearer {token}'})
+
+    assert response.status_code == 200
+    assert response.get_json()['page'] == 1

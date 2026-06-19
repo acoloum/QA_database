@@ -3,7 +3,7 @@ from flask import Blueprint, request
 from datetime import date
 
 from ..services.vendor_performance_service import VendorPerformanceService
-from ..utils import auth_required, api_success, api_error
+from ..utils import auth_required, api_success, api_error, bounded_int
 
 vendor_perf_bp = Blueprint('vendor_performance', __name__)
 
@@ -24,7 +24,7 @@ def list_vendor_performance(current_user):
 @auth_required
 def vendor_history(current_user, vendor_id: int):
     """GET /api/vendor-performance/<vendor_id>/history?months=6"""
-    months = int(request.args.get('months', 6))
+    months = bounded_int(request.args.get('months'), 6, 1, 36)
     try:
         data = VendorPerformanceService.history(vendor_id, months)
         return api_success(data)

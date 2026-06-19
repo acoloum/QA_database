@@ -12,6 +12,7 @@ from ..extensions import db
 from ..models import PatrolMain, PatrolDetail, Machine, Operator, Inspector, Vendor
 from .extrusion_tolerance_service import ExtrusionToleranceService
 from ..utils import (
+    bounded_int,
     format_value,
     validate_patrol_data,
     handle_db_error
@@ -654,8 +655,8 @@ class PatrolService:
 
             query = query.order_by(PatrolMain.id.desc())
 
-            page = int(args.get('page', 1))
-            per_page = int(args.get('per_page', 20))
+            page = bounded_int(args.get('page'), 1, 1, 1000000)
+            per_page = bounded_int(args.get('per_page'), 20, 1, 100)
 
             pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 

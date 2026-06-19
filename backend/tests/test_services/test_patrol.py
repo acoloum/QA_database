@@ -146,6 +146,18 @@ def test_get_history_no_material(app, db_session):
         assert row['is_ng'] is False
 
 
+def test_get_history_clamps_per_page(app, db_session):
+    with app.app_context():
+        for i in range(101):
+            db_session.add(PatrolMain(date=date(2026, 1, 1), material=f'MAT-{i}', spec='10*2'))
+        db_session.commit()
+
+        result = PatrolService.get_history({'page': 1, 'per_page': 5000})
+
+        assert len(result['data']) == 100
+        assert result['total'] == 101
+
+
 def test_get_history_prefers_extrusion_over_vendor(app, db_session):
     """擠壓公差優先於廠商公差：兩者同時存在時，套用擠壓公差"""
     with app.app_context():
