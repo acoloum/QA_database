@@ -8,6 +8,9 @@ from sqlalchemy import func, or_
 from ..extensions import db
 from ..models import CorrectiveAction, NCMR, PatrolMain, ReworkRequest, ShippingData
 
+REWORK_TERMINAL_STATUSES = {'已完成', '已結案', '已拒絕', '撤銷'}
+REWORK_ACTIONABLE_STATUSES = {'待審核', '已通過', '進行中'}
+
 
 def _month_expr(column: Any):
     """依資料庫方言產生 YYYY-MM 聚合欄位，讓測試 SQLite 與正式 PostgreSQL 都可執行。"""
@@ -20,11 +23,13 @@ def _month_expr(column: Any):
 
 def _month_counts(model, date_column, since, *filters) -> dict[str, int]:
     month = _month_expr(date_column).label('month')
+    active_filters = [model.deleted_at.is_(None)] if hasattr(model, 'deleted_at') else []
     rows = db.session.query(
         month,
         func.count().label('cnt'),
     ).filter(
         date_column >= since,
+        *active_filters,
         *filters,
     ).group_by(month).all()
     return {row.month: row.cnt for row in rows}
@@ -111,7 +116,7 @@ class DashboardService:
             })
 
         pending_reworks = ReworkRequest.active_query().filter(
-            ReworkRequest.status.in_(['待審核', '已通過', '進行中']),
+            ReworkRequest.status.in_(REWORK_ACTIONABLE_STATUSES),
         ).order_by(ReworkRequest.created_at.desc()).limit(5).all()
         for r in pending_reworks:
             todos.append({

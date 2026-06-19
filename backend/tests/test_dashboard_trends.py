@@ -1,6 +1,6 @@
 import datetime
 
-from backend.models import CorrectiveAction, Role, User, ShippingData
+from backend.models import CorrectiveAction, NCMR, ReworkRequest, Role, User, ShippingData
 from backend.utils import generate_token, hash_password
 
 
@@ -36,6 +36,25 @@ def test_dashboard_trends_runs_on_sqlite_test_database(client, db_session):
     assert data['shipping_ok_by_month'][-1]['count'] == 1
 
 
+def test_dashboard_trends_excludes_soft_deleted_ncmr(client, db_session):
+    """Dashboard 趨勢不應計入已軟刪除的 NCMR。"""
+    ncmr = NCMR(
+        ncmr_number='NCMR-DELETED-TREND',
+        date=datetime.date.today().replace(day=1),
+        status='待處理',
+    )
+    db_session.add(ncmr)
+    db_session.flush()
+    ncmr.soft_delete()
+    db_session.commit()
+
+    resp = client.get('/api/dashboard/trends', headers=_make_headers(db_session))
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['ncmr_by_month'][-1]['count'] == 0
+
+
 def test_dashboard_todos_uses_current_capa_problem_fields(client, db_session):
     """Dashboard 待辦應支援新版 CAPA D2 欄位，不可讀取已移除的 d2 屬性。"""
     db_session.add(CorrectiveAction(
@@ -51,3 +70,19 @@ def test_dashboard_todos_uses_current_capa_problem_fields(client, db_session):
     data = resp.get_json()
     capa_todo = next(item for item in data if item['type'] == 'capa')
     assert capa_todo['description'] == '外徑尺寸超差'
+
+
+def test_dashboard_stats_excludes_terminal_rework_statuses_from_pending(client, db_session):
+    """Dashboard 統計的重工 pending 不應包含已結案或撤銷的終止狀態。"""
+    db_session.add_all([
+        ReworkRequest(rework_number='RW-PENDING', status='進行中'),
+        ReworkRequest(rework_number='RW-CLOSED', status='已結案'),
+        ReworkRequest(rework_number='RW-CANCELLED', status='撤銷'),
+    ])
+    db_session.commit()
+
+    resp = client.get('/api/dashboard/stats?period=this_month', headers=_make_headers(db_session))
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['stats']['rework']['pending'] == 1

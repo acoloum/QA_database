@@ -3,7 +3,7 @@ from sqlalchemy import text, func, case, and_
 from datetime import datetime, timedelta, date
 from ..extensions import db
 from ..models import Inspector, Vendor, Machine, Operator, ShippingData, PatrolMain, NCMR, CorrectiveAction, ReworkRequest, AuditLog
-from ..services.dashboard_service import DashboardService
+from ..services.dashboard_service import DashboardService, REWORK_TERMINAL_STATUSES
 from ..utils import auth_required, require_permission
 
 admin_bp = Blueprint('admin', __name__)
@@ -36,7 +36,7 @@ def get_stats_for_period(start_date, end_date, compare_start=None, compare_end=N
 
     def count_pending_rework():
         return ReworkRequest.active_query().filter(
-            ReworkRequest.status.notin_(['已完成', '已拒絕'])
+            ReworkRequest.status.notin_(REWORK_TERMINAL_STATUSES)
         ).count()
 
     # ---------- ShippingData：一次查詢同時取得 current / previous ----------
