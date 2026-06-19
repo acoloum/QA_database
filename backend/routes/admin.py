@@ -4,6 +4,7 @@ from dateutil.relativedelta import relativedelta
 from datetime import datetime, timedelta, date
 from ..extensions import db
 from ..models import Inspector, Vendor, Machine, Operator, ShippingData, PatrolMain, NCMR, CorrectiveAction, ReworkRequest, AuditLog
+from ..services.dashboard_service import DashboardService
 from ..utils import auth_required, require_permission
 
 admin_bp = Blueprint('admin', __name__)
@@ -295,97 +296,7 @@ def get_dashboard_todos():
 def get_dashboard_trends():
     """P-1：從 36 次查詢降為 6 次 GROUP BY 聚合查詢"""
     try:
-        today = date.today()
-
-        # 安全的跨年月份計算（使用 relativedelta）
-        months = []
-        for i in range(5, -1, -1):
-            m = today.replace(day=1) - relativedelta(months=i)
-            months.append(m.strftime('%Y-%m'))
-
-        six_months_ago = today.replace(day=1) - relativedelta(months=5)
-
-        # --- NCMR 按月聚合（1 次查詢）---
-        ncmr_rows = db.session.query(
-            func.to_char(NCMR.date, 'YYYY-MM').label('month'),
-            func.count().label('cnt')
-        ).filter(
-            NCMR.date >= six_months_ago
-        ).group_by(
-            func.to_char(NCMR.date, 'YYYY-MM')
-        ).all()
-        ncmr_dict = {row.month: row.cnt for row in ncmr_rows}
-
-        # --- ShippingData OK 按月聚合（1 次查詢）---
-        shipping_ok_rows = db.session.query(
-            func.to_char(ShippingData.date, 'YYYY-MM').label('month'),
-            func.count().label('cnt')
-        ).filter(
-            ShippingData.date >= six_months_ago,
-            or_(ShippingData.is_ng == False, ShippingData.is_ng == None)
-        ).group_by(
-            func.to_char(ShippingData.date, 'YYYY-MM')
-        ).all()
-        shipping_ok_dict = {row.month: row.cnt for row in shipping_ok_rows}
-
-        # --- ShippingData NG 按月聚合（1 次查詢）---
-        shipping_ng_rows = db.session.query(
-            func.to_char(ShippingData.date, 'YYYY-MM').label('month'),
-            func.count().label('cnt')
-        ).filter(
-            ShippingData.date >= six_months_ago,
-            ShippingData.is_ng == True
-        ).group_by(
-            func.to_char(ShippingData.date, 'YYYY-MM')
-        ).all()
-        shipping_ng_dict = {row.month: row.cnt for row in shipping_ng_rows}
-
-        # --- PatrolMain OK 按月聚合（1 次查詢）---
-        patrol_ok_rows = db.session.query(
-            func.to_char(PatrolMain.date, 'YYYY-MM').label('month'),
-            func.count().label('cnt')
-        ).filter(
-            PatrolMain.date >= six_months_ago,
-            or_(PatrolMain.is_ng == False, PatrolMain.is_ng == None)
-        ).group_by(
-            func.to_char(PatrolMain.date, 'YYYY-MM')
-        ).all()
-        patrol_ok_dict = {row.month: row.cnt for row in patrol_ok_rows}
-
-        # --- PatrolMain NG 按月聚合（1 次查詢）---
-        patrol_ng_rows = db.session.query(
-            func.to_char(PatrolMain.date, 'YYYY-MM').label('month'),
-            func.count().label('cnt')
-        ).filter(
-            PatrolMain.date >= six_months_ago,
-            PatrolMain.is_ng == True
-        ).group_by(
-            func.to_char(PatrolMain.date, 'YYYY-MM')
-        ).all()
-        patrol_ng_dict = {row.month: row.cnt for row in patrol_ng_rows}
-
-        # --- ReworkRequest 按月聚合（1 次查詢）---
-        rework_rows = db.session.query(
-            func.to_char(func.cast(ReworkRequest.created_at, db.Date), 'YYYY-MM').label('month'),
-            func.count().label('cnt')
-        ).filter(
-            func.cast(ReworkRequest.created_at, db.Date) >= six_months_ago
-        ).group_by(
-            func.to_char(func.cast(ReworkRequest.created_at, db.Date), 'YYYY-MM')
-        ).all()
-        rework_dict = {row.month: row.cnt for row in rework_rows}
-
-        # 補零並組裝既有回應格式
-        trends = {
-            "ncmr_by_month": [{"month": m, "count": ncmr_dict.get(m, 0)} for m in months],
-            "shipping_ok_by_month": [{"month": m, "count": shipping_ok_dict.get(m, 0)} for m in months],
-            "shipping_ng_by_month": [{"month": m, "count": shipping_ng_dict.get(m, 0)} for m in months],
-            "patrol_ok_by_month": [{"month": m, "count": patrol_ok_dict.get(m, 0)} for m in months],
-            "patrol_ng_by_month": [{"month": m, "count": patrol_ng_dict.get(m, 0)} for m in months],
-            "rework_by_month": [{"month": m, "count": rework_dict.get(m, 0)} for m in months],
-        }
-
-        return jsonify(trends)
+        return jsonify(DashboardService.get_trends())
     except Exception as e:
         current_app.logger.exception("載入儀表板趨勢時發生錯誤: %s", str(e))
         return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
