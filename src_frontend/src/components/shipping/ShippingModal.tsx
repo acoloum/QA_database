@@ -18,6 +18,7 @@ import {
 import {
     buildShippingPayload,
     emptyShippingGroup,
+    getSortedShippingGroupKeys,
     initEmptyShippingGroups,
     validateShippingForm,
 } from './shippingFormPayload';
@@ -72,7 +73,6 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     const [material, setMaterial] = useState('');
     const [spec, setSpec] = useState('');
     const [orderNo, setOrderNo] = useState('');
-    const [groupCount, setGroupCount] = useState(DEFAULT_GROUP_COUNT);
 
     // 新格式量測資料：Record<組號字串, Record<項目名稱, Partial<ShippingMeasurementItem>>>
     const [groups, setGroups] = useState<Record<string, GroupMeas>>({});
@@ -104,12 +104,6 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         return items;
     }, [isAntai]);
 
-    // 以組號字串陣列（依 groupCount 決定）
-    const groupKeys = useMemo(
-        () => Array.from({ length: groupCount }, (_, i) => String(i + 1)),
-        [groupCount]
-    );
-
     // 預先計算 tab index 用的偏移量（垂直導覽）
     const { ITEM_OFFSETS, TOTAL_INPUTS_PER_GROUP } = useMemo(() => {
         const offsets = ITEMS.reduce((acc, _, index) => {
@@ -129,7 +123,6 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         setMaterial('');
         setSpec('');
         setOrderNo('');
-        setGroupCount(DEFAULT_GROUP_COUNT);
         setGroups(initEmptyShippingGroups(DEFAULT_GROUP_COUNT, BASE_ITEMS));
         setTolerance(null);
         setViolations({});
@@ -158,7 +151,6 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
 
                 // 讀取組數
                 const savedGroupCount = detailData.組數 ?? detailData.group_count ?? DEFAULT_GROUP_COUNT;
-                setGroupCount(savedGroupCount);
 
                 // 載入量測資料：一律使用 measurements 巢狀資料。
                 // 先為 1..組數 建立空組以確保表格欄位顯示，再覆蓋實際量測值。
@@ -181,7 +173,6 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         let cancelled = false;
         queueMicrotask(() => {
             if (cancelled || editId) return;
-            setGroupCount(DEFAULT_GROUP_COUNT);
             setGroups(initEmptyShippingGroups(DEFAULT_GROUP_COUNT, ITEMS));
         });
         return () => { cancelled = true; };
@@ -242,7 +233,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
 
         const newViolations = calculateShippingViolations({
             items: ITEMS,
-            groupKeys,
+            groupKeys: getSortedShippingGroupKeys(groups),
             groups,
             tolerance,
             spec,
@@ -252,7 +243,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             if (!cancelled) setViolations(newViolations);
         });
         return () => { cancelled = true; };
-    }, [groups, tolerance, spec, groupKeys, ITEMS]);
+    }, [groups, tolerance, spec, ITEMS]);
 
     /** 更新特定組、特定項目的量測值 */
     const updateMeasValue = (gKey: string, itemKey: string, field: keyof ShippingMeasurementItem, value: string) => {
@@ -281,7 +272,6 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     const addGroup = () => {
         const nextNum = String(Math.max(...Object.keys(groups).map(Number)) + 1);
         setGroups(prev => ({ ...prev, [nextNum]: emptyShippingGroup(ITEMS) }));
-        setGroupCount(prev => prev + 1);
     };
 
     /** 移除指定量測組 */
@@ -292,7 +282,6 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             delete next[gKey];
             return next;
         });
-        setGroupCount(prev => Math.max(1, prev - 1));
     };
 
     const handleSubmit = async () => {
@@ -355,7 +344,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     const isSaving = createMutation.isPending || updateMutation.isPending;
 
     // 量測表格的組鍵陣列（依 groups 鍵排序，確保渲染順序穩定）
-    const sortedGroupKeys = Object.keys(groups).sort((a, b) => Number(a) - Number(b));
+    const sortedGroupKeys = getSortedShippingGroupKeys(groups);
 
     return (
         <Modal show={show} onHide={handleClose} size="xl" dialogClassName="modal-shipping-wide">

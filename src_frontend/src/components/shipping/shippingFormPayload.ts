@@ -12,6 +12,9 @@ export const initEmptyShippingGroups = (
     Array.from({ length: count }, (_, index) => [String(index + 1), emptyShippingGroup(items)]),
   );
 
+export const getSortedShippingGroupKeys = (groups: Record<string, ShippingGroupMeasurements>) =>
+  Object.keys(groups).sort((a, b) => Number(a) - Number(b));
+
 interface ShippingFormValues {
   date: string;
   inspectorName: string;

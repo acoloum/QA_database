@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildShippingPayload,
+  getSortedShippingGroupKeys,
   initEmptyShippingGroups,
   validateShippingForm,
 } from './shippingFormPayload';
@@ -19,6 +20,15 @@ describe('shippingFormPayload', () => {
     expect(Object.keys(groups)).toEqual(['1', '2']);
     expect(groups['1'].外徑).toEqual({ is_ng: false });
     expect(groups['2'].硬度).toEqual({ is_ng: false });
+  });
+
+  it('以實際 groups key 排序，避免刪除中間組後漏判剩餘組', () => {
+    const keys = getSortedShippingGroupKeys({
+      '1': { 外徑: { is_ng: false } },
+      '3': { 外徑: { value_min: '4.8', is_ng: true } },
+    });
+
+    expect(keys).toEqual(['1', '3']);
   });
 
   it('驗證必填欄位與量測數字格式', () => {

@@ -21,6 +21,13 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { CSSProperties } from 'react';
+import {
+    buildTolerancePayload,
+    createToleranceDetailRow,
+    mapToleranceDetailToRow,
+    validateToleranceRows,
+    type ToleranceDetailRow,
+} from './toleranceFormUtils';
 
 interface ToleranceModalProps {
     show: boolean;
@@ -30,30 +37,18 @@ interface ToleranceModalProps {
     vendors: Vendor[];
 }
 
-interface DetailRow {
-    id: string;
-    item: string;
-    position: string;
-    size_min: string;
-    size_max: string;
-    tol_min: string;
-    tol_max: string;
-    std: string;
-    unit: string;
-    remark: string;
-}
-
 // 拖曳排序表格列元件
 interface SortableRowProps {
     id: string;
-    detail: DetailRow;
+    detail: ToleranceDetailRow;
     index: number;
-    onChange: (index: number, field: keyof DetailRow, value: string) => void;
+    onChange: (index: number, field: keyof ToleranceDetailRow, value: string) => void;
     onRemove: (index: number) => void;
     canDelete: boolean;
+    fieldErrors: Record<string, string>;
 }
 
-const SortableRow = ({ id, detail, index, onChange, onRemove, canDelete }: SortableRowProps) => {
+const SortableRow = ({ id, detail, index, onChange, onRemove, canDelete, fieldErrors }: SortableRowProps) => {
     const {
         attributes,
         listeners,
@@ -77,11 +72,11 @@ const SortableRow = ({ id, detail, index, onChange, onRemove, canDelete }: Sorta
             </td>
             <td><Form.Control size="sm" value={detail.item} onChange={e => onChange(index, 'item', e.target.value)} placeholder="項目" /></td>
             <td><Form.Control size="sm" value={detail.position} onChange={e => onChange(index, 'position', e.target.value)} placeholder="Pos" /></td>
-            <td><Form.Control size="sm" type="number" step="0.0001" value={detail.size_min} onChange={e => onChange(index, 'size_min', e.target.value)} /></td>
-            <td><Form.Control size="sm" type="number" step="0.0001" value={detail.size_max} onChange={e => onChange(index, 'size_max', e.target.value)} /></td>
-            <td><Form.Control size="sm" type="number" step="0.0001" value={detail.tol_min} onChange={e => onChange(index, 'tol_min', e.target.value)} /></td>
-            <td><Form.Control size="sm" type="number" step="0.0001" value={detail.tol_max} onChange={e => onChange(index, 'tol_max', e.target.value)} /></td>
-            <td><Form.Control size="sm" type="number" step="0.0001" value={detail.std} onChange={e => onChange(index, 'std', e.target.value)} /></td>
+            <td><Form.Control size="sm" type="text" inputMode="decimal" value={detail.size_min} isInvalid={!!fieldErrors[`${id}:size_min`]} onChange={e => onChange(index, 'size_min', e.target.value)} /></td>
+            <td><Form.Control size="sm" type="text" inputMode="decimal" value={detail.size_max} isInvalid={!!fieldErrors[`${id}:size_max`]} onChange={e => onChange(index, 'size_max', e.target.value)} /></td>
+            <td><Form.Control size="sm" type="text" inputMode="decimal" value={detail.tol_min} isInvalid={!!fieldErrors[`${id}:tol_min`]} onChange={e => onChange(index, 'tol_min', e.target.value)} /></td>
+            <td><Form.Control size="sm" type="text" inputMode="decimal" value={detail.tol_max} isInvalid={!!fieldErrors[`${id}:tol_max`]} onChange={e => onChange(index, 'tol_max', e.target.value)} /></td>
+            <td><Form.Control size="sm" type="text" inputMode="decimal" value={detail.std} isInvalid={!!fieldErrors[`${id}:std`]} onChange={e => onChange(index, 'std', e.target.value)} /></td>
             <td><Form.Control size="sm" value={detail.unit} onChange={e => onChange(index, 'unit', e.target.value)} /></td>
             <td><Form.Control size="sm" value={detail.remark} onChange={e => onChange(index, 'remark', e.target.value)} /></td>
             <td className="text-center">
@@ -97,15 +92,13 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
     const [spec, setSpec] = useState('');
     const [vendorId, setVendorId] = useState('');
     const [remark, setRemark] = useState('');
-    const [details, setDetails] = useState<DetailRow[]>([]);
+    const [details, setDetails] = useState<ToleranceDetailRow[]>([]);
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
     // 產生唯一 ID 用於拖曳排序
     const generateId = () => Math.random().toString(36).substring(2, 11);
 
-    const createEmptyRow = useCallback((): DetailRow => ({
-        id: generateId(),
-        item: '', position: '', size_min: '', size_max: '', tol_min: '', tol_max: '', std: '', unit: 'mm', remark: ''
-    }), []);
+    const createEmptyRow = useCallback((): ToleranceDetailRow => createToleranceDetailRow(generateId()), []);
 
     const resetForm = useCallback(() => {
         setDate(new Date().toISOString().split('T')[0]);
@@ -114,6 +107,7 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
         setVendorId('');
         setRemark('');
         setDetails([createEmptyRow()]);
+        setFieldErrors({});
     }, [createEmptyRow]);
 
     // 設定拖曳感測器
@@ -161,21 +155,10 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
                         setSpec(main.規格 || '');
                         setVendorId(main.廠商ID?.toString() || '');
                         setRemark(main.備註 || '');
+                        setFieldErrors({});
 
                         if (dList && dList.length > 0) {
-                            // 將 ToleranceDetailItem 映射為 DetailRow（表單使用的 string 格式）
-                            setDetails(dList.map((d, idx: number) => ({
-                                id: String(idx),
-                                item: d.測量項目 ?? '',
-                                position: d.測量位置 ?? '',
-                                size_min: d.尺寸下限 != null ? String(d.尺寸下限) : '',
-                                size_max: d.尺寸上限 != null ? String(d.尺寸上限) : '',
-                                tol_min: d.公差下限 != null ? String(d.公差下限) : '',
-                                tol_max: d.公差上限 != null ? String(d.公差上限) : '',
-                                std: d.標準值 != null ? String(d.標準值) : '',
-                                unit: d.單位 ?? 'mm',
-                                remark: d.備註 ?? ''
-                            })));
+                            setDetails(dList.map((d, idx: number) => mapToleranceDetailToRow(d, String(idx))));
                         } else {
                             setDetails([createEmptyRow()]);
                         }
@@ -192,10 +175,17 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
         };
     }, [show, editId, detailData, createEmptyRow, resetForm]);
 
-    const handleDetailChange = (index: number, field: keyof DetailRow, value: string) => {
+    const handleDetailChange = (index: number, field: keyof ToleranceDetailRow, value: string) => {
         const newDetails = [...details];
         newDetails[index][field] = value;
         setDetails(newDetails);
+        setFieldErrors(prev => {
+            const errorKey = `${newDetails[index].id}:${field}`;
+            if (!prev[errorKey]) return prev;
+            const next = { ...prev };
+            delete next[errorKey];
+            return next;
+        });
     };
 
     const addRow = () => {
@@ -214,28 +204,14 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
             return;
         }
 
-        const payloadDetails = details
-            .filter(d => d.item) // Filter out empty rows
-            .map(d => ({
-                測量項目: d.item,
-                測量位置: d.position,
-                尺寸下限: d.size_min === '' ? null : parseFloat(d.size_min),
-                尺寸上限: d.size_max === '' ? null : parseFloat(d.size_max),
-                公差下限: d.tol_min === '' ? null : parseFloat(d.tol_min),
-                公差上限: d.tol_max === '' ? null : parseFloat(d.tol_max),
-                標準值: d.std === '' ? null : parseFloat(d.std),
-                單位: d.unit,
-                備註: d.remark
-            }));
+        const nextFieldErrors = validateToleranceRows(details);
+        setFieldErrors(nextFieldErrors);
+        if (Object.keys(nextFieldErrors).length > 0) {
+            toast.error(Object.values(nextFieldErrors)[0]);
+            return;
+        }
 
-        const payload = {
-            建立日期: date,
-            材質: material,
-            規格: spec,
-            廠商ID: vendorId ? parseInt(vendorId) : null,
-            備註: remark,
-            details: payloadDetails
-        };
+        const payload = buildTolerancePayload({ date, material, spec, vendorId, remark, details });
 
         if (editId) {
             // ToleranceUpdateInput 需要 識別碼 欄位，這裡加入以符合型別要求
@@ -332,6 +308,7 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
                                                 onChange={handleDetailChange}
                                                 onRemove={removeRow}
                                                 canDelete={details.length > 1}
+                                                fieldErrors={fieldErrors}
                                             />
                                         ))}
                                     </SortableContext>
