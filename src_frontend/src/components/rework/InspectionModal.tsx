@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
+import toast from 'react-hot-toast';
 import api from '../../services/api';
+import { getReworkErrorMessage } from './reworkError';
 import { useInspectors } from '../../hooks/useInspectors';
 
 interface InspectionModalProps {
@@ -38,7 +40,7 @@ const InspectionModal = ({ show, handleClose, onSuccess, reworkNumber }: Inspect
 
     const handleSubmit = async () => {
         if (!inspector || !inspectionItem) {
-            alert('請填寫檢驗人員和檢驗項目');
+            toast.error('請填寫檢驗人員和檢驗項目');
             return;
         }
 
@@ -55,13 +57,11 @@ const InspectionModal = ({ show, handleClose, onSuccess, reworkNumber }: Inspect
             };
 
             await api.post('/rework/inspect', payload);
-            alert('品檢記錄已新增！');
+            toast.success('品檢記錄已新增');
             onSuccess();
             handleClose();
         } catch (error: unknown) {
-            const err = error as { response?: { data?: { error?: string } } };
-            console.error(error);
-            alert(err.response?.data?.error || '新增失敗');
+            toast.error(getReworkErrorMessage(error, '新增失敗'));
         } finally {
             setLoading(false);
         }

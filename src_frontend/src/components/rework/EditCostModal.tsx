@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
+import toast from 'react-hot-toast';
 import api from '../../services/api';
+import { getReworkErrorMessage } from './reworkError';
 import type { ReworkCostDetail } from '../../types';
 import { useInspectors } from '../../hooks/useInspectors';
 
@@ -63,13 +65,11 @@ const EditCostModal = ({ show, handleClose, onSuccess, cost }: EditCostModalProp
             if (remark !== undefined) payload.備註 = remark;
 
             await api.put(`/rework/cost/${cost.識別碼}`, payload);
-            alert('成本記錄已更新！');
+            toast.success('成本記錄已更新');
             onSuccess();
             handleClose();
         } catch (error: unknown) {
-            const err = error as { response?: { data?: { error?: string } } };
-            console.error(error);
-            alert(err.response?.data?.error || '更新失敗');
+            toast.error(getReworkErrorMessage(error, '更新失敗'));
         } finally {
             setLoading(false);
         }

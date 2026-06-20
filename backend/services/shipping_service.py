@@ -7,7 +7,6 @@ from collections import defaultdict
 from typing import List, Dict, Any, Optional, Union
 from sqlalchemy import or_, text
 from sqlalchemy.orm import contains_eager, joinedload, selectinload
-from scipy import stats as scipy_stats
 from ..extensions import db
 from ..models import ShippingData, ShippingMeasurement, Inspector, Vendor, VendorToleranceMain, VendorToleranceDetail, SPCCache
 from ..utils import (
@@ -19,7 +18,12 @@ from ..utils import (
     parse_spec_nominals
 )
 
-from .spc_constants import SPC_CONSTANTS
+from .spc_analysis_service import (
+    calculate_control_limits,
+    calculate_cpk_trend,
+    calculate_distribution_stats,
+    calculate_process_capability,
+)
 
 
 class ShippingService:
@@ -346,166 +350,19 @@ class ShippingService:
                          "original_idx": original_idx
                     })
 
-            # Control Limit Calculation with dynamic subgroup-size constants
-            BASELINE_COUNT = 25
-            if len(avgs) >= 5:
-                baseline_count = min(BASELINE_COUNT, len(avgs))
-                base_avgs = avgs[:baseline_count]
-                base_ranges = ranges[:baseline_count]
-                base_ns = subgroup_sizes[:baseline_count]
-
-                # Use average subgroup size to look up constants
-                avg_n = round(float(np.mean(base_ns)))
-                avg_n = max(2, min(10, avg_n))  # Clamp to table range
-                A2, D3, D4, d2 = SPC_CONSTANTS[avg_n]
-
-                x_cl = float(np.mean(base_avgs))
-                r_cl = float(np.mean(base_ranges))
-                x_ucl = x_cl + A2 * r_cl
-                x_lcl = x_cl - A2 * r_cl
-                r_ucl = D4 * r_cl
-                r_lcl = D3 * r_cl
-                x_lcl = max(x_lcl, 0)
-            else:
-                x_cl = x_ucl = x_lcl = r_cl = r_ucl = r_lcl = 0.0
-                d2 = 2.326
-                avg_n = 5
-                baseline_count = 0
-
-            # --- Process Capability Indices (Cp/Cpk/Pp/Ppk) ---
-            process_capability = {"available": False, "reason": "no_tolerance"}
+            # --- SPC 統計計算 ---
+            control_limits = calculate_control_limits(avgs, ranges, subgroup_sizes)
             usl = tolerance_limits.get("USL")
             lsl = tolerance_limits.get("LSL")
-
-            if usl is not None and lsl is not None and len(avgs) < 5:
-                process_capability["reason"] = "insufficient_data"
-                process_capability["valid_count"] = len(avgs)
-
-            # 單側下限規格（如硬度）：計算 CPL / PPL
-            if tolerance_limits.get("one_sided") == "lower" and lsl is not None and len(avgs) >= 5:
-                x_bar = float(np.mean(avgs))
-                sigma_within = r_cl / d2 if r_cl > 0 else 0
-                sigma_overall = float(np.std(all_values, ddof=1)) if len(all_values) >= 2 else 0
-                process_capability["available"] = True
-                process_capability["one_sided"] = "lower"
-                process_capability["lsl"] = float(lsl)
-                process_capability["usl"] = None
-                if sigma_within > 0:
-                    cpl = (x_bar - float(lsl)) / (3 * sigma_within)
-                    process_capability.update({"cp": None, "cpk": round(cpl, 3), "cpu": None, "cpl": round(cpl, 3)})
-                else:
-                    process_capability.update({"cp": None, "cpk": None, "cpu": None, "cpl": None})
-                if sigma_overall > 0:
-                    ppl = (x_bar - float(lsl)) / (3 * sigma_overall)
-                    process_capability.update({"pp": None, "ppk": round(ppl, 3), "ppu": None, "ppl": round(ppl, 3)})
-                else:
-                    process_capability.update({"pp": None, "ppk": None, "ppu": None, "ppl": None})
-                process_capability["sigma_within"] = round(sigma_within, 6)
-                process_capability["sigma_overall"] = round(sigma_overall, 6)
-
-            if usl is not None and lsl is not None and len(avgs) >= 5:
-                x_bar = float(np.mean(avgs))
-                # Within-group sigma: estimated from R-bar / d2 (dynamic)
-                sigma_within = r_cl / d2 if r_cl > 0 else 0
-
-                # Overall sigma: standard deviation of all individual values
-                if len(all_values) >= 2:
-                    sigma_overall = float(np.std(all_values, ddof=1))
-                else:
-                    sigma_overall = 0
-
-                process_capability["available"] = True
-                process_capability["usl"] = float(usl)
-                process_capability["lsl"] = float(lsl)
-
-                if sigma_within > 0:
-                    cp = (float(usl) - float(lsl)) / (6 * sigma_within)
-                    cpu = (float(usl) - x_bar) / (3 * sigma_within)
-                    cpl = (x_bar - float(lsl)) / (3 * sigma_within)
-                    cpk = min(cpu, cpl)
-                    process_capability.update({"cp": round(cp, 3), "cpk": round(cpk, 3),
-                                               "cpu": round(cpu, 3), "cpl": round(cpl, 3)})
-                else:
-                    process_capability.update({"cp": None, "cpk": None, "cpu": None, "cpl": None})
-
-                if sigma_overall > 0:
-                    pp = (float(usl) - float(lsl)) / (6 * sigma_overall)
-                    ppu = (float(usl) - x_bar) / (3 * sigma_overall)
-                    ppl = (x_bar - float(lsl)) / (3 * sigma_overall)
-                    ppk = min(ppu, ppl)
-                    process_capability.update({"pp": round(pp, 3), "ppk": round(ppk, 3),
-                                               "ppu": round(ppu, 3), "ppl": round(ppl, 3)})
-                else:
-                    process_capability.update({"pp": None, "ppk": None, "ppu": None, "ppl": None})
-
-                process_capability["sigma_within"] = round(sigma_within, 6)
-                process_capability["sigma_overall"] = round(sigma_overall, 6)
-
-                # --- PPM estimation (normal distribution assumption) ---
-                if sigma_overall > 0:
-                    z_upper = (float(usl) - x_bar) / sigma_overall
-                    z_lower = (x_bar - float(lsl)) / sigma_overall
-                    ppm_upper = round(float(scipy_stats.norm.sf(z_upper) * 1_000_000), 1)
-                    ppm_lower = round(float(scipy_stats.norm.sf(z_lower) * 1_000_000), 1)
-                    ppm_total = round(ppm_upper + ppm_lower, 1)
-                    process_capability["ppm"] = {"upper": ppm_upper, "lower": ppm_lower, "total": ppm_total}
-                else:
-                    process_capability["ppm"] = {"upper": 0, "lower": 0, "total": 0}
-
-            # --- Skewness & Kurtosis ---
-            distribution_stats = {}
-            if len(all_values) >= 4:
-                arr = np.array(all_values, dtype=float)
-                distribution_stats["skewness"] = round(float(scipy_stats.skew(arr)), 3)
-                distribution_stats["kurtosis"] = round(float(scipy_stats.kurtosis(arr)), 3)
-                # Normality assessment
-                sk = abs(distribution_stats["skewness"])
-                ku = abs(distribution_stats["kurtosis"])
-                if sk < 0.5 and ku < 1.0:
-                    distribution_stats["normality"] = "good"
-                    distribution_stats["normality_label"] = "分佈接近常態"
-                elif sk < 1.0 and ku < 2.0:
-                    distribution_stats["normality"] = "moderate"
-                    distribution_stats["normality_label"] = "分佈略偏，Cpk 僅供參考"
-                else:
-                    distribution_stats["normality"] = "poor"
-                    distribution_stats["normality_label"] = "分佈明顯非常態，Cpk 可能不準確"
-
-            # --- Monthly Cpk Trend ---
-            cpk_trend = []
-            if usl is not None and lsl is not None and len(avgs) >= 5:
-                # Group data by month
-                monthly_data = defaultdict(list)
-                for i, date_str in enumerate(dates_valid):
-                    if date_str:
-                        month_key = date_str[:7]  # 'YYYY-MM'
-                        monthly_data[month_key].append(all_values[i] if i < len(all_values) else avgs[i])
-
-                # Collect individual values by month more accurately
-                monthly_values = defaultdict(list)
-                val_idx = 0
-                for i in range(len(avgs)):
-                    month_key = dates_valid[i][:7] if dates_valid[i] else 'unknown'
-                    n_vals = subgroup_sizes[i] if i < len(subgroup_sizes) else 5
-                    if is_minmax:
-                        n_raw = n_vals * 2  # Each group has min+max
-                    else:
-                        n_raw = n_vals
-                    for j in range(n_raw):
-                        if val_idx < len(all_values):
-                            monthly_values[month_key].append(all_values[val_idx])
-                            val_idx += 1
-
-                for month_key in sorted(monthly_values.keys()):
-                    vals = monthly_values[month_key]
-                    if len(vals) >= 5:
-                        m_mean = float(np.mean(vals))
-                        m_std = float(np.std(vals, ddof=1))
-                        if m_std > 0:
-                            m_cpu = (float(usl) - m_mean) / (3 * m_std)
-                            m_cpl = (m_mean - float(lsl)) / (3 * m_std)
-                            m_cpk = round(min(m_cpu, m_cpl), 3)
-                            cpk_trend.append({"month": month_key, "cpk": m_cpk, "count": len(vals)})
+            process_capability = calculate_process_capability(
+                avgs,
+                all_values,
+                control_limits["r_cl"],
+                control_limits["d2"],
+                tolerance_limits,
+            )
+            distribution_stats = calculate_distribution_stats(all_values)
+            cpk_trend = calculate_cpk_trend(all_values, dates_valid, subgroup_sizes, usl, lsl, is_minmax=is_minmax)
 
             _result = {
                 "labels": labels_valid,
@@ -515,14 +372,14 @@ class ShippingService:
                 "ranges": ranges,
                 "subgroup_sizes": subgroup_sizes,
                 "all_values": [round(v, 4) for v in all_values],
-                "x_cl": x_cl,
-                "x_ucl": x_ucl,
-                "x_lcl": x_lcl,
-                "r_cl": r_cl,
-                "r_ucl": r_ucl,
-                "r_lcl": r_lcl,
-                "avg_subgroup_size": avg_n if len(avgs) >= 5 else 5,
-                "baseline_count": baseline_count,
+                "x_cl": control_limits["x_cl"],
+                "x_ucl": control_limits["x_ucl"],
+                "x_lcl": control_limits["x_lcl"],
+                "r_cl": control_limits["r_cl"],
+                "r_ucl": control_limits["r_ucl"],
+                "r_lcl": control_limits["r_lcl"],
+                "avg_subgroup_size": control_limits["avg_n"] if len(avgs) >= 5 else 5,
+                "baseline_count": control_limits["baseline_count"],
                 "insufficient_data": insufficient_data,
                 "total_rows": len(rows),
                 "valid_count": len(avgs),

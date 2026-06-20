@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Modal, Button, Form } from 'react-bootstrap'; // We use react-bootstrap components
+import { Modal, Button, Form } from 'react-bootstrap'; // 使用 react-bootstrap 元件
+import toast from 'react-hot-toast';
 import api from '../../services/api';
+import { getReworkErrorMessage } from './reworkError';
 import { useInspectors } from '../../hooks/useInspectors';
 
 interface ApplyModalProps {
@@ -14,7 +16,7 @@ interface ApplyModalProps {
 const ApplyModal = ({ show, handleClose, onSuccess, initialNcmrId, initialNcmrNo }: ApplyModalProps) => {
     const { data: inspectors = [] } = useInspectors({ enabled: show });
 
-    // Form States
+    // 表單狀態
     const [ncmrId, setNcmrId] = useState('');
     const [ncmrInfo, setNcmrInfo] = useState('');
     const [applicant, setApplicant] = useState('');
@@ -49,7 +51,7 @@ const ApplyModal = ({ show, handleClose, onSuccess, initialNcmrId, initialNcmrNo
     const handleNcmrChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
         setNcmrId(val);
-        // Basic simulation of NCMR lookup logic from rework.html
+        // 保留舊版 rework.html 的 NCMR 查詢提示邏輯
         if (val) {
             setNcmrInfo(`從 NCMR #${val} 自動帶入 (模擬)`);
         } else {
@@ -72,10 +74,10 @@ const ApplyModal = ({ show, handleClose, onSuccess, initialNcmrId, initialNcmrNo
             };
 
             await api.post('/rework/apply', payload);
-            alert('申請提交成功！');
+            toast.success('申請提交成功');
             onSuccess();
             handleClose();
-            // Reset form
+            // 重設表單
             setNcmrId('');
             setApplicant('');
             setDepartment('');
@@ -86,9 +88,7 @@ const ApplyModal = ({ show, handleClose, onSuccess, initialNcmrId, initialNcmrNo
             setReason('');
             setExpectedDate('');
         } catch (error: unknown) {
-            const err = error as { response?: { data?: { error?: string } } };
-            console.error(error);
-            alert(err.response?.data?.error || '申請失敗');
+            toast.error(getReworkErrorMessage(error, '申請失敗'));
         }
     };
 

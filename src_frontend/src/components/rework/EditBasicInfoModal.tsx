@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
+import toast from 'react-hot-toast';
 import api from '../../services/api';
+import { getReworkErrorMessage } from './reworkError';
 import type { ReworkApplication } from '../../types';
 import { useInspectors } from '../../hooks/useInspectors';
 
@@ -71,13 +73,11 @@ const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditB
       if (expectedDate !== undefined) payload.預計完成日期 = expectedDate;
 
       await api.put(`/rework/application/${application.識別碼}`, payload);
-      alert('基本資訊已更新！');
+      toast.success('基本資訊已更新');
       onSuccess();
       handleClose();
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { error?: string } } };
-      console.error(error);
-      alert(err.response?.data?.error || '更新失敗');
+      toast.error(getReworkErrorMessage(error, '更新失敗'));
     } finally {
       setLoading(false);
     }

@@ -3,14 +3,18 @@ import pandas as pd
 import numpy as np
 from io import BytesIO
 from datetime import datetime
-from collections import defaultdict
 from typing import List, Dict, Any, Optional, Union
 from sqlalchemy import func, text
 from sqlalchemy.orm import selectinload
-from scipy import stats as scipy_stats
 from ..extensions import db
 from ..models import PatrolMain, PatrolDetail, Machine, Operator, Inspector, Vendor
 from .extrusion_tolerance_service import ExtrusionToleranceService
+from .spc_analysis_service import (
+    calculate_control_limits,
+    calculate_cpk_trend,
+    calculate_distribution_stats,
+    calculate_process_capability,
+)
 from ..utils import (
     bounded_int,
     format_value,
@@ -18,21 +22,6 @@ from ..utils import (
     validate_patrol_data,
     handle_db_error
 )
-
-# SPC 常數查表 (依子群體大小 n)
-# Keys: n, Values: (A2, D3, D4, d2)
-SPC_CONSTANTS = {
-    2: (1.880, 0.000, 3.267, 1.128),
-    3: (1.023, 0.000, 2.574, 1.693),
-    4: (0.729, 0.000, 2.282, 2.059),
-    5: (0.577, 0.000, 2.114, 2.326),
-    6: (0.483, 0.000, 2.004, 2.534),
-    7: (0.419, 0.076, 1.924, 2.704),
-    8: (0.373, 0.136, 1.864, 2.847),
-    9: (0.337, 0.184, 1.816, 2.970),
-    10: (0.308, 0.223, 1.777, 3.078),
-}
-
 
 def _remap_sheet_ref(formula: str, name_map: dict) -> str:
     """將圖表公式中的工作表參考（如 '管制圖數據'!A1:A10）替換為新名稱"""
@@ -208,128 +197,20 @@ class PatrolService:
             ids_valid.append(str(group_ids[k]))
             dates_valid.append(group_dates[k])
 
-        # --- 4. 控制限計算（動態 SPC 常數）---
-        BASELINE_COUNT = 25
-        if len(avgs) >= 5:
-            baseline_count = min(BASELINE_COUNT, len(avgs))
-            base_avgs = avgs[:baseline_count]
-            base_ranges = ranges_list[:baseline_count]
-            base_ns = subgroup_sizes[:baseline_count]
-
-            avg_n = round(float(np.mean(base_ns)))
-            avg_n = max(2, min(10, avg_n))
-            A2, D3, D4, d2 = SPC_CONSTANTS[avg_n]
-
-            x_cl = float(np.mean(base_avgs))
-            r_cl = float(np.mean(base_ranges))
-            x_ucl = x_cl + A2 * r_cl
-            x_lcl = x_cl - A2 * r_cl
-            r_ucl = D4 * r_cl
-            r_lcl = D3 * r_cl
-            x_lcl = max(x_lcl, 0)
-        else:
-            x_cl = x_ucl = x_lcl = r_cl = r_ucl = r_lcl = 0.0
-            d2 = 2.326
-            avg_n = 5
-            baseline_count = 0
-
-        # --- 5. 製程能力指標 (Cp/Cpk/Pp/Ppk) ---
-        process_capability = {"available": False}
+        # --- 4. SPC 統計計算 ---
+        control_limits = calculate_control_limits(avgs, ranges_list, subgroup_sizes)
         usl = tolerance_limits.get("USL")
         lsl = tolerance_limits.get("LSL")
-
-        if usl is not None and lsl is not None and len(avgs) >= 5:
-            x_bar = float(np.mean(avgs))
-            sigma_within = r_cl / d2 if r_cl > 0 else 0
-
-            if len(all_values) >= 2:
-                sigma_overall = float(np.std(all_values, ddof=1))
-            else:
-                sigma_overall = 0
-
-            process_capability["available"] = True
-            process_capability["usl"] = float(usl)
-            process_capability["lsl"] = float(lsl)
-
-            if sigma_within > 0:
-                cp = (float(usl) - float(lsl)) / (6 * sigma_within)
-                cpu = (float(usl) - x_bar) / (3 * sigma_within)
-                cpl = (x_bar - float(lsl)) / (3 * sigma_within)
-                cpk = min(cpu, cpl)
-                process_capability.update({
-                    "cp": round(cp, 3), "cpk": round(cpk, 3),
-                    "cpu": round(cpu, 3), "cpl": round(cpl, 3)
-                })
-            else:
-                process_capability.update({"cp": None, "cpk": None, "cpu": None, "cpl": None})
-
-            if sigma_overall > 0:
-                pp = (float(usl) - float(lsl)) / (6 * sigma_overall)
-                ppu = (float(usl) - x_bar) / (3 * sigma_overall)
-                ppl = (x_bar - float(lsl)) / (3 * sigma_overall)
-                ppk = min(ppu, ppl)
-                process_capability.update({
-                    "pp": round(pp, 3), "ppk": round(ppk, 3),
-                    "ppu": round(ppu, 3), "ppl": round(ppl, 3)
-                })
-            else:
-                process_capability.update({"pp": None, "ppk": None, "ppu": None, "ppl": None})
-
-            process_capability["sigma_within"] = round(sigma_within, 6)
-            process_capability["sigma_overall"] = round(sigma_overall, 6)
-
-            # PPM 估算
-            if sigma_overall > 0:
-                z_upper = (float(usl) - x_bar) / sigma_overall
-                z_lower = (x_bar - float(lsl)) / sigma_overall
-                ppm_upper = round(float(scipy_stats.norm.sf(z_upper) * 1_000_000), 1)
-                ppm_lower = round(float(scipy_stats.norm.sf(z_lower) * 1_000_000), 1)
-                ppm_total = round(ppm_upper + ppm_lower, 1)
-                process_capability["ppm"] = {"upper": ppm_upper, "lower": ppm_lower, "total": ppm_total}
-            else:
-                process_capability["ppm"] = {"upper": 0, "lower": 0, "total": 0}
-
-        # --- 6. 偏態 / 峰態 ---
-        distribution_stats = {}
-        if len(all_values) >= 4:
-            arr = np.array(all_values, dtype=float)
-            distribution_stats["skewness"] = round(float(scipy_stats.skew(arr)), 3)
-            distribution_stats["kurtosis"] = round(float(scipy_stats.kurtosis(arr)), 3)
-            sk = abs(distribution_stats["skewness"])
-            ku = abs(distribution_stats["kurtosis"])
-            if sk < 0.5 and ku < 1.0:
-                distribution_stats["normality"] = "good"
-                distribution_stats["normality_label"] = "分佈接近常態"
-            elif sk < 1.0 and ku < 2.0:
-                distribution_stats["normality"] = "moderate"
-                distribution_stats["normality_label"] = "分佈略偏，Cpk 僅供參考"
-            else:
-                distribution_stats["normality"] = "poor"
-                distribution_stats["normality_label"] = "分佈明顯非常態，Cpk 可能不準確"
-
-        # --- 7. 月度 Cpk 趨勢 ---
-        cpk_trend = []
-        if usl is not None and lsl is not None and len(avgs) >= 5:
-            monthly_values = defaultdict(list)
-            val_idx = 0
-            for i in range(len(avgs)):
-                month_key = dates_valid[i][:7] if dates_valid[i] else 'unknown'
-                n_raw = subgroup_sizes[i]
-                for j in range(n_raw):
-                    if val_idx < len(all_values):
-                        monthly_values[month_key].append(all_values[val_idx])
-                        val_idx += 1
-
-            for month_key in sorted(monthly_values.keys()):
-                vals = monthly_values[month_key]
-                if len(vals) >= 5:
-                    m_mean = float(np.mean(vals))
-                    m_std = float(np.std(vals, ddof=1))
-                    if m_std > 0:
-                        m_cpu = (float(usl) - m_mean) / (3 * m_std)
-                        m_cpl = (m_mean - float(lsl)) / (3 * m_std)
-                        m_cpk = round(min(m_cpu, m_cpl), 3)
-                        cpk_trend.append({"month": month_key, "cpk": m_cpk, "count": len(vals)})
+        process_capability = calculate_process_capability(
+            avgs,
+            all_values,
+            control_limits["r_cl"],
+            control_limits["d2"],
+            tolerance_limits,
+            include_reason=False,
+        )
+        distribution_stats = calculate_distribution_stats(all_values)
+        cpk_trend = calculate_cpk_trend(all_values, dates_valid, subgroup_sizes, usl, lsl)
 
         return {
             "labels": labels,
@@ -339,13 +220,13 @@ class PatrolService:
             "ranges": [float(x) for x in ranges_list],
             "subgroup_sizes": subgroup_sizes,
             "all_values": [round(v, 4) for v in all_values],
-            "x_cl": x_cl,
-            "x_ucl": x_ucl,
-            "x_lcl": x_lcl,
-            "r_cl": r_cl,
-            "r_ucl": r_ucl,
-            "r_lcl": r_lcl,
-            "avg_subgroup_size": avg_n if len(avgs) >= 5 else 5,
+            "x_cl": control_limits["x_cl"],
+            "x_ucl": control_limits["x_ucl"],
+            "x_lcl": control_limits["x_lcl"],
+            "r_cl": control_limits["r_cl"],
+            "r_ucl": control_limits["r_ucl"],
+            "r_lcl": control_limits["r_lcl"],
+            "avg_subgroup_size": control_limits["avg_n"] if len(avgs) >= 5 else 5,
             "tolerance": tolerance_limits,
             "process_capability": process_capability,
             "distribution_stats": distribution_stats,

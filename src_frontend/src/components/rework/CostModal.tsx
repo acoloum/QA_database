@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
+import toast from 'react-hot-toast';
 import api from '../../services/api';
+import { getReworkErrorMessage } from './reworkError';
 import { useInspectors } from '../../hooks/useInspectors';
 
 interface CostModalProps {
@@ -46,7 +48,7 @@ const CostModal = ({ show, handleClose, onSuccess, reworkNumber }: CostModalProp
 
     const handleSubmit = async () => {
         if (!costType || !costItem) {
-            alert('請填寫成本類型和成本項目');
+            toast.error('請填寫成本類型和成本項目');
             return;
         }
 
@@ -69,13 +71,11 @@ const CostModal = ({ show, handleClose, onSuccess, reworkNumber }: CostModalProp
             };
 
             await api.post('/rework/cost', payload);
-            alert('成本記錄已新增！');
+            toast.success('成本記錄已新增');
             onSuccess();
             handleClose();
         } catch (error: unknown) {
-            const err = error as { response?: { data?: { error?: string } } };
-            console.error(error);
-            alert(err.response?.data?.error || '新增失敗');
+            toast.error(getReworkErrorMessage(error, '新增失敗'));
         } finally {
             setLoading(false);
         }

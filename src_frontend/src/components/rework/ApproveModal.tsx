@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form } from 'react-bootstrap';
+import toast from 'react-hot-toast';
 import api from '../../services/api';
+import { getReworkErrorMessage } from './reworkError';
 import { useInspectors } from '../../hooks/useInspectors';
 
 interface ApproveModalProps {
@@ -35,7 +37,7 @@ const ApproveModal = ({ show, handleClose, onSuccess, reworkId }: ApproveModalPr
     const handleSubmit = async () => {
         if (!reworkId) return;
         if (!reviewerName) {
-            alert('請選擇審核人員');
+            toast.error('請選擇審核人員');
             return;
         }
 
@@ -48,13 +50,11 @@ const ApproveModal = ({ show, handleClose, onSuccess, reworkId }: ApproveModalPr
             };
 
             await api.post('/rework/approve', payload);
-            alert('審核完成！');
+            toast.success('審核完成');
             onSuccess();
             handleClose();
         } catch (error: unknown) {
-            const err = error as { response?: { data?: { error?: string } } };
-            console.error(error);
-            alert(err.response?.data?.error || '審核失敗');
+            toast.error(getReworkErrorMessage(error, '審核失敗'));
         }
     };
 

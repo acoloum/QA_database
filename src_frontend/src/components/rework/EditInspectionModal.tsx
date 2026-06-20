@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
+import toast from 'react-hot-toast';
 import api from '../../services/api';
+import { getReworkErrorMessage } from './reworkError';
 import type { ReworkInspectionDetail } from '../../types';
 import { useInspectors } from '../../hooks/useInspectors';
 
@@ -55,13 +57,11 @@ const EditInspectionModal = ({ show, handleClose, onSuccess, inspection }: EditI
             if (remark !== undefined) payload.檢驗備註 = remark;
 
             await api.put(`/rework/inspection/${inspection.識別碼}`, payload);
-            alert('品檢記錄已更新！');
+            toast.success('品檢記錄已更新');
             onSuccess();
             handleClose();
         } catch (error: unknown) {
-            const err = error as { response?: { data?: { error?: string } } };
-            console.error(error);
-            alert(err.response?.data?.error || '更新失敗');
+            toast.error(getReworkErrorMessage(error, '更新失敗'));
         } finally {
             setLoading(false);
         }

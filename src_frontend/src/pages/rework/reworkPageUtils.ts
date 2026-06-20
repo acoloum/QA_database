@@ -1,4 +1,5 @@
 import type { ReworkApplication } from '../../types';
+import { getReworkErrorMessage } from '../../components/rework/reworkError';
 
 export interface ReworkListFilters {
   statusFilter: string;
@@ -12,14 +13,6 @@ export interface ReworkFollowUpState {
   ncmrNumber: string;
 }
 
-interface ApiErrorLike {
-  response?: {
-    data?: {
-      error?: string;
-    };
-  };
-}
-
 export const buildReworkListQuery = ({ statusFilter, startDate, endDate }: ReworkListFilters) => {
   const params = new URLSearchParams();
   if (statusFilter) params.append('status', statusFilter);
@@ -28,10 +21,7 @@ export const buildReworkListQuery = ({ statusFilter, startDate, endDate }: Rewor
   return params.toString();
 };
 
-export const getReworkErrorMessage = (error: unknown, fallback: string) => {
-  const apiError = error as ApiErrorLike;
-  return apiError.response?.data?.error || fallback;
-};
+export { getReworkErrorMessage };
 
 export const resolveReworkFollowUp = (
   rework: ReworkApplication | null | undefined,
