@@ -10,7 +10,11 @@ import {
     useUpdateShipping,
     useCheckTolerance
 } from '../../hooks/useShipping';
-import { parseSpec } from '../../utils/parseSpec';
+import {
+    calculateShippingViolations,
+    type ShippingGroupMeasurements,
+    type ShippingItemConfig,
+} from './shippingMeasurementUtils';
 
 interface ShippingModalProps {
     show: boolean;
@@ -19,13 +23,7 @@ interface ShippingModalProps {
     editId: number | null;
 }
 
-interface ItemConfig {
-    label: string;
-    key: string;
-    type: 'minmax' | 'single';
-    /** 公差比對用的測量項目名稱，不設則與 key 相同 */
-    toleranceKey?: string;
-}
+type ItemConfig = ShippingItemConfig;
 
 // 所有廠商的基本量測項目
 const BASE_ITEMS: ItemConfig[] = [
@@ -48,7 +46,7 @@ const ANTAI_VENDOR_NAME = "安泰";
 const DEFAULT_GROUP_COUNT = 5;
 
 /** 每組量測的資料結構 */
-type GroupMeas = Record<string, Partial<ShippingMeasurementItem>>;
+type GroupMeas = ShippingGroupMeasurements;
 
 /** 建立空白的量測組（所有項目皆為空） */
 const emptyGroup = (items: ItemConfig[]): GroupMeas =>
@@ -246,61 +244,12 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             return () => { cancelled = true; };
         }
 
-        const newViolations: Record<string, boolean> = {};
-        const specValues = parseSpec(spec);
-
-        ITEMS.forEach(item => {
-            const tolItem = tolerance.tolerances.find(t => t.項目 === (item.toleranceKey ?? item.key));
-            if (!tolItem) return;
-
-            let lsl = -Infinity, usl = Infinity;
-
-            if (tolItem.尺寸下限 !== null && tolItem.尺寸上限 !== null) {
-                lsl = tolItem.尺寸下限;
-                usl = tolItem.尺寸上限;
-            } else if (tolItem.公差下限 !== null && tolItem.公差上限 !== null) {
-                let std: number = specValues[item.key] ?? 0;
-                if (std === 0 && tolItem.標準值 !== null) {
-                    std = tolItem.標準值;
-                }
-                std = std || 0;
-                if (std === 0) return;
-                lsl = std + (tolItem.公差下限 ?? 0);
-                usl = std + (tolItem.公差上限 ?? 0);
-            } else if (tolItem.尺寸上限 !== null) {
-                lsl = 0;
-                usl = tolItem.尺寸上限;
-            } else if (tolItem.尺寸下限 !== null) {
-                lsl = tolItem.尺寸下限 ?? -Infinity;
-                usl = Infinity;
-            } else {
-                return;
-            }
-
-            // 遍歷所有量測組
-            groupKeys.forEach(gKey => {
-                const measItem = groups[gKey]?.[item.key];
-                if (!measItem) return;
-
-                if (item.type === 'minmax') {
-                    const vkMin = `${gKey}:${item.key}:value_min`;
-                    const vkMax = `${gKey}:${item.key}:value_max`;
-                    const minNum = measItem.value_min != null ? Number(measItem.value_min) : NaN;
-                    const maxNum = measItem.value_max != null ? Number(measItem.value_max) : NaN;
-                    if (!isNaN(minNum)) {
-                        if (minNum < lsl || minNum > usl) newViolations[vkMin] = true;
-                    }
-                    if (!isNaN(maxNum)) {
-                        if (maxNum < lsl || maxNum > usl) newViolations[vkMax] = true;
-                    }
-                } else {
-                    const vk = `${gKey}:${item.key}:value_single`;
-                    const valNum = measItem.value_single != null ? Number(measItem.value_single) : NaN;
-                    if (!isNaN(valNum)) {
-                        if (valNum < lsl || valNum > usl) newViolations[vk] = true;
-                    }
-                }
-            });
+        const newViolations = calculateShippingViolations({
+            items: ITEMS,
+            groupKeys,
+            groups,
+            tolerance,
+            spec,
         });
 
         queueMicrotask(() => {

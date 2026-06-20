@@ -709,6 +709,8 @@ class NCMRService:
                     setattr(ca, attr, val)
 
             if data.get('狀態'):
+                if data.get('狀態') == '已結案' and ca.status != '已結案':
+                    raise ValueError('舊版 CAPA 更新不可直接結案，請使用新版 CAPA 結案流程')
                 ca.status = data.get('狀態')
 
             if data.get('狀態') == '已結案':

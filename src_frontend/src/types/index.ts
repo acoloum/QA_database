@@ -1,3 +1,7 @@
+export type * from './rework';
+export type * from './tolerance';
+export type * from './spc';
+
 export interface PaginatedResponse<T> {
     data: T[];
     total: number;
@@ -41,40 +45,6 @@ export interface UserRecord {
     inspector_id?: number | null;
     is_active: boolean;
     created_at: string | null;
-}
-
-// Rework Interfaces
-export interface ReworkApplication {
-    識別碼: number;
-    申請單號: string;
-    申請日期: string;
-    NCMR_ID: number;
-    ncmr_number?: string;
-    客訴_ID?: number | null;
-    客訴單號?: string;
-    申請人員姓名: string;
-    部門: string;
-    產品資訊: string;
-    重工數量: number;
-    緊急程度: '普通' | '重要' | '緊急';
-    狀態: '申請中' | '已核准' | '執行中' | '已完成' | '已拒絕';
-    申請原因?: string;
-    預計完成日期?: string;
-    審核狀態?: string;
-    審核意見?: string;
-    廠商?: string;
-    材質?: string;
-    批號?: string;
-}
-
-export interface ToleranceResult {
-    is_valid: boolean;
-    violates: {
-        item: string;
-        value: number;
-        min: number;
-        max: number;
-    }[];
 }
 
 // Patrol Types
@@ -233,24 +203,6 @@ export interface ShippingUpdateInput extends ShippingCreateInput {
     識別碼: number;
 }
 
-export interface ReworkStatistics {
-    application_stats: {
-        total_applications: number;
-        in_progress: number;
-        completed: number;
-        approved: number;
-        rejected: number;
-        total_rework_quantity: number;
-    };
-    department_stats: { department: string; count: number }[];
-    cost_stats: {
-        total_cost: number;
-        labor_cost: number;
-        material_cost: number;
-        equipment_cost: number;
-    };
-}
-
 export interface Inspector {
     id: number;
     name: string;
@@ -284,68 +236,6 @@ export interface ShippingInspection {
   組數?: number;
   檢驗人員?: string | number;
   檢驗人員姓名?: string;
-}
-
-export interface ToleranceItem {
-    項目: string;
-    標準值: number | null;
-    公差上限: number | null;
-    公差下限: number | null;
-    尺寸上限: number | null;
-    尺寸下限: number | null;
-    單位: string;
-}
-
-export interface ToleranceResult {
-    success: boolean;
-    found: boolean;
-    tolerances: ToleranceItem[];
-    message?: string;
-}
-
-export interface ReworkExecution {
-    識別碼?: number;
-    重工單號: number;
-    負責人員姓名: string;
-    執行部門: string;
-    協同人員?: string;
-    開始時間: string;
-    預計完成時間?: string;
-    實際完成時間?: string;
-    使用設備?: string;
-    SOP編號?: string;
-    完成數量: number;
-    不良數量: number;
-    重工方式?: string;
-    耗材記錄?: string;
-    執行狀況?: string;
-    異常狀況?: string;
-    良率?: string;
-}
-
-export interface ReworkInspection {
-    識別碼?: number;
-    重工單號: number;
-    檢驗日期: string;
-    檢驗人員姓名: string;
-    檢驗項目?: string;
-    檢驗標準?: string;
-    檢驗結果: string;
-    不良數量: number;
-    檢驗備註?: string;
-}
-
-export interface ReworkCost {
-    識別碼?: number;
-    重工單號: number;
-    記錄日期?: string;
-    記錄人員姓名?: string;
-    成本類型: '人工' | '材料' | '設備' | '其他';
-    成本項目: string;
-    單位成本: number;
-    數量: number;
-    總成本?: number;
-    備註?: string;
 }
 
 export interface CAPA {
@@ -405,133 +295,6 @@ export interface CA_Detail<T> {
     main: T; // CAPA or CAR data
 }
 
-export interface ToleranceStandard {
-    id: number;
-    material: string;
-    spec: string;
-    vendor_id?: number;
-    vendor_name?: string;
-    remark?: string;
-    create_date: string;
-    details?: ToleranceDetailParams[];
-}
-
-export interface ToleranceDetailParams {
-    // 英文欄位（舊格式，保留相容性）
-    item?: string;
-    position?: string;
-    size_min?: number | null;
-    size_max?: number | null;
-    tol_min?: number | null;
-    tol_max?: number | null;
-    std?: number | null;
-    unit?: string;
-    remark?: string;
-    // 中文欄位（後端 API 實際接受的格式）
-    測量項目?: string;
-    測量位置?: string;
-    尺寸下限?: number | null;
-    尺寸上限?: number | null;
-    公差下限?: number | null;
-    公差上限?: number | null;
-    標準值?: number | null;
-    單位?: string;
-    備註?: string;
-}
-
-export interface ToleranceCreateInput {
-    建立日期?: string; // ToleranceModal 中傳入的日期欄位
-    材質: string;
-    規格: string;
-    廠商ID?: number | null;
-    備註?: string;
-    details: ToleranceDetailParams[];
-}
-
-export interface ToleranceUpdateInput extends ToleranceCreateInput {
-    識別碼: number;
-}
-
-// SPC Types
-export interface SpcViolation {
-    label: string;
-    reasons: string[];
-    type: 'xbar' | 'r';
-}
-
-export interface ProcessCapability {
-    available: boolean;
-    usl?: number;
-    lsl?: number;
-    cp?: number;
-    cpk?: number;
-    cpu?: number;
-    cpl?: number;
-    pp?: number;
-    ppk?: number;
-    ppu?: number;
-    ppl?: number;
-    sigma_within?: number;
-    sigma_overall?: number;
-    ppm?: {
-        upper: number;
-        lower: number;
-        total: number;
-    };
-}
-
-export interface DistributionStats {
-    skewness?: number;
-    kurtosis?: number;
-    normality?: 'good' | 'moderate' | 'poor';
-    normality_label?: string;
-}
-
-export interface CpkTrend {
-    month: string;
-    cpk: number;
-    count: number;
-}
-
-export interface ToleranceLimits {
-    USL?: number | null;
-    LSL?: number | null;
-    公差上限?: number | null;
-    公差下限?: number | null;
-    尺寸上限?: number | null;
-    尺寸下限?: number | null;
-    found: boolean;
-}
-
-export interface SpcChartData {
-    labels: string[];
-    ids: string[];
-    dates: string[];
-    avgs: number[];
-    ranges: number[];
-    subgroup_sizes: number[];
-    all_values: number[];
-    x_cl: number;
-    x_ucl: number;
-    x_lcl: number;
-    r_cl: number;
-    r_ucl: number;
-    r_lcl: number;
-    avg_subgroup_size: number;
-    tolerance: ToleranceLimits;
-    process_capability: ProcessCapability;
-    distribution_stats: DistributionStats;
-    cpk_trend: CpkTrend[];
-}
-
-export interface HistogramBin {
-    label: string;
-    count: number;
-    min: number;
-    max: number;
-    midpoint: number; // 區間中點，用於直方圖 USL/LSL 位置計算
-}
-
 // Dashboard Stats Types
 export type TrendDirection = 'up' | 'down' | 'stable';
 
@@ -552,57 +315,6 @@ export interface DashboardStats {
     ncmr: KpiModuleStats;
     rework: KpiModuleStats;
     capa: KpiModuleStats;
-}
-
-// Modal Selection Types (for detail modals)
-export interface ReworkExecutionDetail {
-    id?: number;
-    識別碼?: number; // API 回傳時使用識別碼，前端刪除操作需要此欄位
-    重工單號: number;
-    負責人員姓名: string;
-    執行部門: string;
-    協同人員?: string;
-    開始時間: string;
-    預計完成時間?: string;
-    實際完成時間?: string;
-    使用設備?: string;
-    SOP編號?: string;
-    完成數量: number;
-    不良數量: number;
-    重工方式?: string;
-    耗材記錄?: string;
-    執行狀況?: string;
-    異常狀況?: string;
-    良率?: string;
-}
-
-export interface ReworkInspectionDetail {
-    id?: number;
-    識別碼?: number; // API 回傳時使用識別碼，前端刪除操作需要此欄位
-    重工單號: number;
-    檢驗日期: string;
-    檢驗人員?: string; // ReworkPage 中表格顯示使用的欄位
-    檢驗人員姓名: string;
-    檢驗項目?: string;
-    檢驗標準?: string;
-    檢驗結果: string;
-    不良數量: number;
-    檢驗備註?: string;
-}
-
-export interface ReworkCostDetail {
-    id?: number;
-    識別碼?: number; // API 回傳時使用識別碼，前端刪除操作需要此欄位
-    重工單號: number;
-    記錄日期?: string;
-    記錄人員姓名?: string;
-    成本類型: string; // 實際值可能超出聯合型別範圍，使用 string 較寬鬆
-    成本幣別?: string; // EditCostModal 中使用的欄位
-    成本項目: string;
-    單位成本: number;
-    數量: number;
-    總成本?: number;
-    備註?: string;
 }
 
 // ── 附件 ──────────────────────────────────────────────────────

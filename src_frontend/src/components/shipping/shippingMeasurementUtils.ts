@@ -1,0 +1,82 @@
+import type { ShippingMeasurementItem, ToleranceResult } from '../../types';
+import { parseSpec } from '../../utils/parseSpec';
+
+export interface ShippingItemConfig {
+  label: string;
+  key: string;
+  type: 'minmax' | 'single';
+  toleranceKey?: string;
+}
+
+export type ShippingGroupMeasurements = Record<string, Partial<ShippingMeasurementItem>>;
+
+interface CalculateShippingViolationsParams {
+  items: ShippingItemConfig[];
+  groupKeys: string[];
+  groups: Record<string, ShippingGroupMeasurements>;
+  tolerance: ToleranceResult | null;
+  spec: string;
+}
+
+export const calculateShippingViolations = ({
+  items,
+  groupKeys,
+  groups,
+  tolerance,
+  spec,
+}: CalculateShippingViolationsParams) => {
+  if (!tolerance) return {};
+
+  const violations: Record<string, boolean> = {};
+  const specValues = parseSpec(spec);
+
+  items.forEach(item => {
+    const tolItem = tolerance.tolerances.find(t => t.項目 === (item.toleranceKey ?? item.key));
+    if (!tolItem) return;
+
+    let lsl = -Infinity;
+    let usl = Infinity;
+
+    if (tolItem.尺寸下限 !== null && tolItem.尺寸上限 !== null) {
+      lsl = tolItem.尺寸下限;
+      usl = tolItem.尺寸上限;
+    } else if (tolItem.公差下限 !== null && tolItem.公差上限 !== null) {
+      let std: number = specValues[item.key] ?? 0;
+      if (std === 0 && tolItem.標準值 !== null) {
+        std = tolItem.標準值;
+      }
+      std = std || 0;
+      if (std === 0) return;
+      lsl = std + (tolItem.公差下限 ?? 0);
+      usl = std + (tolItem.公差上限 ?? 0);
+    } else if (tolItem.尺寸上限 !== null) {
+      lsl = 0;
+      usl = tolItem.尺寸上限;
+    } else if (tolItem.尺寸下限 !== null) {
+      lsl = tolItem.尺寸下限 ?? -Infinity;
+      usl = Infinity;
+    } else {
+      return;
+    }
+
+    groupKeys.forEach(gKey => {
+      const measItem = groups[gKey]?.[item.key];
+      if (!measItem) return;
+
+      if (item.type === 'minmax') {
+        const minKey = `${gKey}:${item.key}:value_min`;
+        const maxKey = `${gKey}:${item.key}:value_max`;
+        const minNum = measItem.value_min != null ? Number(measItem.value_min) : NaN;
+        const maxNum = measItem.value_max != null ? Number(measItem.value_max) : NaN;
+        if (!Number.isNaN(minNum) && (minNum < lsl || minNum > usl)) violations[minKey] = true;
+        if (!Number.isNaN(maxNum) && (maxNum < lsl || maxNum > usl)) violations[maxKey] = true;
+      } else {
+        const key = `${gKey}:${item.key}:value_single`;
+        const valNum = measItem.value_single != null ? Number(measItem.value_single) : NaN;
+        if (!Number.isNaN(valNum) && (valNum < lsl || valNum > usl)) violations[key] = true;
+      }
+    });
+  });
+
+  return violations;
+};

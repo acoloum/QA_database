@@ -1,7 +1,8 @@
 
 from datetime import datetime, date
+import pytest
 from backend.services.rework_service import ReworkService
-from backend.models import ReworkRequest, NCMR, Inspector
+from backend.models import ReworkInspection, ReworkRequest, NCMR, Inspector
 
 def test_create_rework_application(app, db_session):
     with app.app_context():
@@ -81,3 +82,37 @@ def test_execute_rework(app, db_session):
         assert req.status == "執行中"
         assert len(req.executions) == 1
         assert req.executions[0].complete_qty == 10.0
+
+
+def test_close_rework_requires_passed_final_inspection(app, db_session):
+    with app.app_context():
+        req = ReworkRequest(status="執行中", rework_number="RW-NoInspection")
+        db_session.add(req)
+        db_session.commit()
+
+        with pytest.raises(ValueError, match="品檢合格"):
+            ReworkService.close_rework({"rework_id": req.id})
+
+        assert req.status == "執行中"
+
+
+def test_close_rework_allows_passed_final_inspection(app, db_session):
+    with app.app_context():
+        inspector = Inspector(name="Inspector Pass")
+        req = ReworkRequest(status="執行中", rework_number="RW-Passed")
+        db_session.add_all([inspector, req])
+        db_session.commit()
+
+        db_session.add(ReworkInspection(
+            rework_id=req.id,
+            date=date(2026, 6, 20),
+            inspector_id=inspector.id,
+            item="最終品檢",
+            result="合格",
+            defect_qty=0,
+        ))
+        db_session.commit()
+
+        ReworkService.close_rework({"rework_id": req.id})
+
+        assert req.status == "已完成"

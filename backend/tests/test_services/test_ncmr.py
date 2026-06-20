@@ -122,3 +122,15 @@ def test_get_capa_list_excludes_car_only_records(app, db_session):
         db_session.commit()
         result = NCMRService.get_capa_list()
         assert result['total'] == 0
+
+
+def test_legacy_capa_update_cannot_close_directly(app, db_session):
+    """舊 /api/capa/update 不可繞過新版 CAPA D8 gate 直接結案"""
+    with app.app_context():
+        n = _make_ncmr(db_session, ncmr_number='NCMR-LEGACY-CLOSE')
+        ca = _make_capa(db_session, n, eight_d_number='8D-LEGACY-CLOSE')
+
+        with pytest.raises(ValueError, match='新版 CAPA 結案流程'):
+            NCMRService.update_capa({'識別碼': ca.id, '狀態': '已結案'})
+
+        assert ca.status == '進行中'

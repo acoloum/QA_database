@@ -12,22 +12,20 @@ import {
     Legend,
     Filler
 } from 'chart.js';
-import { Line, Chart } from 'react-chartjs-2';
+import { Line } from 'react-chartjs-2';
 import {
-    analyzeWECO,
-    analyzeRChartWECO,
     getCpkGrade,
-    generateHistogramBins,
-    normalPDF,
-    movingAverage,
     formatPPM,
     getPpmGrade
 } from '../../utils/spcAnalysis';
 import { getClickedPointId, setChartPointCursor, shouldShowControlLegendLabel } from '../../utils/spcChartOptions';
-import type { SpcViolation, HistogramBin, CpkTrend } from '../../types';
+import { buildSpcChartModel } from '../../utils/spcChartModel';
+import CpkTrendChart from '../spc/CpkTrendChart';
+import HistogramDistributionChart from '../spc/HistogramDistributionChart';
+import type { SpcViolation, SpcChartData } from '../../types';
 import { Alert, Badge, Button, Card, Col, Row, Form } from 'react-bootstrap';
 import { useShippingStats, useExportSpcReport } from '../../hooks/useShipping';
-import type { ChartData, TooltipItem, ActiveDataPoint } from 'chart.js';
+import type { TooltipItem, ActiveDataPoint } from 'chart.js';
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
@@ -78,236 +76,7 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
 
     const exportSpcReport = useExportSpcReport();
 
-    const { chartData, ids, analysis, rAnalysis, statsSummary, processCapability, histogramData, distributionStats, cpkTrend } = useMemo(() => {
-        if (!statsData || !statsData.avgs || statsData.avgs.length === 0) {
-            return { chartData: null, ids: [], analysis: null, rAnalysis: null, statsSummary: null, processCapability: null, histogramData: null, distributionStats: null, cpkTrend: null };
-        }
-
-        const data = statsData;
-        const ids = data.ids || [];
-        const count = data.avgs.length;
-
-        // Analyze WECO for X-bar，並加入 type 欄位以符合 SpcViolation 型別
-        const wecoRaw = analyzeWECO(data.avgs, data.x_cl, data.x_ucl, data.x_lcl, data.labels);
-        const weco = {
-            ...wecoRaw,
-            violations: wecoRaw.violations.map(v => ({ ...v, type: 'xbar' as const }))
-        };
-
-        // Analyze WECO for R chart，並加入 type 欄位以符合 SpcViolation 型別
-        const rWecoRaw = analyzeRChartWECO(data.ranges, data.r_cl, data.r_ucl, data.labels);
-        const rWeco = {
-            ...rWecoRaw,
-            violations: rWecoRaw.violations.map(v => ({ ...v, type: 'r' as const }))
-        };
-
-        // Calculate Summary Stats locally (using sample stdDev: N-1)
-        const mean = data.avgs.reduce((a: number, b: number) => a + b, 0) / count;
-        const sorted = [...data.avgs].sort((a: number, b: number) => a - b);
-        const min = sorted[0];
-        const max = sorted[count - 1];
-        const range = max - min;
-        const variance = count > 1
-            ? data.avgs.reduce((acc: number, val: number) => acc + Math.pow(val - mean, 2), 0) / (count - 1)
-            : 0;
-        const stdDev = Math.sqrt(variance);
-        const cv = mean !== 0 ? (stdDev / Math.abs(mean)) * 100 : 0;  // CV%
-
-        const summary = {
-            count,
-            mean: mean.toFixed(3),
-            min: min.toFixed(3),
-            max: max.toFixed(3),
-            range: range.toFixed(3),
-            stdDev: stdDev.toFixed(3),
-            cv: cv.toFixed(2),
-            violations: weco.violations.length + rWeco.violations.length
-        };
-
-        // Process capability from backend
-        const pc = data.process_capability || null;
-
-        // Distribution stats from backend
-        const distStats = data.distribution_stats || null;
-
-        // Cpk trend from backend
-        const trend = data.cpk_trend || [];
-
-        // --- Histogram Data ---
-        const allValues = data.all_values || [];
-        let histData = null;
-        if (allValues.length > 0) {
-            const bins = generateHistogramBins(allValues);
-            const allMean = allValues.reduce((a: number, b: number) => a + b, 0) / allValues.length;
-            const allVariance = allValues.length > 1
-                ? allValues.reduce((a: number, v: number) => a + Math.pow(v - allMean, 2), 0) / (allValues.length - 1)
-                : 0;
-            const allStdDev = Math.sqrt(allVariance);
-            const binWidth = bins.length > 1 ? bins[1].midpoint - bins[0].midpoint : 1;
-
-            // Normal curve scaled to match histogram area
-            const totalArea = allValues.length * binWidth;
-            const normalCurve = bins.map(b => normalPDF(b.midpoint, allMean, allStdDev) * totalArea);
-
-            histData = { bins, normalCurve, allMean, allStdDev, usl: pc?.usl, lsl: pc?.lsl };
-        }
-
-        // --- Moving Average ---
-        const ma = movingAverage(data.avgs, 5);
-
-        // --- Zone bands for X-bar chart ---
-        const sigma = (data.x_ucl - data.x_cl) / 3;
-        const zone1Upper = Array(count).fill(data.x_cl + sigma);
-        const zone1Lower = Array(count).fill(data.x_cl - sigma);
-        const zone2Upper = Array(count).fill(data.x_cl + 2 * sigma);
-        const zone2Lower = Array(count).fill(data.x_cl - 2 * sigma);
-
-        // Point colors for X-bar
-        const pointColors = data.avgs.map((val: number, i: number) => {
-            if (val > data.x_ucl || val < data.x_lcl) return '#dc3545';
-            if (weco.statuses[i] === 'violation') return '#fd7e14';
-            return '#0d6efd';
-        });
-
-        const pointRadius = data.avgs.map((_: number, i: number) => {
-            if (weco.statuses[i] === 'violation') return 8;
-            return 4;
-        });
-
-        const pointBorderColor = data.avgs.map((_: number, i: number) => {
-            if (weco.statuses[i] === 'violation') return '#fff';
-            return '#0d6efd';
-        });
-
-        // R-chart point colors
-        const rPointColors = data.ranges.map((val: number, i: number) => {
-            if (val > data.r_ucl) return '#dc3545';
-            if (rWeco.statuses[i] === 'violation') return '#fd7e14';
-            return '#6f42c1';
-        });
-
-        const rPointRadius = data.ranges.map((_: number, i: number) => {
-            if (rWeco.statuses[i] === 'violation') return 8;
-            return 4;
-        });
-
-        // X-bar chart datasets
-        const xBarDatasets: ChartData<'line'>['datasets'] = [
-            {
-                label: '平均值',
-                data: data.avgs,
-                borderColor: '#0d6efd',
-                backgroundColor: pointColors,
-                pointRadius: pointRadius,
-                pointBorderColor: pointBorderColor,
-                pointBorderWidth: 2,
-                tension: 0.1,
-                order: 1
-            },
-            // Moving Average
-            {
-                label: '移動平均 (MA5)',
-                data: ma,
-                borderColor: '#20c997',
-                borderWidth: 2,
-                borderDash: [8, 4],
-                pointRadius: 0,
-                tension: 0.3,
-                order: 2
-            },
-            // Zone bands - ±1σ (Zone C - green)
-            {
-                label: '+1σ',
-                data: zone1Upper,
-                borderColor: 'transparent',
-                backgroundColor: 'rgba(40, 167, 69, 0.08)',
-                fill: '+1',
-                pointRadius: 0,
-                order: 10
-            },
-            {
-                label: '-1σ',
-                data: zone1Lower,
-                borderColor: 'transparent',
-                backgroundColor: 'rgba(40, 167, 69, 0.08)',
-                fill: '-1',
-                pointRadius: 0,
-                order: 10
-            },
-            // Zone bands - ±2σ (Zone B - yellow)
-            {
-                label: '+2σ',
-                data: zone2Upper,
-                borderColor: 'rgba(255, 193, 7, 0.3)',
-                borderWidth: 1,
-                borderDash: [3, 3],
-                backgroundColor: 'rgba(255, 193, 7, 0.06)',
-                fill: '-2',
-                pointRadius: 0,
-                order: 10
-            },
-            {
-                label: '-2σ',
-                data: zone2Lower,
-                borderColor: 'rgba(255, 193, 7, 0.3)',
-                borderWidth: 1,
-                borderDash: [3, 3],
-                backgroundColor: 'rgba(255, 193, 7, 0.06)',
-                fill: '+2',
-                pointRadius: 0,
-                order: 10
-            },
-            // Control limits
-            { label: 'UCL', data: Array(count).fill(data.x_ucl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0, order: 5 },
-            { label: 'CL', data: Array(count).fill(data.x_cl), borderColor: 'green', pointRadius: 0, order: 5 },
-            { label: 'LCL', data: Array(count).fill(data.x_lcl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0, order: 5 },
-        ];
-
-        // USL/LSL lines if available
-        if (pc?.available && pc.usl != null && pc.lsl != null) {
-            xBarDatasets.push(
-                { label: 'USL', data: Array(count).fill(pc.usl), borderColor: '#e83e8c', borderDash: [10, 5], borderWidth: 2, pointRadius: 0, order: 4 },
-                { label: 'LSL', data: Array(count).fill(pc.lsl), borderColor: '#e83e8c', borderDash: [10, 5], borderWidth: 2, pointRadius: 0, order: 4 }
-            );
-        }
-
-        const cData = {
-            xBar: {
-                labels: data.labels,
-                datasets: xBarDatasets
-            },
-            rChart: {
-                labels: data.labels,
-                datasets: [
-                    {
-                        label: '全距 R',
-                        data: data.ranges,
-                        borderColor: '#6f42c1',
-                        backgroundColor: rPointColors,
-                        pointRadius: rPointRadius,
-                        pointBorderColor: rPointColors,
-                        pointBorderWidth: 2,
-                        tension: 0.1
-                    },
-                    { label: 'UCL', data: Array(count).fill(data.r_ucl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0 },
-                    { label: 'R̄', data: Array(count).fill(data.r_cl), borderColor: 'green', pointRadius: 0 }
-                ]
-            }
-        };
-
-        return {
-            chartData: cData,
-            ids,
-            analysis: weco,
-            rAnalysis: rWeco,
-            statsSummary: summary,
-            processCapability: pc,
-            histogramData: histData,
-            distributionStats: distStats,
-            cpkTrend: trend
-        };
-
-    }, [statsData]);
+    const { chartData, ids, analysis, rAnalysis, statsSummary, processCapability, histogramData, distributionStats, cpkTrend } = useMemo(() => buildSpcChartModel(statsData as SpcChartData | null | undefined), [statsData]);
 
     // Helper to get violation reasons for tooltip
     const getViolationReasons = (idx: number): string => {
@@ -640,190 +409,21 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                     {histogramData && histogramData.bins.length > 1 && (
                         <Row className="mb-3">
                             <Col md={8} className="mx-auto">
-                                <Card className="shadow-sm">
-                                    <Card.Body>
-                                        <h5 className="card-title text-center">📊 量測值分佈直方圖 + 常態分佈曲線</h5>
-                                        <div style={{ height: '320px' }}>
-                                            <Chart
-                                                type="bar"
-                                                data={{
-                                                    labels: histogramData.bins.map((b: HistogramBin) => b.label),
-                                                    datasets: [
-                                                        {
-                                                            type: 'bar' as const,
-                                                            label: '頻次',
-                                                            data: histogramData.bins.map((b: HistogramBin) => b.count),
-                                                            backgroundColor: 'rgba(13, 110, 253, 0.5)',
-                                                            borderColor: '#0d6efd',
-                                                            borderWidth: 1,
-                                                            order: 2,
-                                                            barPercentage: 1.0,
-                                                            categoryPercentage: 1.0
-                                                        },
-                                                        {
-                                                            type: 'line' as const,
-                                                            label: '常態分佈',
-                                                            data: histogramData.normalCurve,
-                                                            borderColor: '#dc3545',
-                                                            borderWidth: 2,
-                                                            pointRadius: 0,
-                                                            tension: 0.4,
-                                                            order: 1
-                                                        },
-                                                        // USL vertical indicator
-                                                        ...(histogramData.usl != null ? [{
-                                                            type: 'line' as const,
-                                                            label: `USL (${histogramData.usl.toFixed(2)})`,
-                                                            data: histogramData.bins.map((b: HistogramBin) => {
-                                                                const dist = Math.abs(b.midpoint - histogramData.usl);
-                                                                const binW = histogramData.bins.length > 1
-                                                                    ? histogramData.bins[1].midpoint - histogramData.bins[0].midpoint
-                                                                    : 1;
-                                                                return dist < binW / 2 ? Math.max(...histogramData.bins.map((bb: HistogramBin) => bb.count)) * 1.1 : null;
-                                                            }),
-                                                            borderColor: '#e83e8c',
-                                                            borderDash: [5, 5],
-                                                            borderWidth: 2,
-                                                            pointRadius: 0,
-                                                            spanGaps: false,
-                                                            order: 0
-                                                        }] : []),
-                                                        // LSL vertical indicator
-                                                        ...(histogramData.lsl != null ? [{
-                                                            type: 'line' as const,
-                                                            label: `LSL (${histogramData.lsl.toFixed(2)})`,
-                                                            data: histogramData.bins.map((b: HistogramBin) => {
-                                                                const dist = Math.abs(b.midpoint - histogramData.lsl);
-                                                                const binW = histogramData.bins.length > 1
-                                                                    ? histogramData.bins[1].midpoint - histogramData.bins[0].midpoint
-                                                                    : 1;
-                                                                return dist < binW / 2 ? Math.max(...histogramData.bins.map((bb: HistogramBin) => bb.count)) * 1.1 : null;
-                                                            }),
-                                                            borderColor: '#e83e8c',
-                                                            borderDash: [5, 5],
-                                                            borderWidth: 2,
-                                                            pointRadius: 0,
-                                                            spanGaps: false,
-                                                            order: 0
-                                                        }] : [])
-                                                    ] as ChartData<'bar'>['datasets']
-                                                }}
-                                                options={{
-                                                    maintainAspectRatio: false,
-                                                    plugins: {
-                                                        legend: {
-                                                            display: true,
-                                                            position: 'bottom',
-                                                            labels: { usePointStyle: true, font: { size: 10 } }
-                                                        },
-                                                        tooltip: {
-                                                            callbacks: {
-                                                                title: (items: TooltipItem<'bar'>[]) => items[0]?.label || '',
-                                                                label: (ctx: TooltipItem<'bar'>) => {
-                                                                    if (ctx.dataset.label === '頻次') return `數量: ${ctx.raw}`;
-                                                                    // ctx.raw 型別為 unknown，需斷言為 number 才能呼叫 toFixed
-                                                                    if (ctx.dataset.label === '常態分佈') return `期望值: ${(ctx.raw as number)?.toFixed(1)}`;
-                                                                    return ctx.dataset.label || '';
-                                                                }
-                                                            }
-                                                        }
-                                                    },
-                                                    scales: {
-                                                        x: { title: { display: true, text: '量測值區間' } },
-                                                        y: { title: { display: true, text: '頻次' }, beginAtZero: true }
-                                                    }
-                                                }}
-                                            />
-                                        </div>
-                                        <div className="text-center text-muted small mt-2">
-                                            平均值: {histogramData.allMean.toFixed(3)} | 標準差: {histogramData.allStdDev.toFixed(3)} | 樣本數: {statsData?.all_values?.length ?? 0}
-                                        </div>
-                                    </Card.Body>
-                                </Card>
+                                <HistogramDistributionChart
+                                    histogramData={histogramData}
+                                    sampleCount={statsData?.all_values?.length ?? 0}
+                                />
                             </Col>
                         </Row>
                     )}
-
                     {/* Cpk Monthly Trend Chart */}
                     {cpkTrend && cpkTrend.length >= 2 && (
                         <Row className="mb-3">
                             <Col md={8} className="mx-auto">
-                                <Card className="shadow-sm">
-                                    <Card.Body>
-                                        <h5 className="card-title text-center">📈 Cpk 月趨勢圖</h5>
-                                        <div style={{ height: '280px' }}>
-                                            <Line
-                                                data={{
-                                                    labels: cpkTrend.map((t: CpkTrend) => t.month),
-                                                    datasets: [
-                                                        {
-                                                            label: 'Cpk',
-                                                            data: cpkTrend.map((t: CpkTrend) => t.cpk),
-                                                            borderColor: '#0d6efd',
-                                                            backgroundColor: cpkTrend.map((t: CpkTrend) => {
-                                                                if (t.cpk >= 1.33) return '#28a745';
-                                                                if (t.cpk >= 1.0) return '#ffc107';
-                                                                return '#dc3545';
-                                                            }),
-                                                            pointRadius: 6,
-                                                            pointBorderWidth: 2,
-                                                            pointBorderColor: '#fff',
-                                                            tension: 0.2,
-                                                            fill: false
-                                                        },
-                                                        {
-                                                            label: '目標線 (1.33)',
-                                                            data: Array(cpkTrend.length).fill(1.33),
-                                                            borderColor: '#28a745',
-                                                            borderDash: [8, 4],
-                                                            borderWidth: 1,
-                                                            pointRadius: 0,
-                                                            fill: false
-                                                        },
-                                                        {
-                                                            label: '警戒線 (1.0)',
-                                                            data: Array(cpkTrend.length).fill(1.0),
-                                                            borderColor: '#dc3545',
-                                                            borderDash: [5, 5],
-                                                            borderWidth: 1,
-                                                            pointRadius: 0,
-                                                            fill: false
-                                                        }
-                                                    ]
-                                                }}
-                                                options={{
-                                                    maintainAspectRatio: false,
-                                                    plugins: {
-                                                        legend: {
-                                                            display: true,
-                                                            position: 'bottom',
-                                                            labels: { usePointStyle: true, font: { size: 10 } }
-                                                        },
-                                                        tooltip: {
-                                                            callbacks: {
-                                                                afterLabel: (ctx: TooltipItem<'line'>) => {
-                                                                    if (ctx.datasetIndex !== 0) return '';
-                                                                    const t = cpkTrend[ctx.dataIndex];
-                                                                    return t ? `樣本數: ${t.count}` : '';
-                                                                }
-                                                            }
-                                                        }
-                                                    },
-                                                    scales: {
-                                                        y: {
-                                                            title: { display: true, text: 'Cpk' },
-                                                            beginAtZero: true
-                                                        }
-                                                    }
-                                                }}
-                                            />
-                                        </div>
-                                    </Card.Body>
-                                </Card>
+                                <CpkTrendChart cpkTrend={cpkTrend} />
                             </Col>
                         </Row>
                     )}
-
                     {/* Legend */}
                     <div className="d-flex justify-content-center gap-4 mt-3 flex-wrap">
                         <div className="d-flex align-items-center">

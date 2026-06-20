@@ -653,6 +653,8 @@ class ReworkService:
             if not req: raise ValueError("找不到該重工單")
 
             if req.status == '已完成': raise ValueError("該重工單已結案")
+            if not ReworkService._has_passed_final_inspection(req):
+                raise ValueError("重工結案前必須至少有一筆品檢合格且不良數為 0 的品檢記錄")
 
             req.status = '已完成'
             req.actual_finish_date = datetime.now()
@@ -674,6 +676,15 @@ class ReworkService:
         except Exception as e:
             db.session.rollback()
             raise e
+
+    @staticmethod
+    def _has_passed_final_inspection(req: ReworkRequest) -> bool:
+        for inspection in req.inspections:
+            result = (inspection.result or '').strip()
+            defect_qty = inspection.defect_qty or 0
+            if '合格' in result and '不合格' not in result and defect_qty <= 0:
+                return True
+        return False
 
     @staticmethod
     def delete_rework(rework_id: int) -> bool:

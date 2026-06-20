@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Modal, Button } from 'react-bootstrap';
+import toast from 'react-hot-toast';
 import api from '../../services/api';
-import type { ReworkApplication, ReworkStatistics, ReworkExecutionDetail, ReworkInspectionDetail, ReworkCostDetail } from '../../types';
+import type { ReworkExecutionDetail, ReworkInspectionDetail, ReworkCostDetail } from '../../types';
+import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import ApplyModal from '../../components/rework/ApplyModal';
 import ApproveModal from '../../components/rework/ApproveModal';
 import ExecutionModal from '../../components/rework/ExecutionModal';
@@ -14,18 +15,18 @@ import EditCostModal from '../../components/rework/EditCostModal';
 import EditBasicInfoModal from '../../components/rework/EditBasicInfoModal';
 import ReworkStatisticsDashboard from '../../components/rework/ReworkStatisticsDashboard';
 import ReworkFollowUpModal from '../../components/rework/ReworkFollowUpModal';
+import { getReworkErrorMessage, resolveReworkFollowUp } from './reworkPageUtils';
+import ReworkDetailModal from './ReworkDetailModal';
+import { useReworkDetail } from './useReworkDetail';
+import { useReworkPageData } from './useReworkPageData';
 
 const ReworkPage = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const [applications, setApplications] = useState<ReworkApplication[]>([]);
-    const [stats, setStats] = useState<ReworkStatistics | null>(null);
-    const [loading, setLoading] = useState(true);
 
     // Modals
     const [showApplyModal, setShowApplyModal] = useState(false);
     const [showApproveModal, setShowApproveModal] = useState(false);
-    const [showDetailModal, setShowDetailModal] = useState(false);
     const [showExecutionModal, setShowExecutionModal] = useState(false);
     const [showInspectionModal, setShowInspectionModal] = useState(false);
     const [showCostModal, setShowCostModal] = useState(false);
@@ -34,16 +35,10 @@ const ReworkPage = () => {
     const [showEditCostModal, setShowEditCostModal] = useState(false);
     const [showEditBasicModal, setShowEditBasicModal] = useState(false);
     const [selectedReworkId, setSelectedReworkId] = useState<number | null>(null);
-    const [selectedReworkDetail, setSelectedReworkDetail] = useState<ReworkApplication | null>(null);
+    const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
     const [selectedExecution, setSelectedExecution] = useState<ReworkExecutionDetail | null>(null);
     const [selectedInspection, setSelectedInspection] = useState<ReworkInspectionDetail | null>(null);
     const [selectedCost, setSelectedCost] = useState<ReworkCostDetail | null>(null);
-
-    // Detail modal tabs data
-    const [executions, setExecutions] = useState<ReworkExecutionDetail[]>([]);
-    const [inspections, setInspections] = useState<ReworkInspectionDetail[]>([]);
-    const [costs, setCosts] = useState<ReworkCostDetail[]>([]);
-    const [activeTab, setActiveTab] = useState('basic');
 
     const [initialNcmrId, setInitialNcmrId] = useState<string>('');
     const [initialNcmrNo, setInitialNcmrNo] = useState<string>('');
@@ -60,40 +55,38 @@ const ReworkPage = () => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
-    const loadData = useCallback(async () => {
-        setLoading(true);
-        try {
-            // Load List
-            const params = new URLSearchParams();
-            if (statusFilter) params.append('status', statusFilter);
-            if (startDate) params.append('start_date', startDate);
-            if (endDate) params.append('end_date', endDate);
-
-            const listRes = await api.get<ReworkApplication[]>(`/rework/applications?${params.toString()}`);
-            setApplications(listRes.data);
-
-            // Load Stats
-            const statsRes = await api.get<ReworkStatistics>('/rework/statistics');
-            setStats(statsRes.data);
-
-        } catch (error) {
-            console.error('Error loading rework data:', error);
-        } finally {
-            setLoading(false);
-        }
-    }, [statusFilter, startDate, endDate]);
-
-    useEffect(() => {
-        loadData();
-    }, [loadData]);
+    const { applications, stats, loading, loadData } = useReworkPageData({
+        statusFilter,
+        startDate,
+        endDate,
+    });
+    const {
+        showDetailModal,
+        setShowDetailModal,
+        selectedReworkDetail,
+        executions,
+        inspections,
+        costs,
+        activeTab,
+        setActiveTab,
+        openDetail,
+        reloadDetailData,
+    } = useReworkDetail(loadData);
 
     useEffect(() => {
         const ncmrId = searchParams.get('ncmr_id');
         const ncmrNo = searchParams.get('ncmr_no');
         if (ncmrId) {
-            setInitialNcmrId(ncmrId);
-            setInitialNcmrNo(ncmrNo || '');
-            setShowApplyModal(true);
+            let cancelled = false;
+            queueMicrotask(() => {
+                if (cancelled) return;
+                setInitialNcmrId(ncmrId);
+                setInitialNcmrNo(ncmrNo || '');
+                setShowApplyModal(true);
+            });
+            return () => {
+                cancelled = true;
+            };
         }
     }, [searchParams]);
 
@@ -109,66 +102,27 @@ const ReworkPage = () => {
         setShowApproveModal(true);
     };
 
-    const reloadDetailData = async () => {
-        if (!selectedReworkDetail) return;
-        const reworkId = selectedReworkDetail.識別碼;
-        try {
-            const [appRes, execRes, inspRes, costRes] = await Promise.all([
-                api.get(`/rework/applications?rework_id=${reworkId}`),
-                api.get(`/rework/executions?rework_id=${reworkId}`),
-                api.get(`/rework/inspections?rework_id=${reworkId}`),
-                api.get(`/rework/costs?rework_id=${reworkId}`)
-            ]);
-            if (appRes.data && appRes.data.length > 0) {
-                setSelectedReworkDetail(appRes.data[0]);
-            }
-            setExecutions(execRes.data || []);
-            setInspections(inspRes.data || []);
-            setCosts(costRes.data || []);
-            await loadData();
-        } catch (error) {
-            console.error('Failed to reload rework detail data', error);
-        }
-    };
-
-    const handleDetailClick = async (item: ReworkApplication) => {
-        setSelectedReworkDetail(item);
-        setShowDetailModal(true);
-
-        const reworkId = item.識別碼;
-
-        try {
-            const [execRes, inspRes, costRes] = await Promise.all([
-                api.get(`/rework/executions?rework_id=${reworkId}`),
-                api.get(`/rework/inspections?rework_id=${reworkId}`),
-                api.get(`/rework/costs?rework_id=${reworkId}`)
-            ]);
-            setExecutions(execRes.data || []);
-            setInspections(inspRes.data || []);
-            setCosts(costRes.data || []);
-        } catch (error) {
-            console.error('Failed to load rework detail data', error);
-            setExecutions([]);
-            setInspections([]);
-            setCosts([]);
-        }
-    };
-
     const handleEditExecution = (execution: ReworkExecutionDetail) => {
         setSelectedExecution(execution);
         setShowEditExecutionModal(true);
     };
 
     const handleDeleteExecution = async (executionId: number) => {
-        if (!confirm('確定要刪除此執行記錄嗎？')) return;
-        try {
-            await api.delete(`/rework/execution/${executionId}`);
-            alert('刪除成功');
-            reloadDetailData();
-        } catch (error: unknown) {
-            const err = error as { response?: { data?: { error?: string } } };
-            alert(err.response?.data?.error || '刪除失敗');
-        }
+        setConfirmAction({
+            title: '刪除執行記錄',
+            message: '確定要刪除此執行記錄嗎？',
+            confirmLabel: '刪除',
+            confirmVariant: 'danger',
+            onConfirm: async () => {
+                try {
+                    await api.delete(`/rework/execution/${executionId}`);
+                    toast.success('刪除成功');
+                    await reloadDetailData();
+                } catch (error: unknown) {
+                    toast.error(getReworkErrorMessage(error, '刪除失敗'));
+                }
+            },
+        });
     };
 
     const handleEditInspection = (inspection: ReworkInspectionDetail) => {
@@ -177,15 +131,21 @@ const ReworkPage = () => {
     };
 
     const handleDeleteInspection = async (inspectionId: number) => {
-        if (!confirm('確定要刪除此品檢記錄嗎？')) return;
-        try {
-            await api.delete(`/rework/inspection/${inspectionId}`);
-            alert('刪除成功');
-            reloadDetailData();
-        } catch (error: unknown) {
-            const err = error as { response?: { data?: { error?: string } } };
-            alert(err.response?.data?.error || '刪除失敗');
-        }
+        setConfirmAction({
+            title: '刪除品檢記錄',
+            message: '確定要刪除此品檢記錄嗎？',
+            confirmLabel: '刪除',
+            confirmVariant: 'danger',
+            onConfirm: async () => {
+                try {
+                    await api.delete(`/rework/inspection/${inspectionId}`);
+                    toast.success('刪除成功');
+                    await reloadDetailData();
+                } catch (error: unknown) {
+                    toast.error(getReworkErrorMessage(error, '刪除失敗'));
+                }
+            },
+        });
     };
 
     const handleEditCost = (cost: ReworkCostDetail) => {
@@ -194,61 +154,74 @@ const ReworkPage = () => {
     };
 
     const handleDeleteCost = async (costId: number) => {
-        if (!confirm('確定要刪除此成本記錄嗎？')) return;
-        try {
-            await api.delete(`/rework/cost/${costId}`);
-            alert('刪除成功');
-            reloadDetailData();
-            loadData();
-        } catch (error: unknown) {
-            const err = error as { response?: { data?: { error?: string } } };
-            alert(err.response?.data?.error || '刪除失敗');
-        }
+        setConfirmAction({
+            title: '刪除成本記錄',
+            message: '確定要刪除此成本記錄嗎？',
+            confirmLabel: '刪除',
+            confirmVariant: 'danger',
+            onConfirm: async () => {
+                try {
+                    await api.delete(`/rework/cost/${costId}`);
+                    toast.success('刪除成功');
+                    await reloadDetailData();
+                    await loadData();
+                } catch (error: unknown) {
+                    toast.error(getReworkErrorMessage(error, '刪除失敗'));
+                }
+            },
+        });
     };
 
     const handleCloseRework = async (reworkId: number) => {
-        if (!confirm('確定要結案此重工申請嗎？')) return;
-        try {
-            await api.post('/rework/close', { rework_id: reworkId });
-            alert('結案成功');
-
-            // 結案後，若該重工關聯 NCMR 且 NCMR 尚未開立 CAPA，提示使用者
-            const rework = applications.find(a => a.識別碼 === reworkId)
-                ?? (selectedReworkDetail?.識別碼 === reworkId ? selectedReworkDetail : null);
-            const ncmrId = rework?.NCMR_ID;
-            if (ncmrId) {
+        setConfirmAction({
+            title: '重工結案',
+            message: '確定要結案此重工申請嗎？',
+            confirmLabel: '結案',
+            confirmVariant: 'success',
+            onConfirm: async () => {
                 try {
-                    const ncmrRes = await api.get(`/ncmr/detail/${ncmrId}`);
-                    const ncmr = ncmrRes.data;
-                    if (!ncmr.related_capa_id) {
-                        setFollowUpModal({
-                            show: true,
-                            ncmrId,
-                            ncmrNumber: rework?.ncmr_number || ncmr.NCMR單號 || String(ncmrId),
-                        });
-                    }
-                } catch {
-                    // 取不到 NCMR 詳細資料也不影響結案流程
-                }
-            }
+                    await api.post('/rework/close', { rework_id: reworkId });
+                    toast.success('結案成功');
 
-            reloadDetailData();
-        } catch (error: unknown) {
-            const err = error as { response?: { data?: { error?: string } } };
-            alert(err.response?.data?.error || '結案失敗');
-        }
+                    // 結案後，若該重工關聯 NCMR 且 NCMR 尚未開立 CAPA，提示使用者
+                    const rework = applications.find(a => a.識別碼 === reworkId)
+                        ?? (selectedReworkDetail?.識別碼 === reworkId ? selectedReworkDetail : null);
+                    const ncmrId = rework?.NCMR_ID;
+                    if (ncmrId) {
+                        try {
+                            const ncmrRes = await api.get(`/ncmr/detail/${ncmrId}`);
+                            const ncmr = ncmrRes.data;
+                            const followUp = resolveReworkFollowUp(rework, ncmr);
+                            if (followUp) setFollowUpModal(followUp);
+                        } catch {
+                            // 取不到 NCMR 詳細資料也不影響結案流程
+                        }
+                    }
+
+                    await reloadDetailData();
+                } catch (error: unknown) {
+                    toast.error(getReworkErrorMessage(error, '結案失敗'));
+                }
+            },
+        });
     };
 
     const handleDeleteRework = async (reworkId: number) => {
-        if (!confirm('確定要刪除此重工申請嗎？此動作無法復原。')) return;
-        try {
-            await api.post('/rework/delete', { rework_id: reworkId });
-            alert('刪除成功');
-            loadData();
-        } catch (error: unknown) {
-            const err = error as { response?: { data?: { error?: string } } };
-            alert(err.response?.data?.error || '刪除失敗');
-        }
+        setConfirmAction({
+            title: '刪除重工申請',
+            message: '確定要刪除此重工申請嗎？此動作無法復原。',
+            confirmLabel: '刪除',
+            confirmVariant: 'danger',
+            onConfirm: async () => {
+                try {
+                    await api.post('/rework/delete', { rework_id: reworkId });
+                    toast.success('刪除成功');
+                    await loadData();
+                } catch (error: unknown) {
+                    toast.error(getReworkErrorMessage(error, '刪除失敗'));
+                }
+            },
+        });
     };
 
     const getStatusBadge = (status: string) => {
@@ -395,7 +368,7 @@ const ReworkPage = () => {
                                             </td>
                                             <td>
                                                 <div className="btn-group btn-group-sm">
-                                                    <button className="btn btn-outline-info" onClick={() => handleDetailClick(item)}>詳情</button>
+                                                    <button className="btn btn-outline-info" onClick={() => openDetail(item)}>詳情</button>
                                                     {(item.狀態 === '申請中') && (
                                                         <button
                                                             className="btn btn-outline-success"
@@ -430,256 +403,27 @@ const ReworkPage = () => {
                 onSuccess={loadData}
                 reworkId={selectedReworkId}
             />
-            <Modal show={showDetailModal} onHide={() => setShowDetailModal(false)} dialogClassName="modal-rework-detail">
-                <Modal.Header closeButton>
-                    <Modal.Title>重工申請詳情 - {selectedReworkDetail?.申請單號}</Modal.Title>
-                </Modal.Header>
-                <Modal.Body>
-                    {selectedReworkDetail && (
-                        <>
-                            <ul className="nav nav-tabs" role="tablist">
-                                <li className="nav-item">
-                                    <button className={`nav-link ${activeTab === 'basic' ? 'active' : ''}`} onClick={() => setActiveTab('basic')}>基本資訊</button>
-                                </li>
-                                <li className="nav-item">
-                                    <button className={`nav-link ${activeTab === 'execution' ? 'active' : ''}`} onClick={() => setActiveTab('execution')}>執行記錄</button>
-                                </li>
-                                <li className="nav-item">
-                                    <button className={`nav-link ${activeTab === 'inspection' ? 'active' : ''}`} onClick={() => setActiveTab('inspection')}>品檢記錄</button>
-                                </li>
-                                <li className="nav-item">
-                                    <button className={`nav-link ${activeTab === 'cost' ? 'active' : ''}`} onClick={() => setActiveTab('cost')}>成本分析</button>
-                                </li>
-                            </ul>
-                            <div className="tab-content mt-3">
-                                {activeTab === 'basic' && (
-                                    <div className="tab-pane fade show active">
-                                        <div className="d-flex justify-content-between align-items-center mb-3">
-                                            <h6 className="mb-0">基本資訊</h6>
-                                            <div className="btn-group">
-                                                <Button variant="primary" size="sm" onClick={() => setShowEditBasicModal(true)}>
-                                                    <i className="bi bi-pencil"></i> 編輯
-                                                </Button>
-                                                {selectedReworkDetail.狀態 !== '已完成' && (
-                                                    <Button variant="success" size="sm" onClick={() => handleCloseRework(selectedReworkDetail.識別碼)}>
-                                                        <i className="bi bi-check-circle"></i> 結案
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="row">
-                                            <div className="col-md-6 mb-3">
-                                                <label className="form-label fw-bold">申請單號</label>
-                                                <p>{selectedReworkDetail.申請單號}</p>
-                                            </div>
-                                            <div className="col-md-6 mb-3">
-                                                <label className="form-label fw-bold">申請日期</label>
-                                                <p>{selectedReworkDetail.申請日期}</p>
-                                            </div>
-                                            <div className="col-md-6 mb-3">
-                                                <label className="form-label fw-bold">{selectedReworkDetail.客訴單號 && !selectedReworkDetail.ncmr_number ? '客訴單號' : 'NCMR單號'}</label>
-                                                <p>{selectedReworkDetail.ncmr_number || selectedReworkDetail.客訴單號 || (selectedReworkDetail.NCMR_ID ? `#${selectedReworkDetail.NCMR_ID}` : '-')}</p>
-                                            </div>
-                                            <div className="col-md-6 mb-3">
-                                                <label className="form-label fw-bold">申請人員</label>
-                                                <p>{selectedReworkDetail.申請人員姓名}</p>
-                                            </div>
-                                            <div className="col-md-6 mb-3">
-                                                <label className="form-label fw-bold">部門</label>
-                                                <p>{selectedReworkDetail.部門}</p>
-                                            </div>
-                                            <div className="col-md-6 mb-3">
-                                                <label className="form-label fw-bold">緊急程度</label>
-                                                <p>{selectedReworkDetail.緊急程度}</p>
-                                            </div>
-                                            <div className="col-md-6 mb-3">
-                                                <label className="form-label fw-bold">廠商</label>
-                                                <p>{selectedReworkDetail.廠商 || '-'}</p>
-                                            </div>
-                                            <div className="col-md-6 mb-3">
-                                                <label className="form-label fw-bold">材質</label>
-                                                <p>{selectedReworkDetail.材質 || '-'}</p>
-                                            </div>
-                                            <div className="col-md-6 mb-3">
-                                                <label className="form-label fw-bold">規格</label>
-                                                <p>{selectedReworkDetail.產品資訊 || '-'}</p>
-                                            </div>
-                                            <div className="col-md-6 mb-3">
-                                                <label className="form-label fw-bold">批號</label>
-                                                <p>{selectedReworkDetail.批號 || '-'}</p>
-                                            </div>
-                                            <div className="col-md-6 mb-3">
-                                                <label className="form-label fw-bold">重工數量</label>
-                                                <p>{selectedReworkDetail.重工數量}</p>
-                                            </div>
-                                            <div className="col-md-6 mb-3">
-                                                <label className="form-label fw-bold">預計完成日期</label>
-                                                <p>{selectedReworkDetail.預計完成日期 || '-'}</p>
-                                            </div>
-                                            <div className="col-md-6 mb-3">
-                                                <label className="form-label fw-bold">狀態</label>
-                                                <p><span className={`badge ${getStatusBadge(selectedReworkDetail.狀態)}`}>{selectedReworkDetail.狀態}</span></p>
-                                            </div>
-                                            <div className="col-12 mb-3">
-                                                <label className="form-label fw-bold">申請原因</label>
-                                                <p>{selectedReworkDetail.申請原因 || '-'}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeTab === 'execution' && (
-                                    <div className="tab-pane fade show active">
-                                        <div className="d-flex justify-content-between align-items-center mb-3">
-                                            <h6 className="mb-0">執行記錄</h6>
-                                            <Button variant="primary" size="sm" onClick={() => setShowExecutionModal(true)}>
-                                                <i className="bi bi-plus-lg"></i> 新增
-                                            </Button>
-                                        </div>
-                                        {executions.length > 0 ? (
-                                            <table className="table table-sm table-bordered">
-                                                <thead>
-                                                    <tr>
-                                                        <th>負責人員</th>
-                                                        <th>執行部門</th>
-                                                        <th>開始時間</th>
-                                                        <th>完成數量</th>
-                                                        <th>執行狀況</th>
-                                                        <th style={{ width: '100px' }}>操作</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {executions.map((exec: ReworkExecutionDetail, idx: number) => (
-                                                        <tr key={idx}>
-                                                            <td>{exec.負責人員姓名 || '-'}</td>
-                                                            <td>{exec.執行部門 || '-'}</td>
-                                                            <td>{exec.開始時間 ? new Date(exec.開始時間).toLocaleString('zh-TW') : '-'}</td>
-                                                            <td>{exec.完成數量 || '0'}</td>
-                                                            <td>{exec.執行狀況 || '-'}</td>
-                                                            <td>
-                                                                <div className="btn-group btn-group-sm">
-                                                                    <button className="btn btn-outline-primary" onClick={() => handleEditExecution(exec)}>編輯</button>
-                                                                    <button className="btn btn-outline-danger" onClick={() => exec.識別碼 && handleDeleteExecution(exec.識別碼)}>刪除</button>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        ) : (
-                                            <p className="text-muted">暂无執行記錄</p>
-                                        )}
-                                    </div>
-                                )}
-
-                                {activeTab === 'inspection' && (
-                                    <div className="tab-pane fade show active">
-                                        <div className="d-flex justify-content-between align-items-center mb-3">
-                                            <h6 className="mb-0">品檢記錄</h6>
-                                            <Button variant="primary" size="sm" onClick={() => setShowInspectionModal(true)}>
-                                                <i className="bi bi-plus-lg"></i> 新增
-                                            </Button>
-                                        </div>
-                                        {inspections.length > 0 ? (
-                                            <table className="table table-sm table-bordered">
-                                                <thead>
-                                                    <tr>
-                                                        <th>檢驗項目</th>
-                                                        <th>檢驗結果</th>
-                                                        <th>不良數量</th>
-                                                        <th>檢驗人員</th>
-                                                        <th>檢驗日期</th>
-                                                        <th style={{ width: '100px' }}>操作</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {inspections.map((insp: ReworkInspectionDetail, idx: number) => (
-                                                        <tr key={idx}>
-                                                            <td>{insp.檢驗項目 || '-'}</td>
-                                                            <td>{insp.檢驗結果 || '-'}</td>
-                                                            <td>{insp.不良數量 || '0'}</td>
-                                                            <td>{insp.檢驗人員姓名 || '-'}</td>
-                                                            <td>{insp.檢驗日期 || '-'}</td>
-                                                            <td>
-                                                                <div className="btn-group btn-group-sm">
-                                                                    <button className="btn btn-outline-primary" onClick={() => handleEditInspection(insp)}>編輯</button>
-                                                                    <button className="btn btn-outline-danger" onClick={() => insp.識別碼 && handleDeleteInspection(insp.識別碼)}>刪除</button>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        ) : (
-                                            <p className="text-muted">暂无品檢記錄</p>
-                                        )}
-                                    </div>
-                                )}
-
-                                {activeTab === 'cost' && (
-                                    <div className="tab-pane fade show active">
-                                        <div className="d-flex justify-content-between align-items-center mb-3">
-                                            <h6 className="mb-0">成本分析</h6>
-                                            <Button variant="primary" size="sm" onClick={() => setShowCostModal(true)}>
-                                                <i className="bi bi-plus-lg"></i> 新增
-                                            </Button>
-                                        </div>
-                                        {costs.length > 0 ? (
-                                            <>
-                                                <table className="table table-sm table-bordered">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>成本類型</th>
-                                                            <th>成本項目</th>
-                                                            <th>單位成本</th>
-                                                            <th>數量</th>
-                                                            <th>總成本</th>
-                                                            <th>記錄日期</th>
-                                                            <th style={{ width: '100px' }}>操作</th>
-                                                        </tr>
-                                                    </thead>
-                                                <tbody>
-                                                    {costs.map((cost: ReworkCostDetail, idx: number) => (
-                                                            <tr key={idx}>
-                                                                <td>{cost.成本類型 || '-'}</td>
-                                                                <td>{cost.成本項目 || '-'}</td>
-                                                                <td>${(Number(cost.單位成本) || 0).toFixed(2)}</td>
-                                                                <td>{cost.數量 || '0'}</td>
-                                                                <td>${(Number(cost.總成本) || 0).toFixed(2)}</td>
-                                                                <td>{cost.記錄日期 || '-'}</td>
-                                                                <td>
-                                                                    <div className="btn-group btn-group-sm">
-                                                                        <button className="btn btn-outline-primary" onClick={() => handleEditCost(cost)}>編輯</button>
-                                                                        <button className="btn btn-outline-danger" onClick={() => cost.識別碼 && handleDeleteCost(cost.識別碼)}>刪除</button>
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                    <tfoot>
-                                                        <tr className="table-secondary">
-                                                            <td colSpan={4}><strong>總成本</strong></td>
-                                                            <td colSpan={3}>
-                                                                <strong>${costs.reduce((sum: number, c: ReworkCostDetail) => sum + parseFloat(String(c.總成本 || 0)), 0).toFixed(2)}</strong>
-                                                            </td>
-                                                        </tr>
-                                                    </tfoot>
-                                                </table>
-                                            </>
-                                        ) : (
-                                            <p className="text-muted">暂无成本記錄</p>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        </>
-                    )}
-                </Modal.Body>
-                <Modal.Footer>
-                    <Button variant="secondary" onClick={() => setShowDetailModal(false)}>關閉</Button>
-                </Modal.Footer>
-            </Modal>
-
+            <ReworkDetailModal
+                show={showDetailModal}
+                onHide={() => setShowDetailModal(false)}
+                detail={selectedReworkDetail}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                executions={executions}
+                inspections={inspections}
+                costs={costs}
+                onEditBasic={() => setShowEditBasicModal(true)}
+                onCloseRework={handleCloseRework}
+                onAddExecution={() => setShowExecutionModal(true)}
+                onEditExecution={handleEditExecution}
+                onDeleteExecution={handleDeleteExecution}
+                onAddInspection={() => setShowInspectionModal(true)}
+                onEditInspection={handleEditInspection}
+                onDeleteInspection={handleDeleteInspection}
+                onAddCost={() => setShowCostModal(true)}
+                onEditCost={handleEditCost}
+                onDeleteCost={handleDeleteCost}
+            />
             {/* Execution Modal */}
             <ExecutionModal
                 show={showExecutionModal}
@@ -741,6 +485,7 @@ const ReworkPage = () => {
                     ncmrNumber={followUpModal.ncmrNumber}
                 />
             )}
+            <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
         </div>
     );
 };
