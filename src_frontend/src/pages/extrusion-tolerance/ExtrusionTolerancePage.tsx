@@ -7,6 +7,7 @@ import {
 } from '../../hooks/useExtrusionTolerance';
 import ExtrusionToleranceModal from '../../components/extrusion-tolerance/ExtrusionToleranceModal';
 import ViewExtrusionToleranceModal from '../../components/extrusion-tolerance/ViewExtrusionToleranceModal';
+import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 
 const ExtrusionTolerancePage = () => {
     const [page, setPage] = useState(1);
@@ -23,14 +24,20 @@ const ExtrusionTolerancePage = () => {
     const [editId, setEditId] = useState<number | null>(null);
     const [showViewModal, setShowViewModal] = useState(false);
     const [viewId, setViewId] = useState<number | null>(null);
+    const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
     const handleSearch = () => { setPage(1); refetch(); };
     const handleAdd = () => { setEditId(null); setShowModal(true); };
     const handleEdit = (id: number) => { setEditId(id); setShowModal(true); };
     const handleView = (id: number) => { setViewId(id); setShowViewModal(true); };
     const handleDelete = (id: number) => {
-        if (!window.confirm('確定要刪除此筆擠壓公差資料？')) return;
-        deleteMutation.mutate(id);
+        setConfirmAction({
+            title: '刪除擠壓公差',
+            message: '確定要刪除此筆擠壓公差資料？',
+            confirmLabel: '刪除',
+            confirmVariant: 'danger',
+            onConfirm: () => deleteMutation.mutateAsync(id),
+        });
     };
 
     const rows: ExtrusionToleranceItem[] = result?.data || [];
@@ -123,6 +130,7 @@ const ExtrusionTolerancePage = () => {
                 id={viewId}
                 onClose={() => setShowViewModal(false)}
             />
+            <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
         </div>
     );
 };

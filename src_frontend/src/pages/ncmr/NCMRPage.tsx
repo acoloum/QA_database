@@ -4,6 +4,7 @@ import RowActionMenu from '../../components/common/RowActionMenu';
 import type { NCMR } from '../../types';
 import NCMRModal from '../../components/ncmr/NCMRModal';
 import DispositionModal from '../../components/ncmr/DispositionModal';
+import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import FilterBar from '../../components/common/FilterBar';
 import PaginationBar from '../../components/common/PaginationBar';
 import { useNavigate } from 'react-router-dom';
@@ -38,6 +39,7 @@ const NCMRPage = () => {
     const [editId, setEditId] = useState<number | null>(null);
     const [disposeItem, setDisposeItem] = useState<NCMR | null>(null);
     const [printItem, setPrintItem] = useState<NCMR | null>(null);
+    const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
     const { data: printDetail } = useNCMRDetail(printItem?.id || null);
 
@@ -83,23 +85,40 @@ const NCMRPage = () => {
     }, [printItem, printDetail]);
 
     const handleDelete = async (id: number) => {
-        if (window.confirm(`確定要刪除異常單 #${id} 嗎？此動作無法復原。`)) {
-            deleteMutation.mutate(id);
-        }
+        setConfirmAction({
+            title: '刪除異常單',
+            message: `確定要刪除異常單 #${id} 嗎？此動作無法復原。`,
+            confirmLabel: '刪除',
+            confirmVariant: 'danger',
+            onConfirm: async () => {
+              await deleteMutation.mutateAsync(id);
+            },
+        });
     };
 
     const convertToRework = (id: number, no: string) => {
-        if (window.confirm('確定要針對此異常單開立重工申請嗎？')) {
-            window.open(`/rework?ncmr_id=${id}&ncmr_no=${no || id}`, '_blank');
-        }
+        setConfirmAction({
+            title: '開立重工申請',
+            message: '確定要針對此異常單開立重工申請嗎？',
+            confirmLabel: '開立',
+            confirmVariant: 'primary',
+            onConfirm: () => {
+              window.open(`/rework?ncmr_id=${id}&ncmr_no=${no || id}`, '_blank');
+            },
+        });
     };
 
     const convertTo8D = async (id: number) => {
-        if (!window.confirm('確定要針對此異常單開立 8D 矯正措施嗎？')) return;
-        try {
-            const res = await createCAPAMutation.mutateAsync(id);
-            if (res.id) navigate(`/capa?editId=${res.id}`);
-        } catch { /* handled by toast */ }
+        setConfirmAction({
+            title: '開立 8D 矯正措施',
+            message: '確定要針對此異常單開立 8D 矯正措施嗎？',
+            confirmLabel: '開立',
+            confirmVariant: 'primary',
+            onConfirm: async () => {
+                const res = await createCAPAMutation.mutateAsync(id);
+                if (res.id) navigate(`/capa?editId=${res.id}`);
+            },
+        });
     };
 
     const renderStatusBadge = (status: string) => {
@@ -215,6 +234,7 @@ const NCMRPage = () => {
 
             <NCMRModal show={showModal} handleClose={() => { setShowModal(false); setEditId(null); }} onSuccess={() => {}} editId={editId} />
             <DispositionModal show={showDisposeModal} handleClose={() => setShowDisposeModal(false)} onSuccess={() => {}} item={disposeItem} />
+            <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
         </div>
     );
 };

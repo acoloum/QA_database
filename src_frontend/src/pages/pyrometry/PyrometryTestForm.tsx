@@ -1,8 +1,17 @@
 import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Modal, Form, Row, Col, Button } from 'react-bootstrap';
-import api from '../../services/api';
-import type { Furnace, TusPoint, SatPoint, SatReading } from '../../types';
+import toast from 'react-hot-toast';
+import type { TusPoint, SatPoint, SatReading } from '../../types';
+import { useInspectors } from '../../hooks/useInspectors';
+import {
+  useFurnaces,
+  useLoadPyrometryTestDetail,
+  useParsePyrometryData,
+  usePyrometryCorrections,
+  usePyrometryTestDetail,
+  useSavePyrometryTest,
+  useTusTestOnDate,
+} from '../../hooks/usePyrometry';
 import FurnaceRecorderSection from './FurnaceRecorderSection';
 import ReportFieldsSection from './ReportFieldsSection';
 import SatSection from './SatSection';
@@ -21,7 +30,6 @@ import {
   type ReportFieldsResponse,
 } from './pyrometryFormUtils';
 
-interface Inspector { id: number; name: string; }
 interface Props { editId: number | null; onClose: () => void; onSaved: () => void; }
 
 const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
@@ -63,14 +71,14 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const [reportMeta, setReportMeta] = useState<Record<string, string>>({});
   const [itemRows, setItemRows] = useState<ItemRow[]>([emptyItemRow()]);
 
-  const { data: furnaces } = useQuery({
-    queryKey: ['furnaces-active'],
-    queryFn: () => api.get<{ data: Furnace[] }>('/pyrometry/furnaces?active_only=1').then(r => r.data.data),
-  });
-  const { data: inspectors } = useQuery({
-    queryKey: ['inspectors'],
-    queryFn: () => api.get<{ id: number; name: string }[]>('/inspectors').then(r => r.data),
-  });
+  const { data: furnaces } = useFurnaces({ activeOnly: true });
+  const { data: inspectors } = useInspectors();
+  const { data: editData, isError: isEditLoadError } = usePyrometryTestDetail(editId);
+  const loadTestDetail = useLoadPyrometryTestDetail();
+  const saveTest = useSavePyrometryTest(editId);
+  const correctionsMutation = usePyrometryCorrections();
+  const parseMutation = useParsePyrometryData();
+  const tusOnDateMutation = useTusTestOnDate();
 
   const applyFurnaceDefaults = (fid: string, type: 'TUS' | 'SAT') => {
     const f = (furnaces || []).find(x => String(x.識別碼) === fid);
@@ -86,13 +94,13 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   };
 
   useEffect(() => {
-    if (!editId) return;
+    if (!editId || !editData) return;
     let active = true;
     setError('');
-    api.get(`/pyrometry/tests/${editId}`).then(r => {
+    queueMicrotask(() => {
       if (!active) return;
-      const { main, tus_points, sat_points } = r.data;
-      const cd = r.data.曲線資料;
+      const { main, tus_points, sat_points } = editData;
+      const cd = editData.曲線資料;
       setFurnaceId(String(main.爐子ID));
       setTestType(main.測試類型);
       setTestDate(main.測試日期);
@@ -132,17 +140,19 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
           setFurnaceRangeEnd(cd.爐體穩定結束 ?? (fLen - 1));
         }
       }
-      const { itemRows: savedItems, meta } = splitReportFields(r.data.報告欄位 || {});
+      const { itemRows: savedItems, meta } = splitReportFields(editData.報告欄位 || {});
       setItemRows(savedItems.length ? savedItems : [emptyItemRow()]);
       setReportMeta(meta);
-    }).catch(() => {
-      if (active) setError('載入爐溫測試資料失敗');
     });
 
     return () => {
       active = false;
     };
-  }, [editId]);
+  }, [editId, editData]);
+
+  useEffect(() => {
+    if (isEditLoadError) setError('載入爐溫測試資料失敗');
+  }, [isEditLoadError]);
 
   // TUS 量測點更新
   const updateTus = (i: number, k: keyof TusPoint, v: string) =>
@@ -210,20 +220,18 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const applyCorrections = async (type: 'TUS' | 'SAT') => {
     const count = type === 'TUS' ? tusPoints.length : satPoints.length;
     if (!count) return;
-    let url = `/pyrometry/corrections?setpoint=${Number(setpoint) || 0}&type=${type}&count=${count}`;
-    if (type === 'TUS') {
-      const chs = tusPoints.map(p => p.頻道 ?? '').join(',');
-      if (chs) url += `&channels=${chs}`;
-    } else {
-      const chs = satPoints.map(p => p.頻道 ?? '').join(',');
-      if (chs) url += `&channels=${chs}`;
-    }
-    const r = await api.get<{ success: boolean; data: number[] }>(url);
-    if (r.data.success) {
+    const channels = (type === 'TUS' ? tusPoints : satPoints).map(p => p.頻道 ?? '').join(',');
+    const r = await correctionsMutation.mutateAsync({
+      setpoint: Number(setpoint) || 0,
+      type,
+      count,
+      channels: channels || undefined,
+    });
+    if (r.success) {
       if (type === 'TUS') {
-        setTusPoints(prev => prev.map((p, i) => ({ ...p, 修正值: String(r.data.data[i] ?? '') })));
+        setTusPoints(prev => prev.map((p, i) => ({ ...p, 修正值: String(r.data[i] ?? '') })));
       } else {
-        setSatPoints(prev => prev.map((p, i) => ({ ...p, 修正值: String(r.data.data[i] ?? '') })));
+        setSatPoints(prev => prev.map((p, i) => ({ ...p, 修正值: String(r.data[i] ?? '') })));
       }
     }
   };
@@ -231,45 +239,38 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const inheritFromTus = async () => {
     if (!furnaceId || !testDate) return;
     try {
-      const list = await api.get<{ success: boolean; data: { 識別碼: number }[] }>(
-        `/pyrometry/tests?furnace_id=${furnaceId}&test_type=TUS&date_from=${testDate}&date_to=${testDate}&page_size=1`,
-      );
-      if (!list.data.data?.length) {
-        alert('找不到同日同爐的 TUS 紀錄，請確認爐號與測試日期已填寫');
+      const list = await tusOnDateMutation.mutateAsync({ furnaceId, testDate });
+      if (!list.data?.length) {
+        toast.error('找不到同日同爐的 TUS 紀錄，請確認爐號與測試日期已填寫');
         return;
       }
-      const tusId = list.data.data[0].識別碼;
-      const detail = await api.get<{ 報告欄位?: ReportFieldsResponse }>(`/pyrometry/tests/${tusId}`);
-      const { itemRows: inheritedItems, meta } = splitReportFields(detail.data.報告欄位 || {});
+      const tusId = list.data[0].識別碼;
+      const detail = await loadTestDetail.mutateAsync(tusId) as { 報告欄位?: ReportFieldsResponse };
+      const { itemRows: inheritedItems, meta } = splitReportFields(detail.報告欄位 || {});
       setReportMeta(prev => ({ ...prev, ...meta }));
       if (inheritedItems.length) setItemRows(inheritedItems);
     } catch {
-      alert('繼承失敗，請稍後再試');
+      toast.error('繼承失敗，請稍後再試');
     }
   };
 
   const handleFileUpload = async (file: File, dest: 'recorder' | 'sat' | 'furnace') => {
-    const formData = new FormData();
-    formData.append('file', file);
-    const r = await api.post<{
-      success: boolean;
-      data: { 時間: string[]; 通道: { 名稱: string }[]; 數值: Record<string, number[]> };
-    }>('/pyrometry/parse-data', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-    if (!r.data.success) return;
-    const lastIdx = r.data.data.時間.length - 1;
+    const r = await parseMutation.mutateAsync(file);
+    if (!r.success) return;
+    const lastIdx = r.data.時間.length - 1;
     if (dest === 'furnace') {
-      setFurnaceChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
+      setFurnaceChartData({ 時間: r.data.時間, 數值: r.data.數值 });
       setFurnaceRangeStart(0); setFurnaceRangeEnd(lastIdx);
     } else if (dest === 'recorder') {
-      setChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
+      setChartData({ 時間: r.data.時間, 數值: r.data.數值 });
       setRangeStart(0); setRangeEnd(lastIdx);
       // 初始回填 TUS 量測點（全範圍 max/min）
-      setTusPoints(prev => applyChartRangeToTusPoints(prev, r.data.data, 0, lastIdx));
+      setTusPoints(prev => applyChartRangeToTusPoints(prev, r.data, 0, lastIdx));
     } else {
       // dest === 'sat'：每個通道每個時間點 → 一筆讀值
-      setSatChartData({ 時間: r.data.data.時間, 數值: r.data.data.數值 });
+      setSatChartData({ 時間: r.data.時間, 數值: r.data.數值 });
       setSatRangeStart(0); setSatRangeEnd(lastIdx);
-      setSatPoints(prev => applyChartRangeToSatReadings(prev, r.data.data, 0, lastIdx, '校正測試讀值'));
+      setSatPoints(prev => applyChartRangeToSatReadings(prev, r.data, 0, lastIdx, '校正測試讀值'));
     }
   };
 
@@ -301,11 +302,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
         reportMeta,
         itemRows,
       });
-      if (editId) {
-        await api.put(`/pyrometry/tests/${editId}`, payload);
-      } else {
-        await api.post('/pyrometry/tests', payload);
-      }
+      await saveTest.mutateAsync({ payload });
       onSaved();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : '儲存失敗');
@@ -376,7 +373,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
               <Form.Label>測試人員</Form.Label>
               <Form.Select size="sm" value={testerId} onChange={e => setTesterId(e.target.value)}>
                 <option value="">請選擇</option>
-                {(inspectors || []).map((i: Inspector) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                {(inspectors || []).map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
               </Form.Select>
             </Col>
             <Col md={3}>

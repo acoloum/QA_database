@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useCallback, Fragment, useMemo } from 'react';
 import { Modal, Button, Form, Row, Col, Table, Alert } from 'react-bootstrap';
+import toast from 'react-hot-toast';
 import {
     usePatrolOptions,
     usePatrolDetail,
@@ -140,7 +141,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         if (!inspector) missingFields.push('檢驗員');
 
         if (missingFields.length > 0) {
-            alert(`請填寫以下必填欄位：\n${missingFields.join('、')}`);
+            toast.error(`請填寫以下必填欄位：${missingFields.join('、')}`);
             return;
         }
 
@@ -154,7 +155,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         }));
 
         if (validDetails.length === 0) {
-            alert('請至少輸入一組測量數值');
+            toast.error('請至少輸入一組測量數值');
             return;
         }
 

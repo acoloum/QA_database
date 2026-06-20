@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Modal, Button, Form, Table, Alert } from 'react-bootstrap';
 import type { NCMR, NcmrDisposition, DispositionType } from '../../types';
+import ConfirmActionModal, { type ConfirmActionState } from '../common/ConfirmActionModal';
 import {
     useDispositions, useCreateDisposition, useDeleteDisposition,
     useUpdateNCMR, useCreateCAPA, useNcmrReworks,
@@ -33,6 +34,7 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
     const navigate = useNavigate();
 
     const [form, setForm] = useState<NcmrDisposition>(emptyForm());
+    const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
     // 計算不良總數、已處置數、未處置數
     const defectTotal = Number(item?.defect_qty ?? 0);
@@ -57,12 +59,15 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
     // 刪除處置明細
     const handleDelete = async (id?: number) => {
         if (!id) return;
-        if (!window.confirm('確定刪除此處置？')) return;
-        try {
-            await deleteDisp.mutateAsync(id);
-        } catch (e) {
-            console.error(e);
-        }
+        setConfirmAction({
+            title: '刪除處置',
+            message: '確定刪除此處置？',
+            confirmLabel: '刪除',
+            confirmVariant: 'danger',
+            onConfirm: async () => {
+              await deleteDisp.mutateAsync(id);
+            },
+        });
     };
 
     // 結案：呼叫後端結案 gate，失敗由全域 axios 錯誤攔截器顯示 toast
@@ -80,23 +85,32 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
     // 轉重工
     const convertToRework = () => {
         if (!item) return;
-        if (window.confirm('確定要針對此異常單開立重工申請嗎？')) {
-            window.open(`/rework?ncmr_id=${item.id}&ncmr_no=${item.no || item.id}`, '_blank');
-        }
+        setConfirmAction({
+            title: '開立重工申請',
+            message: '確定要針對此異常單開立重工申請嗎？',
+            confirmLabel: '開立',
+            confirmVariant: 'primary',
+            onConfirm: () => {
+              window.open(`/rework?ncmr_id=${item.id}&ncmr_no=${item.no || item.id}`, '_blank');
+            },
+        });
     };
 
     // 轉開 CAPA（8D）
     const handleCreateCAPA = async () => {
         if (!item) return;
-        if (!window.confirm('確定要針對此異常單開立 8D 矯正措施嗎？')) return;
-        try {
-            const res = await createCAPA.mutateAsync(item.id);
-            const capaId = res.id;
-            handleClose();
-            navigate(`/capa?editId=${capaId}`);
-        } catch (e) {
-            console.error(e);
-        }
+        setConfirmAction({
+            title: '開立 8D 矯正措施',
+            message: '確定要針對此異常單開立 8D 矯正措施嗎？',
+            confirmLabel: '開立',
+            confirmVariant: 'primary',
+            onConfirm: async () => {
+                const res = await createCAPA.mutateAsync(item.id);
+                const capaId = res.id;
+                handleClose();
+                navigate(`/capa?editId=${capaId}`);
+            },
+        });
     };
 
     const t = form.處置類型;
@@ -105,6 +119,7 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
     const canAdd = Number(form.處置數量) > 0 && !concessionNeedsAuth && !reworkNeedsLink;
 
     return (
+        <>
         <Modal key={item?.id} show={show} onHide={handleClose} size="lg">
             <Modal.Header closeButton>
                 <Modal.Title>異常處置 (單號: {item?.no || item?.id})</Modal.Title>
@@ -263,6 +278,8 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
                 </div>
             </Modal.Footer>
         </Modal>
+        <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
+        </>
     );
 };
 

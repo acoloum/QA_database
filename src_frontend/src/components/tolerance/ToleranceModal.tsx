@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col, Table } from 'react-bootstrap';
+import toast from 'react-hot-toast';
 import { useToleranceDetail, useCreateTolerance, useUpdateTolerance } from '../../hooks/useTolerance';
 import type { Vendor } from '../../types';
 import {
@@ -209,12 +210,7 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
 
     const handleSave = async () => {
         if (!material) {
-            // Toast will be better but keeping alert for client-side validation just in case, 
-            // though toast is preferred. 
-            // Since we have global error handling, using toast.error would be consistent if we import it,
-            // but the plan says "global error handling" used in interceptors. 
-            // For form validation, we can throw error or use alert. Alert is fine for now or validtion lib.
-            alert('請輸入材質');
+            toast.error('請輸入材質');
             return;
         }
 

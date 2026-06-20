@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Table, Modal, Form, Row, Col, Badge } from 'react-bootstrap';
-import api from '../../services/api';
 import type { Furnace } from '../../types';
+import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
+import { useDeleteFurnace, useFurnaces, useFurnaceTusTrend, useSaveFurnace } from '../../hooks/usePyrometry';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -26,52 +26,29 @@ const emptyForm = (): Partial<Furnace> => ({
 });
 
 const FurnaceMasterPage = () => {
-  const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<Partial<Furnace>>(emptyForm());
-  const [msg, setMsg] = useState('');
   const [showTrend, setShowTrend] = useState(false);
   const [trendFurnaceId, setTrendFurnaceId] = useState<number | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['furnaces'],
-    queryFn: () => api.get<{ data: Furnace[] }>('/pyrometry/furnaces').then(r => r.data.data),
-  });
-
-  const { data: trendData } = useQuery({
-    queryKey: ['tus-trend', trendFurnaceId],
-    queryFn: () => trendFurnaceId
-      ? api.get<{ data: { 測試日期: string; 均勻度極差: string | number; 最大正偏差: string | number; 最大負偏差: string | number; 是否合格: boolean }[] }>(
-          `/pyrometry/furnaces/${trendFurnaceId}/tus-trend`
-        ).then(r => r.data.data)
-      : Promise.resolve(null),
-    enabled: !!trendFurnaceId,
-  });
-
-  const saveMutation = useMutation({
-    mutationFn: (payload: Partial<Furnace>) =>
-      editId
-        ? api.put(`/pyrometry/furnaces/${editId}`, payload)
-        : api.post('/pyrometry/furnaces', payload),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['furnaces'] });
-      setShowModal(false);
-      setMsg(editId ? '已更新' : '已新增');
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/pyrometry/furnaces/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['furnaces'] }),
-  });
+  const { data, isLoading } = useFurnaces();
+  const { data: trendData } = useFurnaceTusTrend(trendFurnaceId);
+  const saveMutation = useSaveFurnace(editId);
+  const deleteMutation = useDeleteFurnace();
 
   const openAdd = () => { setEditId(null); setForm(emptyForm()); setShowModal(true); };
   const openEdit = (f: Furnace) => { setEditId(f.識別碼); setForm({ ...f }); setShowModal(true); };
-  const handleDelete = (id: number) => {
-    if (!window.confirm('確定刪除此爐子設備？')) return;
-    deleteMutation.mutate(id);
-  };
+  const handleDelete = (f: Furnace) => setConfirmAction({
+    title: '刪除爐子設備',
+    message: `確定刪除「${f.爐號} ${f.名稱}」？此操作會連同設備設定移除。`,
+    confirmLabel: '刪除',
+    confirmVariant: 'danger',
+    onConfirm: async () => {
+      await deleteMutation.mutateAsync(f.識別碼);
+    },
+  });
   const set = (k: keyof Furnace, v: unknown) => setForm(prev => ({ ...prev, [k]: v }));
 
   return (
@@ -80,8 +57,6 @@ const FurnaceMasterPage = () => {
         <h4>爐子設備主檔</h4>
         <Button variant="primary" size="sm" onClick={openAdd}>+ 新增</Button>
       </div>
-      {msg && <div className="alert alert-success py-1">{msg}</div>}
-
       <Card>
         <Card.Body>
           {isLoading ? <p>載入中…</p> : (
@@ -111,7 +86,7 @@ const FurnaceMasterPage = () => {
                     </td>
                     <td>
                       <Button size="sm" variant="outline-primary" className="me-1" onClick={() => openEdit(f)}>編輯</Button>
-                      <Button size="sm" variant="outline-danger" onClick={() => handleDelete(f.識別碼)}>刪除</Button>
+                      <Button size="sm" variant="outline-danger" onClick={() => handleDelete(f)}>刪除</Button>
                       <Button size="sm" variant="outline-info" className="ms-1"
                         onClick={() => { setTrendFurnaceId(f.識別碼); setShowTrend(true); }}>趨勢</Button>
                     </td>
@@ -193,7 +168,11 @@ const FurnaceMasterPage = () => {
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowModal(false)}>取消</Button>
-          <Button variant="primary" onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending}>
+          <Button
+            variant="primary"
+            onClick={() => saveMutation.mutate({ payload: form }, { onSuccess: () => setShowModal(false) })}
+            disabled={saveMutation.isPending}
+          >
             {saveMutation.isPending ? '儲存中…' : '儲存'}
           </Button>
         </Modal.Footer>
@@ -224,6 +203,7 @@ const FurnaceMasterPage = () => {
           <Button variant="secondary" onClick={() => setShowTrend(false)}>關閉</Button>
         </Modal.Footer>
       </Modal>
+      <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
     </div>
   );
 };

@@ -5,6 +5,7 @@ import {
     useDeleteAttachment,
     getAttachmentDownloadUrl,
 } from '../../hooks/useAttachment';
+import ConfirmActionModal, { type ConfirmActionState } from './ConfirmActionModal';
 import AttachmentPreviewModal from './AttachmentPreviewModal';
 import type { Attachment } from '../../types';
 
@@ -50,6 +51,7 @@ const AttachmentList = ({
     const { data: attachments = [], isLoading } = useAttachments(entityType, entityId, dStep);
     const deleteMutation = useDeleteAttachment(entityType, entityId);
     const [previewAtt, setPreviewAtt] = useState<Attachment | null>(null);
+    const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
     if (isLoading) {
         return (
@@ -81,6 +83,16 @@ const AttachmentList = ({
                 document.body.removeChild(a);
                 URL.revokeObjectURL(blobUrl);
             });
+    };
+
+    const handleDelete = (att: Attachment) => {
+        setConfirmAction({
+            title: '刪除附件',
+            message: `確定要刪除「${att.file_name}」嗎？`,
+            confirmLabel: '刪除',
+            confirmVariant: 'danger',
+            onConfirm: () => deleteMutation.mutateAsync(att.id),
+        });
     };
 
     return (
@@ -134,11 +146,7 @@ const AttachmentList = ({
                                     size="sm"
                                     className="p-0 text-danger"
                                     title="刪除"
-                                    onClick={() => {
-                                        if (window.confirm(`確定要刪除「${att.file_name}」嗎？`)) {
-                                            deleteMutation.mutate(att.id);
-                                        }
-                                    }}
+                                    onClick={() => handleDelete(att)}
                                     disabled={deleteMutation.isPending}
                                 >
                                     <i className="bi bi-trash" />
@@ -154,6 +162,7 @@ const AttachmentList = ({
             attachment={previewAtt}
             onClose={() => setPreviewAtt(null)}
         />
+        <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
       </>
     );
 };

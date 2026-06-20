@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Table, Modal, Form, Row, Col, Badge } from 'react-bootstrap';
-import api from '../../services/api';
 import type { Recorder, RecorderCalPoint } from '../../types';
+import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
+import { useDeleteRecorder, useRecorderDetail, useRecorders, useSaveRecorder } from '../../hooks/usePyrometry';
 
 const STD_TEMPS = [100, 200, 300, 400, 500, 600];
 const CHANNELS = Array.from({ length: 18 }, (_, i) => i + 1);
@@ -16,34 +16,16 @@ const emptyMeta = () => ({
 });
 
 const RecorderCalibrationPage = () => {
-  const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [meta, setMeta] = useState(emptyMeta());
   const [grid, setGrid] = useState<Grid>({});
-  const [msg, setMsg] = useState('');
+  const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['recorders'],
-    queryFn: () => api.get<{ data: Recorder[] }>('/pyrometry/recorders').then(r => r.data.data),
-  });
-
-  const saveMutation = useMutation({
-    mutationFn: (payload: Partial<Recorder>) =>
-      editId
-        ? api.put(`/pyrometry/recorders/${editId}`, payload)
-        : api.post('/pyrometry/recorders', payload),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['recorders'] });
-      setShowModal(false);
-      setMsg(editId ? '已更新' : '已新增');
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/pyrometry/recorders/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['recorders'] }),
-  });
+  const { data, isLoading } = useRecorders();
+  const recorderDetail = useRecorderDetail();
+  const saveMutation = useSaveRecorder(editId);
+  const deleteMutation = useDeleteRecorder();
 
   const openAdd = () => {
     setEditId(null);
@@ -54,7 +36,7 @@ const RecorderCalibrationPage = () => {
 
   const openEdit = async (r: Recorder) => {
     setEditId(r.識別碼);
-    const detail = await api.get<{ data: Recorder }>(`/pyrometry/recorders/${r.識別碼}`).then(res => res.data.data);
+    const detail = await recorderDetail.mutateAsync(r.識別碼);
     setMeta({
       編號: detail.編號 || '',
       校正日期: detail.校正日期 || '',
@@ -70,10 +52,15 @@ const RecorderCalibrationPage = () => {
     setShowModal(true);
   };
 
-  const handleDelete = (id: number) => {
-    if (!window.confirm('確定刪除此記錄器與其校正資料？')) return;
-    deleteMutation.mutate(id);
-  };
+  const handleDelete = (r: Recorder) => setConfirmAction({
+    title: '刪除溫度記錄器',
+    message: `確定刪除記錄器「${r.編號}」與其校正資料？`,
+    confirmLabel: '刪除',
+    confirmVariant: 'danger',
+    onConfirm: async () => {
+      await deleteMutation.mutateAsync(r.識別碼);
+    },
+  });
 
   const setCell = (ch: number, t: number, v: string) =>
     setGrid(prev => ({ ...prev, [cellKey(ch, t)]: v }));
@@ -86,7 +73,7 @@ const RecorderCalibrationPage = () => {
         校正點.push({ 頻道: ch, 標準溫度: t, 器差值: Number(v) });
       }
     }));
-    saveMutation.mutate({ ...meta, 校正點 } as unknown as Partial<Recorder>);
+    saveMutation.mutate({ payload: { ...meta, 校正點 } as unknown as Partial<Recorder> }, { onSuccess: () => setShowModal(false) });
   };
 
   return (
@@ -95,8 +82,6 @@ const RecorderCalibrationPage = () => {
         <h4>溫度記錄器校正</h4>
         <Button variant="primary" size="sm" onClick={openAdd}>+ 新增</Button>
       </div>
-      {msg && <div className="alert alert-success py-1">{msg}</div>}
-
       <Card>
         <Card.Body>
           {isLoading ? <p>載入中…</p> : (
@@ -120,7 +105,7 @@ const RecorderCalibrationPage = () => {
                     </td>
                     <td>
                       <Button size="sm" variant="outline-primary" className="me-1" onClick={() => openEdit(r)}>編輯</Button>
-                      <Button size="sm" variant="outline-danger" onClick={() => handleDelete(r.識別碼)}>刪除</Button>
+                      <Button size="sm" variant="outline-danger" onClick={() => handleDelete(r)}>刪除</Button>
                     </td>
                   </tr>
                 ))}
@@ -195,6 +180,7 @@ const RecorderCalibrationPage = () => {
           </Button>
         </Modal.Footer>
       </Modal>
+      <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
     </div>
   );
 };

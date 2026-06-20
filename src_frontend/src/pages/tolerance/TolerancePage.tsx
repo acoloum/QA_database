@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button, Card, Table, Form, Row, Col, Pagination, Badge } from 'react-bootstrap';
 import api from '../../services/api';
+import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import ToleranceModal from '../../components/tolerance/ToleranceModal';
 import ViewToleranceModal from '../../components/tolerance/ViewToleranceModal';
 import { useToleranceSearch, useToleranceOptions, useDeleteTolerance, useImportTolerance } from '../../hooks/useTolerance';
@@ -34,6 +35,7 @@ const TolerancePage = () => {
     // Modal
     const [showModal, setShowModal] = useState(false);
     const [editId, setEditId] = useState<number | null>(null);
+    const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
     // View Modal
     const [showViewModal, setShowViewModal] = useState(false);
@@ -45,8 +47,13 @@ const TolerancePage = () => {
     };
 
     const handleDelete = async (id: number) => {
-        if (!window.confirm(`確定要刪除此筆公差資料嗎？此操作無法復原！`)) return;
-        deleteMutation.mutate(id);
+        setConfirmAction({
+            title: '刪除公差資料',
+            message: '確定要刪除此筆公差資料嗎？此操作無法復原。',
+            confirmLabel: '刪除',
+            confirmVariant: 'danger',
+            onConfirm: () => deleteMutation.mutateAsync(id),
+        });
     };
 
     const handleEdit = (id: number) => {
@@ -215,6 +222,7 @@ const TolerancePage = () => {
                 handleClose={() => setShowViewModal(false)}
                 viewId={viewId}
             />
+            <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
         </div>
     );
 };

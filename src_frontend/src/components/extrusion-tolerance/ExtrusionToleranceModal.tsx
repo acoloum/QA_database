@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col, Table } from 'react-bootstrap';
+import toast from 'react-hot-toast';
 import {
     useExtrusionToleranceDetail,
     useAddExtrusionTolerance,
@@ -85,7 +86,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
     };
 
     const handleSubmit = async () => {
-        if (!material.trim()) { alert('材質為必填'); return; }
+        if (!material.trim()) { toast.error('材質為必填'); return; }
         const payload = {
             材質: material.trim(),
             規格: spec.trim() || null,

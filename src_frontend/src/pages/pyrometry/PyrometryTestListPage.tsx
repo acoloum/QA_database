@@ -1,41 +1,34 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Table, Form, Row, Col, Badge, Pagination } from 'react-bootstrap';
-import api from '../../services/api';
-import type { Furnace, PyrometryTestRow } from '../../types';
+import type { PyrometryTestRow } from '../../types';
+import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
+import { useDeletePyrometryTest, useExportPyrometryTest, useFurnaces, usePyrometryTests } from '../../hooks/usePyrometry';
 import PyrometryTestForm from './PyrometryTestForm';
 
 const PyrometryTestListPage = () => {
-  const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({
     furnace_id: '', test_type: '', quarter: '', is_pass: '', date_from: '', date_to: '',
   });
+  const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
-  const { data: furnaces } = useQuery({
-    queryKey: ['furnaces-active'],
-    queryFn: () => api.get<{ data: Furnace[] }>('/pyrometry/furnaces?active_only=1').then(r => r.data.data),
-  });
-
-  const { data: result, isLoading } = useQuery({
-    queryKey: ['pyrometry-tests', page, filters],
-    queryFn: () => {
-      const params = new URLSearchParams({ page: String(page), page_size: '20' });
-      Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
-      return api.get<{ data: PyrometryTestRow[]; total: number; total_pages: number }>(
-        `/pyrometry/tests?${params.toString()}`
-      ).then(r => r.data);
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/pyrometry/tests/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['pyrometry-tests'] }),
-  });
+  const { data: furnaces } = useFurnaces({ activeOnly: true });
+  const { data: result, isLoading } = usePyrometryTests({ page, filters });
+  const deleteMutation = useDeletePyrometryTest();
+  const exportMutation = useExportPyrometryTest();
 
   const setF = (k: string, v: string) => { setFilters(prev => ({ ...prev, [k]: v })); setPage(1); };
+  const confirmDelete = (row: PyrometryTestRow) => setConfirmAction({
+    title: '刪除爐溫測試',
+    message: `確定刪除 ${row.爐號} ${row.測試類型} ${row.測試日期} 的測試紀錄？`,
+    confirmLabel: '刪除',
+    confirmVariant: 'danger',
+    onConfirm: async () => {
+      await deleteMutation.mutateAsync(row.識別碼);
+    },
+  });
   const rows: PyrometryTestRow[] = result?.data || [];
   const totalPages = result?.total_pages || 1;
 
@@ -116,17 +109,11 @@ const PyrometryTestListPage = () => {
                         <Button size="sm" variant="outline-primary" className="me-1"
                           onClick={() => { setEditId(r.識別碼); setShowForm(true); }}>編輯</Button>
                         <Button size="sm" variant="outline-danger"
-                          onClick={() => { if (window.confirm('確定刪除？')) deleteMutation.mutate(r.識別碼); }}>刪除</Button>
+                          onClick={() => confirmDelete(r)}>刪除</Button>
                         <Button size="sm" variant="outline-secondary" className="ms-1"
-                          onClick={async () => {
-                            const res = await api.get(`/pyrometry/tests/${r.識別碼}/export`, { responseType: 'blob' });
-                            const url = URL.createObjectURL(res.data as Blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `pyrometry_${r.識別碼}.xlsx`;
-                            a.click();
-                            URL.revokeObjectURL(url);
-                          }}>匯出</Button>
+                          onClick={() => exportMutation.mutate(r.識別碼)}
+                          disabled={exportMutation.isPending}
+                        >匯出</Button>
                       </td>
                     </tr>
                   ))}
@@ -148,9 +135,10 @@ const PyrometryTestListPage = () => {
         <PyrometryTestForm
           editId={editId}
           onClose={() => setShowForm(false)}
-          onSaved={() => { setShowForm(false); qc.invalidateQueries({ queryKey: ['pyrometry-tests'] }); }}
+          onSaved={() => setShowForm(false)}
         />
       )}
+      <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
     </div>
   );
 };

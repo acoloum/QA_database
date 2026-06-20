@@ -8,6 +8,7 @@ import {
     CAPA_STATUS_VARIANT,
 } from '../../hooks/useCapa';
 import CAPAModal from '../../components/capa/CAPAModal';
+import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import type { CAPAListItem } from '../../types';
 
 const PAGE_SIZE = 20;
@@ -29,6 +30,7 @@ const CAPAPage = () => {
     const [editId,    setEditId]    = useState<number | null>(
         Number.isFinite(initialOpenId) && initialOpenId > 0 ? initialOpenId : null
     );
+    const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
     // URL 參數觸發開啟（來自 NCMR / 客訴頁開立後跳轉）
     useEffect(() => {
@@ -54,9 +56,13 @@ const CAPAPage = () => {
 
     const handleEdit   = (item: CAPAListItem) => { setEditId(item.id); setShowModal(true); };
     const handleDelete = (item: CAPAListItem) => {
-        if (window.confirm(`確定刪除 CAPA「${item.no}」嗎？`)) {
-            deleteMutation.mutate(item.id);
-        }
+        setConfirmAction({
+            title: '刪除 CAPA',
+            message: `確定刪除 CAPA「${item.no}」嗎？`,
+            confirmLabel: '刪除',
+            confirmVariant: 'danger',
+            onConfirm: () => deleteMutation.mutateAsync(item.id),
+        });
     };
     const handleReset = () => {
         setSourceType('');
@@ -249,6 +255,7 @@ const CAPAPage = () => {
                 capaId={editId}
                 onHide={() => { setShowModal(false); setEditId(null); }}
             />
+            <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
         </Container>
     );
 };

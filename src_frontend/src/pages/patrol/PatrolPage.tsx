@@ -5,6 +5,8 @@ import PatrolCharts from '../../components/patrol/PatrolCharts';
 import PatrolImportModal from '../../components/patrol/PatrolImportModal';
 import { Button, Form, Card, Row, Col, Table, Badge, Pagination } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import { usePatrolList, usePatrolOptions, useDeletePatrol } from '../../hooks/usePatrol';
 import api from '../../services/api';
 
@@ -48,6 +50,7 @@ const PatrolPage = () => {
     const [showModal, setShowModal] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
     const [editId, setEditId] = useState<number | null>(null);
+    const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
     const handleSearch = () => {
         setPage(1);
@@ -78,14 +81,18 @@ const PatrolPage = () => {
             window.URL.revokeObjectURL(url);
         } catch (error) {
             console.error('匯出失敗', error);
-            alert('匯出失敗，請重新整理後再試');
+            toast.error('匯出失敗，請重新整理後再試');
         }
     };
 
     const handleDelete = async (id: number) => {
-        if (window.confirm('確定要刪除此筆資料嗎？')) {
-            deleteMutation.mutate(id);
-        }
+        setConfirmAction({
+            title: '刪除巡檢資料',
+            message: '確定要刪除此筆巡檢資料嗎？',
+            confirmLabel: '刪除',
+            confirmVariant: 'danger',
+            onConfirm: () => deleteMutation.mutateAsync(id),
+        });
     };
 
     const handleAdd = () => {
@@ -274,6 +281,7 @@ const PatrolPage = () => {
                 onSuccess={() => { }} // React Query handles invalidation
             />
 
+            <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
         </div>
     );
 };

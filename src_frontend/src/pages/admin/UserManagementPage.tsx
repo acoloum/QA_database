@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Form, Table, Badge, Modal, Alert, Spinner, Nav } from 'react-bootstrap';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
+import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import { useAuth } from '../../context/useAuth';
 import { useRoles } from '../../context/useRoles';
 import type { UserRecord } from '../../types';
@@ -229,6 +230,7 @@ const UserManagementPage = () => {
     const { user: currentUser, hasPermission } = useAuth();
     const currentUserId = currentUser ? Number(currentUser.user_id) : null;
     const [activeTab, setActiveTab] = useState<'users' | 'roles'>('users');
+    const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
     const { data: roleOptions = [] } = useRoles();
 
@@ -261,7 +263,14 @@ const UserManagementPage = () => {
 
     const handleRoleChange = (u: UserRecord, newRole: string) => {
         if (newRole === 'admin' && u.role !== 'admin') {
-            if (!window.confirm(`確定要將「${u.username}」升級為管理員？`)) return;
+            setConfirmAction({
+                title: '升級為管理員',
+                message: `確定要將「${u.username}」升級為管理員？`,
+                confirmLabel: '升級',
+                confirmVariant: 'warning',
+                onConfirm: () => roleMutation.mutateAsync({ id: u.id, role: newRole }),
+            });
+            return;
         }
         roleMutation.mutate({ id: u.id, role: newRole });
     };
@@ -550,6 +559,7 @@ const UserManagementPage = () => {
             {editingRole && (
                 <RoleEditModal role={editingRole} onHide={() => setEditingRole(null)} />
             )}
+            <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
         </div>
     );
 };

@@ -12,6 +12,7 @@ import {
     COMPLAINT_STATUS_VARIANT,
 } from '../../hooks/useComplaint';
 import ComplaintModal from '../../components/complaint/ComplaintModal';
+import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import type { CustomerComplaint } from '../../types';
 
 const PAGE_SIZE = 20;
@@ -32,6 +33,7 @@ const ComplaintPage = () => {
     // Modal 狀態
     const [showModal, setShowModal] = useState(false);
     const [editData,  setEditData]  = useState<CustomerComplaint | null>(null);
+    const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
     const params = {
         customer:       customerFilter  || undefined,
@@ -58,9 +60,13 @@ const ComplaintPage = () => {
     const handleEdit = (c: CustomerComplaint) => { setEditData(c); setShowModal(true); };
 
     const handleDelete = (c: CustomerComplaint) => {
-        if (window.confirm(`確定刪除客訴「${c.complaint_no}」嗎？`)) {
-            deleteMutation.mutate(c.id);
-        }
+        setConfirmAction({
+            title: '刪除客訴',
+            message: `確定刪除客訴「${c.complaint_no}」嗎？`,
+            confirmLabel: '刪除',
+            confirmVariant: 'danger',
+            onConfirm: () => deleteMutation.mutateAsync(c.id),
+        });
     };
 
     const handleOpenCapa = (c: CustomerComplaint) => {
@@ -69,9 +75,13 @@ const ComplaintPage = () => {
             navigate(`/capa?editId=${c.related_capa_id}`);
             return;
         }
-        if (window.confirm(`確定從客訴「${c.complaint_no}」開立 CAPA？`)) {
-            openCapaMutation.mutate(c.id);
-        }
+        setConfirmAction({
+            title: '開立 CAPA',
+            message: `確定從客訴「${c.complaint_no}」開立 CAPA？`,
+            confirmLabel: '開立',
+            confirmVariant: 'primary',
+            onConfirm: () => openCapaMutation.mutateAsync(c.id),
+        });
     };
 
     const handleOpenRework = (c: CustomerComplaint) => {
@@ -80,9 +90,13 @@ const ComplaintPage = () => {
             navigate(`/rework?id=${c.related_rework_id}`);
             return;
         }
-        if (window.confirm(`確定從客訴「${c.complaint_no}」開立重工申請單？`)) {
-            openReworkMutation.mutate(c.id);
-        }
+        setConfirmAction({
+            title: '開立重工申請',
+            message: `確定從客訴「${c.complaint_no}」開立重工申請單？`,
+            confirmLabel: '開立',
+            confirmVariant: 'primary',
+            onConfirm: () => openReworkMutation.mutateAsync(c.id),
+        });
     };
 
     const handleReset = () => {
@@ -330,6 +344,7 @@ const ComplaintPage = () => {
                 editData={editData}
                 onSuccess={() => setShowModal(false)}
             />
+            <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
         </Container>
     );
 };

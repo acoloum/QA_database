@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import type { ShippingInspection } from '../../types';
+import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import ShippingModal from '../../components/shipping/ShippingModal';
 import ImportModal from '../../components/shipping/ImportModal';
 import ShippingCharts from '../../components/shipping/ShippingCharts';
@@ -16,6 +17,7 @@ const ShippingPage = () => {
     const [showModal, setShowModal] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
     const [editId, setEditId] = useState<number | null>(null);
+    const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
     // Filters
     const [startDate, setStartDate] = useState('');
@@ -116,8 +118,13 @@ const ShippingPage = () => {
     };
 
     const handleDelete = async (id: number) => {
-        if (!confirm(`確定刪除 ID: ${id}?`)) return;
-        deleteMutation.mutate(id);
+        setConfirmAction({
+            title: '刪除出貨檢驗',
+            message: `確定刪除 ID: ${id} 的出貨檢驗資料？`,
+            confirmLabel: '刪除',
+            confirmVariant: 'danger',
+            onConfirm: () => deleteMutation.mutateAsync(id),
+        });
     };
 
     // Handler for successful modal operations (create/update)
@@ -350,6 +357,7 @@ const ShippingPage = () => {
                 handleClose={() => setShowImportModal(false)}
                 onSuccess={handleSuccess}
             />
+            <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
         </div>
     );
 };

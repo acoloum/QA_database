@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Table, Modal, Form, Row, Col, Badge } from 'react-bootstrap';
-import api from '../../services/api';
 import type { Thermocouple, ThermocoupleCalPoint } from '../../types';
+import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
+import { useDeleteThermocouple, useSaveThermocouple, useThermocoupleDetail, useThermocouples } from '../../hooks/usePyrometry';
 
 interface PointRow { 標準溫度: string; 器差值: string; }
 
@@ -11,34 +11,16 @@ const emptyMeta = () => ({
 });
 
 const ThermocoupleCalibrationPage = () => {
-  const qc = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [meta, setMeta] = useState(emptyMeta());
   const [points, setPoints] = useState<PointRow[]>([{ 標準溫度: '', 器差值: '' }]);
-  const [msg, setMsg] = useState('');
+  const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['thermocouples'],
-    queryFn: () => api.get<{ data: Thermocouple[] }>('/pyrometry/thermocouples').then(r => r.data.data),
-  });
-
-  const saveMutation = useMutation({
-    mutationFn: (payload: Partial<Thermocouple>) =>
-      editId
-        ? api.put(`/pyrometry/thermocouples/${editId}`, payload)
-        : api.post('/pyrometry/thermocouples', payload),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['thermocouples'] });
-      setShowModal(false);
-      setMsg(editId ? '已更新' : '已新增');
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/pyrometry/thermocouples/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['thermocouples'] }),
-  });
+  const { data, isLoading } = useThermocouples();
+  const thermocoupleDetail = useThermocoupleDetail();
+  const saveMutation = useSaveThermocouple(editId);
+  const deleteMutation = useDeleteThermocouple();
 
   const openAdd = () => {
     setEditId(null);
@@ -49,7 +31,7 @@ const ThermocoupleCalibrationPage = () => {
 
   const openEdit = async (t: Thermocouple) => {
     setEditId(t.識別碼);
-    const d = await api.get<{ data: Thermocouple }>(`/pyrometry/thermocouples/${t.識別碼}`).then(res => res.data.data);
+    const d = await thermocoupleDetail.mutateAsync(t.識別碼);
     setMeta({
       編號: d.編號 || '', 型式: d.型式 || '',
       校正日期: d.校正日期 || '', 到期日: d.到期日 || '',
@@ -62,10 +44,15 @@ const ThermocoupleCalibrationPage = () => {
     setShowModal(true);
   };
 
-  const handleDelete = (id: number) => {
-    if (!window.confirm('確定刪除此熱電偶與其校正資料？')) return;
-    deleteMutation.mutate(id);
-  };
+  const handleDelete = (t: Thermocouple) => setConfirmAction({
+    title: '刪除熱電偶',
+    message: `確定刪除熱電偶「${t.編號}」與其校正資料？`,
+    confirmLabel: '刪除',
+    confirmVariant: 'danger',
+    onConfirm: async () => {
+      await deleteMutation.mutateAsync(t.識別碼);
+    },
+  });
 
   const setRow = (i: number, k: keyof PointRow, v: string) =>
     setPoints(prev => prev.map((p, idx) => idx === i ? { ...p, [k]: v } : p));
@@ -76,7 +63,7 @@ const ThermocoupleCalibrationPage = () => {
     const 校正點 = points
       .filter(p => p.標準溫度 !== '' && p.器差值 !== '')
       .map(p => ({ 標準溫度: Number(p.標準溫度), 器差值: Number(p.器差值) }));
-    saveMutation.mutate({ ...meta, 校正點 } as unknown as Partial<Thermocouple>);
+    saveMutation.mutate({ payload: { ...meta, 校正點 } as unknown as Partial<Thermocouple> }, { onSuccess: () => setShowModal(false) });
   };
 
   return (
@@ -85,8 +72,6 @@ const ThermocoupleCalibrationPage = () => {
         <h4>熱電偶校正</h4>
         <Button variant="primary" size="sm" onClick={openAdd}>+ 新增</Button>
       </div>
-      {msg && <div className="alert alert-success py-1">{msg}</div>}
-
       <Card>
         <Card.Body>
           {isLoading ? <p>載入中…</p> : (
@@ -112,7 +97,7 @@ const ThermocoupleCalibrationPage = () => {
                     </td>
                     <td>
                       <Button size="sm" variant="outline-primary" className="me-1" onClick={() => openEdit(t)}>編輯</Button>
-                      <Button size="sm" variant="outline-danger" onClick={() => handleDelete(t.識別碼)}>刪除</Button>
+                      <Button size="sm" variant="outline-danger" onClick={() => handleDelete(t)}>刪除</Button>
                     </td>
                   </tr>
                 ))}
@@ -186,6 +171,7 @@ const ThermocoupleCalibrationPage = () => {
           </Button>
         </Modal.Footer>
       </Modal>
+      <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
     </div>
   );
 };
