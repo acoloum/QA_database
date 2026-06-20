@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildPatrolPayload,
+  buildPatrolUpdatePayload,
   calcPatrolLimits,
   isPatrolCellNG,
   isPatrolConcentricityNG,
@@ -76,5 +77,24 @@ describe('patrolFormUtils', () => {
       { group: '第1組', item: '厚度', pos: '前段', min: 2.4, max: 3 },
       { group: '第1組', item: '外徑', pos: '前段', min: 84.9, max: 85.4 },
     ]);
+  });
+
+  it('更新 payload 使用後端巡檢更新需要的 id 欄位', () => {
+    const payload = buildPatrolUpdatePayload({
+      editId: 12,
+      date: '2026-06-20',
+      machine: 'M1',
+      operator: 'O1',
+      inspector: 'I1',
+      customer: 'C1',
+      material: 'A6061',
+      batch: 'B1',
+      spec: '85*2.8',
+      details,
+    });
+
+    expect(payload.id).toBe(12);
+    expect(payload).not.toHaveProperty('識別碼');
+    expect(payload.details).toHaveLength(2);
   });
 });

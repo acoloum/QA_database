@@ -216,7 +216,6 @@ class ReworkService:
             db.session.flush()
             
             ncmr.status = '轉重工'
-            db.session.commit()
             
             return {"rework_id": req.id, "ncmr_number": ncmr.ncmr_number}
         except Exception as e:

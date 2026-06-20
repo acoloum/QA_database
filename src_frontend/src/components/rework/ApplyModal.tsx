@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form } from 'react-bootstrap'; // 使用 react-bootstrap 元件
 import { useInspectors } from '../../hooks/useInspectors';
+import { buildReworkApplicationPayload } from './reworkFormPayload';
 import { useCreateReworkApplication } from './useReworkMutations';
 
 interface ApplyModalProps {
@@ -77,17 +78,17 @@ const ApplyModal = ({ show, handleClose, onSuccess, initialNcmrId, initialNcmrNo
     };
 
     const handleSubmit = () => {
-        createApplication.mutate({
-            "NCMR_ID": parseInt(ncmrId),
-            "申請人員姓名": applicant,
-            "部門": department,
-            "緊急程度": urgency,
-            "產品資訊": productInfo,
-            "批號": batchNo,
-            "重工數量": parseFloat(quantity) || 0,
-            "申請原因": reason,
-            "預計完成日期": expectedDate
-        });
+        createApplication.mutate(buildReworkApplicationPayload({
+            ncmrId,
+            applicant,
+            department,
+            urgency,
+            productInfo,
+            batchNo,
+            quantity,
+            reason,
+            expectedDate,
+        }));
     };
 
     return (

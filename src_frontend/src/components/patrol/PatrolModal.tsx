@@ -8,11 +8,11 @@ import {
     useCreatePatrol,
     useUpdatePatrol
 } from '../../hooks/usePatrol';
-import type { PatrolCreateInput, PatrolUpdateInput } from '../../types';
 import { useExtrusionToleranceCheck } from '../../hooks/useExtrusionTolerance';
 import { parseSpec } from '../../utils/parseSpec';
 import {
     buildPatrolPayload,
+    buildPatrolUpdatePayload,
     getPatrolDetailValue,
     getValidPatrolDetails,
     isPatrolCellNG,
@@ -151,7 +151,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
             return;
         }
 
-        const payload = buildPatrolPayload({
+        const payloadValues = {
             editId,
             date,
             machine,
@@ -162,15 +162,13 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
             batch,
             spec,
             details,
-        });
+        };
 
         try {
             if (editId) {
-                // PatrolModal 使用舊欄位格式（機台/主機手），後端仍可接受
-                // 需透過 unknown 才能轉型，因為兩種型別沒有足夠的重疊
-                await updateMutation.mutateAsync({ id: editId, data: payload as unknown as PatrolUpdateInput });
+                await updateMutation.mutateAsync({ id: editId, data: buildPatrolUpdatePayload({ ...payloadValues, editId }) });
             } else {
-                await createMutation.mutateAsync(payload as PatrolCreateInput);
+                await createMutation.mutateAsync(buildPatrolPayload(payloadValues));
             }
             onSuccess();
             handleClose();

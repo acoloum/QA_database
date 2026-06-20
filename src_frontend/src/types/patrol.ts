@@ -51,6 +51,6 @@ export interface PatrolCreateInput {
 }
 
 export interface PatrolUpdateInput extends PatrolCreateInput {
-    識別碼: number; // 更新時必須提供識別碼
+    id: number; // 後端 /api/patrol/update 使用 id 讀取要更新的巡檢記錄
 }
 

@@ -7,6 +7,11 @@ import {
     useCreateNCMR,
     useUpdateNCMR
 } from '../../hooks/useNCMR';
+import {
+    buildNcmrFormPayload,
+    buildNcmrFormState,
+    getTodayText,
+} from './ncmrFormPayload';
 
 interface NCMRModalProps {
     show: boolean;
@@ -35,8 +40,8 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
     const createMutation = useCreateNCMR();
     const updateMutation = useUpdateNCMR();
 
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-    const [createDate, setCreateDate] = useState(new Date().toISOString().split('T')[0]);
+    const [date, setDate] = useState(getTodayText());
+    const [createDate, setCreateDate] = useState(getTodayText());
     const [source, setSource] = useState('進料');
     const [vendor, setVendor] = useState('');
     const [material, setMaterial] = useState('');
@@ -50,8 +55,9 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
     const [result, setResult] = useState('');
 
     const resetForm = () => {
-        setDate(new Date().toISOString().split('T')[0]);
-        setCreateDate(new Date().toISOString().split('T')[0]);
+        const state = buildNcmrFormState(null);
+        setDate(state.date);
+        setCreateDate(state.createDate);
         setSource('進料');
         setVendor('');
         setMaterial('');
@@ -73,19 +79,20 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
                 const d = detailData;
                 queueMicrotask(() => {
                     if (cancelled) return;
-                    setDate(d.日期 || d.發現日期);
-                    setCreateDate(d.建立日期 || new Date().toISOString().split('T')[0]);
-                    setSource(d.來源);
-                    setVendor(d.廠商 || '');
-                    setMaterial(d.材質 || '');
-                    setProductInfo(d.產品資訊 || '');
-                    setBatch(d.批號 || '');
-                    setDefectQty(d.不合格數量 ? Math.floor(Number(d.不合格數量)).toString() : '');
-                    setDesc(d.不良描述 || '');
-                    setCategory(d.不良原因大類 || '');
-                    setReason(d.不良原因細項 || '');
-                    setInspector(d.發現人員姓名 || '');
-                    setResult(d.判定結果 || '');
+                    const state = buildNcmrFormState(d);
+                    setDate(state.date);
+                    setCreateDate(state.createDate);
+                    setSource(state.source);
+                    setVendor(state.vendor);
+                    setMaterial(state.material);
+                    setProductInfo(state.productInfo);
+                    setBatch(state.batch);
+                    setDefectQty(state.defectQty);
+                    setDesc(state.desc);
+                    setCategory(state.category);
+                    setReason(state.reason);
+                    setInspector(state.inspector);
+                    setResult(state.result);
                 });
             } else {
                 queueMicrotask(() => {
@@ -99,29 +106,27 @@ const NCMRModal = ({ show, handleClose, onSuccess, editId }: NCMRModalProps) => 
     }, [show, editId, detailData]);
 
     const handleSubmit = async () => {
-        // 共用的欄位
-        const basePayload = {
-            "日期": date,
-            "建立日期": createDate,
-            "來源": source,
-            "廠商": vendor,
-            "材質": material,
-            "產品資訊": productInfo,
-            "批號": batch,
-            "不合格數量": defectQty,
-            "不良描述": desc,
-            "不良原因大類": category,
-            "不良原因細項": reason,
-            "發現人員姓名": inspector,
-            "判定結果": result
+        const formValues = {
+            date,
+            createDate,
+            source,
+            vendor,
+            material,
+            productInfo,
+            batch,
+            defectQty,
+            desc,
+            category,
+            reason,
+            inspector,
+            result,
         };
 
         try {
             if (editId) {
-                // 更新時加入識別碼
-                await updateMutation.mutateAsync({ ...basePayload, "識別碼": editId });
+                await updateMutation.mutateAsync(buildNcmrFormPayload(formValues, editId));
             } else {
-                await createMutation.mutateAsync(basePayload);
+                await createMutation.mutateAsync(buildNcmrFormPayload(formValues));
             }
             onSuccess();
             handleClose();

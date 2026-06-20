@@ -1,6 +1,7 @@
 
 from datetime import datetime, date
 import pytest
+from backend.extensions import db
 from backend.services.rework_service import ReworkService
 from backend.models import ReworkInspection, ReworkRequest, NCMR, Inspector
 
@@ -37,6 +38,33 @@ def test_create_rework_application(app, db_session):
         req = db_session.get(ReworkRequest, result["rework_id"])
         assert req.status == "申請中"
         assert req.rework_number.startswith("RW-")
+
+
+def test_create_rework_application_leaves_commit_to_route(app, db_session, monkeypatch):
+    with app.app_context():
+        inspector = Inspector(name="Inspector No Commit")
+        ncmr = NCMR(ncmr_number="NCMR-NOCOMMIT", product_info="Prod B", status="Open")
+        db_session.add_all([inspector, ncmr])
+        db_session.commit()
+
+        def fail_commit():
+            raise AssertionError("create_application 不應自行 commit")
+
+        monkeypatch.setattr(db.session, "commit", fail_commit)
+
+        result = ReworkService.create_application({
+            "NCMR_ID": ncmr.id,
+            "申請人員姓名": "Inspector No Commit",
+            "部門": "QA",
+            "緊急程度": "普通",
+            "批號": "Batch002",
+            "重工數量": 1,
+            "申請原因": "Defect",
+            "預計完成日期": date(2026, 6, 30),
+        })
+
+        assert result["rework_id"] is not None
+        assert ncmr.status == "轉重工"
 
 def test_approve_application(app, db_session):
     with app.app_context():

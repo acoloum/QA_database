@@ -4,6 +4,30 @@ type ReworkExecutionPayload = Omit<Partial<ReworkExecutionDetail>, '重工單號
 type ReworkInspectionPayload = Omit<Partial<ReworkInspectionDetail>, '重工單號'> & { 重工單號?: string };
 type ReworkCostPayload = Omit<Partial<ReworkCostDetail>, '重工單號'> & { 重工單號?: string };
 
+export interface ReworkApplicationPayload {
+  NCMR_ID: number | null;
+  申請人員姓名: string;
+  部門: string;
+  緊急程度: string;
+  產品資訊: string;
+  批號: string;
+  重工數量: number;
+  申請原因: string;
+  預計完成日期: string;
+}
+
+export interface ReworkApplicationFormValues {
+  ncmrId: string;
+  applicant: string;
+  department: string;
+  urgency: string;
+  productInfo: string;
+  batchNo: string;
+  quantity: string;
+  reason: string;
+  expectedDate: string;
+}
+
 export interface ReworkExecutionFormValues {
   reworkNumber?: string;
   responsiblePerson: string;
@@ -59,6 +83,34 @@ export const parseReworkCostNumber = (value: string, fallback = 0) => {
 
 export const calculateReworkTotalCost = (unitCost: string, quantity: string) =>
   parseReworkCostNumber(unitCost, 0) * parseReworkCostNumber(quantity, 0);
+
+const parseIntegerOrNull = (value: string) => {
+  if (value.trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? parsed : null;
+};
+
+export const buildReworkApplicationPayload = ({
+  ncmrId,
+  applicant,
+  department,
+  urgency,
+  productInfo,
+  batchNo,
+  quantity,
+  reason,
+  expectedDate,
+}: ReworkApplicationFormValues): ReworkApplicationPayload => ({
+  NCMR_ID: parseIntegerOrNull(ncmrId),
+  申請人員姓名: applicant,
+  部門: department,
+  緊急程度: urgency,
+  產品資訊: productInfo,
+  批號: batchNo,
+  重工數量: parseReworkCostNumber(quantity, 0),
+  申請原因: reason,
+  預計完成日期: expectedDate,
+});
 
 export const buildReworkExecutionPayload = ({
   reworkNumber,

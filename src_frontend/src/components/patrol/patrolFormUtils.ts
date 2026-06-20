@@ -1,4 +1,4 @@
-import type { PatrolCreateInput } from '../../types';
+import type { PatrolCreateInput, PatrolUpdateInput } from '../../types';
 import type { ExtrusionToleranceCheckResult } from '../../hooks/useExtrusionTolerance';
 
 export interface PatrolDetailInput {
@@ -153,3 +153,11 @@ export const buildPatrolPayload = ({
   檢驗人員: inspector,
   details: getValidPatrolDetails(details),
 });
+
+export const buildPatrolUpdatePayload = (params: BuildPatrolPayloadParams & { editId: number }): PatrolUpdateInput => {
+  const payload = buildPatrolPayload(params);
+  return {
+    ...payload,
+    id: params.editId,
+  };
+};

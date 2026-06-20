@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildReworkApplicationPayload,
   buildReworkCostPayload,
   buildReworkExecutionPayload,
   calculateReworkTotalCost,
@@ -9,6 +10,47 @@ import {
 } from './reworkFormPayload';
 
 describe('reworkFormPayload', () => {
+  it('將重工申請表單轉為後端 payload', () => {
+    expect(buildReworkApplicationPayload({
+      ncmrId: '12',
+      applicant: '王小明',
+      department: '品保部',
+      urgency: '緊急',
+      productInfo: '85*2.8',
+      batchNo: 'B-001',
+      quantity: '0',
+      reason: '尺寸異常',
+      expectedDate: '2026-06-30',
+    })).toEqual({
+      NCMR_ID: 12,
+      申請人員姓名: '王小明',
+      部門: '品保部',
+      緊急程度: '緊急',
+      產品資訊: '85*2.8',
+      批號: 'B-001',
+      重工數量: 0,
+      申請原因: '尺寸異常',
+      預計完成日期: '2026-06-30',
+    });
+  });
+
+  it('重工申請數字欄位非法或空白時使用可預期的空值', () => {
+    expect(buildReworkApplicationPayload({
+      ncmrId: '',
+      applicant: '',
+      department: '',
+      urgency: '普通',
+      productInfo: '',
+      batchNo: '',
+      quantity: 'abc',
+      reason: '',
+      expectedDate: '',
+    })).toMatchObject({
+      NCMR_ID: null,
+      重工數量: 0,
+    });
+  });
+
   it('將執行紀錄表單轉為後端 payload', () => {
     expect(buildReworkExecutionPayload({
       reworkNumber: 'RW-001',

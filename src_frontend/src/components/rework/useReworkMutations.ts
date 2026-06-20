@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 
 import api from '../../services/api';
 import { getReworkErrorMessage } from './reworkError';
+import type { ReworkApplicationPayload } from './reworkFormPayload';
 
 interface ReworkMutationOptions {
   onSuccess?: () => void;
@@ -19,7 +20,7 @@ const handleError = (error: unknown, fallback: string) => {
 
 export const useCreateReworkApplication = ({ onSuccess }: ReworkMutationOptions = {}) =>
   useMutation({
-    mutationFn: (payload: unknown) => api.post('/rework/apply', payload),
+    mutationFn: (payload: ReworkApplicationPayload) => api.post('/rework/apply', payload),
     onSuccess: () => handleSuccess('申請提交成功', onSuccess),
     onError: error => handleError(error, '申請失敗'),
   });
