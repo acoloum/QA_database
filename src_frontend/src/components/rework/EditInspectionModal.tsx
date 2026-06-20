@@ -2,11 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import api from '../../services/api';
 import type { ReworkInspectionDetail } from '../../types';
-
-interface Inspector {
-    id: number;
-    name: string;
-}
+import { useInspectors } from '../../hooks/useInspectors';
 
 // 使用 types/index.ts 的 ReworkInspectionDetail 取代本地 interface，保持型別一致
 interface EditInspectionModalProps {
@@ -17,7 +13,7 @@ interface EditInspectionModalProps {
 }
 
 const EditInspectionModal = ({ show, handleClose, onSuccess, inspection }: EditInspectionModalProps) => {
-    const [inspectors, setInspectors] = useState<Inspector[]>([]);
+    const { data: inspectors = [] } = useInspectors({ enabled: show && !!inspection });
     const [loading, setLoading] = useState(false);
 
     const [inspector, setInspector] = useState('');
@@ -26,16 +22,6 @@ const EditInspectionModal = ({ show, handleClose, onSuccess, inspection }: EditI
     const [defectQty, setDefectQty] = useState('0');
     const [inspectionDate, setInspectionDate] = useState('');
     const [remark, setRemark] = useState('');
-
-    // 先宣告 useCallback 函數以避免「宣告前使用」的 TypeScript 錯誤
-    const loadInspectors = useCallback(async () => {
-        try {
-            const res = await api.get<Inspector[]>('/inspectors');
-            setInspectors(res.data);
-        } catch (error) {
-            console.error('Failed to load inspectors', error);
-        }
-    }, []);
 
     const loadInspectionData = useCallback(() => {
         if (!inspection) return;
@@ -50,10 +36,9 @@ const EditInspectionModal = ({ show, handleClose, onSuccess, inspection }: EditI
     // useEffect 放在 useCallback 宣告後，確保函數已初始化
     useEffect(() => {
         if (show && inspection) {
-            loadInspectors();
             loadInspectionData();
         }
-    }, [show, inspection, loadInspectors, loadInspectionData]);
+    }, [show, inspection, loadInspectionData]);
 
     const handleSubmit = async () => {
         if (!inspection) return;

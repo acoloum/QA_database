@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import api from '../../services/api';
-import type { ReworkApplication, Inspector } from '../../types';
+import type { ReworkApplication } from '../../types';
+import { useInspectors } from '../../hooks/useInspectors';
 
 interface EditBasicInfoModalProps {
   show: boolean;
@@ -12,7 +13,7 @@ interface EditBasicInfoModalProps {
 
 const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditBasicInfoModalProps) => {
   const [loading, setLoading] = useState(false);
-  const [inspectors, setInspectors] = useState<Inspector[]>([]);
+  const { data: inspectors = [] } = useInspectors({ enabled: show });
 
   const [applicant, setApplicant] = useState('');
   const [department, setDepartment] = useState('製造部');
@@ -50,13 +51,6 @@ const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditB
       loadApplicationData();
     }
   }, [show, application, loadApplicationData]);
-
-  useEffect(() => {
-    if (!show) return;
-    api.get<Inspector[]>('/inspectors')
-      .then((res) => setInspectors(res.data))
-      .catch((err) => console.error('Failed to load inspectors', err));
-  }, [show]);
 
   const handleSubmit = async () => {
     if (!application) return;

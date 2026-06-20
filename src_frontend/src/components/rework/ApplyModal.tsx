@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form } from 'react-bootstrap'; // We use react-bootstrap components
 import api from '../../services/api';
+import { useInspectors } from '../../hooks/useInspectors';
 
 interface ApplyModalProps {
     show: boolean;
@@ -10,12 +11,8 @@ interface ApplyModalProps {
     initialNcmrNo?: string;
 }
 
-interface Inspector {
-    name: string;
-}
-
 const ApplyModal = ({ show, handleClose, onSuccess, initialNcmrId, initialNcmrNo }: ApplyModalProps) => {
-    const [inspectors, setInspectors] = useState<Inspector[]>([]);
+    const { data: inspectors = [] } = useInspectors({ enabled: show });
 
     // Form States
     const [ncmrId, setNcmrId] = useState('');
@@ -29,22 +26,12 @@ const ApplyModal = ({ show, handleClose, onSuccess, initialNcmrId, initialNcmrNo
     const [reason, setReason] = useState('');
     const [expectedDate, setExpectedDate] = useState('');
 
-    const loadInspectors = async () => {
-        try {
-            const res = await api.get<Inspector[]>('/inspectors');
-            setInspectors(res.data);
-        } catch (error) {
-            console.error('Failed to load inspectors', error);
-        }
-    };
-
     useEffect(() => {
         let cancelled = false;
 
         if (show) {
             queueMicrotask(() => {
                 if (cancelled) return;
-                loadInspectors();
                 if (initialNcmrId) {
                     setNcmrId(initialNcmrId);
                     setNcmrInfo(`從 NCMR #${initialNcmrNo || initialNcmrId} 開立重工`);

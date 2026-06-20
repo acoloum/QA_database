@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Modal, Button, Form, Table, Alert } from 'react-bootstrap';
 import toast from 'react-hot-toast';
 import type { ToleranceResult, ShippingCreateInput, ShippingMeasurementItem, ShippingMeasurements } from '../../types';
@@ -53,6 +53,12 @@ type GroupMeas = Record<string, Partial<ShippingMeasurementItem>>;
 /** 建立空白的量測組（所有項目皆為空） */
 const emptyGroup = (items: ItemConfig[]): GroupMeas =>
     Object.fromEntries(items.map(item => [item.key, { is_ng: false }]));
+
+/** 初始化 groups（建立 count 個空白組） */
+const initEmptyGroups = (count: number, items: ItemConfig[]): Record<string, GroupMeas> =>
+    Object.fromEntries(
+        Array.from({ length: count }, (_, i) => [String(i + 1), emptyGroup(items)])
+    );
 
 const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalProps) => {
     // Hooks
@@ -122,13 +128,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         return { ITEM_OFFSETS: offsets, TOTAL_INPUTS_PER_GROUP: total };
     }, [ITEMS]);
 
-    /** 初始化 groups（建立 groupCount 個空白組） */
-    const initEmptyGroups = (count: number, items: ItemConfig[]): Record<string, GroupMeas> =>
-        Object.fromEntries(
-            Array.from({ length: count }, (_, i) => [String(i + 1), emptyGroup(items)])
-        );
-
-    const resetForm = () => {
+    const resetForm = useCallback(() => {
         setDate(new Date().toISOString().split('T')[0]);
         setInspectorName('');
         setVendorName('');
@@ -140,11 +140,20 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         setTolerance(null);
         setViolations({});
         setFieldErrors({});
-    };
+    }, []);
 
     // 載入編輯資料，或開新增時重置表單
     useEffect(() => {
-        if (show) {
+        let cancelled = false;
+        if (!show) {
+            queueMicrotask(() => {
+                if (!cancelled) resetForm();
+            });
+            return () => { cancelled = true; };
+        }
+
+        queueMicrotask(() => {
+            if (cancelled) return;
             if (editId && detailData) {
                 setDate(detailData.檢驗日期 ?? detailData.date ?? '');
                 setInspectorName(String(detailData.檢驗人員 ?? '') || String(detailData.檢驗人員姓名 ?? '') || String(detailData.inspector_name ?? '') || '');
@@ -168,21 +177,21 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                     loaded[gKey] = { ...(loaded[gKey] ?? {}), ...items };
                 }
                 setGroups(loaded);
-            } else if (!editId) {
-                resetForm();
             }
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [show, editId, detailData]);
+        });
+        return () => { cancelled = true; };
+    }, [show, editId, detailData, resetForm]);
 
     // 廠商變更時（僅新增模式），重置量測組
     useEffect(() => {
-        if (!editId) {
+        let cancelled = false;
+        queueMicrotask(() => {
+            if (cancelled || editId) return;
             setGroupCount(DEFAULT_GROUP_COUNT);
             setGroups(initEmptyGroups(DEFAULT_GROUP_COUNT, ITEMS));
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [vendorName, editId]);
+        });
+        return () => { cancelled = true; };
+    }, [vendorName, editId, ITEMS]);
 
     // 公差查詢
     useEffect(() => {
@@ -229,9 +238,12 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
 
     // 公差違規偵測（新格式：從 groups 讀取量測值）
     useEffect(() => {
+        let cancelled = false;
         if (!tolerance) {
-            setViolations({});
-            return;
+            queueMicrotask(() => {
+                if (!cancelled) setViolations({});
+            });
+            return () => { cancelled = true; };
         }
 
         const newViolations: Record<string, boolean> = {};
@@ -291,8 +303,10 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             });
         });
 
-        setViolations(newViolations);
-
+        queueMicrotask(() => {
+            if (!cancelled) setViolations(newViolations);
+        });
+        return () => { cancelled = true; };
     }, [groups, tolerance, spec, groupKeys, ITEMS]);
 
     /** 更新特定組、特定項目的量測值 */

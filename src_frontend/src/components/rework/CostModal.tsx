@@ -1,11 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import api from '../../services/api';
-
-interface Inspector {
-    id: number;
-    name: string;
-}
+import { useInspectors } from '../../hooks/useInspectors';
 
 interface CostModalProps {
     show: boolean;
@@ -15,7 +11,7 @@ interface CostModalProps {
 }
 
 const CostModal = ({ show, handleClose, onSuccess, reworkNumber }: CostModalProps) => {
-    const [inspectors, setInspectors] = useState<Inspector[]>([]);
+    const { data: inspectors = [] } = useInspectors({ enabled: show });
     const [loading, setLoading] = useState(false);
 
     const [costType, setCostType] = useState('人工成本');
@@ -28,22 +24,15 @@ const CostModal = ({ show, handleClose, onSuccess, reworkNumber }: CostModalProp
 
     useEffect(() => {
         if (show) {
-            loadInspectors();
             resetForm();
         }
     }, [show]);
 
-    const loadInspectors = async () => {
-        try {
-            const res = await api.get<Inspector[]>('/inspectors');
-            setInspectors(res.data);
-            if (res.data.length > 0) {
-                setRecorder(res.data[0].name);
-            }
-        } catch (error) {
-            console.error('Failed to load inspectors', error);
+    useEffect(() => {
+        if (show && inspectors.length > 0 && !recorder) {
+            setRecorder(inspectors[0].name);
         }
-    };
+    }, [show, inspectors, recorder]);
 
     const resetForm = () => {
         setCostType('人工成本');
@@ -51,6 +40,7 @@ const CostModal = ({ show, handleClose, onSuccess, reworkNumber }: CostModalProp
         setUnitCost('');
         setQuantity('1');
         setCurrency('TWD');
+        setRecorder('');
         setRemark('');
     };
 

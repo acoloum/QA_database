@@ -23,6 +23,7 @@ import {
     formatPPM,
     getPpmGrade
 } from '../../utils/spcAnalysis';
+import { getClickedPointId, setChartPointCursor, shouldShowControlLegendLabel } from '../../utils/spcChartOptions';
 import { Alert, Badge, Button, Card, Col, Row, Form } from 'react-bootstrap';
 import { usePatrolStats } from '../../hooks/usePatrol';
 import api from '../../services/api';
@@ -554,10 +555,7 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
                                                         display: true,
                                                         position: 'bottom',
                                                         labels: {
-                                                            filter: (item) => {
-                                                                const hidden = ['+1σ', '-1σ', '+2σ', '-2σ'];
-                                                                return !hidden.includes(item.text);
-                                                            },
+                                                            filter: item => shouldShowControlLegendLabel(item.text),
                                                             usePointStyle: true,
                                                             pointStyle: 'line',
                                                             font: { size: 10 }
@@ -574,18 +572,11 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
                                                     }
                                                 },
                                                 onClick: (_event: unknown, elements: ActiveDataPoint[]) => {
-                                                    if (elements.length > 0 && ids.length > 0 && onEditPoint) {
-                                                        const index = elements[0].index;
-                                                        const id = ids[index];
-                                                        if (id) onEditPoint(Number(id));
-                                                    }
+                                                    const id = getClickedPointId(ids, elements);
+                                                    if (id && onEditPoint) onEditPoint(id);
                                                 },
                                                 onHover: (event: unknown, elements: ActiveDataPoint[]) => {
-                                                    // 透過 as 斷言存取原生事件目標，以修改游標樣式
-                                                    const nativeEvent = (event as { native?: { target?: HTMLElement } })?.native;
-                                                    if (nativeEvent?.target) {
-                                                        (nativeEvent.target as HTMLElement).style.cursor = elements.length > 0 ? 'pointer' : 'default';
-                                                    }
+                                                    setChartPointCursor(event, elements);
                                                 }
                                             }}
                                         />
@@ -623,18 +614,11 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
                                                     }
                                                 },
                                                 onClick: (_event: unknown, elements: ActiveDataPoint[]) => {
-                                                    if (elements.length > 0 && ids.length > 0 && onEditPoint) {
-                                                        const index = elements[0].index;
-                                                        const id = ids[index];
-                                                        if (id) onEditPoint(Number(id));
-                                                    }
+                                                    const id = getClickedPointId(ids, elements);
+                                                    if (id && onEditPoint) onEditPoint(id);
                                                 },
                                                 onHover: (event: unknown, elements: ActiveDataPoint[]) => {
-                                                    // 透過 as 斷言存取原生事件目標，以修改游標樣式
-                                                    const nativeEvent = (event as { native?: { target?: HTMLElement } })?.native;
-                                                    if (nativeEvent?.target) {
-                                                        (nativeEvent.target as HTMLElement).style.cursor = elements.length > 0 ? 'pointer' : 'default';
-                                                    }
+                                                    setChartPointCursor(event, elements);
                                                 }
                                             }}
                                         />

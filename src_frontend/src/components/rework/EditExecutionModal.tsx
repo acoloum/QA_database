@@ -2,11 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import api from '../../services/api';
 import type { ReworkExecutionDetail } from '../../types';
-
-interface Inspector {
-    id: number;
-    name: string;
-}
+import { useInspectors } from '../../hooks/useInspectors';
 
 // 使用 types/index.ts 的 ReworkExecutionDetail 取代本地 interface，保持型別一致
 interface EditExecutionModalProps {
@@ -17,7 +13,7 @@ interface EditExecutionModalProps {
 }
 
 const EditExecutionModal = ({ show, handleClose, onSuccess, execution }: EditExecutionModalProps) => {
-    const [inspectors, setInspectors] = useState<Inspector[]>([]);
+    const { data: inspectors = [] } = useInspectors({ enabled: show && !!execution });
     const [loading, setLoading] = useState(false);
 
     const [responsiblePerson, setResponsiblePerson] = useState('');
@@ -34,16 +30,6 @@ const EditExecutionModal = ({ show, handleClose, onSuccess, execution }: EditExe
     const [defectQty, setDefectQty] = useState('');
     const [status, setStatus] = useState('');
     const [abnormalStatus, setAbnormalStatus] = useState('');
-
-    // 先宣告 useCallback 函數以避免「宣告前使用」的 TypeScript 錯誤
-    const loadInspectors = useCallback(async () => {
-        try {
-            const res = await api.get<Inspector[]>('/inspectors');
-            setInspectors(res.data);
-        } catch (error) {
-            console.error('Failed to load inspectors', error);
-        }
-    }, []);
 
     const loadExecutionData = useCallback(() => {
         if (!execution) return;
@@ -66,10 +52,9 @@ const EditExecutionModal = ({ show, handleClose, onSuccess, execution }: EditExe
     // useEffect 放在 useCallback 宣告後，確保函數已初始化
     useEffect(() => {
         if (show && execution) {
-            loadInspectors();
             loadExecutionData();
         }
-    }, [show, execution, loadInspectors, loadExecutionData]);
+    }, [show, execution, loadExecutionData]);
 
     const formatDateTimeLocal = (dateStr: string) => {
         if (!dateStr) return '';

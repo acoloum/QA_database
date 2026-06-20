@@ -1,7 +1,7 @@
 export interface InspectorItem {
     id: number;
     name: string;
-    group: string;
+    group?: string;
 }
 
 export const inspectorLabel = (i: InspectorItem) => i.name;

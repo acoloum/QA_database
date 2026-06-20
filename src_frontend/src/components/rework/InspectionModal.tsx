@@ -1,11 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import api from '../../services/api';
-
-interface Inspector {
-    id: number;
-    name: string;
-}
+import { useInspectors } from '../../hooks/useInspectors';
 
 interface InspectionModalProps {
     show: boolean;
@@ -15,7 +11,7 @@ interface InspectionModalProps {
 }
 
 const InspectionModal = ({ show, handleClose, onSuccess, reworkNumber }: InspectionModalProps) => {
-    const [inspectors, setInspectors] = useState<Inspector[]>([]);
+    const { data: inspectors = [] } = useInspectors({ enabled: show });
     const [loading, setLoading] = useState(false);
 
     const [inspector, setInspector] = useState('');
@@ -27,19 +23,9 @@ const InspectionModal = ({ show, handleClose, onSuccess, reworkNumber }: Inspect
 
     useEffect(() => {
         if (show) {
-            loadInspectors();
             resetForm();
         }
     }, [show]);
-
-    const loadInspectors = async () => {
-        try {
-            const res = await api.get<Inspector[]>('/inspectors');
-            setInspectors(res.data);
-        } catch (error) {
-            console.error('Failed to load inspectors', error);
-        }
-    };
 
     const resetForm = () => {
         setInspector('');

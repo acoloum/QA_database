@@ -23,6 +23,7 @@ import {
     formatPPM,
     getPpmGrade
 } from '../../utils/spcAnalysis';
+import { getClickedPointId, setChartPointCursor, shouldShowControlLegendLabel } from '../../utils/spcChartOptions';
 import type { SpcViolation, HistogramBin, CpkTrend } from '../../types';
 import { Alert, Badge, Button, Card, Col, Row, Form } from 'react-bootstrap';
 import { useShippingStats, useExportSpcReport } from '../../hooks/useShipping';
@@ -562,10 +563,7 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                                         display: true,
                                                         position: 'bottom',
                                                         labels: {
-                                                            filter: (item) => {
-                                                                const hidden = ['+1σ', '-1σ', '+2σ', '-2σ'];
-                                                                return !hidden.includes(item.text);
-                                                            },
+                                                            filter: item => shouldShowControlLegendLabel(item.text),
                                                             usePointStyle: true,
                                                             pointStyle: 'line',
                                                             font: { size: 10 }
@@ -582,18 +580,11 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                                     }
                                                 },
                                                 onClick: (_event: unknown, elements: ActiveDataPoint[]) => {
-                                                    if (elements.length > 0 && ids.length > 0) {
-                                                        const index = elements[0].index;
-                                                        const id = ids[index];
-                                                        if (id && onPointClick) onPointClick(Number(id));
-                                                    }
+                                                    const id = getClickedPointId(ids, elements);
+                                                    if (id && onPointClick) onPointClick(id);
                                                 },
                                                 onHover: (event: unknown, elements: ActiveDataPoint[]) => {
-                                                    // 透過 as 斷言存取原生事件目標，以修改游標樣式
-                                                    const nativeEvent = (event as { native?: { target?: HTMLElement } })?.native;
-                                                    if (nativeEvent?.target) {
-                                                        (nativeEvent.target as HTMLElement).style.cursor = elements.length > 0 ? 'pointer' : 'default';
-                                                    }
+                                                    setChartPointCursor(event, elements);
                                                 }
                                             }}
                                         />
@@ -631,18 +622,11 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                                                     }
                                                 },
                                                 onClick: (_event: unknown, elements: ActiveDataPoint[]) => {
-                                                    if (elements.length > 0 && ids.length > 0) {
-                                                        const index = elements[0].index;
-                                                        const id = ids[index];
-                                                        if (id && onPointClick) onPointClick(Number(id));
-                                                    }
+                                                    const id = getClickedPointId(ids, elements);
+                                                    if (id && onPointClick) onPointClick(id);
                                                 },
                                                 onHover: (event: unknown, elements: ActiveDataPoint[]) => {
-                                                    // 透過 as 斷言存取原生事件目標，以修改游標樣式
-                                                    const nativeEvent = (event as { native?: { target?: HTMLElement } })?.native;
-                                                    if (nativeEvent?.target) {
-                                                        (nativeEvent.target as HTMLElement).style.cursor = elements.length > 0 ? 'pointer' : 'default';
-                                                    }
+                                                    setChartPointCursor(event, elements);
                                                 }
                                             }}
                                         />

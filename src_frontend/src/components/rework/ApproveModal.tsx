@@ -1,11 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form } from 'react-bootstrap';
 import api from '../../services/api';
-
-interface Inspector {
-    id: number;
-    name: string;
-}
+import { useInspectors } from '../../hooks/useInspectors';
 
 interface ApproveModalProps {
     show: boolean;
@@ -15,19 +11,10 @@ interface ApproveModalProps {
 }
 
 const ApproveModal = ({ show, handleClose, onSuccess, reworkId }: ApproveModalProps) => {
-    const [inspectors, setInspectors] = useState<Inspector[]>([]);
+    const { data: inspectors = [] } = useInspectors({ enabled: show });
     const [reviewerName, setReviewerName] = useState('');
     const [action, setAction] = useState('核准');
     const [opinion, setOpinion] = useState('');
-
-    const loadInspectors = async () => {
-        try {
-            const res = await api.get<Inspector[]>('/inspectors');
-            setInspectors(res.data);
-        } catch (error) {
-            console.error('Failed to load inspectors', error);
-        }
-    };
 
     useEffect(() => {
         let cancelled = false;
@@ -35,7 +22,6 @@ const ApproveModal = ({ show, handleClose, onSuccess, reworkId }: ApproveModalPr
         if (show) {
             queueMicrotask(() => {
                 if (cancelled) return;
-                loadInspectors();
                 setAction('核准');
                 setOpinion('');
                 setReviewerName('');

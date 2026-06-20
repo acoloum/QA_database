@@ -1,10 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
 import {
-    Modal, Button, Nav, Tab, Row, Col, Alert,
+    Modal, Button, Nav, Tab, Alert,
     Badge, ProgressBar, Spinner,
 } from 'react-bootstrap';
-import { useQuery } from '@tanstack/react-query';
-import api from '../../services/api';
 import toast from 'react-hot-toast';
 import {
     useCapaDetail,
@@ -13,10 +10,9 @@ import {
     useCloseCapa,
     download8DReport,
     CAPA_SEVERITY_VARIANT,
-    RIGOR_STEPS,
     D_STEP_LABELS,
 } from '../../hooks/useCapa';
-import type { InspectorItem } from './capaInspectors';
+import { useInspectors } from '../../hooks/useInspectors';
 import D0Pane from './D0Pane';
 import D1Pane from './D1Pane';
 import D2Pane from './D2Pane';
@@ -26,8 +22,8 @@ import D5Pane from './D5Pane';
 import D6Pane from './D6Pane';
 import D7Pane from './D7Pane';
 import D8Pane from './D8Pane';
-import { D7_TYPES } from './capaD7Types';
-import type { CAPADetail, CAPASeverity, D7Action } from '../../types';
+import SourceInfoBanner from './SourceInfoBanner';
+import { useCapaDraft } from './useCapaDraft';
 
 // ── 介面 Props ────────────────────────────────────────────────
 interface CAPAModalProps {
@@ -36,183 +32,39 @@ interface CAPAModalProps {
     onHide: () => void;
 }
 
-// ── 嚴重度 → 嚴格度 預設聯動 ─────────────────────────────────
-const SEVERITY_TO_RIGOR: Record<string, string> = {
-    Critical: '完整8D',
-    Major:    '完整8D',
-    Minor:    '簡化5D',
-};
-
-// ── Hook：取得檢驗員清單 ──────────────────────────────────────
-const useInspectors = () =>
-    useQuery({
-        queryKey: ['inspectors'],
-        queryFn: async () => {
-            const res = await api.get('/inspectors');
-            return res.data as InspectorItem[];
-        },
-        staleTime: 10 * 60 * 1000,
-    });
-
 // ══════════════════════════════════════════════════════════════
 // 主元件：CAPAModal
 // ══════════════════════════════════════════════════════════════
 const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
     const { data: capa, isLoading } = useCapaDetail(capaId);
-    const { data: inspectors = [] }  = useInspectors();
+    const { data: inspectors = [] }  = useInspectors({ enabled: show });
     const updateStep  = useUpdateCapaStep();
     const closeGate   = useCapaCloseGate(capaId);
     const closeMut    = useCloseCapa();
 
-    // 目前顯示的 Tab
-    const [activeTab, setActiveTab] = useState('d0');
-
-    // 各步驟草稿狀態
-    const [d0Symptom,   setD0Symptom]   = useState('');
-    const [d0Criteria,  setD0Criteria]  = useState<string[]>([]);
-    const [d0Severity,  setD0Severity]  = useState<CAPASeverity | ''>('');
-    const [d0Rigor,     setD0Rigor]     = useState('完整8D');
-    const [d0Deadline,  setD0Deadline]  = useState('');
-
-    const [d1Champion,  setD1Champion]  = useState<number | ''>('');
-    const [d1Leader,    setD1Leader]    = useState<number | ''>('');
-    const [d1Members,   setD1Members]   = useState<number[]>([]);
-
-    const [d2What,      setD2What]      = useState('');
-    const [d2Where,     setD2Where]     = useState('');
-    const [d2When,      setD2When]      = useState('');
-    const [d2Who,       setD2Who]       = useState('');
-    const [d2Why,       setD2Why]       = useState('');
-    const [d2How,       setD2How]       = useState('');
-    const [d2HowMany,   setD2HowMany]   = useState('');
-
-    const [d3Action,    setD3Action]    = useState('');
-    const [d3EffDate,   setD3EffDate]   = useState('');
-    const [d3Verif,     setD3Verif]     = useState('');
-
-    const [d4Tool,      setD4Tool]      = useState('5why');
-    const [d4FiveWhy,   setD4FiveWhy]   = useState<{ why: string; answer: string }[]>([]);
-    const [d4Fishbone,  setD4Fishbone]  = useState<Record<string, string[]>>({});
-    const [d4RootCause, setD4RootCause] = useState('');
-
-    const [d5Action,    setD5Action]    = useState('');
-    const [d5PlannedDate, setD5PlannedDate] = useState('');
-    const [d5VerifyPlan, setD5VerifyPlan] = useState('');
-
-    const [d6ImplDate,  setD6ImplDate]  = useState('');
-    const [d6Result,    setD6Result]    = useState('');
-    const [d6Verified,  setD6Verified]  = useState(false);
-
-    const [d7Actions,   setD7Actions]   = useState<D7Action[]>([]);
-
-    const [d8Confirm,   setD8Confirm]   = useState('');
-    const [d8Recog,     setD8Recog]     = useState('');
-
     // 唯讀模式（已結案）
     const isClosed = capa?.status === '已結案';
 
-    // 從伺服器資料初始化草稿
-    useEffect(() => {
-        if (!capa) return;
-        let cancelled = false;
-        queueMicrotask(() => {
-            if (cancelled) return;
-            setD0Symptom(capa.D0_symptom ?? '');
-            setD0Criteria(capa.D0_criteria ?? []);
-            setD0Severity((capa.D0_severity ?? '') as CAPASeverity | '');
-            setD0Rigor(capa.rigor ?? '完整8D');
-            setD0Deadline(capa.D0_deadline ?? '');
-
-            setD1Champion(capa.D1_champion_id ?? '');
-            setD1Leader(capa.D1_leader_id ?? '');
-            setD1Members(capa.D1_members ?? []);
-
-            // D2：優先用已儲存值；若欄位為 null（從未填寫）則從來源資訊帶入
-            const si = (capa.source_info ?? {}) as Record<string, string | number | null>;
-            const isNcmr = capa.source_type === 'ncmr';
-            setD2What(    capa.D2_what     ?? ((si.defect        as string) ?? ''));
-            setD2Where(   capa.D2_where    ?? (isNcmr ? (si.source        as string ?? '') : ''));
-            setD2When(    capa.D2_when     ?? '');
-            setD2Who(     capa.D2_who      ?? (isNcmr ? (si.vendor        as string ?? '') : ''));
-            setD2Why(     capa.D2_why      ?? '');
-            setD2How(     capa.D2_how      ?? (isNcmr ? (si.defect_detail as string ?? '') : ''));
-            setD2HowMany( capa.D2_how_many ?? (isNcmr && si.defect_qty != null
-                ? `${si.defect_qty} / ${si.total_qty ?? '?'} 支` : ''));
-
-            setD3Action(capa.D3_action ?? '');
-            setD3EffDate(capa.D3_effective_date ?? '');
-            setD3Verif(capa.D3_verification ?? '');
-
-            setD4Tool(capa.D4_tool ?? '5why');
-            setD4FiveWhy((capa.D4_five_why ?? []) as { why: string; answer: string }[]);
-            setD4Fishbone((capa.D4_fishbone ?? {}) as Record<string, string[]>);
-            setD4RootCause(capa.D4_root_cause ?? '');
-
-            setD5Action(capa.D5_action ?? '');
-            setD5PlannedDate(capa.D5_planned_date ?? '');
-            setD5VerifyPlan(capa.D5_verify_plan ?? '');
-
-            setD6ImplDate(capa.D6_implement_date ?? '');
-            setD6Result(capa.D6_result ?? '');
-            setD6Verified(capa.D6_verified ?? false);
-
-            // D7 Actions 初始化：從伺服器資料合併 D7_TYPES
-            const serverActions = capa.D7_actions ?? [];
-            const merged = D7_TYPES.map(t => {
-                const found = serverActions.find(a => a.type === t.key);
-                return found ?? { type: t.key, checked: false, assignee_id: null, due_date: null, description: '', part_nos: '' };
-            });
-            setD7Actions(merged);
-
-            setD8Confirm(capa.D8_confirmation ?? '');
-            setD8Recog(capa.D8_recognition ?? '');
-
-            // 預設第一個有效 Tab
-            const steps = RIGOR_STEPS[capa.rigor] ?? [0, 1, 2, 3, 4, 5, 6, 7, 8];
-            setActiveTab(`d${steps[0]}`);
-        });
-        return () => { cancelled = true; };
-    }, [capa]);
-
-    // 嚴重度聯動嚴格度（可手動 override）
-    // 注意：僅在使用者「手動變更」嚴重度時套用預設嚴格度，
-    // 絕不可放在 useEffect 內依賴 d0Severity，否則載入既有資料時
-    // 嚴重度從空值帶入會誤觸發，把使用者存好的 rigor（如 簡化5D）覆蓋掉，
-    // 造成「處理叫出資料時 5D 時有時無變成 8D」的問題。
-    const handleSeverityChange = (val: CAPASeverity | '') => {
-        setD0Severity(val);
-        if (val && !isClosed) setD0Rigor(SEVERITY_TO_RIGOR[val] ?? '完整8D');
-    };
-
-    // 顯示的步驟清單
-    const steps = useMemo(
-        () => RIGOR_STEPS[d0Rigor] ?? [0, 1, 2, 3, 4, 5, 6, 7, 8],
-        [d0Rigor]
-    );
-
-    // 步驟儲存
-    const saveStep = (stepKey: string, payload: Record<string, unknown>) => {
-        if (!capaId) return;
-        updateStep.mutate({ id: capaId, data: { step: stepKey, ...payload } });
-    };
-
-    // 切換 D7 勾選
-    const toggleD7 = (idx: number, checked: boolean) => {
-        setD7Actions(prev => prev.map((a, i) => i === idx ? { ...a, checked } : a));
-    };
-    const updateD7Field = (idx: number, field: keyof D7Action, val: unknown) => {
-        setD7Actions(prev => prev.map((a, i) => i === idx ? { ...a, [field]: val } : a));
-    };
-
-    // 結案
-    const handleClose8D = () => {
-        if (!capaId || !d8Confirm.trim()) return;
-        closeMut.mutate({ id: capaId, D8_confirmation: d8Confirm, D8_recognition: d8Recog });
-    };
-
-    // 步驟完成度（用 server step_status）
-    const stepDone = (n: number) =>
-        capa?.progress?.step_status?.[`D${n}`] === true;
+    const draft = useCapaDraft({
+        capa,
+        capaId,
+        isClosed,
+        onUpdateStep: (id, data) => updateStep.mutate({ id, data }),
+        onCloseCapa: data => closeMut.mutate(data),
+    });
+    const {
+        activeTab, setActiveTab, steps, stepDone, handleSeverityChange,
+        d0Symptom, setD0Symptom, d0Criteria, setD0Criteria, d0Severity, d0Rigor, setD0Rigor, d0Deadline, setD0Deadline,
+        d1Champion, setD1Champion, d1Leader, setD1Leader, d1Members, setD1Members,
+        d2What, setD2What, d2Where, setD2Where, d2When, setD2When, d2Who, setD2Who, d2Why, setD2Why, d2How, setD2How, d2HowMany, setD2HowMany,
+        d3Action, setD3Action, d3EffDate, setD3EffDate, d3Verif, setD3Verif,
+        d4Tool, setD4Tool, d4FiveWhy, setD4FiveWhy, d4Fishbone, setD4Fishbone, d4RootCause, setD4RootCause,
+        d5Action, setD5Action, d5PlannedDate, setD5PlannedDate, d5VerifyPlan, setD5VerifyPlan,
+        d6ImplDate, setD6ImplDate, d6Result, setD6Result, d6Verified, setD6Verified,
+        d7Actions, toggleD7, updateD7Field,
+        d8Confirm, setD8Confirm, d8Recog, setD8Recog, handleClose8D,
+        saveD0, saveD1, saveD2, saveD3, saveD4, saveD5, saveD6, saveD7,
+    } = draft;
 
     if (!show) return null;
 
@@ -282,13 +134,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                                         deadline={d0Deadline} setDeadline={setD0Deadline}
                                         readonly={isClosed}
                                         capaId={capa.id}
-                                        onSave={() => saveStep('D0', {
-                                            D0_symptom: d0Symptom,
-                                            D0_criteria: d0Criteria,
-                                            D0_severity: d0Severity || null,
-                                            D0_deadline: d0Deadline || null,
-                                            rigor: d0Rigor,
-                                        })}
+                                        onSave={saveD0}
                                         saving={updateStep.isPending}
                                     />
                                 </Tab.Pane>
@@ -301,11 +147,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                                         members={d1Members} setMembers={setD1Members}
                                         inspectors={inspectors}
                                         readonly={isClosed}
-                                        onSave={() => saveStep('D1', {
-                                            D1_champion_id: d1Champion || null,
-                                            D1_leader_id: d1Leader || null,
-                                            D1_members: d1Members,
-                                        })}
+                                        onSave={saveD1}
                                         saving={updateStep.isPending}
                                     />
                                 </Tab.Pane>
@@ -322,12 +164,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                                         howMany={d2HowMany} setHowMany={setD2HowMany}
                                         readonly={isClosed}
                                         capaId={capa.id}
-                                        onSave={() => saveStep('D2', {
-                                            D2_what: d2What, D2_where: d2Where,
-                                            D2_when: d2When, D2_who: d2Who,
-                                            D2_why: d2Why, D2_how: d2How,
-                                            D2_how_many: d2HowMany,
-                                        })}
+                                        onSave={saveD2}
                                         saving={updateStep.isPending}
                                     />
                                 </Tab.Pane>
@@ -340,11 +177,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                                         verification={d3Verif} setVerification={setD3Verif}
                                         readonly={isClosed}
                                         capaId={capa.id}
-                                        onSave={() => saveStep('D3', {
-                                            D3_action: d3Action,
-                                            D3_effective_date: d3EffDate || null,
-                                            D3_verification: d3Verif,
-                                        })}
+                                        onSave={saveD3}
                                         saving={updateStep.isPending}
                                     />
                                 </Tab.Pane>
@@ -357,12 +190,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                                         fishbone={d4Fishbone} setFishbone={setD4Fishbone}
                                         rootCause={d4RootCause} setRootCause={setD4RootCause}
                                         readonly={isClosed}
-                                        onSave={() => saveStep('D4', {
-                                            D4_tool: d4Tool,
-                                            D4_five_why: d4Tool === '5why' ? d4FiveWhy : null,
-                                            D4_fishbone: d4Tool === 'fishbone' ? d4Fishbone : null,
-                                            D4_root_cause: d4RootCause,
-                                        })}
+                                        onSave={saveD4}
                                         saving={updateStep.isPending}
                                     />
                                 </Tab.Pane>
@@ -374,11 +202,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                                         plannedDate={d5PlannedDate} setPlannedDate={setD5PlannedDate}
                                         verifyPlan={d5VerifyPlan} setVerifyPlan={setD5VerifyPlan}
                                         readonly={isClosed}
-                                        onSave={() => saveStep('D5', {
-                                            D5_action: d5Action,
-                                            D5_planned_date: d5PlannedDate || null,
-                                            D5_verify_plan: d5VerifyPlan,
-                                        })}
+                                        onSave={saveD5}
                                         saving={updateStep.isPending}
                                     />
                                 </Tab.Pane>
@@ -391,11 +215,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                                         verified={d6Verified} setVerified={setD6Verified}
                                         readonly={isClosed}
                                         capaId={capa.id}
-                                        onSave={() => saveStep('D6', {
-                                            D6_implement_date: d6ImplDate || null,
-                                            D6_result: d6Result,
-                                            D6_verified: d6Verified,
-                                        })}
+                                        onSave={saveD6}
                                         saving={updateStep.isPending}
                                     />
                                 </Tab.Pane>
@@ -409,7 +229,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                                         readonly={isClosed}
                                         onToggle={toggleD7}
                                         onUpdateField={updateD7Field}
-                                        onSave={() => saveStep('D7', { D7_actions: d7Actions })}
+                                        onSave={saveD7}
                                         saving={updateStep.isPending}
                                     />
                                 </Tab.Pane>
@@ -485,31 +305,6 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                 </div>
             </Modal.Footer>
         </Modal>
-    );
-};
-
-// ══════════════════════════════════════════════════════════════
-// 子元件：來源資訊 Banner
-// ══════════════════════════════════════════════════════════════
-const SourceInfoBanner = ({ capa }: { capa: CAPADetail }) => {
-    const info = capa.source_info ?? {};
-    return (
-        <Alert variant="light" className="border mb-3 py-2">
-            <Row className="small g-2 align-items-center">
-                <Col xs="auto">
-                    <Badge bg={capa.source_type === 'ncmr' ? 'warning' : 'info'} text="dark">
-                        {capa.source_type === 'ncmr' ? 'NCMR' : '客訴'}
-                    </Badge>
-                    <span className="ms-1 fw-semibold">#{capa.source_id}</span>
-                </Col>
-                {Object.entries(info).slice(0, 4).map(([k, v]) => (
-                    <Col xs="auto" key={k}>
-                        <span className="text-muted">{k}：</span>
-                        <span>{v ?? '—'}</span>
-                    </Col>
-                ))}
-            </Row>
-        </Alert>
     );
 };
 
