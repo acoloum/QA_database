@@ -25,4 +25,33 @@ describe('PatrolChartsParts', () => {
     render(<WecoViolationAlert violations={[{ label: '06/20', type: 'xbar', reasons: ['超出 UCL'] }]} />);
     expect(screen.getByText(/偵測到 1 個製程異常數據點/)).toBeInTheDocument();
   });
+
+  it('顯示單側下限製程能力指標', () => {
+    render(<ProcessCapabilityCard processCapability={{
+      available: true,
+      one_sided: 'lower',
+      cpl: 1.45,
+      cpk: 1.45,
+      ppl: 1.22,
+      ppk: 1.22,
+      usl: null,
+      lsl: 8,
+      ppm: { upper: 0, lower: 12, total: 12 },
+    }} statsItem="硬度" />);
+
+    expect(screen.getByText(/單側下限規格/)).toBeInTheDocument();
+    expect(screen.getAllByText('CPL').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('1.450').length).toBeGreaterThan(0);
+  });
+
+  it('資料不足時顯示有效筆數提示', () => {
+    render(<ProcessCapabilityCard processCapability={{
+      available: false,
+      reason: 'insufficient_data',
+      valid_count: 3,
+    }} statsItem="外徑" />);
+
+    expect(screen.getByText(/資料筆數不足/)).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
+  });
 });

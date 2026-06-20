@@ -11,20 +11,20 @@ import {
 import type { PatrolCreateInput, PatrolUpdateInput } from '../../types';
 import { useExtrusionToleranceCheck } from '../../hooks/useExtrusionTolerance';
 import { parseSpec } from '../../utils/parseSpec';
+import {
+    buildPatrolPayload,
+    getPatrolDetailValue,
+    getValidPatrolDetails,
+    isPatrolCellNG,
+    isPatrolConcentricityNG,
+    type PatrolDetailInput,
+} from './patrolFormUtils';
 
 interface PatrolModalProps {
     show: boolean;
     handleClose: () => void;
     onSuccess: () => void;
     editId: number | null;
-}
-
-interface PatrolDetailInput {
-    group: string;
-    item: string;
-    pos: string;
-    min: string;
-    max: string;
 }
 
 const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps) => {
@@ -128,8 +128,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     };
 
     const getDetailValue = (group: string, pos: string, item: string, type: 'min' | 'max') => {
-        const detail = details.find(d => d.group === group && d.pos === pos && d.item === item);
-        return detail ? detail[type] : '';
+        return getPatrolDetailValue(details, group, pos, item, type);
     };
 
     const handleSubmit = async () => {
@@ -145,32 +144,25 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
             return;
         }
 
-        // Collect valid details
-        const validDetails = details.filter(d => d.min !== '' || d.max !== '').map(d => ({
-            group: d.group,
-            item: d.item,
-            pos: d.pos,
-            min: d.min === '' ? null : parseFloat(d.min),
-            max: d.max === '' ? null : parseFloat(d.max)
-        }));
+        const validDetails = getValidPatrolDetails(details);
 
         if (validDetails.length === 0) {
             toast.error('請至少輸入一組測量數值');
             return;
         }
 
-        const payload = {
-            id: editId,
-            "檢驗日期": date,
-            "機台": machine,
-            "主機手": operator,
-            "客戶名稱": customer,
-            "材質": material,
-            "原料批號": batch,
-            "擠壓規格": spec,
-            "檢驗人員": inspector,
-            "details": validDetails
-        };
+        const payload = buildPatrolPayload({
+            editId,
+            date,
+            machine,
+            operator,
+            inspector,
+            customer,
+            material,
+            batch,
+            spec,
+            details,
+        });
 
         try {
             if (editId) {
@@ -196,55 +188,29 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     // 例：「85*2.8」→ { 外徑: 85, 厚度: 2.8 }
     const specStdValues = useMemo(() => parseSpec(spec), [spec]);
 
-    // 從公差資料計算絕對界限
-    // 優先順序：① 尺寸下/上限 → ② 標準值 ± 公差 → ③ 從規格解析標準值 ± 公差
-    const calcLimits = (
-        tol: { 尺寸下限?: number | null; 尺寸上限?: number | null; 公差下限: number | null; 公差上限: number | null; 標準值: number | null },
-        item?: string
-    ) => {
-        if (tol.尺寸下限 != null || tol.尺寸上限 != null) {
-            return { lsl: tol.尺寸下限 ?? null, usl: tol.尺寸上限 ?? null };
-        }
-        // 標準值：優先使用公差記錄中的值，否則從規格字串推算
-        const stdVal = tol.標準值 ?? (item != null ? (specStdValues[item] ?? null) : null);
-        if (stdVal != null) {
-            return {
-                lsl: tol.公差下限 != null ? stdVal - Math.abs(tol.公差下限) : null,
-                usl: tol.公差上限 != null ? stdVal + Math.abs(tol.公差上限) : null,
-            };
-        }
-        return { lsl: null, usl: null };
-    };
-
     // 判斷單一儲存格是否 NG（雙側比對：同時檢查上下限）
     const isCellNG = (pos: string, item: string, type: 'min' | 'max', gName: string): boolean => {
-        const tol = tolerances.find((t) => t.項目 === item);
-        if (!tol) return false;
-        const valStr = getDetailValue(gName, pos, item, type);
-        if (valStr === '') return false;
-        const val = parseFloat(valStr);
-        const { lsl, usl } = calcLimits(tol, item);
-        if (lsl != null && val < lsl) return true;
-        if (usl != null && val > usl) return true;
-        return false;
+        return isPatrolCellNG({
+            details,
+            tolerances,
+            specStdValues,
+            group: gName,
+            pos,
+            item,
+            type,
+        });
     };
 
     // 判斷同心度是否 NG（同心度 = 最大厚度 - 最小厚度）
     // 同心度是差值（絕對值），calcLimits 無法算出界限時直接用公差值作為絕對界限
     const isConcentricityNG = (pos: string, gName: string): boolean => {
-        const tol = tolerances.find((t) => t.項目 === '同心度');
-        if (!tol) return false;
-        const minStr = getDetailValue(gName, pos, '厚度', 'min');
-        const maxStr = getDetailValue(gName, pos, '厚度', 'max');
-        if (minStr === '' || maxStr === '') return false;
-        const concentricity = parseFloat(maxStr) - parseFloat(minStr);
-        const { lsl, usl } = calcLimits(tol, '同心度');
-        // calcLimits 三條路都失敗時，公差值本身即為絕對界限
-        const effectiveLsl = lsl ?? (tol.公差下限 != null ? tol.公差下限 : null);
-        const effectiveUsl = usl ?? (tol.公差上限 != null ? tol.公差上限 : null);
-        if (effectiveLsl != null && concentricity < effectiveLsl) return true;
-        if (effectiveUsl != null && concentricity > effectiveUsl) return true;
-        return false;
+        return isPatrolConcentricityNG({
+            details,
+            tolerances,
+            specStdValues,
+            group: gName,
+            pos,
+        });
     };
 
     // Render helper

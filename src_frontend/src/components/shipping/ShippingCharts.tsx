@@ -12,20 +12,15 @@ import {
     Legend,
     Filler
 } from 'chart.js';
-import { Line } from 'react-chartjs-2';
-import {
-    getCpkGrade,
-    formatPPM,
-    getPpmGrade
-} from '../../utils/spcAnalysis';
-import { getClickedPointId, setChartPointCursor, shouldShowControlLegendLabel } from '../../utils/spcChartOptions';
 import { buildSpcChartModel } from '../../utils/spcChartModel';
 import CpkTrendChart from '../spc/CpkTrendChart';
 import HistogramDistributionChart from '../spc/HistogramDistributionChart';
+import ControlChartCard from '../patrol/ControlChartCard';
+import ProcessCapabilityCard from '../patrol/ProcessCapabilityCard';
+import WecoViolationAlert from '../patrol/WecoViolationAlert';
 import type { SpcViolation, SpcChartData } from '../../types';
-import { Alert, Badge, Button, Card, Col, Row, Form } from 'react-bootstrap';
+import { Badge, Button, Card, Col, Row, Form } from 'react-bootstrap';
 import { useShippingStats, useExportSpcReport } from '../../hooks/useShipping';
-import type { TooltipItem, ActiveDataPoint } from 'chart.js';
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
@@ -54,7 +49,6 @@ const ANTAI_VENDOR_NAME = "安泰";
 
 const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointClick }: ShippingChartsProps) => {
     const [statsField, setStatsField] = useState('外徑');
-    const [showWeco, setShowWeco] = useState(false);
 
     // 安泰廠商：硬度改標示為洛氏硬度(HRB)，並新增韋伯氏硬度(HW)
     const isAntai = vendor.includes(ANTAI_VENDOR_NAME);
@@ -104,11 +98,6 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
         });
     };
 
-    const cpkGrade = processCapability?.cpk != null ? getCpkGrade(processCapability.cpk) : null;
-    const ppkGrade = processCapability?.ppk != null ? getCpkGrade(processCapability.ppk) : null;
-    const ppmData = processCapability?.ppm || null;
-    const ppmGrade = ppmData ? getPpmGrade(ppmData.total) : null;
-
     // Combine X-bar and R-chart violations for alert
     const allViolations: SpcViolation[] = [
         ...(analysis?.violations || []),
@@ -146,27 +135,7 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                 <>
 
                     {/* Alarm Panel */}
-                    {allViolations.length > 0 && (
-                        <Alert variant="danger">
-                            <div
-                                className="d-flex justify-content-between align-items-center"
-                                style={{ cursor: 'pointer' }}
-                                onClick={() => setShowWeco(!showWeco)}
-                            >
-                                <Alert.Heading className="mb-0" style={{ fontSize: '1rem' }}>
-                                    🚨 偵測到 {allViolations.length} 個製程異常數據點 (WECO Rules) - 點擊展開/收合
-                                </Alert.Heading>
-                                <i className={`bi bi-chevron-${showWeco ? 'up' : 'down'}`}></i>
-                            </div>
-                            {showWeco && (
-                                <ul className="mb-0 mt-3">
-                                    {allViolations.map((v: SpcViolation, idx: number) => (
-                                        <li key={idx}><strong>{v.label}</strong>: {v.reasons.join(', ')}</li>
-                                    ))}
-                                </ul>
-                            )}
-                        </Alert>
-                    )}
+                    <WecoViolationAlert violations={allViolations} />
 
                     {/* Stats Summary */}
                     {statsSummary && (
@@ -220,188 +189,28 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                     )}
 
                     {/* Process Capability Card */}
-                    <Card className="mb-4" style={{ border: '2px solid #dee2e6' }}>
-                        <Card.Body>
-                            <h5 className="mb-3">🎯 製程能力指標</h5>
-                            {processCapability?.available ? (
-                                <>
-                                    {processCapability.one_sided === 'lower' && (
-                                        <div className="alert alert-info py-1 px-2 mb-2 small">
-                                            單側下限規格（僅 LSL），顯示 CPL / PPL 作為製程能力指標
-                                        </div>
-                                    )}
-                                    <Row className="text-center">
-                                        <Col>
-                                            <div className="text-muted small">{processCapability.one_sided === 'lower' ? 'CPL' : 'Cp'}</div>
-                                            <div className="h4">{processCapability.one_sided === 'lower' ? (processCapability.cpl?.toFixed(3) ?? 'N/A') : (processCapability.cp?.toFixed(3) ?? 'N/A')}</div>
-                                            <div className="text-muted small">製程能力</div>
-                                        </Col>
-                                        <Col>
-                                            <div className="text-muted small">{processCapability.one_sided === 'lower' ? 'CPL' : 'Cpk'}</div>
-                                            <div className="h3 mb-1">{processCapability.cpk?.toFixed(3) ?? 'N/A'}</div>
-                                            {cpkGrade && (
-                                                <Badge style={{ backgroundColor: cpkGrade.bgColor, color: cpkGrade.color, fontSize: '0.85rem' }}>
-                                                    {cpkGrade.label} - {cpkGrade.description}
-                                                </Badge>
-                                            )}
-                                        </Col>
-                                        <Col>
-                                            <div className="text-muted small">{processCapability.one_sided === 'lower' ? 'PPL' : 'Pp'}</div>
-                                            <div className="h4">{processCapability.one_sided === 'lower' ? (processCapability.ppl?.toFixed(3) ?? 'N/A') : (processCapability.pp?.toFixed(3) ?? 'N/A')}</div>
-                                            <div className="text-muted small">製程績效</div>
-                                        </Col>
-                                        <Col>
-                                            <div className="text-muted small">{processCapability.one_sided === 'lower' ? 'PPL' : 'Ppk'}</div>
-                                            <div className="h3 mb-1">{processCapability.ppk?.toFixed(3) ?? 'N/A'}</div>
-                                            {ppkGrade && (
-                                                <Badge style={{ backgroundColor: ppkGrade.bgColor, color: ppkGrade.color, fontSize: '0.85rem' }}>
-                                                    {ppkGrade.label} - {ppkGrade.description}
-                                                </Badge>
-                                            )}
-                                        </Col>
-                                        <Col>
-                                            <div className="text-muted small">USL</div>
-                                            <div className="h5" style={{ color: '#e83e8c' }}>{processCapability.usl != null ? processCapability.usl.toFixed(3) : '—'}</div>
-                                        </Col>
-                                        <Col>
-                                            <div className="text-muted small">LSL</div>
-                                            <div className="h5" style={{ color: '#e83e8c' }}>{processCapability.lsl?.toFixed(3) ?? 'N/A'}</div>
-                                        </Col>
-                                    </Row>
-
-                                    {/* PPM Row */}
-                                    {ppmData && (
-                                        <div className="mt-3 pt-3 border-top">
-                                            <Row className="text-center align-items-center">
-                                                <Col xs="auto">
-                                                    <strong>📉 PPM 不良率估算</strong>
-                                                </Col>
-                                                <Col>
-                                                    <span className="text-muted small me-1">超上限</span>
-                                                    <strong>{formatPPM(ppmData.upper)}</strong>
-                                                </Col>
-                                                <Col>
-                                                    <span className="text-muted small me-1">超下限</span>
-                                                    <strong>{formatPPM(ppmData.lower)}</strong>
-                                                </Col>
-                                                <Col>
-                                                    <span className="text-muted small me-1">總計</span>
-                                                    <strong className="h5 mb-0">{formatPPM(ppmData.total)}</strong>
-                                                    <span className="text-muted small ms-1">PPM</span>
-                                                </Col>
-                                                {ppmGrade && (
-                                                    <Col xs="auto">
-                                                        <Badge style={{ backgroundColor: ppmGrade.bgColor, color: ppmGrade.color, fontSize: '0.8rem' }}>
-                                                            {ppmGrade.label}
-                                                        </Badge>
-                                                    </Col>
-                                                )}
-                                            </Row>
-                                        </div>
-                                    )}
-                                </>
-                            ) : processCapability?.reason === 'insufficient_data' ? (
-                                <Alert variant="warning" className="mb-0">
-                                    <i className="bi bi-exclamation-triangle me-2"></i>
-                                    資料筆數不足，無法計算 Cp/Cpk — 目前「<strong>{statsField}</strong>」僅有 <strong>{processCapability.valid_count}</strong> 筆有效數據，
-                                    需要至少 <strong>5 筆</strong>才能進行製程能力分析。
-                                </Alert>
-                            ) : (
-                                <Alert variant="info" className="mb-0">
-                                    <i className="bi bi-info-circle me-2"></i>
-                                    無法計算 Cp/Cpk — 需要在<strong>公差管理</strong>中設定該材質/規格的 USL（規格上限）和 LSL（規格下限）。
-                                    目前選擇的檢驗項目「<strong>{statsField}</strong>」尚未找到對應的公差資料。
-                                </Alert>
-                            )}
-                        </Card.Body>
-                    </Card>
+                    <ProcessCapabilityCard processCapability={processCapability} statsItem={statsField} />
 
                     {/* Charts Row 1: X-bar and R */}
                     <Row className="mb-3">
                         <Col md={6}>
-                            <Card className="h-100 shadow-sm">
-                                <Card.Body>
-                                    <h5 className="card-title text-center">X̄ 平均值管制圖</h5>
-                                    <div style={{ height: '300px' }}>
-                                        <Line
-                                            data={chartData.xBar}
-                                            options={{
-                                                maintainAspectRatio: false,
-                                                plugins: {
-                                                    legend: {
-                                                        display: true,
-                                                        position: 'bottom',
-                                                        labels: {
-                                                            filter: item => shouldShowControlLegendLabel(item.text),
-                                                            usePointStyle: true,
-                                                            pointStyle: 'line',
-                                                            font: { size: 10 }
-                                                        }
-                                                    },
-                                                    tooltip: {
-                                                        callbacks: {
-                                                            afterLabel: (ctx: TooltipItem<'line'>) => {
-                                                                if (ctx.datasetIndex !== 0) return '';
-                                                                const reasons = getViolationReasons(ctx.dataIndex);
-                                                                return reasons ? `⚠️ ${reasons}` : '';
-                                                            }
-                                                        }
-                                                    }
-                                                },
-                                                onClick: (_event: unknown, elements: ActiveDataPoint[]) => {
-                                                    const id = getClickedPointId(ids, elements);
-                                                    if (id && onPointClick) onPointClick(id);
-                                                },
-                                                onHover: (event: unknown, elements: ActiveDataPoint[]) => {
-                                                    setChartPointCursor(event, elements);
-                                                }
-                                            }}
-                                        />
-                                    </div>
-                                </Card.Body>
-                            </Card>
+                            <ControlChartCard
+                                title="X̄ 平均值管制圖"
+                                data={chartData.xBar}
+                                ids={ids}
+                                getViolationReasons={getViolationReasons}
+                                filterLegendLabels
+                                onEditPoint={onPointClick}
+                            />
                         </Col>
                         <Col md={6}>
-                            <Card className="h-100 shadow-sm">
-                                <Card.Body>
-                                    <h5 className="card-title text-center">R 全距管制圖</h5>
-                                    <div style={{ height: '300px' }}>
-                                        <Line
-                                            data={chartData.rChart}
-                                            options={{
-                                                maintainAspectRatio: false,
-                                                plugins: {
-                                                    legend: {
-                                                        display: true,
-                                                        position: 'bottom',
-                                                        labels: {
-                                                            usePointStyle: true,
-                                                            pointStyle: 'line',
-                                                            font: { size: 10 }
-                                                        }
-                                                    },
-                                                    tooltip: {
-                                                        callbacks: {
-                                                            afterLabel: (ctx: TooltipItem<'line'>) => {
-                                                                if (ctx.datasetIndex !== 0) return '';
-                                                                const reasons = getRViolationReasons(ctx.dataIndex);
-                                                                return reasons ? `⚠️ ${reasons}` : '';
-                                                            }
-                                                        }
-                                                    }
-                                                },
-                                                onClick: (_event: unknown, elements: ActiveDataPoint[]) => {
-                                                    const id = getClickedPointId(ids, elements);
-                                                    if (id && onPointClick) onPointClick(id);
-                                                },
-                                                onHover: (event: unknown, elements: ActiveDataPoint[]) => {
-                                                    setChartPointCursor(event, elements);
-                                                }
-                                            }}
-                                        />
-                                    </div>
-                                </Card.Body>
-                            </Card>
+                            <ControlChartCard
+                                title="R 全距管制圖"
+                                data={chartData.rChart}
+                                ids={ids}
+                                getViolationReasons={getRViolationReasons}
+                                onEditPoint={onPointClick}
+                            />
                         </Col>
                     </Row>
 

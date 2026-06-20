@@ -8,6 +8,7 @@ import {
     COMPLAINT_TYPE_LABELS,
 } from '../../hooks/useComplaint';
 import type { CustomerComplaint, ComplaintType } from '../../types';
+import { buildComplaintPayload, getDefaultReplyDeadlines } from './complaintFormUtils';
 
 interface ComplaintModalProps {
     show: boolean;
@@ -27,18 +28,6 @@ const DEFECT_CATEGORY_OPTIONS = [
     '數量不符',
     '其他',
 ];
-const DEFAULT_REPLY_DAYS: Record<ComplaintType, number> = {
-    quality:       14,
-    warranty:      30,
-    field_failure: 30,
-};
-
-const addDays = (base: string, days: number) => {
-    const d = new Date(base);
-    d.setDate(d.getDate() + days);
-    return d.toISOString().split('T')[0];
-};
-
 const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalProps) => {
     const createMutation = useCreateComplaint();
     const updateMutation = useUpdateComplaint();
@@ -73,12 +62,12 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
     // 自動帶入期限
     useEffect(() => {
         if (!isEdit && complaintDate && complaintType) {
-            const days = DEFAULT_REPLY_DAYS[complaintType];
             let cancelled = false;
             queueMicrotask(() => {
                 if (cancelled) return;
-                setInitialReplyDeadline(addDays(complaintDate, 3));
-                setFinalReplyDeadline(addDays(complaintDate, days));
+                const deadlines = getDefaultReplyDeadlines(complaintDate, complaintType);
+                setInitialReplyDeadline(deadlines.initialReplyDeadline);
+                setFinalReplyDeadline(deadlines.finalReplyDeadline);
             });
             return () => { cancelled = true; };
         }
@@ -148,28 +137,27 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
         setExtrusionNos(prev => prev.filter(n => n !== no));
     };
 
-    const buildPayload = () => ({
-        customer:                customer.trim(),
-        complaint_date:          complaintDate,
-        material:                material.trim() || undefined,
-        spec:                    spec.trim() || undefined,
-        extrusion_nos:           extrusionNos,
-        description:             description.trim(),
-        severity:                severity || undefined,
-        defect_category:         defectCategory || undefined,
-        complaint_type:          complaintType,
-        device_serial:           deviceSerial.trim() || undefined,
-        usage_env:               usageEnv.trim() || undefined,
-        failure_hours:           failureHours ? Number(failureHours) : undefined,
-        initial_reply_deadline:  initialReplyDeadline || undefined,
-        final_reply_deadline:    finalReplyDeadline || undefined,
-        status:                  isEdit ? (status as import('../../types').ComplaintStatus) : undefined,
-        initial_reply:           isEdit ? (initialReply.trim() || undefined) : undefined,
-        final_reply:             isEdit ? (finalReply.trim() || undefined) : undefined,
-    });
-
     const handleSubmit = async () => {
-        const payload = buildPayload();
+        const payload = buildComplaintPayload({
+            isEdit,
+            customer,
+            complaintDate,
+            material,
+            spec,
+            extrusionNos,
+            description,
+            severity,
+            defectCategory,
+            complaintType,
+            deviceSerial,
+            usageEnv,
+            failureHours,
+            initialReplyDeadline,
+            finalReplyDeadline,
+            status,
+            initialReply,
+            finalReply,
+        });
         if (isEdit && editData) {
             await updateMutation.mutateAsync({ id: editData.id, data: payload });
         } else {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Modal, Button, Form, Table, Alert } from 'react-bootstrap';
 import toast from 'react-hot-toast';
-import type { ToleranceResult, ShippingCreateInput, ShippingMeasurementItem, ShippingMeasurements } from '../../types';
+import type { ToleranceResult, ShippingMeasurementItem } from '../../types';
 import {
     useInspectors,
     useVendors,
@@ -15,6 +15,12 @@ import {
     type ShippingGroupMeasurements,
     type ShippingItemConfig,
 } from './shippingMeasurementUtils';
+import {
+    buildShippingPayload,
+    emptyShippingGroup,
+    initEmptyShippingGroups,
+    validateShippingForm,
+} from './shippingFormPayload';
 
 interface ShippingModalProps {
     show: boolean;
@@ -47,16 +53,6 @@ const DEFAULT_GROUP_COUNT = 5;
 
 /** 每組量測的資料結構 */
 type GroupMeas = ShippingGroupMeasurements;
-
-/** 建立空白的量測組（所有項目皆為空） */
-const emptyGroup = (items: ItemConfig[]): GroupMeas =>
-    Object.fromEntries(items.map(item => [item.key, { is_ng: false }]));
-
-/** 初始化 groups（建立 count 個空白組） */
-const initEmptyGroups = (count: number, items: ItemConfig[]): Record<string, GroupMeas> =>
-    Object.fromEntries(
-        Array.from({ length: count }, (_, i) => [String(i + 1), emptyGroup(items)])
-    );
 
 const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalProps) => {
     // Hooks
@@ -134,7 +130,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         setSpec('');
         setOrderNo('');
         setGroupCount(DEFAULT_GROUP_COUNT);
-        setGroups(initEmptyGroups(DEFAULT_GROUP_COUNT, BASE_ITEMS));
+        setGroups(initEmptyShippingGroups(DEFAULT_GROUP_COUNT, BASE_ITEMS));
         setTolerance(null);
         setViolations({});
         setFieldErrors({});
@@ -186,7 +182,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         queueMicrotask(() => {
             if (cancelled || editId) return;
             setGroupCount(DEFAULT_GROUP_COUNT);
-            setGroups(initEmptyGroups(DEFAULT_GROUP_COUNT, ITEMS));
+            setGroups(initEmptyShippingGroups(DEFAULT_GROUP_COUNT, ITEMS));
         });
         return () => { cancelled = true; };
     }, [vendorName, editId, ITEMS]);
@@ -284,7 +280,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     /** 新增量測組 */
     const addGroup = () => {
         const nextNum = String(Math.max(...Object.keys(groups).map(Number)) + 1);
-        setGroups(prev => ({ ...prev, [nextNum]: emptyGroup(ITEMS) }));
+        setGroups(prev => ({ ...prev, [nextNum]: emptyShippingGroup(ITEMS) }));
         setGroupCount(prev => prev + 1);
     };
 
@@ -300,40 +296,17 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     };
 
     const handleSubmit = async () => {
-        // 基本欄位驗證
-        const validationErrors: string[] = [];
-        if (!date) validationErrors.push('請選擇檢驗日期');
-        if (!inspectorName) validationErrors.push('請選擇檢驗人員');
-        if (!vendorName) validationErrors.push('請選擇廠商');
-        if (!spec) validationErrors.push('請輸入檢驗規格');
-        if (!material) validationErrors.push('請輸入材質');
-
-        // 量測欄位數字格式驗證
-        const newFieldErrors: Record<string, string> = {};
-        const numPattern = /^[+-]?\d+(\.\d+)?$/;
-        Object.entries(groups).forEach(([gKey, groupData]) => {
-            ITEMS.forEach(item => {
-                const measItem = groupData[item.key] ?? {};
-                if (item.type === 'minmax') {
-                    const minVal = measItem.value_min;
-                    const maxVal = measItem.value_max;
-                    if (minVal != null && !numPattern.test(String(minVal))) {
-                        newFieldErrors[`${gKey}:${item.key}:value_min`] = `「${item.label}第${gKey}組最小值」需為有效數字`;
-                    }
-                    if (maxVal != null && !numPattern.test(String(maxVal))) {
-                        newFieldErrors[`${gKey}:${item.key}:value_max`] = `「${item.label}第${gKey}組最大值」需為有效數字`;
-                    }
-                } else {
-                    const val = measItem.value_single;
-                    if (val != null && !numPattern.test(String(val))) {
-                        newFieldErrors[`${gKey}:${item.key}:value_single`] = `「${item.label}第${gKey}組」需為有效數字`;
-                    }
-                }
-            });
+        const { validationErrors, fieldErrors: newFieldErrors } = validateShippingForm({
+            date,
+            inspectorName,
+            vendorName,
+            material,
+            spec,
+            items: ITEMS,
+            groups,
         });
 
         setFieldErrors(newFieldErrors);
-
         if (validationErrors.length > 0) {
             toast.error(validationErrors.join('、'));
             return;
@@ -344,36 +317,16 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             return;
         }
 
-        // 建立要送出的 measurements 物件（轉為後端期望的新格式）
-        const measurementsPayload: ShippingMeasurements = {};
-        Object.entries(groups).forEach(([gKey, groupData]) => {
-            const groupOut: Record<string, ShippingMeasurementItem> = {};
-            ITEMS.forEach(item => {
-                const m = groupData[item.key] ?? {};
-                const toNum = (v: number | string | null | undefined) =>
-                    v != null && v !== '' ? Number(v) : null;
-                groupOut[item.key] = {
-                    lower_limit: m.lower_limit ?? null,
-                    upper_limit: m.upper_limit ?? null,
-                    value_min: item.type === 'minmax' ? toNum(m.value_min) : null,
-                    value_max: item.type === 'minmax' ? toNum(m.value_max) : null,
-                    value_single: item.type === 'single' ? toNum(m.value_single) : null,
-                    is_ng: m.is_ng ?? false,
-                };
-            });
-            measurementsPayload[gKey] = groupOut;
+        const basePayload = buildShippingPayload({
+            date,
+            inspectorName,
+            vendorName,
+            material,
+            spec,
+            orderNo,
+            items: ITEMS,
+            groups,
         });
-
-        const basePayload: ShippingCreateInput = {
-            "檢驗日期": date,
-            "檢驗人員姓名": inspectorName,
-            "廠商中文名稱": vendorName,
-            "檢驗規格": spec,
-            "材質": material,
-            "訂單號碼": orderNo,
-            "組數": Object.keys(groups).length,
-            "measurements": measurementsPayload,
-        };
 
         try {
             if (editId) {
