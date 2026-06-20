@@ -37,7 +37,9 @@ class ReworkService:
             approved = query.filter(ReworkRequest.status == '已核准').count()
             rejected = query.filter(ReworkRequest.review_status == '已拒絕').count()
 
-            qty_query = db.session.query(func.sum(ReworkRequest.quantity))
+            qty_query = db.session.query(func.sum(ReworkRequest.quantity)).filter(
+                ReworkRequest.deleted_at.is_(None)
+            )
             if args.get('start_date'):
                 qty_query = qty_query.filter(ReworkRequest.created_at >= args['start_date'])
             if args.get('end_date'):
@@ -49,7 +51,7 @@ class ReworkService:
                 ReworkRequest.department,
                 func.count(ReworkRequest.id).label('count'),
                 func.sum(ReworkRequest.quantity).label('quantity')
-            )
+            ).filter(ReworkRequest.deleted_at.is_(None))
             if args.get('start_date'):
                 dept_query = dept_query.filter(ReworkRequest.created_at >= args['start_date'])
             if args.get('end_date'):
