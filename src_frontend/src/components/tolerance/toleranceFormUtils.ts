@@ -71,7 +71,11 @@ export const validateToleranceRows = (details: ToleranceDetailRow[]) => {
   return errors;
 };
 
-const toNumberOrNull = (value: string) => (value === '' ? null : parseFloat(value));
+const toNumberOrNull = (value: string) => {
+  if (value.trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 interface BuildTolerancePayloadParams {
   date: string;

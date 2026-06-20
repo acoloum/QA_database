@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import api from '../services/api';
 import { downloadBlob } from '../utils/downloadFile';
 import type { Furnace, PyrometryDashboardRow, PyrometryTestRow, Recorder, Thermocouple } from '../types';
+import type { PyrometryPayload } from '../pages/pyrometry/pyrometryPayload';
 
 export interface PyrometryTestFilters {
   furnace_id?: string;
@@ -191,7 +192,7 @@ export const useLoadPyrometryTestDetail = () =>
 export const useSavePyrometryTest = (editId?: number | null) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id = editId ?? null, payload }: { id?: number | null; payload: unknown }) =>
+    mutationFn: ({ id = editId ?? null, payload }: { id?: number | null; payload: PyrometryPayload }) =>
       id ? api.put(`/pyrometry/tests/${id}`, payload) : api.post('/pyrometry/tests', payload),
     onSuccess: (_data, variables) => {
       toast.success(variables.id || editId ? '爐溫測試已更新' : '爐溫測試已新增');

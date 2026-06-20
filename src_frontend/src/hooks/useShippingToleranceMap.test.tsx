@@ -5,7 +5,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import api from '../services/api';
 import type { ShippingInspection } from '../types';
-import { useShippingToleranceMap } from './useShippingToleranceMap';
+import {
+  resolveToleranceStandardValue,
+  toToleranceLimits,
+  useShippingToleranceMap,
+} from './useShippingToleranceMap';
 
 vi.mock('../services/api', () => ({
   default: {
@@ -20,6 +24,58 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 );
 
 describe('useShippingToleranceMap', () => {
+  it('resolves tolerance standard values from parsed spec before configured fallback', () => {
+    expect(resolveToleranceStandardValue(12, 8)).toBe(12);
+    expect(resolveToleranceStandardValue(undefined, 10)).toBe(10);
+    expect(resolveToleranceStandardValue(0, 8)).toBe(8);
+    expect(resolveToleranceStandardValue(0, 0)).toBeNull();
+    expect(resolveToleranceStandardValue(undefined, null)).toBeNull();
+  });
+
+  it('builds tolerance limits with configured standard fallback when spec has no usable nominal', () => {
+    const limits = toToleranceLimits(
+      {
+        success: true,
+        found: true,
+        tolerances: [{
+          項目: '外徑',
+          標準值: 10,
+          公差上限: 0.2,
+          公差下限: -0.1,
+          尺寸上限: null,
+          尺寸下限: null,
+          單位: 'mm',
+        }],
+      },
+      '',
+      '廠商A',
+    );
+
+    expect(limits?.外徑).toEqual({ lsl: 9.9, usl: 10.2 });
+  });
+
+  it('skips relative tolerances when neither spec nor configured standard has a usable nominal', () => {
+    const limits = toToleranceLimits(
+      {
+        success: true,
+        found: true,
+        tolerances: [{
+          項目: '外徑',
+          標準值: 0,
+          公差上限: 0.2,
+          公差下限: -0.1,
+          尺寸上限: null,
+          尺寸下限: null,
+          單位: 'mm',
+        }],
+      },
+      '',
+      '廠商A',
+    );
+
+    expect(limits).toEqual({});
+  });
+
   it('deduplicates tolerance checks by material/spec/vendor combo', async () => {
     const inspections: ShippingInspection[] = [
       {

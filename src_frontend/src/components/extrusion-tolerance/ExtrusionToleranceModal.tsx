@@ -8,22 +8,13 @@ import {
 } from '../../hooks/useExtrusionTolerance';
 import { useToleranceOptions } from '../../hooks/useTolerance';
 import type { Vendor } from '../../types';
-
-interface DetailRow {
-    測量項目: string;
-    公差下限: string;
-    公差上限: string;
-    標準值: string;
-}
+import {
+    buildExtrusionTolerancePayload,
+    createExtrusionToleranceRow,
+    type ExtrusionToleranceRow,
+} from './extrusionToleranceFormPayload';
 
 const ITEMS = ['外徑', '內徑', '厚度', '同心度'];
-
-const emptyRow = (): DetailRow => ({
-    測量項目: '外徑',
-    公差下限: '',
-    公差上限: '',
-    標準值: '',
-});
 
 interface Props {
     show: boolean;
@@ -43,7 +34,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
     const [vendor, setVendor] = useState('');
     const [note, setNote] = useState('');
     const [createdAt, setCreatedAt] = useState(new Date().toISOString().split('T')[0]);
-    const [rows, setRows] = useState<DetailRow[]>([emptyRow()]);
+    const [rows, setRows] = useState<ExtrusionToleranceRow[]>([createExtrusionToleranceRow()]);
 
     const reset = useCallback(() => {
         setMaterial('');
@@ -51,7 +42,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
         setVendor('');
         setNote('');
         setCreatedAt(new Date().toISOString().split('T')[0]);
-        setRows([emptyRow()]);
+        setRows([createExtrusionToleranceRow()]);
     }, []);
 
     useEffect(() => {
@@ -75,32 +66,19 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                           公差上限: d.公差上限 != null ? String(d.公差上限) : '',
                           標準值: d.標準值 != null ? String(d.標準值) : '',
                       }))
-                    : [emptyRow()]
+                    : [createExtrusionToleranceRow()]
             );
         });
         return () => { cancelled = true; };
     }, [show, editId, detail, reset]);
 
-    const updateRow = (idx: number, field: keyof DetailRow, val: string) => {
+    const updateRow = (idx: number, field: keyof ExtrusionToleranceRow, val: string) => {
         setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, [field]: val } : r)));
     };
 
     const handleSubmit = async () => {
         if (!material.trim()) { toast.error('材質為必填'); return; }
-        const payload = {
-            材質: material.trim(),
-            規格: spec.trim() || null,
-            廠商: vendor.trim() || null,
-            備註: note.trim() || null,
-            建立日期: createdAt,
-            details: rows.map((r) => ({
-                測量項目: r.測量項目,
-                公差下限: r.公差下限 !== '' ? parseFloat(r.公差下限) : null,
-                公差上限: r.公差上限 !== '' ? parseFloat(r.公差上限) : null,
-                標準值: r.標準值 !== '' ? parseFloat(r.標準值) : null,
-                單位: 'mm',
-            })),
-        };
+        const payload = buildExtrusionTolerancePayload({ material, spec, vendor, note, createdAt, rows });
         try {
             if (editId) {
                 await updateMutation.mutateAsync({ id: editId, data: payload });
@@ -192,7 +170,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                                 ))}
                             </tbody>
                         </Table>
-                        <Button size="sm" variant="outline-secondary" onClick={() => setRows((prev) => [...prev, emptyRow()])}>
+                        <Button size="sm" variant="outline-secondary" onClick={() => setRows((prev) => [...prev, createExtrusionToleranceRow()])}>
                             + 新增明細列
                         </Button>
                     </>

@@ -101,4 +101,34 @@ describe('toleranceFormUtils', () => {
       }],
     });
   });
+
+  it('組出公差 payload 時非法數字轉為 null 且保留 0', () => {
+    const payload = buildTolerancePayload({
+      date: '2026-06-21',
+      material: '6061',
+      spec: 'T6',
+      vendorId: '',
+      remark: '',
+      details: [{
+        id: 'row-1',
+        item: '厚度',
+        position: '',
+        size_min: 'abc',
+        size_max: '0',
+        tol_min: '',
+        tol_max: 'bad',
+        std: '2.8',
+        unit: 'mm',
+        remark: '',
+      }],
+    });
+
+    expect(payload.details[0]).toMatchObject({
+      尺寸下限: null,
+      尺寸上限: 0,
+      公差下限: null,
+      公差上限: null,
+      標準值: 2.8,
+    });
+  });
 });

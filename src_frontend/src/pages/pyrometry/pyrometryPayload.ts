@@ -29,6 +29,22 @@ export interface BuildPyrometryPayloadInput {
   itemRows: ItemRow[];
 }
 
+export interface PyrometryPayload {
+  爐子ID: number;
+  測試類型: PyrometryTestType;
+  測試日期: string;
+  設定溫度: string;
+  允許公差: string;
+  測試人員: number | null;
+  測試儀器編號: string;
+  標準校正儀器編號: string;
+  儀器校正到期日: string | null;
+  備註: string;
+  points: TusPoint[] | SatPoint[];
+  曲線資料: Record<string, unknown> | null;
+  報告欄位: Record<string, string | ItemRow[]>;
+}
+
 export const buildPyrometryPayload = ({
   furnaceId,
   testType,
@@ -53,7 +69,7 @@ export const buildPyrometryPayload = ({
   furnaceRangeEnd,
   reportMeta,
   itemRows,
-}: BuildPyrometryPayloadInput) => {
+}: BuildPyrometryPayloadInput): PyrometryPayload => {
   const curveData = testType === 'TUS'
     ? (chartData ? {
         時間: chartData.時間,

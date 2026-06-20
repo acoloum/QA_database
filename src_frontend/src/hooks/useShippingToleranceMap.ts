@@ -17,7 +17,16 @@ const getInspectionCombo = (item: ShippingInspection): string | null => {
   return makeComboKey(material, spec, vendor);
 };
 
-const toToleranceLimits = (result: ToleranceResult, spec: string, vendorName: string) => {
+export const resolveToleranceStandardValue = (
+  parsedValue: number | undefined,
+  configuredValue: number | null,
+) => {
+  if (parsedValue !== undefined && parsedValue !== 0) return parsedValue;
+  if (configuredValue !== null && configuredValue !== 0) return configuredValue;
+  return null;
+};
+
+export const toToleranceLimits = (result: ToleranceResult, spec: string, vendorName: string) => {
   if (!result.success || !result.found) return null;
 
   const specValues = parseSpec(spec);
@@ -31,12 +40,8 @@ const toToleranceLimits = (result: ToleranceResult, spec: string, vendorName: st
       lsl = t.尺寸下限;
       usl = t.尺寸上限;
     } else if (t.公差下限 !== null && t.公差上限 !== null) {
-      let standardValue: number | null | undefined = specValues[t.項目];
-      if (standardValue === undefined || standardValue === 0) {
-        standardValue = t.標準值;
-      }
-      standardValue = standardValue || 0;
-      if (standardValue === 0) return;
+      const standardValue = resolveToleranceStandardValue(specValues[t.項目], t.標準值);
+      if (standardValue === null) return;
       lsl = standardValue + t.公差下限;
       usl = standardValue + t.公差上限;
     } else if (t.尺寸上限 !== null) {
