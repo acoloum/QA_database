@@ -5,53 +5,16 @@ from dateutil.relativedelta import relativedelta
 from ..extensions import db
 from ..models import Furnace, Recorder, RecorderCalPoint, Thermocouple, ThermocoupleCalPoint
 from ..utils import bounded_int, format_value
-
-
-def _quarter_of(d) -> str:
-    return f"{d.year}Q{(d.month - 1) // 3 + 1}"
-
-
-def _to_float(v) -> float | None:
-    """安全轉換為 float；None 或空字串回傳 None。"""
-    if v is None or str(v).strip() == '':
-        return None
-    return float(v)
-
-
-def _parse_date(v):
-    if not v:
-        return None
-    if isinstance(v, date):
-        return v
-    from datetime import date as _date
-    return _date.fromisoformat(str(v)[:10])
-
-
-class PyrometryValidationError(ValueError):
-    """爐溫測試輸入資料驗證錯誤。"""
-
-
-def _validate_test_payload(data: Dict[str, Any], default_test_type: str | None = None) -> Dict[str, Any]:
-    if not isinstance(data, dict):
-        raise PyrometryValidationError("請提供有效的 JSON 請求內容")
-    required = ("爐子ID", "測試日期", "設定溫度")
-    missing = [field for field in required if data.get(field) in (None, "")]
-    test_type = data.get("測試類型") or default_test_type
-    if not test_type:
-        missing.append("測試類型")
-    if missing:
-        raise PyrometryValidationError(f"缺少必要欄位：{', '.join(missing)}")
-    if test_type not in ("TUS", "SAT"):
-        raise PyrometryValidationError("測試類型必須為 TUS 或 SAT")
-    if not isinstance(data.get("points", []), list):
-        raise PyrometryValidationError("points 必須為陣列")
-    try:
-        float(data.get("設定溫度"))
-        float(data.get("允許公差") or 0)
-        _parse_date(data.get("測試日期"))
-    except (TypeError, ValueError):
-        raise PyrometryValidationError("測試日期、設定溫度或允許公差格式不正確")
-    return {**data, "測試類型": test_type}
+from .pyrometry_calculations import (
+    PyrometryValidationError,
+    evaluate_sat,
+    evaluate_tus,
+    interp_error,
+    parse_date,
+    quarter_of,
+    to_float,
+    validate_test_payload,
+)
 
 
 def _furnace_to_dict(f: Furnace) -> Dict[str, Any]:
@@ -95,23 +58,6 @@ def _thermocouple_to_dict(t: Thermocouple, with_points: bool = False) -> Dict[st
             for cp in sorted(t.cal_points, key=lambda x: float(x.std_temp))
         ]
     return d
-
-
-def _interp_error(points: List, setpoint: float) -> float:
-    """以(標準溫度, 器差值)點集對 setpoint 線性內插；超出範圍夾擠取端點。"""
-    if not points:
-        return 0.0
-    pts = sorted(points, key=lambda p: p[0])
-    if setpoint <= pts[0][0]:
-        return pts[0][1]
-    if setpoint >= pts[-1][0]:
-        return pts[-1][1]
-    for (t0, e0), (t1, e1) in zip(pts, pts[1:]):
-        if t0 <= setpoint <= t1:
-            if t1 == t0:
-                return e0
-            return e0 + (setpoint - t0) / (t1 - t0) * (e1 - e0)
-    return pts[-1][1]
 
 
 class PyrometryService:
@@ -217,8 +163,8 @@ class PyrometryService:
         try:
             r = Recorder(
                 serial=data.get("編號"),
-                cal_date=_parse_date(data.get("校正日期")),
-                cal_due_date=_parse_date(data.get("到期日")),
+                cal_date=parse_date(data.get("校正日期")),
+                cal_due_date=parse_date(data.get("到期日")),
                 tc_correction=data.get("熱電偶補正值") or 0,
                 is_active=bool(data.get("啟用狀態", True)),
                 note=data.get("備註") or None,
@@ -243,8 +189,8 @@ class PyrometryService:
             if not r:
                 raise ValueError("找不到該記錄器")
             r.serial = data.get("編號")
-            r.cal_date = _parse_date(data.get("校正日期"))
-            r.cal_due_date = _parse_date(data.get("到期日"))
+            r.cal_date = parse_date(data.get("校正日期"))
+            r.cal_due_date = parse_date(data.get("到期日"))
             r.tc_correction = data.get("熱電偶補正值") or 0
             r.is_active = bool(data.get("啟用狀態", True))
             r.note = data.get("備註") or None
@@ -298,8 +244,8 @@ class PyrometryService:
         try:
             t = Thermocouple(
                 serial=data.get("編號"), tc_type=data.get("型式") or None,
-                cal_date=_parse_date(data.get("校正日期")),
-                cal_due_date=_parse_date(data.get("到期日")),
+                cal_date=parse_date(data.get("校正日期")),
+                cal_due_date=parse_date(data.get("到期日")),
                 is_active=bool(data.get("啟用狀態", True)),
                 note=data.get("備註") or None,
             )
@@ -323,8 +269,8 @@ class PyrometryService:
                 raise ValueError("找不到該熱電偶")
             t.serial = data.get("編號")
             t.tc_type = data.get("型式") or None
-            t.cal_date = _parse_date(data.get("校正日期"))
-            t.cal_due_date = _parse_date(data.get("到期日"))
+            t.cal_date = parse_date(data.get("校正日期"))
+            t.cal_due_date = parse_date(data.get("到期日"))
             t.is_active = bool(data.get("啟用狀態", True))
             t.note = data.get("備註") or None
             if "校正點" in data:
@@ -363,7 +309,7 @@ class PyrometryService:
         if not tc:
             return 0.0
         pts = [(float(cp.std_temp), float(cp.error)) for cp in tc.cal_points]
-        return round(-_interp_error(pts, float(setpoint)), 2)
+        return round(-interp_error(pts, float(setpoint)), 2)
 
     @staticmethod
     def compute_corrections(setpoint: float, test_type: str, count: int,
@@ -387,7 +333,7 @@ class PyrometryService:
         tc_obj = Thermocouple.query.filter(Thermocouple.is_active.is_(True)).order_by(Thermocouple.id.desc()).first()
         if tc_obj:
             tc_points = [(float(cp.std_temp), float(cp.error)) for cp in tc_obj.cal_points]
-            tc_corr = -_interp_error(tc_points, float(setpoint))
+            tc_corr = -interp_error(tc_points, float(setpoint))
         else:
             tc_corr = float(r.tc_correction or 0)   # 向後相容：舊固定值
 
@@ -399,98 +345,26 @@ class PyrometryService:
         out = []
         for i in range(count):
             ch = channels[i] if (channels and i < len(channels)) else (offset + i + 1)
-            err = _interp_error(by_channel.get(ch, []), float(setpoint))
+            err = interp_error(by_channel.get(ch, []), float(setpoint))
             out.append(round(tc_corr - err, 2))
         return out
 
     # ---------- 判定邏輯 ----------
     @staticmethod
     def evaluate_tus(setpoint: float, tolerance: float, points: List[Dict[str, Any]]) -> Dict[str, Any]:
-        sp = float(setpoint)
-        tol = float(tolerance)
-        out_points = []
-        all_max, all_min = [], []
-        overall_pass = True
-        for p in points:
-            tmax = _to_float(p.get("最高溫"))
-            tmin = _to_float(p.get("最低溫"))
-            corr = _to_float(p.get("修正值")) or 0.0   # 熱電偶+記錄器補正
-            # 校正後溫度 = 量測值 + 修正值
-            tmax = tmax + corr if tmax is not None else None
-            tmin = tmin + corr if tmin is not None else None
-            dev_candidates = []
-            if tmax is not None:
-                dev_candidates.append(tmax - sp); all_max.append(tmax)
-            if tmin is not None:
-                dev_candidates.append(tmin - sp); all_min.append(tmin)
-            # 最大偏差 = 絕對值最大的偏差（保留正負號）
-            max_dev = max(dev_candidates, key=abs) if dev_candidates else None
-            pt_pass = max_dev is None or abs(max_dev) <= tol
-            overall_pass = overall_pass and pt_pass
-            np_point = dict(p)
-            np_point["最大偏差"] = round(max_dev, 2) if max_dev is not None else None
-            np_point["是否合格"] = pt_pass
-            out_points.append(np_point)
-        tus_range = round(max(all_max) - min(all_min), 2) if all_max and all_min else None
-        max_pos = round(max(all_max) - sp, 2) if all_max else None
-        max_neg = round(min(all_min) - sp, 2) if all_min else None
-        return {
-            "是否合格": overall_pass, "TUS均勻度極差": tus_range,
-            "TUS最大正偏差": max_pos, "TUS最大負偏差": max_neg, "points": out_points,
-        }
+        return evaluate_tus(setpoint, tolerance, points)
 
     @staticmethod
     def evaluate_sat(tolerance: float, points: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """SAT 判定：每控溫區含多筆取樣讀值，所有讀值均需在公差內。
-        兼容舊格式（單筆 控制儀表讀值/校正測試讀值）與新格式（readings 陣列）。
-        """
-        tol = float(tolerance)
-        out_points = []
-        overall_pass = True
-        for p in points:
-            corr = _to_float(p.get("修正值")) or 0.0
-            # 取得讀值列表（新格式 readings 或舊格式單筆）
-            raw_readings: List[Dict[str, Any]] = p.get("readings") or []
-            if not raw_readings:
-                ctrl_s = p.get("控制儀表讀值")
-                test_s = p.get("校正測試讀值")
-                if ctrl_s is not None or test_s is not None:
-                    raw_readings = [{"控制儀表讀值": ctrl_s, "校正測試讀值": test_s}]
-            computed_readings = []
-            worst_diff = None
-            worst_dev = None
-            zone_pass = True
-            for r in raw_readings:
-                ctrl = _to_float(r.get("控制儀表讀值"))
-                test = _to_float(r.get("校正測試讀值"))
-                diff      = round(test - ctrl, 2) if (ctrl is not None and test is not None) else None
-                deviation = round(diff + corr, 2) if diff is not None else None
-                r_pass = deviation is None or abs(deviation) <= tol
-                zone_pass = zone_pass and r_pass
-                if deviation is not None and (worst_dev is None or abs(deviation) > abs(worst_dev)):
-                    worst_dev = deviation
-                    worst_diff = diff
-                cr = {k: v for k, v in r.items() if k not in ("差值", "偏差", "是否合格")}
-                cr["差值"] = diff
-                cr["偏差"] = deviation
-                cr["是否合格"] = r_pass
-                computed_readings.append(cr)
-            overall_pass = overall_pass and zone_pass
-            np_point = {k: v for k, v in p.items() if k not in ("readings", "差值", "偏差", "是否合格")}
-            np_point["readings"] = computed_readings
-            np_point["差值"] = worst_diff
-            np_point["偏差"] = worst_dev
-            np_point["是否合格"] = zone_pass
-            out_points.append(np_point)
-        return {"是否合格": overall_pass, "points": out_points}
+        return evaluate_sat(tolerance, points)
 
     # ---------- 測試紀錄 ----------
     @staticmethod
     def create_test(data: Dict[str, Any]) -> int:
         from ..models import PyrometryTest, TusPoint, SatPoint
         try:
-            data = _validate_test_payload(data)
-            test_date = _parse_date(data.get("測試日期"))
+            data = validate_test_payload(data)
+            test_date = parse_date(data.get("測試日期"))
             test_type = data.get("測試類型")
             tolerance = float(data.get("允許公差") or 0)
             setpoint = float(data.get("設定溫度") or 0)
@@ -503,12 +377,12 @@ class PyrometryService:
 
             t = PyrometryTest(
                 furnace_id=data.get("爐子ID"), test_type=test_type,
-                quarter=data.get("季別") or _quarter_of(test_date),
+                quarter=data.get("季別") or quarter_of(test_date),
                 test_date=test_date, setpoint=setpoint, tolerance=tolerance,
                 tester_id=data.get("測試人員") or None,
                 test_instrument=data.get("測試儀器編號") or None,
                 std_instrument=data.get("標準校正儀器編號") or None,
-                cal_due_date=_parse_date(data.get("儀器校正到期日")),
+                cal_due_date=parse_date(data.get("儀器校正到期日")),
                 is_pass=judged["是否合格"],
                 tus_range=judged.get("TUS均勻度極差"),
                 tus_max_pos=judged.get("TUS最大正偏差"),
@@ -527,10 +401,10 @@ class PyrometryService:
                     db.session.add(TusPoint(
                         test_id=t.id, position=p.get("點位"), tc_no=p.get("熱電偶編號"),
                         channel=int(tch) if tch is not None else None,
-                        correction=_to_float(p.get("修正值")),
-                        temp_max=_to_float(p.get("最高溫")),
-                        temp_min=_to_float(p.get("最低溫")),
-                        max_dev=_to_float(p.get("最大偏差")),
+                        correction=to_float(p.get("修正值")),
+                        temp_max=to_float(p.get("最高溫")),
+                        temp_min=to_float(p.get("最低溫")),
+                        max_dev=to_float(p.get("最大偏差")),
                         is_pass=p.get("是否合格", True),
                     ))
                 else:
@@ -539,9 +413,9 @@ class PyrometryService:
                         test_id=t.id, zone=p.get("控溫區"),
                         channel=int(ch) if ch is not None else None,
                         readings=p.get("readings") or None,
-                        diff=_to_float(p.get("差值")),
-                        correction=_to_float(p.get("修正值")),
-                        deviation=_to_float(p.get("偏差")),
+                        diff=to_float(p.get("差值")),
+                        correction=to_float(p.get("修正值")),
+                        deviation=to_float(p.get("偏差")),
                         is_pass=p.get("是否合格", True),
                     ))
             db.session.commit()
@@ -606,8 +480,8 @@ class PyrometryService:
             t = db.session.get(PyrometryTest, test_id)
             if not t or t.deleted_at is not None:
                 raise ValueError("找不到該筆爐溫測試")
-            data = _validate_test_payload(data, default_test_type=t.test_type)
-            test_date = _parse_date(data.get("測試日期"))
+            data = validate_test_payload(data, default_test_type=t.test_type)
+            test_date = parse_date(data.get("測試日期"))
             test_type = data.get("測試類型")
             tolerance = float(data.get("允許公差") or 0)
             setpoint = float(data.get("設定溫度") or 0)
@@ -619,14 +493,14 @@ class PyrometryService:
 
             t.furnace_id = data.get("爐子ID")
             t.test_type = test_type
-            t.quarter = data.get("季別") or _quarter_of(test_date)
+            t.quarter = data.get("季別") or quarter_of(test_date)
             t.test_date = test_date
             t.setpoint = setpoint
             t.tolerance = tolerance
             t.tester_id = data.get("測試人員") or None
             t.test_instrument = data.get("測試儀器編號") or None
             t.std_instrument = data.get("標準校正儀器編號") or None
-            t.cal_due_date = _parse_date(data.get("儀器校正到期日"))
+            t.cal_due_date = parse_date(data.get("儀器校正到期日"))
             t.is_pass = judged["是否合格"]
             t.tus_range = judged.get("TUS均勻度極差")
             t.tus_max_pos = judged.get("TUS最大正偏差")
@@ -645,10 +519,10 @@ class PyrometryService:
                     db.session.add(TusPoint(
                         test_id=t.id, position=p.get("點位"), tc_no=p.get("熱電偶編號"),
                         channel=int(tch) if tch is not None else None,
-                        correction=_to_float(p.get("修正值")),
-                        temp_max=_to_float(p.get("最高溫")),
-                        temp_min=_to_float(p.get("最低溫")),
-                        max_dev=_to_float(p.get("最大偏差")),
+                        correction=to_float(p.get("修正值")),
+                        temp_max=to_float(p.get("最高溫")),
+                        temp_min=to_float(p.get("最低溫")),
+                        max_dev=to_float(p.get("最大偏差")),
                         is_pass=p.get("是否合格", True)))
                 else:
                     ch = p.get("頻道")
@@ -656,9 +530,9 @@ class PyrometryService:
                         test_id=t.id, zone=p.get("控溫區"),
                         channel=int(ch) if ch is not None else None,
                         readings=p.get("readings") or None,
-                        diff=_to_float(p.get("差值")),
-                        correction=_to_float(p.get("修正值")),
-                        deviation=_to_float(p.get("偏差")),
+                        diff=to_float(p.get("差值")),
+                        correction=to_float(p.get("修正值")),
+                        deviation=to_float(p.get("偏差")),
                         is_pass=p.get("是否合格", True)))
             db.session.commit()
             return True
@@ -695,9 +569,9 @@ class PyrometryService:
         if args.get("is_pass") in ("0", "1"):
             q = q.filter(PyrometryTest.is_pass.is_(args["is_pass"] == "1"))
         if args.get("date_from"):
-            q = q.filter(PyrometryTest.test_date >= _parse_date(args["date_from"]))
+            q = q.filter(PyrometryTest.test_date >= parse_date(args["date_from"]))
         if args.get("date_to"):
-            q = q.filter(PyrometryTest.test_date <= _parse_date(args["date_to"]))
+            q = q.filter(PyrometryTest.test_date <= parse_date(args["date_to"]))
         page = bounded_int(args.get("page"), 1, 1, 1000000)
         page_size = bounded_int(args.get("page_size"), 20, 1, 100)
         total = q.count()
@@ -835,3 +709,4 @@ class PyrometryService:
         buf = io.BytesIO()
         wb.save(buf)
         return buf.getvalue()
+

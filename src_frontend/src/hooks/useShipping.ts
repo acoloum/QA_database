@@ -2,6 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { downloadResponseBlob } from '../utils/downloadFile';
 import type { ShippingInspection, Inspector, Vendor, ToleranceResult, ShippingCreateInput, ShippingUpdateInput } from '../types';
 
 export interface ShippingSearchParams {
@@ -195,15 +196,7 @@ export const useExportSpcReport = () => {
                 responseType: 'blob'
             });
 
-            // Trigger download
-            const url = window.URL.createObjectURL(new Blob([res.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `SPC報告_${params.field}.xlsx`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
+            downloadResponseBlob(res.data as BlobPart, `SPC報告_${params.field}.xlsx`);
         },
         onSuccess: () => {
             toast.success('SPC 報告匯出成功');

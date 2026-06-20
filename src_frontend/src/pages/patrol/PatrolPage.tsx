@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import { usePatrolList, usePatrolOptions, useDeletePatrol } from '../../hooks/usePatrol';
 import api from '../../services/api';
+import { downloadResponseBlob } from '../../utils/downloadFile';
 
 const PatrolPage = () => {
     const navigate = useNavigate();
@@ -71,14 +72,7 @@ const PatrolPage = () => {
             const res = await api.get(`/patrol/export?${params.toString()}`, {
                 responseType: 'blob',
             });
-            const url = window.URL.createObjectURL(new Blob([res.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', '巡檢數據.xlsx');
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
+            downloadResponseBlob(res.data as BlobPart, '巡檢數據.xlsx');
         } catch (error) {
             console.error('匯出失敗', error);
             toast.error('匯出失敗，請重新整理後再試');

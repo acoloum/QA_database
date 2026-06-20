@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { downloadResponseBlob } from '../utils/downloadFile';
 import type { CAPADetail, CAPAListItem, PaginatedResponse } from '../types';
 
 export interface CapaListParams {
@@ -209,12 +210,5 @@ export const download8DReport = async (capaId: number, format: 'pdf' | 'excel') 
         responseType: 'blob',
     });
 
-    const url = URL.createObjectURL(new Blob([res.data as BlobPart], { type: mime }));
-    const a   = document.createElement('a');
-    a.href    = url;
-    a.download = `8D_${capaId}.${ext}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadResponseBlob(res.data as BlobPart, `8D_${capaId}.${ext}`, mime);
 };

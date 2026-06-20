@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 
 import api from '../services/api';
-import type { Furnace, PyrometryTestRow, Recorder, Thermocouple } from '../types';
+import { downloadBlob } from '../utils/downloadFile';
+import type { Furnace, PyrometryDashboardRow, PyrometryTestRow, Recorder, Thermocouple } from '../types';
 
 export interface PyrometryTestFilters {
   furnace_id?: string;
@@ -25,6 +26,7 @@ export const pyrometryKeys = {
   furnaceTrend: (id: number | null) => ['tus-trend', id] as const,
   recorders: ['recorders'] as const,
   thermocouples: ['thermocouples'] as const,
+  dashboard: ['pyrometry-dashboard'] as const,
   tests: ['pyrometry-tests'] as const,
   testList: (params: PyrometryTestListParams) => ['pyrometry-tests', params.page, params.filters] as const,
   testDetail: (id: number | null) => ['pyrometry-test-detail', id] as const,
@@ -33,15 +35,6 @@ export const pyrometryKeys = {
 const getApiErrorMessage = (error: unknown, fallback: string) => {
   const apiError = error as { response?: { data?: { error?: string; message?: string } } };
   return apiError.response?.data?.error || apiError.response?.data?.message || fallback;
-};
-
-const downloadBlob = (blob: Blob, filename: string) => {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
 };
 
 export const useFurnaces = (options: { activeOnly?: boolean } = {}) =>
@@ -161,6 +154,12 @@ export const useDeleteThermocouple = () => {
     onError: error => toast.error(getApiErrorMessage(error, '熱電偶校正刪除失敗')),
   });
 };
+
+export const usePyrometryDashboard = () =>
+  useQuery({
+    queryKey: pyrometryKeys.dashboard,
+    queryFn: () => api.get<{ data: PyrometryDashboardRow[] }>('/pyrometry/dashboard').then(r => r.data.data),
+  });
 
 export const usePyrometryTests = (params: PyrometryTestListParams) =>
   useQuery({

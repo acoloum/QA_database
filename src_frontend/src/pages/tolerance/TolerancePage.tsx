@@ -7,6 +7,7 @@ import ViewToleranceModal from '../../components/tolerance/ViewToleranceModal';
 import { useToleranceSearch, useToleranceOptions, useDeleteTolerance, useImportTolerance } from '../../hooks/useTolerance';
 import type { ToleranceStandard, Vendor } from '../../types';
 import { useNavigate } from 'react-router-dom';
+import { downloadResponseBlob } from '../../utils/downloadFile';
 
 const TolerancePage = () => {
     const navigate = useNavigate();
@@ -83,14 +84,7 @@ const TolerancePage = () => {
                 responseType: 'blob',
             });
 
-            const url = window.URL.createObjectURL(new Blob([res.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', '廠商公差資料.xlsx');
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
+            downloadResponseBlob(res.data as BlobPart, '廠商公差資料.xlsx');
         } catch (error) {
             console.error('匯出失敗', error);
         }

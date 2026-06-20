@@ -7,6 +7,7 @@ import api from '../services/api';
 import {
   useExportPyrometryTest,
   useFurnaces,
+  usePyrometryDashboard,
   useSaveFurnace,
 } from './usePyrometry';
 
@@ -81,5 +82,16 @@ describe('usePyrometry', () => {
     expect(createObjectURL).toHaveBeenCalledWith(blob);
     expect(click).toHaveBeenCalled();
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:test');
+  });
+
+  it('透過 hook 載入爐溫 Dashboard', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: { data: [{ 爐子ID: 1, 爐號: 'F-01', 名稱: '一號爐' }] } });
+    const { wrapper } = createWrapper();
+
+    const { result } = renderHook(() => usePyrometryDashboard(), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(api.get).toHaveBeenCalledWith('/pyrometry/dashboard');
+    expect(result.current.data?.[0].爐號).toBe('F-01');
   });
 });

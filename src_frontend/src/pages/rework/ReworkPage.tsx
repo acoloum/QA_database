@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import toast from 'react-hot-toast';
-import api from '../../services/api';
 import type { ReworkExecutionDetail, ReworkInspectionDetail, ReworkCostDetail } from '../../types';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import ApplyModal from '../../components/rework/ApplyModal';
@@ -15,8 +13,8 @@ import EditCostModal from '../../components/rework/EditCostModal';
 import EditBasicInfoModal from '../../components/rework/EditBasicInfoModal';
 import ReworkStatisticsDashboard from '../../components/rework/ReworkStatisticsDashboard';
 import ReworkFollowUpModal from '../../components/rework/ReworkFollowUpModal';
-import { getReworkErrorMessage, resolveReworkFollowUp } from './reworkPageUtils';
 import ReworkDetailModal from './ReworkDetailModal';
+import { useReworkActions } from './useReworkActions';
 import { useReworkDetail } from './useReworkDetail';
 import { useReworkPageData } from './useReworkPageData';
 
@@ -72,6 +70,13 @@ const ReworkPage = () => {
         openDetail,
         reloadDetailData,
     } = useReworkDetail(loadData);
+    const reworkActions = useReworkActions({
+        applications,
+        selectedReworkDetail,
+        reloadDetailData,
+        loadData,
+        setFollowUpModal,
+    });
 
     useEffect(() => {
         const ncmrId = searchParams.get('ncmr_id');
@@ -113,15 +118,7 @@ const ReworkPage = () => {
             message: '確定要刪除此執行記錄嗎？',
             confirmLabel: '刪除',
             confirmVariant: 'danger',
-            onConfirm: async () => {
-                try {
-                    await api.delete(`/rework/execution/${executionId}`);
-                    toast.success('刪除成功');
-                    await reloadDetailData();
-                } catch (error: unknown) {
-                    toast.error(getReworkErrorMessage(error, '刪除失敗'));
-                }
-            },
+            onConfirm: () => reworkActions.deleteExecution(executionId),
         });
     };
 
@@ -136,15 +133,7 @@ const ReworkPage = () => {
             message: '確定要刪除此品檢記錄嗎？',
             confirmLabel: '刪除',
             confirmVariant: 'danger',
-            onConfirm: async () => {
-                try {
-                    await api.delete(`/rework/inspection/${inspectionId}`);
-                    toast.success('刪除成功');
-                    await reloadDetailData();
-                } catch (error: unknown) {
-                    toast.error(getReworkErrorMessage(error, '刪除失敗'));
-                }
-            },
+            onConfirm: () => reworkActions.deleteInspection(inspectionId),
         });
     };
 
@@ -159,16 +148,7 @@ const ReworkPage = () => {
             message: '確定要刪除此成本記錄嗎？',
             confirmLabel: '刪除',
             confirmVariant: 'danger',
-            onConfirm: async () => {
-                try {
-                    await api.delete(`/rework/cost/${costId}`);
-                    toast.success('刪除成功');
-                    await reloadDetailData();
-                    await loadData();
-                } catch (error: unknown) {
-                    toast.error(getReworkErrorMessage(error, '刪除失敗'));
-                }
-            },
+            onConfirm: () => reworkActions.deleteCost(costId),
         });
     };
 
@@ -178,31 +158,7 @@ const ReworkPage = () => {
             message: '確定要結案此重工申請嗎？',
             confirmLabel: '結案',
             confirmVariant: 'success',
-            onConfirm: async () => {
-                try {
-                    await api.post('/rework/close', { rework_id: reworkId });
-                    toast.success('結案成功');
-
-                    // 結案後，若該重工關聯 NCMR 且 NCMR 尚未開立 CAPA，提示使用者
-                    const rework = applications.find(a => a.識別碼 === reworkId)
-                        ?? (selectedReworkDetail?.識別碼 === reworkId ? selectedReworkDetail : null);
-                    const ncmrId = rework?.NCMR_ID;
-                    if (ncmrId) {
-                        try {
-                            const ncmrRes = await api.get(`/ncmr/detail/${ncmrId}`);
-                            const ncmr = ncmrRes.data;
-                            const followUp = resolveReworkFollowUp(rework, ncmr);
-                            if (followUp) setFollowUpModal(followUp);
-                        } catch {
-                            // 取不到 NCMR 詳細資料也不影響結案流程
-                        }
-                    }
-
-                    await reloadDetailData();
-                } catch (error: unknown) {
-                    toast.error(getReworkErrorMessage(error, '結案失敗'));
-                }
-            },
+            onConfirm: () => reworkActions.closeRework(reworkId),
         });
     };
 
@@ -212,15 +168,7 @@ const ReworkPage = () => {
             message: '確定要刪除此重工申請嗎？此動作無法復原。',
             confirmLabel: '刪除',
             confirmVariant: 'danger',
-            onConfirm: async () => {
-                try {
-                    await api.post('/rework/delete', { rework_id: reworkId });
-                    toast.success('刪除成功');
-                    await loadData();
-                } catch (error: unknown) {
-                    toast.error(getReworkErrorMessage(error, '刪除失敗'));
-                }
-            },
+            onConfirm: () => reworkActions.deleteRework(reworkId),
         });
     };
 

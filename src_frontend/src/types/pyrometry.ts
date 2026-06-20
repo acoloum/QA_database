@@ -27,6 +27,24 @@ export interface PyrometryTestRow {
   測試人員姓名: string;
 }
 
+export type FurnaceStatus = '逾期' | '即將到期' | '正常' | '尚無紀錄' | '不合格';
+
+export interface PyrometryDueInfo {
+  最近測試日: string | null;
+  下次應測日: string | null;
+  狀態: FurnaceStatus;
+}
+
+export interface PyrometryDashboardRow {
+  爐子ID: number;
+  爐號: string;
+  名稱: string;
+  製程類型: string;
+  TUS: PyrometryDueInfo;
+  SAT: PyrometryDueInfo;
+  最近結果: { 測試類型: string; 測試日期: string; 是否合格: boolean } | null;
+}
+
 export interface TusPoint {
   識別碼?: number;
   點位: string;

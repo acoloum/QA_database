@@ -8,6 +8,7 @@ import ImportModal from '../../components/shipping/ImportModal';
 import ShippingCharts from '../../components/shipping/ShippingCharts';
 import { useShippingList, useDeleteShipping } from '../../hooks/useShipping';
 import { useShippingToleranceMap } from '../../hooks/useShippingToleranceMap';
+import { downloadResponseBlob } from '../../utils/downloadFile';
 
 const ShippingPage = () => {
     const navigate = useNavigate();
@@ -94,14 +95,7 @@ const ShippingPage = () => {
                 params: { vendor, material, spec, start_date: startDate, end_date: endDate },
                 responseType: 'blob'
             });
-            const url = window.URL.createObjectURL(new Blob([response.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', '出貨檢驗數據.xlsx');
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
+            downloadResponseBlob(response.data as BlobPart, '出貨檢驗數據.xlsx');
         } catch (error) {
             console.error('Export failed:', error);
         }
