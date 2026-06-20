@@ -126,9 +126,15 @@ export const getValidPatrolDetails = (details: PatrolDetailInput[]) =>
       group: detail.group,
       item: detail.item,
       pos: detail.pos,
-      min: detail.min === '' ? null : parseFloat(detail.min),
-      max: detail.max === '' ? null : parseFloat(detail.max),
+      min: parsePatrolMeasurement(detail.min),
+      max: parsePatrolMeasurement(detail.max),
     }));
+
+export const parsePatrolMeasurement = (value: string) => {
+  if (value.trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 export const buildPatrolPayload = ({
   editId,

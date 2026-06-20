@@ -10,6 +10,7 @@ import PaginationBar from '../../components/common/PaginationBar';
 import { useNavigate } from 'react-router-dom';
 import { useNCMRList, useDeleteNCMR, useCreateCAPA, useNCMRDetail } from '../../hooks/useNCMR';
 import type { NCMRListParams } from '../../hooks/useNCMR';
+import { formatNcmrQuantity } from './ncmrPageUtils';
 
 const EMPTY_FILTERS: NCMRListParams = {
     page: 1, per_page: 20,
@@ -56,7 +57,6 @@ const NCMRPage = () => {
     useEffect(() => {
         if (printItem && printDetail) {
             const d = printDetail;
-            const formatQty = (val: unknown) => val ? Math.floor(Number(val)).toString() : '';
             const ncmrNo = d.NCMR單號 || d.單號 || (d.識別碼 ? `NCMR-${d.識別碼}` : '');
             const printContent = `<!DOCTYPE html>
 <html lang="zh-TW"><head><meta charset="UTF-8"><title>不合格品異常單 - ${ncmrNo}</title>
@@ -67,7 +67,7 @@ const NCMRPage = () => {
 <tr><th>單號</th><td>${ncmrNo}</td><th>發現日期</th><td>${d.日期 || d.發現日期 || ''}</td></tr>
 <tr><th>來源</th><td>${d.來源 || ''}</td><th>廠商</th><td>${d.廠商 || ''}</td></tr>
 <tr><th>材質</th><td>${d.材質 || ''}</td><th>規格</th><td>${d.產品資訊 || ''}</td></tr>
-<tr><th>不合格數量</th><td colspan="3">${formatQty(d.不合格數量)}</td></tr>
+<tr><th>不合格數量</th><td colspan="3">${formatNcmrQuantity(d.不合格數量)}</td></tr>
 <tr><th>批號/訂單號</th><td colspan="3">${d.批號 || ''}</td></tr>
 <tr><th>不良描述</th><td colspan="3">${d.不良描述 || ''}</td></tr>
 <tr><th>不良原因大類</th><td>${d.不良原因大類 || ''}</td><th>不良原因細項</th><td>${d.不良原因細項 || ''}</td></tr>

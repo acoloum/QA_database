@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import type { ReworkApplication } from '../../types';
 import { useInspectors } from '../../hooks/useInspectors';
+import { buildReworkApplicationUpdatePayload } from './reworkFormPayload';
 import { useUpdateReworkApplication } from './useReworkMutations';
 
 interface EditBasicInfoModalProps {
@@ -68,20 +69,21 @@ const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditB
     const id = application.識別碼;
     if (!id) return;
 
-    const payload: Partial<ReworkApplication> = {};
-
-    if (applicant !== undefined) payload.申請人員姓名 = applicant;
-    if (department) payload.部門 = department;
-    if (urgency) payload.緊急程度 = urgency;
-    if (vendor !== undefined) payload.廠商 = vendor;
-    if (material !== undefined) payload.材質 = material;
-    if (spec !== undefined) payload.產品資訊 = spec;
-    if (batchNo !== undefined) payload.批號 = batchNo;
-    if (reworkQty) payload.重工數量 = parseFloat(reworkQty);
-    if (reason) payload.申請原因 = reason;
-    if (expectedDate !== undefined) payload.預計完成日期 = expectedDate;
-
-    updateApplication.mutate({ id, payload });
+    updateApplication.mutate({
+      id,
+      payload: buildReworkApplicationUpdatePayload({
+        applicant,
+        department,
+        urgency,
+        vendor,
+        material,
+        spec,
+        batchNo,
+        reworkQty,
+        reason,
+        expectedDate,
+      }),
+    });
   };
 
   return (

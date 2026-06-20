@@ -79,6 +79,27 @@ describe('patrolFormUtils', () => {
     ]);
   });
 
+  it('巡檢明細非法數值轉為 null 且保留 0', () => {
+    const payload = buildPatrolPayload({
+      editId: null,
+      date: '2026-06-20',
+      machine: 'M1',
+      operator: 'O1',
+      inspector: 'I1',
+      customer: 'C1',
+      material: 'A6061',
+      batch: 'B1',
+      spec: '85*2.8',
+      details: [
+        { group: '第1組', pos: '前段', item: '外徑', min: 'abc', max: '0' },
+      ],
+    });
+
+    expect(payload.details).toEqual([
+      { group: '第1組', item: '外徑', pos: '前段', min: null, max: 0 },
+    ]);
+  });
+
   it('更新 payload 使用後端巡檢更新需要的 id 欄位', () => {
     const payload = buildPatrolUpdatePayload({
       editId: 12,

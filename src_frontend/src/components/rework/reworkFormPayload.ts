@@ -1,8 +1,15 @@
 import type { ReworkCostDetail, ReworkExecutionDetail, ReworkInspectionDetail } from '../../types';
 
-type ReworkExecutionPayload = Omit<Partial<ReworkExecutionDetail>, '重工單號'> & { 重工單號?: string };
-type ReworkInspectionPayload = Omit<Partial<ReworkInspectionDetail>, '重工單號'> & { 重工單號?: string };
-type ReworkCostPayload = Omit<Partial<ReworkCostDetail>, '重工單號'> & { 重工單號?: string };
+export type ReworkExecutionPayload = Omit<Partial<ReworkExecutionDetail>, '重工單號'> & { 重工單號?: string };
+export type ReworkInspectionPayload = Omit<Partial<ReworkInspectionDetail>, '重工單號'> & { 重工單號?: string };
+export type ReworkCostPayload = Omit<Partial<ReworkCostDetail>, '重工單號'> & { 重工單號?: string };
+
+export interface ReworkApprovalPayload {
+  rework_id: number;
+  action: string;
+  opinion: string;
+  審核人員姓名: string;
+}
 
 export interface ReworkApplicationPayload {
   NCMR_ID: number | null;
@@ -24,6 +31,32 @@ export interface ReworkApplicationFormValues {
   productInfo: string;
   batchNo: string;
   quantity: string;
+  reason: string;
+  expectedDate: string;
+}
+
+export interface ReworkApplicationUpdatePayload {
+  申請人員姓名: string;
+  部門: string;
+  緊急程度: '普通' | '重要' | '緊急';
+  廠商: string;
+  材質: string;
+  產品資訊: string;
+  批號: string;
+  重工數量?: number;
+  申請原因: string;
+  預計完成日期: string;
+}
+
+export interface ReworkApplicationUpdateFormValues {
+  applicant: string;
+  department: string;
+  urgency: '普通' | '重要' | '緊急';
+  vendor: string;
+  material: string;
+  spec: string;
+  batchNo: string;
+  reworkQty: string;
   reason: string;
   expectedDate: string;
 }
@@ -111,6 +144,35 @@ export const buildReworkApplicationPayload = ({
   申請原因: reason,
   預計完成日期: expectedDate,
 });
+
+export const buildReworkApplicationUpdatePayload = ({
+  applicant,
+  department,
+  urgency,
+  vendor,
+  material,
+  spec,
+  batchNo,
+  reworkQty,
+  reason,
+  expectedDate,
+}: ReworkApplicationUpdateFormValues): ReworkApplicationUpdatePayload => {
+  const payload: ReworkApplicationUpdatePayload = {
+    申請人員姓名: applicant,
+    部門: department,
+    緊急程度: urgency,
+    廠商: vendor,
+    材質: material,
+    產品資訊: spec,
+    批號: batchNo,
+    申請原因: reason,
+    預計完成日期: expectedDate,
+  };
+  if (reworkQty.trim() !== '') {
+    payload.重工數量 = parseReworkCostNumber(reworkQty, 0);
+  }
+  return payload;
+};
 
 export const buildReworkExecutionPayload = ({
   reworkNumber,

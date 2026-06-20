@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildReworkApplicationPayload,
+  buildReworkApplicationUpdatePayload,
   buildReworkCostPayload,
   buildReworkExecutionPayload,
   calculateReworkTotalCost,
@@ -48,6 +49,32 @@ describe('reworkFormPayload', () => {
     })).toMatchObject({
       NCMR_ID: null,
       重工數量: 0,
+    });
+  });
+
+  it('將重工基本資料編輯表單轉為更新 payload 並保留數量 0', () => {
+    expect(buildReworkApplicationUpdatePayload({
+      applicant: '王小明',
+      department: '品保部',
+      urgency: '緊急',
+      vendor: 'A廠',
+      material: '6061',
+      spec: '85*2.8',
+      batchNo: 'B-001',
+      reworkQty: '0',
+      reason: '重新加工',
+      expectedDate: '2026-06-30',
+    })).toEqual({
+      申請人員姓名: '王小明',
+      部門: '品保部',
+      緊急程度: '緊急',
+      廠商: 'A廠',
+      材質: '6061',
+      產品資訊: '85*2.8',
+      批號: 'B-001',
+      重工數量: 0,
+      申請原因: '重新加工',
+      預計完成日期: '2026-06-30',
     });
   });
 
