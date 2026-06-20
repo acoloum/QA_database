@@ -5,11 +5,8 @@ import PatrolCharts from '../../components/patrol/PatrolCharts';
 import PatrolImportModal from '../../components/patrol/PatrolImportModal';
 import { Button, Form, Card, Row, Col, Table, Badge, Pagination } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
-import { usePatrolList, usePatrolOptions, useDeletePatrol } from '../../hooks/usePatrol';
-import api from '../../services/api';
-import { downloadResponseBlob } from '../../utils/downloadFile';
+import { usePatrolList, usePatrolOptions, useDeletePatrol, useExportPatrolRawData } from '../../hooks/usePatrol';
 
 const PatrolPage = () => {
     const navigate = useNavigate();
@@ -43,6 +40,7 @@ const PatrolPage = () => {
     });
 
     const deleteMutation = useDeletePatrol();
+    const exportRawData = useExportPatrolRawData();
 
     // SPC 圖表的測量項目與位置（與匯出共用）
     const [statsItem, setStatsItem] = useState('外徑');
@@ -57,26 +55,18 @@ const PatrolPage = () => {
         setPage(1);
     };
 
-    const handleExport = async () => {
+    const handleExport = () => {
         // 僅匯出原始檢驗數據，不含 SPC 分析
-        const params = new URLSearchParams({
+        exportRawData.mutate({
+            page,
             s_date: startDate,
             e_date: endDate,
             m_id: machine,
             op_id: operator,
             cust_id: customer,
             mat: material,
-            spec: spec,
+            spec,
         });
-        try {
-            const res = await api.get(`/patrol/export?${params.toString()}`, {
-                responseType: 'blob',
-            });
-            downloadResponseBlob(res.data as BlobPart, '巡檢數據.xlsx');
-        } catch (error) {
-            console.error('匯出失敗', error);
-            toast.error('匯出失敗，請重新整理後再試');
-        }
     };
 
     const handleDelete = async (id: number) => {
@@ -110,8 +100,8 @@ const PatrolPage = () => {
                     <button className="btn btn-back-home me-2" onClick={() => navigate('/')}>
                         <i className="bi bi-arrow-left"></i> 回首頁
                     </button>
-                    <button className="btn btn-outline-success me-2" onClick={handleExport}>
-                        <i className="bi bi-file-earmark-excel"></i> 匯出 Excel
+                    <button className="btn btn-outline-success me-2" onClick={handleExport} disabled={exportRawData.isPending}>
+                        <i className="bi bi-file-earmark-excel"></i> {exportRawData.isPending ? '匯出中...' : '匯出 Excel'}
                     </button>
                     <button className="btn btn-outline-info me-2" onClick={() => setShowImportModal(true)}>
                         <i className="bi bi-upload"></i> 匯入 Excel

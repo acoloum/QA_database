@@ -136,6 +136,31 @@ export const useExportPatrolSpcReport = () => {
     });
 };
 
+export const useExportPatrolRawData = () => {
+    return useMutation({
+        mutationFn: async (params: PatrolSearchParams) => {
+            const queryParams = new URLSearchParams();
+            if (params.s_date) queryParams.append('s_date', params.s_date);
+            if (params.e_date) queryParams.append('e_date', params.e_date);
+            if (params.m_id) queryParams.append('m_id', params.m_id);
+            if (params.op_id) queryParams.append('op_id', params.op_id);
+            if (params.cust_id) queryParams.append('cust_id', params.cust_id);
+            if (params.mat) queryParams.append('mat', params.mat);
+            if (params.spec) queryParams.append('spec', params.spec);
+
+            const query = queryParams.toString();
+            const res = await api.get(`/patrol/export${query ? `?${query}` : ''}`, { responseType: 'blob' });
+            downloadResponseBlob(res.data as BlobPart, '巡檢數據.xlsx');
+        },
+        onSuccess: () => {
+            toast.success('巡檢資料匯出成功');
+        },
+        onError: () => {
+            toast.error('匯出失敗，請重新整理後再試');
+        },
+    });
+};
+
 // --- Mutations ---
 
 export const useCreatePatrol = () => {

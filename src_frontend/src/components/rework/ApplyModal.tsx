@@ -58,7 +58,7 @@ const ApplyModal = ({ show, handleClose, onSuccess, initialNcmrId, initialNcmrNo
         setNcmrId(val);
         // 保留舊版 rework.html 的 NCMR 查詢提示邏輯
         if (val) {
-            setNcmrInfo(`從 NCMR #${val} 自動帶入 (模擬)`);
+            setNcmrInfo(`將以 NCMR #${val} 建立重工申請，請確認下方欄位內容`);
         } else {
             setNcmrInfo('');
         }

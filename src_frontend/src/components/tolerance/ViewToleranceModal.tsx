@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
 import { Modal, Button, Row, Col, Table } from 'react-bootstrap';
-import api from '../../services/api';
+import { useToleranceDetail } from '../../hooks/useTolerance';
 
 interface ViewToleranceModalProps {
     show: boolean;
@@ -11,62 +10,29 @@ interface ViewToleranceModalProps {
 interface DetailRow {
     item: string;
     position: string;
-    size_min: string;
-    size_max: string;
-    tol_min: string;
-    tol_max: string;
-    std: string;
+    size_min: string | number;
+    size_max: string | number;
+    tol_min: string | number;
+    tol_max: string | number;
+    std: string | number;
     unit: string;
     remark: string;
 }
 
 const ViewToleranceModal = ({ show, handleClose, viewId }: ViewToleranceModalProps) => {
-    const [material, setMaterial] = useState('');
-    const [spec, setSpec] = useState('');
-    const [vendorName, setVendorName] = useState('');
-    const [remark, setRemark] = useState('');
-    const [createdDate, setCreatedDate] = useState('');
-    const [details, setDetails] = useState<DetailRow[]>([]);
-    const [loading, setLoading] = useState(false);
-
-    useEffect(() => {
-        if (show && viewId) {
-            loadDetail(viewId);
-        }
-    }, [show, viewId]);
-
-    const loadDetail = async (id: number) => {
-        setLoading(true);
-        try {
-            const res = await api.get(`/tolerance/${id}`);
-            if (res.data.success) {
-                const { main, details: dList } = res.data;
-                setMaterial(main.材質 || '');
-                setSpec(main.規格 || '');
-                setVendorName(main.廠商名稱 || main.廠商 || '');
-                setRemark(main.備註 || '');
-                setCreatedDate(main.建立日期 || '');
-
-                if (dList && dList.length > 0) {
-                    setDetails(dList.map((d: Record<string, unknown>) => ({
-                        item: d.測量項目 || '',
-                        position: d.測量位置 || '',
-                        size_min: d.尺寸下限 ?? '',
-                        size_max: d.尺寸上限 ?? '',
-                        tol_min: d.公差下限 ?? '',
-                        tol_max: d.公差上限 ?? '',
-                        std: d.標準值 ?? '',
-                        unit: d.單位 || 'mm',
-                        remark: d.備註 || ''
-                    })));
-                }
-            }
-        } catch (error) {
-            console.error("Failed to load detail", error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const { data, isLoading: loading } = useToleranceDetail(viewId, show);
+    const main = data?.main;
+    const details: DetailRow[] = (data?.details || []).map(d => ({
+        item: d.測量項目 || '',
+        position: d.測量位置 || '',
+        size_min: d.尺寸下限 ?? '',
+        size_max: d.尺寸上限 ?? '',
+        tol_min: d.公差下限 ?? '',
+        tol_max: d.公差上限 ?? '',
+        std: d.標準值 ?? '',
+        unit: d.單位 || 'mm',
+        remark: d.備註 || ''
+    }));
 
     return (
         <Modal show={show} onHide={handleClose} size="xl" backdrop="static">
@@ -81,19 +47,19 @@ const ViewToleranceModal = ({ show, handleClose, viewId }: ViewToleranceModalPro
                         <div className="bg-light p-3 rounded mb-3">
                             <Row className="g-3">
                                 <Col md={3}>
-                                    <div className="mb-2"><strong>材質：</strong>{material || '-'}</div>
+                                    <div className="mb-2"><strong>材質：</strong>{main?.材質 || '-'}</div>
                                 </Col>
                                 <Col md={3}>
-                                    <div className="mb-2"><strong>規格：</strong>{spec || '-'}</div>
+                                    <div className="mb-2"><strong>規格：</strong>{main?.規格 || '-'}</div>
                                 </Col>
                                 <Col md={3}>
-                                    <div className="mb-2"><strong>廠商：</strong>{vendorName || '-'}</div>
+                                    <div className="mb-2"><strong>廠商：</strong>{main?.廠商名稱 || '-'}</div>
                                 </Col>
                                 <Col md={3}>
-                                    <div className="mb-2"><strong>建立日期：</strong>{createdDate || '-'}</div>
+                                    <div className="mb-2"><strong>建立日期：</strong>{main?.建立日期 || '-'}</div>
                                 </Col>
                                 <Col md={12}>
-                                    <div><strong>備註：</strong>{remark || '-'}</div>
+                                    <div><strong>備註：</strong>{main?.備註 || '-'}</div>
                                 </Col>
                             </Row>
                         </div>

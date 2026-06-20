@@ -1,14 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../../services/api';
-import type { ShippingInspection } from '../../types';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import ShippingModal from '../../components/shipping/ShippingModal';
 import ImportModal from '../../components/shipping/ImportModal';
 import ShippingCharts from '../../components/shipping/ShippingCharts';
-import { useShippingList, useDeleteShipping } from '../../hooks/useShipping';
+import { useShippingList, useDeleteShipping, useExportShippingData } from '../../hooks/useShipping';
 import { useShippingToleranceMap } from '../../hooks/useShippingToleranceMap';
-import { downloadResponseBlob } from '../../utils/downloadFile';
+import { evaluateShippingViolation } from '../../components/shipping/shippingViolationUtils';
 
 const ShippingPage = () => {
     const navigate = useNavigate();
@@ -39,6 +37,7 @@ const ShippingPage = () => {
 
     const { data: searchResult, isLoading } = useShippingList(searchParams);
     const deleteMutation = useDeleteShipping();
+    const exportShippingData = useExportShippingData();
 
     const inspections = searchResult?.data || [];
     const totalPages = searchResult?.total_pages || 1;
@@ -46,59 +45,8 @@ const ShippingPage = () => {
 
     // Refresh list when filters change is handled by React Query key
 
-    const checkViolation = (item: ShippingInspection) => {
-        const combo = `${item.材質 ?? item.material}|||${item.檢驗規格 ?? item.spec ?? ''}|||${item.廠商中文名稱 ?? item.vendor_name ?? ''}`;
-        const std = tolerances[combo];
-        if (!std) return { hasViolation: false, found: false };
-
-        const MINMAX_ITEMS = new Set(["外徑", "內徑", "厚度"]);
-        const ALL_ITEMS = ["外徑", "內徑", "真圓度", "厚度", "同心度", "長度", "硬度", "真直度", "韋伯氏硬度"];
-        let hasViolation = false;
-
-        // 量測值一律使用 measurements 巢狀物件
-        if (item.measurements && Object.keys(item.measurements).length > 0) {
-            outer: for (const [, groupData] of Object.entries(item.measurements)) {
-                for (const itName of ALL_ITEMS) {
-                    const tol = std[itName];
-                    if (!tol) continue;
-                    const measItem = groupData[itName];
-                    if (!measItem) continue;
-
-                    if (MINMAX_ITEMS.has(itName)) {
-                        const minV = measItem.value_min != null ? Number(measItem.value_min) : NaN;
-                        const maxV = measItem.value_max != null ? Number(measItem.value_max) : NaN;
-                        if (!isNaN(minV) && (minV < tol.lsl || minV > tol.usl)) {
-                            hasViolation = true;
-                            break outer;
-                        }
-                        if (!isNaN(maxV) && (maxV < tol.lsl || maxV > tol.usl)) {
-                            hasViolation = true;
-                            break outer;
-                        }
-                    } else {
-                        const v = measItem.value_single != null ? Number(measItem.value_single) : NaN;
-                        if (!isNaN(v) && (v < tol.lsl || v > tol.usl)) {
-                            hasViolation = true;
-                            break outer;
-                        }
-                    }
-                }
-            }
-        }
-
-        return { hasViolation, found: true };
-    };
-
-    const handleExport = async () => {
-        try {
-            const response = await api.get('/export/excel', {
-                params: { vendor, material, spec, start_date: startDate, end_date: endDate },
-                responseType: 'blob'
-            });
-            downloadResponseBlob(response.data as BlobPart, '出貨檢驗數據.xlsx');
-        } catch (error) {
-            console.error('Export failed:', error);
-        }
+    const handleExport = () => {
+        exportShippingData.mutate(searchParams);
     };
 
     const handleAdd = () => {
@@ -135,8 +83,8 @@ const ShippingPage = () => {
             <div className="d-flex justify-content-between align-items-center mb-4">
                 <h2 className="text-primary fw-bold"><i className="bi bi-clipboard-check"></i> 出貨檢驗數據系統</h2>
                 <div>
-                    <button className="btn btn-outline-success me-2" onClick={handleExport}>
-                        <i className="bi bi-file-earmark-excel"></i> 匯出 Excel
+                    <button className="btn btn-outline-success me-2" onClick={handleExport} disabled={exportShippingData.isPending}>
+                        <i className="bi bi-file-earmark-excel"></i> {exportShippingData.isPending ? '匯出中...' : '匯出 Excel'}
                     </button>
                     <button className="btn btn-outline-info me-2" onClick={() => setShowImportModal(true)}>
                         <i className="bi bi-upload"></i> 匯入 Excel
@@ -268,7 +216,7 @@ const ShippingPage = () => {
                                     </tr>
                                 ) : (
                                     inspections.map((item) => {
-                                        const { hasViolation, found } = checkViolation(item);
+                                        const { hasViolation, found } = evaluateShippingViolation(item, tolerances);
                                         const itemId = item.識別碼 ?? item.id;
                                         const itemDate = item.檢驗日期 ?? item.date;
                                         const itemVendor = item.廠商中文名稱 ?? item.vendor_name;

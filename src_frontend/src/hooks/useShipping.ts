@@ -206,3 +206,27 @@ export const useExportSpcReport = () => {
         }
     });
 };
+
+export const useExportShippingData = () => {
+    return useMutation({
+        mutationFn: async (params: ShippingSearchParams) => {
+            const res = await api.get('/export/excel', {
+                params: {
+                    vendor: params.vendor,
+                    material: params.material,
+                    spec: params.spec,
+                    start_date: params.start_date,
+                    end_date: params.end_date
+                },
+                responseType: 'blob'
+            });
+            downloadResponseBlob(res.data as BlobPart, '出貨檢驗數據.xlsx');
+        },
+        onSuccess: () => {
+            toast.success('出貨檢驗資料匯出成功');
+        },
+        onError: () => {
+            toast.error('匯出失敗');
+        }
+    });
+};

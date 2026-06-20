@@ -12,17 +12,15 @@ import {
     Legend,
     Filler
 } from 'chart.js';
-import { Line } from 'react-chartjs-2';
-import { getClickedPointId, setChartPointCursor, shouldShowControlLegendLabel } from '../../utils/spcChartOptions';
 import { buildSpcChartModel } from '../../utils/spcChartModel';
 import CpkTrendChart from '../spc/CpkTrendChart';
 import HistogramDistributionChart from '../spc/HistogramDistributionChart';
+import ControlChartCard from './ControlChartCard';
 import ProcessCapabilityCard from './ProcessCapabilityCard';
 import WecoViolationAlert from './WecoViolationAlert';
 import { Badge, Button, Card, Col, Row, Form } from 'react-bootstrap';
 import { useExportPatrolSpcReport, usePatrolStats } from '../../hooks/usePatrol';
 import type { SpcViolation, SpcChartData } from '../../types';
-import type { TooltipItem, ActiveDataPoint } from 'chart.js';
 
 // 註冊 ChartJS 元件
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
@@ -196,89 +194,23 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
                     {/* X-bar 和 R 管制圖 */}
                     <Row className="mb-3">
                         <Col md={6}>
-                            <Card className="h-100 shadow-sm">
-                                <Card.Body>
-                                    <h5 className="card-title text-center">X&#x0304; 平均值管制圖</h5>
-                                    <div style={{ height: '300px' }}>
-                                        <Line
-                                            data={chartData.xBar}
-                                            options={{
-                                                maintainAspectRatio: false,
-                                                plugins: {
-                                                    legend: {
-                                                        display: true,
-                                                        position: 'bottom',
-                                                        labels: {
-                                                            filter: item => shouldShowControlLegendLabel(item.text),
-                                                            usePointStyle: true,
-                                                            pointStyle: 'line',
-                                                            font: { size: 10 }
-                                                        }
-                                                    },
-                                                    tooltip: {
-                                                        callbacks: {
-                                                            afterLabel: (ctx: TooltipItem<'line'>) => {
-                                                                if (ctx.datasetIndex !== 0) return '';
-                                                                const reasons = getViolationReasons(ctx.dataIndex);
-                                                                return reasons ? `\u26a0\ufe0f ${reasons}` : '';
-                                                            }
-                                                        }
-                                                    }
-                                                },
-                                                onClick: (_event: unknown, elements: ActiveDataPoint[]) => {
-                                                    const id = getClickedPointId(ids, elements);
-                                                    if (id && onEditPoint) onEditPoint(id);
-                                                },
-                                                onHover: (event: unknown, elements: ActiveDataPoint[]) => {
-                                                    setChartPointCursor(event, elements);
-                                                }
-                                            }}
-                                        />
-                                    </div>
-                                </Card.Body>
-                            </Card>
+                            <ControlChartCard
+                                title="X̄ 平均值管制圖"
+                                data={chartData.xBar}
+                                ids={ids}
+                                getViolationReasons={getViolationReasons}
+                                filterLegendLabels
+                                onEditPoint={onEditPoint}
+                            />
                         </Col>
                         <Col md={6}>
-                            <Card className="h-100 shadow-sm">
-                                <Card.Body>
-                                    <h5 className="card-title text-center">R 全距管制圖</h5>
-                                    <div style={{ height: '300px' }}>
-                                        <Line
-                                            data={chartData.rChart}
-                                            options={{
-                                                maintainAspectRatio: false,
-                                                plugins: {
-                                                    legend: {
-                                                        display: true,
-                                                        position: 'bottom',
-                                                        labels: {
-                                                            usePointStyle: true,
-                                                            pointStyle: 'line',
-                                                            font: { size: 10 }
-                                                        }
-                                                    },
-                                                    tooltip: {
-                                                        callbacks: {
-                                                            afterLabel: (ctx: TooltipItem<'line'>) => {
-                                                                if (ctx.datasetIndex !== 0) return '';
-                                                                const reasons = getRViolationReasons(ctx.dataIndex);
-                                                                return reasons ? `\u26a0\ufe0f ${reasons}` : '';
-                                                            }
-                                                        }
-                                                    }
-                                                },
-                                                onClick: (_event: unknown, elements: ActiveDataPoint[]) => {
-                                                    const id = getClickedPointId(ids, elements);
-                                                    if (id && onEditPoint) onEditPoint(id);
-                                                },
-                                                onHover: (event: unknown, elements: ActiveDataPoint[]) => {
-                                                    setChartPointCursor(event, elements);
-                                                }
-                                            }}
-                                        />
-                                    </div>
-                                </Card.Body>
-                            </Card>
+                            <ControlChartCard
+                                title="R 全距管制圖"
+                                data={chartData.rChart}
+                                ids={ids}
+                                getViolationReasons={getRViolationReasons}
+                                onEditPoint={onEditPoint}
+                            />
                         </Col>
                     </Row>
 

@@ -1,13 +1,11 @@
 import { useState } from 'react';
 import { Button, Card, Table, Form, Row, Col, Pagination, Badge } from 'react-bootstrap';
-import api from '../../services/api';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import ToleranceModal from '../../components/tolerance/ToleranceModal';
 import ViewToleranceModal from '../../components/tolerance/ViewToleranceModal';
-import { useToleranceSearch, useToleranceOptions, useDeleteTolerance, useImportTolerance } from '../../hooks/useTolerance';
+import { useToleranceSearch, useToleranceOptions, useDeleteTolerance, useImportTolerance, useExportToleranceData } from '../../hooks/useTolerance';
 import type { ToleranceStandard, Vendor } from '../../types';
 import { useNavigate } from 'react-router-dom';
-import { downloadResponseBlob } from '../../utils/downloadFile';
 
 const TolerancePage = () => {
     const navigate = useNavigate();
@@ -32,6 +30,7 @@ const TolerancePage = () => {
     const { data: searchResult, isLoading, refetch } = useToleranceSearch(searchParams);
     const deleteMutation = useDeleteTolerance();
     const importMutation = useImportTolerance();
+    const exportToleranceData = useExportToleranceData();
 
     // Modal
     const [showModal, setShowModal] = useState(false);
@@ -72,22 +71,8 @@ const TolerancePage = () => {
         setShowModal(true);
     };
 
-    const handleExport = async () => {
-        try {
-            const params = new URLSearchParams();
-            if (material) params.append('material', material);
-            if (vendor) params.append('vendor_id', vendor);
-            if (spec) params.append('spec', spec);
-
-            // 使用 Axios 下載，自動帶入 Authorization header
-            const res = await api.get(`/tolerance/export?${params.toString()}`, {
-                responseType: 'blob',
-            });
-
-            downloadResponseBlob(res.data as BlobPart, '廠商公差資料.xlsx');
-        } catch (error) {
-            console.error('匯出失敗', error);
-        }
+    const handleExport = () => {
+        exportToleranceData.mutate(searchParams);
     };
 
     const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -118,7 +103,9 @@ const TolerancePage = () => {
                         <i className="bi bi-arrow-left"></i> 回首頁
                     </Button>
                     <input type="file" id="importFile" hidden accept=".xlsx,.xls" onChange={handleImport} />
-                    <Button variant="outline-success" className="me-2" onClick={handleExport}><i className="bi bi-download"></i> 匯出 Excel</Button>
+                    <Button variant="outline-success" className="me-2" onClick={handleExport} disabled={exportToleranceData.isPending}>
+                        <i className="bi bi-download"></i> {exportToleranceData.isPending ? '匯出中...' : '匯出 Excel'}
+                    </Button>
                     <Button variant="outline-primary" className="me-2" onClick={() => document.getElementById('importFile')?.click()}><i className="bi bi-upload"></i> 匯入 Excel</Button>
                     <Button variant="warning" className="text-white" onClick={handleAdd}><i className="bi bi-plus-lg"></i> 新增公差資料</Button>
                 </div>

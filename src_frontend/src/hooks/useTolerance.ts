@@ -2,6 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { downloadResponseBlob } from '../utils/downloadFile';
 import type { ToleranceCreateInput, ToleranceUpdateInput } from '../types';
 
 // Types
@@ -82,7 +83,7 @@ export const useToleranceSearch = (params: ToleranceSearchParams) => {
 };
 
 // 3. Fetch Detail
-export const useToleranceDetail = (id: number | null) => {
+export const useToleranceDetail = (id: number | null, enabled = true) => {
     return useQuery({
         queryKey: ['toleranceDetail', id],
         queryFn: async () => {
@@ -90,7 +91,7 @@ export const useToleranceDetail = (id: number | null) => {
             const res = await api.get(`/tolerance/${id}`);
             return res.data as ToleranceDetailResponse;
         },
-        enabled: !!id, // Only run if id is present
+        enabled: enabled && !!id, // Only run if id is present
     });
 };
 
@@ -155,6 +156,27 @@ export const useImportTolerance = () => {
         onSuccess: (data) => {
             toast.success(data.message || '匯入成功');
             queryClient.invalidateQueries({ queryKey: ['toleranceList'] });
+        },
+    });
+};
+
+export const useExportToleranceData = () => {
+    return useMutation({
+        mutationFn: async (params: ToleranceSearchParams) => {
+            const queryParams = new URLSearchParams();
+            if (params.material) queryParams.append('material', params.material);
+            if (params.vendor_id) queryParams.append('vendor_id', params.vendor_id);
+            if (params.spec) queryParams.append('spec', params.spec);
+
+            const query = queryParams.toString();
+            const res = await api.get(`/tolerance/export${query ? `?${query}` : ''}`, { responseType: 'blob' });
+            downloadResponseBlob(res.data as BlobPart, '廠商公差資料.xlsx');
+        },
+        onSuccess: () => {
+            toast.success('公差資料匯出成功');
+        },
+        onError: () => {
+            toast.error('匯出失敗');
         },
     });
 };
