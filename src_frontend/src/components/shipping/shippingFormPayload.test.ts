@@ -6,6 +6,7 @@ import {
   initEmptyShippingGroups,
   validateShippingForm,
 } from './shippingFormPayload';
+import type { ShippingMeasurements } from '../../types';
 import type { ShippingItemConfig } from './shippingMeasurementUtils';
 
 const items: ShippingItemConfig[] = [
@@ -100,5 +101,28 @@ describe('shippingFormPayload', () => {
         },
       },
     });
+  });
+
+  it('組出 payload 時非法量測值轉為 null 且保留 0', () => {
+    const payload = buildShippingPayload({
+      date: '2026-06-21',
+      inspectorName: '檢驗員A',
+      vendorName: '廠商A',
+      material: 'A6061',
+      spec: '10',
+      orderNo: '',
+      items,
+      groups: {
+        '1': {
+          外徑: { value_min: 'abc', value_max: '0', is_ng: false },
+          硬度: { value_single: 'bad', is_ng: false },
+        },
+      },
+    });
+
+    const measurements = payload.measurements as ShippingMeasurements;
+    expect(measurements['1'].外徑.value_min).toBeNull();
+    expect(measurements['1'].外徑.value_max).toBe(0);
+    expect(measurements['1'].硬度.value_single).toBeNull();
   });
 });

@@ -71,8 +71,11 @@ interface BuildShippingPayloadParams extends ShippingFormValues {
   orderNo: string;
 }
 
-const toNumberOrNull = (value: number | string | null | undefined) =>
-  value != null && value !== '' ? Number(value) : null;
+const toNumberOrNull = (value: number | string | null | undefined) => {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 export const buildShippingPayload = ({
   date,
