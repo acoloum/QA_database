@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import type { ReworkCostDetail } from '../../types';
 import { useInspectors } from '../../hooks/useInspectors';
-import { buildReworkCostPayload } from './reworkFormPayload';
+import { buildReworkCostPayload, calculateReworkTotalCost } from './reworkFormPayload';
 import { useUpdateReworkCost } from './useReworkMutations';
 
 // 使用 types/index.ts 的 ReworkCostDetail 取代本地 interface，保持型別一致
@@ -173,7 +173,7 @@ const EditCostModal = ({ show, handleClose, onSuccess, cost }: EditCostModalProp
 
                     <div className="alert alert-info">
                         <strong>預估總成本：</strong> 
-                        ${((parseFloat(unitCost) || 0) * (parseFloat(quantity) || 0)).toFixed(2)}
+                        ${calculateReworkTotalCost(unitCost, quantity).toFixed(2)}
                     </div>
                 </Form>
             </Modal.Body>

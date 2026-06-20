@@ -51,6 +51,15 @@ export const formatDateTimeLocal = (dateStr: string) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
+export const parseReworkCostNumber = (value: string, fallback = 0) => {
+  if (value.trim() === '') return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+export const calculateReworkTotalCost = (unitCost: string, quantity: string) =>
+  parseReworkCostNumber(unitCost, 0) * parseReworkCostNumber(quantity, 0);
+
 export const buildReworkExecutionPayload = ({
   reworkNumber,
   responsiblePerson,
@@ -113,8 +122,8 @@ export const buildReworkCostPayload = ({
   recorder,
   remark,
 }: ReworkCostFormValues): ReworkCostPayload => {
-  const qty = parseFloat(quantity) || 1;
-  const uCost = parseFloat(unitCost) || 0;
+  const qty = parseReworkCostNumber(quantity, 1);
+  const uCost = parseReworkCostNumber(unitCost, 0);
   const totalCost = uCost * qty;
   return {
     ...(reworkNumber ? { 重工單號: reworkNumber } : {}),

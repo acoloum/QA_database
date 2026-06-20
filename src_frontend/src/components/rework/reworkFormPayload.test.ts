@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   buildReworkCostPayload,
   buildReworkExecutionPayload,
+  calculateReworkTotalCost,
   formatDateTimeLocal,
+  parseReworkCostNumber,
 } from './reworkFormPayload';
 
 describe('reworkFormPayload', () => {
@@ -48,6 +50,33 @@ describe('reworkFormPayload', () => {
       數量: 4,
       總成本: 50,
       成本幣別: 'TWD',
+    });
+  });
+
+  it('成本數字解析保留 0 並在空白時套用指定預設值', () => {
+    expect(parseReworkCostNumber('0', 1)).toBe(0);
+    expect(parseReworkCostNumber('', 1)).toBe(1);
+    expect(parseReworkCostNumber('abc', 1)).toBe(1);
+  });
+
+  it('預估成本顯示以空白數量視為 0', () => {
+    expect(calculateReworkTotalCost('12.5', '4')).toBe(50);
+    expect(calculateReworkTotalCost('12.5', '')).toBe(0);
+  });
+
+  it('成本 payload 允許數量為 0，不會被預設值覆蓋', () => {
+    expect(buildReworkCostPayload({
+      reworkNumber: 'RW-001',
+      costType: '其他成本',
+      costItem: '折讓',
+      unitCost: '12.5',
+      quantity: '0',
+      currency: 'TWD',
+      recorder: '',
+      remark: '',
+    })).toMatchObject({
+      數量: 0,
+      總成本: 0,
     });
   });
 

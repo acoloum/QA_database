@@ -17,6 +17,7 @@ import ReportFieldsSection from './ReportFieldsSection';
 import SatSection from './SatSection';
 import TusSection from './TusSection';
 import { buildPyrometryPayload } from './pyrometryPayload';
+import { buildPyrometryEditFormState } from './pyrometryFormHydration';
 import {
   applyChartRangeToSatReadings,
   applyChartRangeToTusPoints,
@@ -99,50 +100,31 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     setError('');
     queueMicrotask(() => {
       if (!active) return;
-      const { main, tus_points, sat_points } = editData;
-      const cd = editData.曲線資料;
-      setFurnaceId(String(main.爐子ID));
-      setTestType(main.測試類型);
-      setTestDate(main.測試日期);
-      setSetpoint(main.設定溫度);
-      setTolerance(main.允許公差);
-      setTesterId(main.測試人員 ? String(main.測試人員) : '');
-      setTestInstrument(main.測試儀器編號);
-      setStdInstrument(main.標準校正儀器編號);
-      setCalDueDate(main.儀器校正到期日 || '');
-      setNote(main.備註);
-      setTusPoints(tus_points.map((p: TusPoint, i: number) => ({
-        ...p,
-        點位: /^P\d+$/.test(p.點位 || '') ? `TUS-${i + 1}` : (p.點位 || `TUS-${i + 1}`),
-        頻道: p.頻道 ?? (i + 1),
-      })));
-      setSatPoints(sat_points.map((p: SatPoint, i: number) => ({
-        ...p,
-        頻道: p.頻道 ?? (13 + i),
-        readings: p.readings?.length ? p.readings : [emptyReading()],
-      })));
-      setActiveZone(0);
-      if (cd) {
-        if (main.測試類型 === 'TUS' && cd.時間) {
-          setChartData({ 時間: cd.時間, 數值: cd.數值 });
-          setRangeStart(cd.穩定開始 ?? 0);
-          setRangeEnd(cd.穩定結束 ?? (cd.時間.length - 1));
-        }
-        if (main.測試類型 === 'SAT' && cd.時間) {
-          setSatChartData({ 時間: cd.時間, 數值: cd.數值 });
-          setSatRangeStart(cd.穩定開始 ?? 0);
-          setSatRangeEnd(cd.穩定結束 ?? (cd.時間.length - 1));
-        }
-        if (cd.爐體數值) {
-          setFurnaceChartData({ 時間: cd.爐體時間 || cd.時間, 數值: cd.爐體數值 });
-          const fLen = (cd.爐體時間 || cd.時間).length;
-          setFurnaceRangeStart(cd.爐體穩定開始 ?? 0);
-          setFurnaceRangeEnd(cd.爐體穩定結束 ?? (fLen - 1));
-        }
-      }
-      const { itemRows: savedItems, meta } = splitReportFields(editData.報告欄位 || {});
-      setItemRows(savedItems.length ? savedItems : [emptyItemRow()]);
-      setReportMeta(meta);
+      const state = buildPyrometryEditFormState(editData);
+      setFurnaceId(state.furnaceId);
+      setTestType(state.testType);
+      setTestDate(state.testDate);
+      setSetpoint(state.setpoint);
+      setTolerance(state.tolerance);
+      setTesterId(state.testerId);
+      setTestInstrument(state.testInstrument);
+      setStdInstrument(state.stdInstrument);
+      setCalDueDate(state.calDueDate);
+      setNote(state.note);
+      setTusPoints(state.tusPoints);
+      setSatPoints(state.satPoints);
+      setActiveZone(state.activeZone);
+      setChartData(state.chartData);
+      setRangeStart(state.rangeStart);
+      setRangeEnd(state.rangeEnd);
+      setSatChartData(state.satChartData);
+      setSatRangeStart(state.satRangeStart);
+      setSatRangeEnd(state.satRangeEnd);
+      setFurnaceChartData(state.furnaceChartData);
+      setFurnaceRangeStart(state.furnaceRangeStart);
+      setFurnaceRangeEnd(state.furnaceRangeEnd);
+      setItemRows(state.itemRows);
+      setReportMeta(state.reportMeta);
     });
 
     return () => {

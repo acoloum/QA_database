@@ -3,8 +3,12 @@ import { Button, Card, Table, Modal, Form, Row, Col, Badge } from 'react-bootstr
 import type { Thermocouple, ThermocoupleCalPoint } from '../../types';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import { useDeleteThermocouple, useSaveThermocouple, useThermocoupleDetail, useThermocouples } from '../../hooks/usePyrometry';
-
-interface PointRow { 標準溫度: string; 器差值: string; }
+import {
+  buildThermocouplePayload,
+  validateThermocoupleRows,
+  type CalibrationFieldErrors,
+  type ThermocouplePointRow,
+} from './pyrometryCalibrationPayload';
 
 const emptyMeta = () => ({
   編號: '', 型式: 'TYPE K', 校正日期: '', 到期日: '', 啟用狀態: true, 備註: '',
@@ -14,7 +18,8 @@ const ThermocoupleCalibrationPage = () => {
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [meta, setMeta] = useState(emptyMeta());
-  const [points, setPoints] = useState<PointRow[]>([{ 標準溫度: '', 器差值: '' }]);
+  const [points, setPoints] = useState<ThermocouplePointRow[]>([{ 標準溫度: '', 器差值: '' }]);
+  const [fieldErrors, setFieldErrors] = useState<CalibrationFieldErrors>({});
   const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
   const { data, isLoading } = useThermocouples();
@@ -26,6 +31,7 @@ const ThermocoupleCalibrationPage = () => {
     setEditId(null);
     setMeta(emptyMeta());
     setPoints([{ 標準溫度: '', 器差值: '' }]);
+    setFieldErrors({});
     setShowModal(true);
   };
 
@@ -41,6 +47,7 @@ const ThermocoupleCalibrationPage = () => {
       標準溫度: String(cp.標準溫度), 器差值: String(cp.器差值),
     }));
     setPoints(rows.length ? rows : [{ 標準溫度: '', 器差值: '' }]);
+    setFieldErrors({});
     setShowModal(true);
   };
 
@@ -54,16 +61,25 @@ const ThermocoupleCalibrationPage = () => {
     },
   });
 
-  const setRow = (i: number, k: keyof PointRow, v: string) =>
+  const setRow = (i: number, k: keyof ThermocouplePointRow, v: string) => {
     setPoints(prev => prev.map((p, idx) => idx === i ? { ...p, [k]: v } : p));
+    setFieldErrors(prev => {
+      const next = { ...prev };
+      delete next[`${i}:${k}`];
+      return next;
+    });
+  };
   const addRow = () => setPoints(prev => [...prev, { 標準溫度: '', 器差值: '' }]);
   const delRow = (i: number) => setPoints(prev => prev.filter((_, idx) => idx !== i));
 
   const handleSave = () => {
-    const 校正點 = points
-      .filter(p => p.標準溫度 !== '' && p.器差值 !== '')
-      .map(p => ({ 標準溫度: Number(p.標準溫度), 器差值: Number(p.器差值) }));
-    saveMutation.mutate({ payload: { ...meta, 校正點 } as unknown as Partial<Thermocouple> }, { onSuccess: () => setShowModal(false) });
+    const errors = validateThermocoupleRows(points);
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) return;
+    saveMutation.mutate(
+      { payload: buildThermocouplePayload(meta, points) },
+      { onSuccess: () => setShowModal(false) },
+    );
   };
 
   return (
@@ -153,8 +169,24 @@ const ThermocoupleCalibrationPage = () => {
               <tbody>
                 {points.map((p, i) => (
                   <tr key={i}>
-                    <td><Form.Control size="sm" value={p.標準溫度} onChange={e => setRow(i, '標準溫度', e.target.value)} /></td>
-                    <td><Form.Control size="sm" value={p.器差值} onChange={e => setRow(i, '器差值', e.target.value)} /></td>
+                    <td>
+                      <Form.Control
+                        size="sm"
+                        value={p.標準溫度}
+                        isInvalid={!!fieldErrors[`${i}:標準溫度`]}
+                        onChange={e => setRow(i, '標準溫度', e.target.value)}
+                      />
+                      <Form.Control.Feedback type="invalid">{fieldErrors[`${i}:標準溫度`]}</Form.Control.Feedback>
+                    </td>
+                    <td>
+                      <Form.Control
+                        size="sm"
+                        value={p.器差值}
+                        isInvalid={!!fieldErrors[`${i}:器差值`]}
+                        onChange={e => setRow(i, '器差值', e.target.value)}
+                      />
+                      <Form.Control.Feedback type="invalid">{fieldErrors[`${i}:器差值`]}</Form.Control.Feedback>
+                    </td>
                     <td className="text-center">
                       <Button size="sm" variant="outline-danger" onClick={() => delRow(i)} disabled={points.length <= 1}>✕</Button>
                     </td>

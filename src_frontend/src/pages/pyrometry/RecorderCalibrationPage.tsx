@@ -3,13 +3,15 @@ import { Button, Card, Table, Modal, Form, Row, Col, Badge } from 'react-bootstr
 import type { Recorder, RecorderCalPoint } from '../../types';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import { useDeleteRecorder, useRecorderDetail, useRecorders, useSaveRecorder } from '../../hooks/usePyrometry';
-
-const STD_TEMPS = [100, 200, 300, 400, 500, 600];
-const CHANNELS = Array.from({ length: 18 }, (_, i) => i + 1);
-
-type Grid = Record<string, string>;   // key: `${channel}_${temp}` → 器差值字串
-
-const cellKey = (ch: number, t: number) => `${ch}_${t}`;
+import {
+  buildRecorderPayload,
+  cellKey,
+  CHANNELS,
+  STD_TEMPS,
+  validateRecorderGrid,
+  type CalibrationFieldErrors,
+  type RecorderGrid,
+} from './pyrometryCalibrationPayload';
 
 const emptyMeta = () => ({
   編號: '', 校正日期: '', 到期日: '', 啟用狀態: true, 備註: '',
@@ -19,7 +21,8 @@ const RecorderCalibrationPage = () => {
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [meta, setMeta] = useState(emptyMeta());
-  const [grid, setGrid] = useState<Grid>({});
+  const [grid, setGrid] = useState<RecorderGrid>({});
+  const [fieldErrors, setFieldErrors] = useState<CalibrationFieldErrors>({});
   const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
   const { data, isLoading } = useRecorders();
@@ -31,6 +34,7 @@ const RecorderCalibrationPage = () => {
     setEditId(null);
     setMeta(emptyMeta());
     setGrid({});
+    setFieldErrors({});
     setShowModal(true);
   };
 
@@ -44,11 +48,12 @@ const RecorderCalibrationPage = () => {
       啟用狀態: detail.啟用狀態,
       備註: detail.備註 || '',
     });
-    const g: Grid = {};
+    const g: RecorderGrid = {};
     (detail.校正點 || []).forEach((cp: RecorderCalPoint) => {
       g[cellKey(cp.頻道, Number(cp.標準溫度))] = String(cp.器差值);
     });
     setGrid(g);
+    setFieldErrors({});
     setShowModal(true);
   };
 
@@ -62,18 +67,23 @@ const RecorderCalibrationPage = () => {
     },
   });
 
-  const setCell = (ch: number, t: number, v: string) =>
+  const setCell = (ch: number, t: number, v: string) => {
     setGrid(prev => ({ ...prev, [cellKey(ch, t)]: v }));
+    setFieldErrors(prev => {
+      const next = { ...prev };
+      delete next[cellKey(ch, t)];
+      return next;
+    });
+  };
 
   const handleSave = () => {
-    const 校正點: RecorderCalPoint[] = [];
-    CHANNELS.forEach(ch => STD_TEMPS.forEach(t => {
-      const v = grid[cellKey(ch, t)];
-      if (v !== undefined && v !== '') {
-        校正點.push({ 頻道: ch, 標準溫度: t, 器差值: Number(v) });
-      }
-    }));
-    saveMutation.mutate({ payload: { ...meta, 校正點 } as unknown as Partial<Recorder> }, { onSuccess: () => setShowModal(false) });
+    const errors = validateRecorderGrid(grid);
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) return;
+    saveMutation.mutate(
+      { payload: buildRecorderPayload(meta, grid) },
+      { onSuccess: () => setShowModal(false) },
+    );
   };
 
   return (
@@ -162,6 +172,8 @@ const RecorderCalibrationPage = () => {
                             size="sm"
                             style={{ minWidth: 64, textAlign: 'center' }}
                             value={grid[cellKey(ch, t)] ?? ''}
+                            isInvalid={!!fieldErrors[cellKey(ch, t)]}
+                            title={fieldErrors[cellKey(ch, t)]}
                             onChange={e => setCell(ch, t, e.target.value)}
                           />
                         </td>

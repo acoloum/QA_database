@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import toast from 'react-hot-toast';
 import { useInspectors } from '../../hooks/useInspectors';
-import { buildReworkCostPayload } from './reworkFormPayload';
+import { buildReworkCostPayload, calculateReworkTotalCost } from './reworkFormPayload';
 import { useCreateReworkCost } from './useReworkMutations';
 
 interface CostModalProps {
@@ -180,7 +180,7 @@ const CostModal = ({ show, handleClose, onSuccess, reworkNumber }: CostModalProp
 
                     <div className="alert alert-info">
                         <strong>預估總成本：</strong> 
-                        ${((parseFloat(unitCost) || 0) * (parseFloat(quantity) || 0)).toFixed(2)}
+                        ${calculateReworkTotalCost(unitCost, quantity).toFixed(2)}
                     </div>
                 </Form>
             </Modal.Body>
