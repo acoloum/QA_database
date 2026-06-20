@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import toast from 'react-hot-toast';
-import api from '../../services/api';
-import { getReworkErrorMessage } from './reworkError';
 import { useInspectors } from '../../hooks/useInspectors';
+import { buildReworkExecutionPayload } from './reworkFormPayload';
+import { useCreateReworkExecution } from './useReworkMutations';
 
 interface ExecutionModalProps {
     show: boolean;
@@ -14,7 +14,12 @@ interface ExecutionModalProps {
 
 const ExecutionModal = ({ show, handleClose, onSuccess, reworkNumber }: ExecutionModalProps) => {
     const { data: inspectors = [] } = useInspectors({ enabled: show });
-    const [loading, setLoading] = useState(false);
+    const createExecution = useCreateReworkExecution({
+        onSuccess: () => {
+            onSuccess();
+            handleClose();
+        }
+    });
 
     const [responsiblePerson, setResponsiblePerson] = useState('');
     const [department, setDepartment] = useState('製造部');
@@ -30,12 +35,6 @@ const ExecutionModal = ({ show, handleClose, onSuccess, reworkNumber }: Executio
     const [defectQty, setDefectQty] = useState('');
     const [status, setStatus] = useState('');
     const [abnormalStatus, setAbnormalStatus] = useState('');
-
-    useEffect(() => {
-        if (show) {
-            resetForm();
-        }
-    }, [show]);
 
     const resetForm = () => {
         setResponsiblePerson('');
@@ -54,41 +53,41 @@ const ExecutionModal = ({ show, handleClose, onSuccess, reworkNumber }: Executio
         setAbnormalStatus('');
     };
 
-    const handleSubmit = async () => {
+    useEffect(() => {
+        let cancelled = false;
+        if (show) {
+            queueMicrotask(() => {
+                if (!cancelled) resetForm();
+            });
+        }
+        return () => {
+            cancelled = true;
+        };
+    }, [show]);
+
+    const handleSubmit = () => {
         if (!responsiblePerson) {
             toast.error('請選擇負責人員');
             return;
         }
 
-        setLoading(true);
-        try {
-            const payload = {
-                "重工單號": reworkNumber,
-                "負責人員姓名": responsiblePerson,
-                "執行部門": department,
-                "協同人員": collaborators,
-                "開始時間": startTime,
-                "預計完成時間": expectedEndTime,
-                "實際完成時間": actualEndTime,
-                "使用設備": equipment,
-                "重工方式": method,
-                "SOP編號": sopNo,
-                "耗材記錄": consumables,
-                "完成數量": completedQty || 0,
-                "不良數量": defectQty || 0,
-                "執行狀況": status,
-                "異常狀況": abnormalStatus
-            };
-
-            await api.post('/rework/execute', payload);
-            toast.success('執行記錄已新增');
-            onSuccess();
-            handleClose();
-        } catch (error: unknown) {
-            toast.error(getReworkErrorMessage(error, '新增失敗'));
-        } finally {
-            setLoading(false);
-        }
+        createExecution.mutate(buildReworkExecutionPayload({
+            reworkNumber,
+            responsiblePerson,
+            department,
+            collaborators,
+            startTime,
+            expectedEndTime,
+            actualEndTime,
+            equipment,
+            method,
+            sopNo,
+            consumables,
+            completedQty,
+            defectQty,
+            status,
+            abnormalStatus
+        }));
     };
 
     return (
@@ -272,8 +271,8 @@ const ExecutionModal = ({ show, handleClose, onSuccess, reworkNumber }: Executio
             </Modal.Body>
             <Modal.Footer>
                 <Button variant="secondary" onClick={handleClose}>取消</Button>
-                <Button variant="primary" onClick={handleSubmit} disabled={loading}>
-                    {loading ? '儲存中...' : '儲存'}
+                <Button variant="primary" onClick={handleSubmit} disabled={createExecution.isPending}>
+                    {createExecution.isPending ? '儲存中...' : '儲存'}
                 </Button>
             </Modal.Footer>
         </Modal>

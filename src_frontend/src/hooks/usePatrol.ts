@@ -2,6 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { downloadResponseBlob } from '../utils/downloadFile';
 import type { PatrolInspection, PatrolCreateInput, PatrolUpdateInput } from '../types';
 
 export interface PatrolSearchParams {
@@ -106,6 +107,32 @@ export const usePatrolStats = (params: PatrolStatsParams) => {
         // Only fetch if item is provided (pos can be empty for "全段")
         enabled: !!params.item,
         staleTime: 5 * 60 * 1000,
+    });
+};
+
+export const useExportPatrolSpcReport = () => {
+    return useMutation({
+        mutationFn: async (params: PatrolStatsParams) => {
+            const queryParams = new URLSearchParams();
+            queryParams.append('item', params.item);
+            queryParams.append('position', params.pos || '全段');
+            if (params.m_id) queryParams.append('m_id', params.m_id);
+            if (params.op_id) queryParams.append('op_id', params.op_id);
+            if (params.cust_id) queryParams.append('cust_id', params.cust_id);
+            if (params.mat) queryParams.append('mat', params.mat);
+            if (params.spec) queryParams.append('spec', params.spec);
+            if (params.s_date) queryParams.append('s_date', params.s_date);
+            if (params.e_date) queryParams.append('e_date', params.e_date);
+
+            const res = await api.get(`/patrol/export?${queryParams.toString()}`, { responseType: 'blob' });
+            downloadResponseBlob(res.data as BlobPart, `巡檢SPC報告_${params.item}.xlsx`);
+        },
+        onSuccess: () => {
+            toast.success('SPC 報告匯出成功');
+        },
+        onError: () => {
+            toast.error('SPC 報告匯出失敗');
+        },
     });
 };
 

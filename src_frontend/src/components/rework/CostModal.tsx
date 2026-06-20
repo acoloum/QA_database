@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import toast from 'react-hot-toast';
-import api from '../../services/api';
-import { getReworkErrorMessage } from './reworkError';
 import { useInspectors } from '../../hooks/useInspectors';
+import { buildReworkCostPayload } from './reworkFormPayload';
+import { useCreateReworkCost } from './useReworkMutations';
 
 interface CostModalProps {
     show: boolean;
@@ -14,7 +14,12 @@ interface CostModalProps {
 
 const CostModal = ({ show, handleClose, onSuccess, reworkNumber }: CostModalProps) => {
     const { data: inspectors = [] } = useInspectors({ enabled: show });
-    const [loading, setLoading] = useState(false);
+    const createCost = useCreateReworkCost({
+        onSuccess: () => {
+            onSuccess();
+            handleClose();
+        }
+    });
 
     const [costType, setCostType] = useState('人工成本');
     const [costItem, setCostItem] = useState('');
@@ -23,18 +28,6 @@ const CostModal = ({ show, handleClose, onSuccess, reworkNumber }: CostModalProp
     const [currency, setCurrency] = useState('TWD');
     const [recorder, setRecorder] = useState('');
     const [remark, setRemark] = useState('');
-
-    useEffect(() => {
-        if (show) {
-            resetForm();
-        }
-    }, [show]);
-
-    useEffect(() => {
-        if (show && inspectors.length > 0 && !recorder) {
-            setRecorder(inspectors[0].name);
-        }
-    }, [show, inspectors, recorder]);
 
     const resetForm = () => {
         setCostType('人工成本');
@@ -46,39 +39,46 @@ const CostModal = ({ show, handleClose, onSuccess, reworkNumber }: CostModalProp
         setRemark('');
     };
 
-    const handleSubmit = async () => {
+    useEffect(() => {
+        let cancelled = false;
+        if (show) {
+            queueMicrotask(() => {
+                if (!cancelled) resetForm();
+            });
+        }
+        return () => {
+            cancelled = true;
+        };
+    }, [show]);
+
+    useEffect(() => {
+        let cancelled = false;
+        if (show && inspectors.length > 0 && !recorder) {
+            queueMicrotask(() => {
+                if (!cancelled) setRecorder(inspectors[0].name);
+            });
+        }
+        return () => {
+            cancelled = true;
+        };
+    }, [show, inspectors, recorder]);
+
+    const handleSubmit = () => {
         if (!costType || !costItem) {
             toast.error('請填寫成本類型和成本項目');
             return;
         }
 
-        const qty = parseFloat(quantity) || 1;
-        const uCost = parseFloat(unitCost) || 0;
-        const totalCost = uCost * qty;
-
-        setLoading(true);
-        try {
-            const payload = {
-                "重工單號": reworkNumber,
-                "成本類型": costType,
-                "成本項目": costItem,
-                "單位成本": uCost,
-                "數量": qty,
-                "總成本": totalCost,
-                "成本幣別": currency,
-                "記錄人員姓名": recorder,
-                "備註": remark
-            };
-
-            await api.post('/rework/cost', payload);
-            toast.success('成本記錄已新增');
-            onSuccess();
-            handleClose();
-        } catch (error: unknown) {
-            toast.error(getReworkErrorMessage(error, '新增失敗'));
-        } finally {
-            setLoading(false);
-        }
+        createCost.mutate(buildReworkCostPayload({
+            reworkNumber,
+            costType,
+            costItem,
+            unitCost,
+            quantity,
+            currency,
+            recorder,
+            remark
+        }));
     };
 
     return (
@@ -186,8 +186,8 @@ const CostModal = ({ show, handleClose, onSuccess, reworkNumber }: CostModalProp
             </Modal.Body>
             <Modal.Footer>
                 <Button variant="secondary" onClick={handleClose}>取消</Button>
-                <Button variant="primary" onClick={handleSubmit} disabled={loading}>
-                    {loading ? '儲存中...' : '儲存'}
+                <Button variant="primary" onClick={handleSubmit} disabled={createCost.isPending}>
+                    {createCost.isPending ? '儲存中...' : '儲存'}
                 </Button>
             </Modal.Footer>
         </Modal>

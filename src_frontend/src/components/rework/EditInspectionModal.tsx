@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
-import toast from 'react-hot-toast';
-import api from '../../services/api';
-import { getReworkErrorMessage } from './reworkError';
 import type { ReworkInspectionDetail } from '../../types';
 import { useInspectors } from '../../hooks/useInspectors';
+import { buildReworkInspectionPayload } from './reworkFormPayload';
+import { useUpdateReworkInspection } from './useReworkMutations';
 
 // 使用 types/index.ts 的 ReworkInspectionDetail 取代本地 interface，保持型別一致
 interface EditInspectionModalProps {
@@ -16,7 +15,12 @@ interface EditInspectionModalProps {
 
 const EditInspectionModal = ({ show, handleClose, onSuccess, inspection }: EditInspectionModalProps) => {
     const { data: inspectors = [] } = useInspectors({ enabled: show && !!inspection });
-    const [loading, setLoading] = useState(false);
+    const updateInspection = useUpdateReworkInspection({
+        onSuccess: () => {
+            onSuccess();
+            handleClose();
+        }
+    });
 
     const [inspector, setInspector] = useState('');
     const [inspectionItem, setInspectionItem] = useState('');
@@ -37,34 +41,33 @@ const EditInspectionModal = ({ show, handleClose, onSuccess, inspection }: EditI
 
     // useEffect 放在 useCallback 宣告後，確保函數已初始化
     useEffect(() => {
+        let cancelled = false;
         if (show && inspection) {
-            loadInspectionData();
+            queueMicrotask(() => {
+                if (!cancelled) loadInspectionData();
+            });
         }
+        return () => {
+            cancelled = true;
+        };
     }, [show, inspection, loadInspectionData]);
 
-    const handleSubmit = async () => {
+    const handleSubmit = () => {
         if (!inspection) return;
+        const id = inspection.識別碼;
+        if (!id) return;
 
-        setLoading(true);
-        try {
-            const payload: Partial<ReworkInspectionDetail> = {};
-            
-            if (inspector) payload.檢驗人員姓名 = inspector;
-            if (inspectionItem) payload.檢驗項目 = inspectionItem;
-            if (inspectionResult) payload.檢驗結果 = inspectionResult;
-            if (defectQty !== undefined) payload.不良數量 = parseInt(defectQty) || 0;
-            if (inspectionDate) payload.檢驗日期 = inspectionDate;
-            if (remark !== undefined) payload.檢驗備註 = remark;
-
-            await api.put(`/rework/inspection/${inspection.識別碼}`, payload);
-            toast.success('品檢記錄已更新');
-            onSuccess();
-            handleClose();
-        } catch (error: unknown) {
-            toast.error(getReworkErrorMessage(error, '更新失敗'));
-        } finally {
-            setLoading(false);
-        }
+        updateInspection.mutate({
+            id,
+            payload: buildReworkInspectionPayload({
+                inspector,
+                inspectionItem,
+                inspectionResult,
+                defectQty,
+                inspectionDate,
+                remark
+            })
+        });
     };
 
     return (
@@ -150,8 +153,8 @@ const EditInspectionModal = ({ show, handleClose, onSuccess, inspection }: EditI
             </Modal.Body>
             <Modal.Footer>
                 <Button variant="secondary" onClick={handleClose}>取消</Button>
-                <Button variant="primary" onClick={handleSubmit} disabled={loading}>
-                    {loading ? '儲存中...' : '儲存'}
+                <Button variant="primary" onClick={handleSubmit} disabled={updateInspection.isPending}>
+                    {updateInspection.isPending ? '儲存中...' : '儲存'}
                 </Button>
             </Modal.Footer>
         </Modal>

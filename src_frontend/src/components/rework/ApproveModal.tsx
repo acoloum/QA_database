@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form } from 'react-bootstrap';
 import toast from 'react-hot-toast';
-import api from '../../services/api';
-import { getReworkErrorMessage } from './reworkError';
 import { useInspectors } from '../../hooks/useInspectors';
+import { useApproveReworkApplication } from './useReworkMutations';
 
 interface ApproveModalProps {
     show: boolean;
@@ -14,6 +13,12 @@ interface ApproveModalProps {
 
 const ApproveModal = ({ show, handleClose, onSuccess, reworkId }: ApproveModalProps) => {
     const { data: inspectors = [] } = useInspectors({ enabled: show });
+    const approveApplication = useApproveReworkApplication({
+        onSuccess: () => {
+            onSuccess();
+            handleClose();
+        }
+    });
     const [reviewerName, setReviewerName] = useState('');
     const [action, setAction] = useState('核准');
     const [opinion, setOpinion] = useState('');
@@ -34,28 +39,19 @@ const ApproveModal = ({ show, handleClose, onSuccess, reworkId }: ApproveModalPr
         };
     }, [show]);
 
-    const handleSubmit = async () => {
+    const handleSubmit = () => {
         if (!reworkId) return;
         if (!reviewerName) {
             toast.error('請選擇審核人員');
             return;
         }
 
-        try {
-            const payload = {
-                "rework_id": reworkId,
-                "action": action,
-                "opinion": opinion,
-                "審核人員姓名": reviewerName
-            };
-
-            await api.post('/rework/approve', payload);
-            toast.success('審核完成');
-            onSuccess();
-            handleClose();
-        } catch (error: unknown) {
-            toast.error(getReworkErrorMessage(error, '審核失敗'));
-        }
+        approveApplication.mutate({
+            "rework_id": reworkId,
+            "action": action,
+            "opinion": opinion,
+            "審核人員姓名": reviewerName
+        });
     };
 
     return (
@@ -104,8 +100,8 @@ const ApproveModal = ({ show, handleClose, onSuccess, reworkId }: ApproveModalPr
                 <Button variant="secondary" onClick={handleClose}>
                     取消
                 </Button>
-                <Button variant={action === '核准' ? 'success' : 'danger'} onClick={handleSubmit}>
-                    確認{action}
+                <Button variant={action === '核准' ? 'success' : 'danger'} onClick={handleSubmit} disabled={approveApplication.isPending}>
+                    {approveApplication.isPending ? '處理中...' : `確認${action}`}
                 </Button>
             </Modal.Footer>
         </Modal>

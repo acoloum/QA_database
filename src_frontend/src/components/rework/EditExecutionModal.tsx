@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
-import toast from 'react-hot-toast';
-import api from '../../services/api';
-import { getReworkErrorMessage } from './reworkError';
 import type { ReworkExecutionDetail } from '../../types';
 import { useInspectors } from '../../hooks/useInspectors';
+import { buildReworkExecutionPayload, formatDateTimeLocal } from './reworkFormPayload';
+import { useUpdateReworkExecution } from './useReworkMutations';
 
 // 使用 types/index.ts 的 ReworkExecutionDetail 取代本地 interface，保持型別一致
 interface EditExecutionModalProps {
@@ -16,7 +15,12 @@ interface EditExecutionModalProps {
 
 const EditExecutionModal = ({ show, handleClose, onSuccess, execution }: EditExecutionModalProps) => {
     const { data: inspectors = [] } = useInspectors({ enabled: show && !!execution });
-    const [loading, setLoading] = useState(false);
+    const updateExecution = useUpdateReworkExecution({
+        onSuccess: () => {
+            onSuccess();
+            handleClose();
+        }
+    });
 
     const [responsiblePerson, setResponsiblePerson] = useState('');
     const [department, setDepartment] = useState('製造部');
@@ -53,51 +57,41 @@ const EditExecutionModal = ({ show, handleClose, onSuccess, execution }: EditExe
 
     // useEffect 放在 useCallback 宣告後，確保函數已初始化
     useEffect(() => {
+        let cancelled = false;
         if (show && execution) {
-            loadExecutionData();
+            queueMicrotask(() => {
+                if (!cancelled) loadExecutionData();
+            });
         }
+        return () => {
+            cancelled = true;
+        };
     }, [show, execution, loadExecutionData]);
 
-    const formatDateTimeLocal = (dateStr: string) => {
-        if (!dateStr) return '';
-        const date = new Date(dateStr);
-        if (isNaN(date.getTime())) return '';
-        // 以本地時間組字串，避免 toISOString() 轉成 UTC 導致時間偏移
-        const pad = (n: number) => String(n).padStart(2, '0');
-        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-    };
-
-    const handleSubmit = async () => {
+    const handleSubmit = () => {
         if (!execution) return;
+        const id = execution.識別碼;
+        if (!id) return;
 
-        setLoading(true);
-        try {
-            const payload: ReworkExecutionDetail = {} as ReworkExecutionDetail;
-            
-            if (responsiblePerson) payload.負責人員姓名 = responsiblePerson;
-            if (department) payload.執行部門 = department;
-            if (collaborators) payload.協同人員 = collaborators;
-            if (startTime) payload.開始時間 = startTime;
-            if (expectedEndTime) payload.預計完成時間 = expectedEndTime;
-            if (actualEndTime) payload.實際完成時間 = actualEndTime;
-            if (equipment) payload.使用設備 = equipment;
-            if (method) payload.重工方式 = method;
-            if (sopNo) payload.SOP編號 = sopNo;
-            if (consumables) payload.耗材記錄 = consumables;
-            if (completedQty) payload.完成數量 = parseFloat(completedQty);
-            if (defectQty) payload.不良數量 = parseFloat(defectQty);
-            if (status) payload.執行狀況 = status;
-            if (abnormalStatus) payload.異常狀況 = abnormalStatus;
-
-            await api.put(`/rework/execution/${execution.識別碼}`, payload);
-            toast.success('執行記錄已更新');
-            onSuccess();
-            handleClose();
-        } catch (error: unknown) {
-            toast.error(getReworkErrorMessage(error, '更新失敗'));
-        } finally {
-            setLoading(false);
-        }
+        updateExecution.mutate({
+            id,
+            payload: buildReworkExecutionPayload({
+                responsiblePerson,
+                department,
+                collaborators,
+                startTime,
+                expectedEndTime,
+                actualEndTime,
+                equipment,
+                method,
+                sopNo,
+                consumables,
+                completedQty,
+                defectQty,
+                status,
+                abnormalStatus
+            })
+        });
     };
 
     return (
@@ -281,8 +275,8 @@ const EditExecutionModal = ({ show, handleClose, onSuccess, execution }: EditExe
             </Modal.Body>
             <Modal.Footer>
                 <Button variant="secondary" onClick={handleClose}>取消</Button>
-                <Button variant="primary" onClick={handleSubmit} disabled={loading}>
-                    {loading ? '儲存中...' : '儲存'}
+                <Button variant="primary" onClick={handleSubmit} disabled={updateExecution.isPending}>
+                    {updateExecution.isPending ? '儲存中...' : '儲存'}
                 </Button>
             </Modal.Footer>
         </Modal>

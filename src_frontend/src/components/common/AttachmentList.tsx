@@ -7,6 +7,7 @@ import {
 } from '../../hooks/useAttachment';
 import ConfirmActionModal, { type ConfirmActionState } from './ConfirmActionModal';
 import AttachmentPreviewModal from './AttachmentPreviewModal';
+import { fetchAndDownload } from '../../utils/downloadFile';
 import type { Attachment } from '../../types';
 
 /** 判斷該 MIME 類型是否可在頁面內預覽（圖片與 PDF） */
@@ -68,21 +69,8 @@ const AttachmentList = ({
 
     const handleDownload = (att: Attachment) => {
         const url = getAttachmentDownloadUrl(att.id);
-        const a   = document.createElement('a');
-        a.href     = url;
-        a.download = att.file_name;
-        // 帶入 JWT，讓 axios interceptor 處理（改用 fetch 方式）
         const token = localStorage.getItem('authToken');
-        fetch(url, { headers: { Authorization: `Bearer ${token ?? ''}` } })
-            .then(r => r.blob())
-            .then(blob => {
-                const blobUrl = URL.createObjectURL(blob);
-                a.href = blobUrl;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(blobUrl);
-            });
+        void fetchAndDownload(url, att.file_name, token);
     };
 
     const handleDelete = (att: Attachment) => {

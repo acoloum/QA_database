@@ -1,5 +1,5 @@
 
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -13,18 +13,14 @@ import {
     Filler
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import {
-    getCpkGrade,
-    formatPPM,
-    getPpmGrade
-} from '../../utils/spcAnalysis';
 import { getClickedPointId, setChartPointCursor, shouldShowControlLegendLabel } from '../../utils/spcChartOptions';
 import { buildSpcChartModel } from '../../utils/spcChartModel';
 import CpkTrendChart from '../spc/CpkTrendChart';
 import HistogramDistributionChart from '../spc/HistogramDistributionChart';
-import { Alert, Badge, Button, Card, Col, Row, Form } from 'react-bootstrap';
-import { usePatrolStats } from '../../hooks/usePatrol';
-import api from '../../services/api';
+import ProcessCapabilityCard from './ProcessCapabilityCard';
+import WecoViolationAlert from './WecoViolationAlert';
+import { Badge, Button, Card, Col, Row, Form } from 'react-bootstrap';
+import { useExportPatrolSpcReport, usePatrolStats } from '../../hooks/usePatrol';
 import type { SpcViolation, SpcChartData } from '../../types';
 import type { TooltipItem, ActiveDataPoint } from 'chart.js';
 
@@ -55,25 +51,21 @@ const ITEMS = [
 const POSITIONS = ['前段', '中段', '後段'];
 
 const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, endDate, onEditPoint, statsItem, statsPos, onItemChange, onPosChange }: PatrolChartsProps) => {
-    const [showWeco, setShowWeco] = useState(false);
+    const exportSpcReport = useExportPatrolSpcReport();
 
     // 匯出 SPC 報告（含原始數據 + SPC 統計與圖表）
     const handleExportSpc = () => {
-        const token = localStorage.getItem('authToken');
-        const position = statsPos || '全段';
-        const qs = new URLSearchParams({
+        exportSpcReport.mutate({
             s_date: startDate,
             e_date: endDate,
             m_id: machine,
             op_id: operator,
             cust_id: customer,
             mat: material,
-            spec: spec,
+            spec,
             item: statsItem,
-            position: position,
-            token: token || ''
+            pos: statsPos
         });
-        window.location.href = `${api.defaults.baseURL}/patrol/export?${qs.toString()}`;
     };
 
     const { data: statsData } = usePatrolStats({
@@ -105,11 +97,6 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
         return violation ? violation.reasons.join(', ') : '';
     };
 
-    const cpkGrade = processCapability?.cpk != null ? getCpkGrade(processCapability.cpk) : null;
-    const ppkGrade = processCapability?.ppk != null ? getCpkGrade(processCapability.ppk) : null;
-    const ppmData = processCapability?.ppm || null;
-    const ppmGrade = ppmData ? getPpmGrade(ppmData.total) : null;
-
     // 合併 X-bar 和 R 圖的違規
     const allViolations: SpcViolation[] = [
         ...(analysis?.violations || []),
@@ -138,8 +125,8 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
                         {ITEMS.map(i => <option key={i.key} value={i.key}>{i.label}</option>)}
                     </Form.Select>
                 </div>
-                <Button variant="outline-success" onClick={handleExportSpc}>
-                    <i className="bi bi-file-earmark-bar-graph"></i> 匯出 SPC 報告
+                <Button variant="outline-success" onClick={handleExportSpc} disabled={exportSpcReport.isPending}>
+                    <i className="bi bi-file-earmark-bar-graph"></i> {exportSpcReport.isPending ? '匯出中...' : '匯出 SPC 報告'}
                 </Button>
             </div>
 
@@ -150,27 +137,7 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
             ) : (
                 <>
                     {/* 異常警告面板 */}
-                    {allViolations.length > 0 && (
-                        <Alert variant="danger">
-                            <div
-                                className="d-flex justify-content-between align-items-center"
-                                style={{ cursor: 'pointer' }}
-                                onClick={() => setShowWeco(!showWeco)}
-                            >
-                                <Alert.Heading className="mb-0" style={{ fontSize: '1rem' }}>
-                                    偵測到 {allViolations.length} 個製程異常數據點 (WECO Rules) - 點擊展開/收合
-                                </Alert.Heading>
-                                <i className={`bi bi-chevron-${showWeco ? 'up' : 'down'}`}></i>
-                            </div>
-                            {showWeco && (
-                                <ul className="mb-0 mt-3">
-                                    {allViolations.map((v: SpcViolation, idx: number) => (
-                                        <li key={idx}><strong>{v.label}</strong>: {v.reasons.join(', ')}</li>
-                                    ))}
-                                </ul>
-                            )}
-                        </Alert>
-                    )}
+                    <WecoViolationAlert violations={allViolations} />
 
                     {/* 統計摘要 */}
                     {statsSummary && (
@@ -224,90 +191,7 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
                     )}
 
                     {/* 製程能力指標卡 */}
-                    <Card className="mb-4" style={{ border: '2px solid #dee2e6' }}>
-                        <Card.Body>
-                            <h5 className="mb-3">製程能力指標</h5>
-                            {processCapability?.available ? (
-                                <>
-                                    <Row className="text-center">
-                                        <Col>
-                                            <div className="text-muted small">Cp</div>
-                                            <div className="h4">{processCapability.cp?.toFixed(3) ?? 'N/A'}</div>
-                                            <div className="text-muted small">製程能力</div>
-                                        </Col>
-                                        <Col>
-                                            <div className="text-muted small">Cpk</div>
-                                            <div className="h3 mb-1">{processCapability.cpk?.toFixed(3) ?? 'N/A'}</div>
-                                            {cpkGrade && (
-                                                <Badge style={{ backgroundColor: cpkGrade.bgColor, color: cpkGrade.color, fontSize: '0.85rem' }}>
-                                                    {cpkGrade.label} - {cpkGrade.description}
-                                                </Badge>
-                                            )}
-                                        </Col>
-                                        <Col>
-                                            <div className="text-muted small">Pp</div>
-                                            <div className="h4">{processCapability.pp?.toFixed(3) ?? 'N/A'}</div>
-                                            <div className="text-muted small">製程績效</div>
-                                        </Col>
-                                        <Col>
-                                            <div className="text-muted small">Ppk</div>
-                                            <div className="h3 mb-1">{processCapability.ppk?.toFixed(3) ?? 'N/A'}</div>
-                                            {ppkGrade && (
-                                                <Badge style={{ backgroundColor: ppkGrade.bgColor, color: ppkGrade.color, fontSize: '0.85rem' }}>
-                                                    {ppkGrade.label} - {ppkGrade.description}
-                                                </Badge>
-                                            )}
-                                        </Col>
-                                        <Col>
-                                            <div className="text-muted small">USL</div>
-                                            <div className="h5" style={{ color: '#e83e8c' }}>{processCapability.usl?.toFixed(3) ?? 'N/A'}</div>
-                                        </Col>
-                                        <Col>
-                                            <div className="text-muted small">LSL</div>
-                                            <div className="h5" style={{ color: '#e83e8c' }}>{processCapability.lsl?.toFixed(3) ?? 'N/A'}</div>
-                                        </Col>
-                                    </Row>
-
-                                    {/* PPM 不良率 */}
-                                    {ppmData && (
-                                        <div className="mt-3 pt-3 border-top">
-                                            <Row className="text-center align-items-center">
-                                                <Col xs="auto">
-                                                    <strong>PPM 不良率估算</strong>
-                                                </Col>
-                                                <Col>
-                                                    <span className="text-muted small me-1">超上限</span>
-                                                    <strong>{formatPPM(ppmData.upper)}</strong>
-                                                </Col>
-                                                <Col>
-                                                    <span className="text-muted small me-1">超下限</span>
-                                                    <strong>{formatPPM(ppmData.lower)}</strong>
-                                                </Col>
-                                                <Col>
-                                                    <span className="text-muted small me-1">總計</span>
-                                                    <strong className="h5 mb-0">{formatPPM(ppmData.total)}</strong>
-                                                    <span className="text-muted small ms-1">PPM</span>
-                                                </Col>
-                                                {ppmGrade && (
-                                                    <Col xs="auto">
-                                                        <Badge style={{ backgroundColor: ppmGrade.bgColor, color: ppmGrade.color, fontSize: '0.8rem' }}>
-                                                            {ppmGrade.label}
-                                                        </Badge>
-                                                    </Col>
-                                                )}
-                                            </Row>
-                                        </div>
-                                    )}
-                                </>
-                            ) : (
-                                <Alert variant="info" className="mb-0">
-                                    <i className="bi bi-info-circle me-2"></i>
-                                    無法計算 Cp/Cpk — 需要在<strong>公差管理</strong>中設定該材質/規格的 USL（規格上限）和 LSL（規格下限）。
-                                    目前選擇的檢驗項目「<strong>{statsItem}</strong>」尚未找到對應的公差資料。
-                                </Alert>
-                            )}
-                        </Card.Body>
-                    </Card>
+                    <ProcessCapabilityCard processCapability={processCapability} statsItem={statsItem} />
 
                     {/* X-bar 和 R 管制圖 */}
                     <Row className="mb-3">

@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import toast from 'react-hot-toast';
-import api from '../../services/api';
-import { getReworkErrorMessage } from './reworkError';
 import { useInspectors } from '../../hooks/useInspectors';
+import { buildReworkInspectionPayload } from './reworkFormPayload';
+import { useCreateReworkInspection } from './useReworkMutations';
 
 interface InspectionModalProps {
     show: boolean;
@@ -14,7 +14,12 @@ interface InspectionModalProps {
 
 const InspectionModal = ({ show, handleClose, onSuccess, reworkNumber }: InspectionModalProps) => {
     const { data: inspectors = [] } = useInspectors({ enabled: show });
-    const [loading, setLoading] = useState(false);
+    const createInspection = useCreateReworkInspection({
+        onSuccess: () => {
+            onSuccess();
+            handleClose();
+        }
+    });
 
     const [inspector, setInspector] = useState('');
     const [inspectionItem, setInspectionItem] = useState('');
@@ -22,12 +27,6 @@ const InspectionModal = ({ show, handleClose, onSuccess, reworkNumber }: Inspect
     const [defectQty, setDefectQty] = useState('0');
     const [inspectionDate, setInspectionDate] = useState('');
     const [remark, setRemark] = useState('');
-
-    useEffect(() => {
-        if (show) {
-            resetForm();
-        }
-    }, [show]);
 
     const resetForm = () => {
         setInspector('');
@@ -38,33 +37,33 @@ const InspectionModal = ({ show, handleClose, onSuccess, reworkNumber }: Inspect
         setRemark('');
     };
 
-    const handleSubmit = async () => {
+    useEffect(() => {
+        let cancelled = false;
+        if (show) {
+            queueMicrotask(() => {
+                if (!cancelled) resetForm();
+            });
+        }
+        return () => {
+            cancelled = true;
+        };
+    }, [show]);
+
+    const handleSubmit = () => {
         if (!inspector || !inspectionItem) {
             toast.error('請填寫檢驗人員和檢驗項目');
             return;
         }
 
-        setLoading(true);
-        try {
-            const payload = {
-                "重工單號": reworkNumber,
-                "檢驗人員姓名": inspector,
-                "檢驗項目": inspectionItem,
-                "檢驗結果": inspectionResult,
-                "不良數量": parseInt(defectQty) || 0,
-                "檢驗日期": inspectionDate,
-                "檢驗備註": remark
-            };
-
-            await api.post('/rework/inspect', payload);
-            toast.success('品檢記錄已新增');
-            onSuccess();
-            handleClose();
-        } catch (error: unknown) {
-            toast.error(getReworkErrorMessage(error, '新增失敗'));
-        } finally {
-            setLoading(false);
-        }
+        createInspection.mutate(buildReworkInspectionPayload({
+            reworkNumber,
+            inspector,
+            inspectionItem,
+            inspectionResult,
+            defectQty,
+            inspectionDate,
+            remark
+        }));
     };
 
     return (
@@ -150,8 +149,8 @@ const InspectionModal = ({ show, handleClose, onSuccess, reworkNumber }: Inspect
             </Modal.Body>
             <Modal.Footer>
                 <Button variant="secondary" onClick={handleClose}>取消</Button>
-                <Button variant="primary" onClick={handleSubmit} disabled={loading}>
-                    {loading ? '儲存中...' : '儲存'}
+                <Button variant="primary" onClick={handleSubmit} disabled={createInspection.isPending}>
+                    {createInspection.isPending ? '儲存中...' : '儲存'}
                 </Button>
             </Modal.Footer>
         </Modal>

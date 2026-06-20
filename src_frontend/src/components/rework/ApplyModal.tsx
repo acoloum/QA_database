@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form } from 'react-bootstrap'; // 使用 react-bootstrap 元件
-import toast from 'react-hot-toast';
-import api from '../../services/api';
-import { getReworkErrorMessage } from './reworkError';
 import { useInspectors } from '../../hooks/useInspectors';
+import { useCreateReworkApplication } from './useReworkMutations';
 
 interface ApplyModalProps {
     show: boolean;
@@ -15,6 +13,13 @@ interface ApplyModalProps {
 
 const ApplyModal = ({ show, handleClose, onSuccess, initialNcmrId, initialNcmrNo }: ApplyModalProps) => {
     const { data: inspectors = [] } = useInspectors({ enabled: show });
+    const createApplication = useCreateReworkApplication({
+        onSuccess: () => {
+            onSuccess();
+            handleClose();
+            resetForm();
+        }
+    });
 
     // 表單狀態
     const [ncmrId, setNcmrId] = useState('');
@@ -59,37 +64,30 @@ const ApplyModal = ({ show, handleClose, onSuccess, initialNcmrId, initialNcmrNo
         }
     };
 
-    const handleSubmit = async () => {
-        try {
-            const payload = {
-                "NCMR_ID": parseInt(ncmrId),
-                "申請人員姓名": applicant,
-                "部門": department,
-                "緊急程度": urgency,
-                "產品資訊": productInfo,
-                "批號": batchNo,
-                "重工數量": parseFloat(quantity) || 0,
-                "申請原因": reason,
-                "預計完成日期": expectedDate
-            };
+    const resetForm = () => {
+        setNcmrId('');
+        setApplicant('');
+        setDepartment('');
+        setUrgency('普通');
+        setProductInfo('');
+        setBatchNo('');
+        setQuantity('');
+        setReason('');
+        setExpectedDate('');
+    };
 
-            await api.post('/rework/apply', payload);
-            toast.success('申請提交成功');
-            onSuccess();
-            handleClose();
-            // 重設表單
-            setNcmrId('');
-            setApplicant('');
-            setDepartment('');
-            setUrgency('普通');
-            setProductInfo('');
-            setBatchNo('');
-            setQuantity('');
-            setReason('');
-            setExpectedDate('');
-        } catch (error: unknown) {
-            toast.error(getReworkErrorMessage(error, '申請失敗'));
-        }
+    const handleSubmit = () => {
+        createApplication.mutate({
+            "NCMR_ID": parseInt(ncmrId),
+            "申請人員姓名": applicant,
+            "部門": department,
+            "緊急程度": urgency,
+            "產品資訊": productInfo,
+            "批號": batchNo,
+            "重工數量": parseFloat(quantity) || 0,
+            "申請原因": reason,
+            "預計完成日期": expectedDate
+        });
     };
 
     return (
@@ -200,8 +198,8 @@ const ApplyModal = ({ show, handleClose, onSuccess, initialNcmrId, initialNcmrNo
                 <Button variant="secondary" onClick={handleClose}>
                     取消
                 </Button>
-                <Button variant="primary" onClick={handleSubmit}>
-                    提交申請
+                <Button variant="primary" onClick={handleSubmit} disabled={createApplication.isPending}>
+                    {createApplication.isPending ? '提交中...' : '提交申請'}
                 </Button>
             </Modal.Footer>
         </Modal>

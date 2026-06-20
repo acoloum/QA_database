@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
-import toast from 'react-hot-toast';
-import api from '../../services/api';
-import { getReworkErrorMessage } from './reworkError';
 import type { ReworkCostDetail } from '../../types';
 import { useInspectors } from '../../hooks/useInspectors';
+import { buildReworkCostPayload } from './reworkFormPayload';
+import { useUpdateReworkCost } from './useReworkMutations';
 
 // 使用 types/index.ts 的 ReworkCostDetail 取代本地 interface，保持型別一致
 interface EditCostModalProps {
@@ -16,7 +15,12 @@ interface EditCostModalProps {
 
 const EditCostModal = ({ show, handleClose, onSuccess, cost }: EditCostModalProps) => {
     const { data: inspectors = [] } = useInspectors({ enabled: show && !!cost });
-    const [loading, setLoading] = useState(false);
+    const updateCost = useUpdateReworkCost({
+        onSuccess: () => {
+            onSuccess();
+            handleClose();
+        }
+    });
 
     const [costType, setCostType] = useState('人工成本');
     const [costItem, setCostItem] = useState('');
@@ -39,40 +43,34 @@ const EditCostModal = ({ show, handleClose, onSuccess, cost }: EditCostModalProp
 
     // useEffect 放在 useCallback 宣告後，確保函數已初始化
     useEffect(() => {
+        let cancelled = false;
         if (show && cost) {
-            loadCostData();
+            queueMicrotask(() => {
+                if (!cancelled) loadCostData();
+            });
         }
+        return () => {
+            cancelled = true;
+        };
     }, [show, cost, loadCostData]);
 
-    const handleSubmit = async () => {
+    const handleSubmit = () => {
         if (!cost) return;
+        const id = cost.識別碼;
+        if (!id) return;
 
-        const qty = parseFloat(quantity) || 1;
-        const uCost = parseFloat(unitCost) || 0;
-        const totalCost = uCost * qty;
-
-        setLoading(true);
-        try {
-            const payload: ReworkCostDetail = {} as ReworkCostDetail;
-            
-            if (costType) payload.成本類型 = costType;
-            if (costItem) payload.成本項目 = costItem;
-            if (unitCost !== undefined) payload.單位成本 = uCost;
-            if (quantity !== undefined) payload.數量 = qty;
-            if (totalCost !== undefined) payload.總成本 = totalCost;
-            if (currency) payload.成本幣別 = currency;
-            if (recorder) payload.記錄人員姓名 = recorder;
-            if (remark !== undefined) payload.備註 = remark;
-
-            await api.put(`/rework/cost/${cost.識別碼}`, payload);
-            toast.success('成本記錄已更新');
-            onSuccess();
-            handleClose();
-        } catch (error: unknown) {
-            toast.error(getReworkErrorMessage(error, '更新失敗'));
-        } finally {
-            setLoading(false);
-        }
+        updateCost.mutate({
+            id,
+            payload: buildReworkCostPayload({
+                costType,
+                costItem,
+                unitCost,
+                quantity,
+                currency,
+                recorder,
+                remark
+            })
+        });
     };
 
     return (
@@ -181,8 +179,8 @@ const EditCostModal = ({ show, handleClose, onSuccess, cost }: EditCostModalProp
             </Modal.Body>
             <Modal.Footer>
                 <Button variant="secondary" onClick={handleClose}>取消</Button>
-                <Button variant="primary" onClick={handleSubmit} disabled={loading}>
-                    {loading ? '儲存中...' : '儲存'}
+                <Button variant="primary" onClick={handleSubmit} disabled={updateCost.isPending}>
+                    {updateCost.isPending ? '儲存中...' : '儲存'}
                 </Button>
             </Modal.Footer>
         </Modal>

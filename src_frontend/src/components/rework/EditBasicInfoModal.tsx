@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
-import toast from 'react-hot-toast';
-import api from '../../services/api';
-import { getReworkErrorMessage } from './reworkError';
 import type { ReworkApplication } from '../../types';
 import { useInspectors } from '../../hooks/useInspectors';
+import { useUpdateReworkApplication } from './useReworkMutations';
 
 interface EditBasicInfoModalProps {
   show: boolean;
@@ -14,8 +12,13 @@ interface EditBasicInfoModalProps {
 }
 
 const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditBasicInfoModalProps) => {
-  const [loading, setLoading] = useState(false);
   const { data: inspectors = [] } = useInspectors({ enabled: show });
+  const updateApplication = useUpdateReworkApplication({
+    onSuccess: () => {
+      onSuccess();
+      handleClose();
+    }
+  });
 
   const [applicant, setApplicant] = useState('');
   const [department, setDepartment] = useState('製造部');
@@ -49,38 +52,36 @@ const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditB
   }, [application]);
 
   useEffect(() => {
+    let cancelled = false;
     if (show && application) {
-      loadApplicationData();
+      queueMicrotask(() => {
+        if (!cancelled) loadApplicationData();
+      });
     }
+    return () => {
+      cancelled = true;
+    };
   }, [show, application, loadApplicationData]);
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!application) return;
+    const id = application.識別碼;
+    if (!id) return;
 
-    setLoading(true);
-    try {
-      const payload: Partial<ReworkApplication> = {};
+    const payload: Partial<ReworkApplication> = {};
 
-      if (applicant !== undefined) payload.申請人員姓名 = applicant;
-      if (department) payload.部門 = department;
-      if (urgency) payload.緊急程度 = urgency;
-      if (vendor !== undefined) payload.廠商 = vendor;
-      if (material !== undefined) payload.材質 = material;
-      if (spec !== undefined) payload.產品資訊 = spec;
-      if (batchNo !== undefined) payload.批號 = batchNo;
-      if (reworkQty) payload.重工數量 = parseFloat(reworkQty);
-      if (reason) payload.申請原因 = reason;
-      if (expectedDate !== undefined) payload.預計完成日期 = expectedDate;
+    if (applicant !== undefined) payload.申請人員姓名 = applicant;
+    if (department) payload.部門 = department;
+    if (urgency) payload.緊急程度 = urgency;
+    if (vendor !== undefined) payload.廠商 = vendor;
+    if (material !== undefined) payload.材質 = material;
+    if (spec !== undefined) payload.產品資訊 = spec;
+    if (batchNo !== undefined) payload.批號 = batchNo;
+    if (reworkQty) payload.重工數量 = parseFloat(reworkQty);
+    if (reason) payload.申請原因 = reason;
+    if (expectedDate !== undefined) payload.預計完成日期 = expectedDate;
 
-      await api.put(`/rework/application/${application.識別碼}`, payload);
-      toast.success('基本資訊已更新');
-      onSuccess();
-      handleClose();
-    } catch (error: unknown) {
-      toast.error(getReworkErrorMessage(error, '更新失敗'));
-    } finally {
-      setLoading(false);
-    }
+    updateApplication.mutate({ id, payload });
   };
 
   return (
@@ -220,8 +221,8 @@ const EditBasicInfoModal = ({ show, handleClose, onSuccess, application }: EditB
       </Modal.Body>
       <Modal.Footer>
         <Button variant="secondary" onClick={handleClose}>取消</Button>
-        <Button variant="primary" onClick={handleSubmit} disabled={loading}>
-          {loading ? '儲存中...' : '儲存'}
+        <Button variant="primary" onClick={handleSubmit} disabled={updateApplication.isPending}>
+          {updateApplication.isPending ? '儲存中...' : '儲存'}
         </Button>
       </Modal.Footer>
     </Modal>
