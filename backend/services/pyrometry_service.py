@@ -342,11 +342,18 @@ class PyrometryService:
         by_channel: Dict[int, List] = {}
         for cp in r.cal_points:
             by_channel.setdefault(cp.channel, []).append((float(cp.std_temp), float(cp.error)))
+        # 熱電偶補償先各自四捨五入到小數 2 位（與報表 C 欄取值一致）
+        tc_component = round(tc_corr, 2)
         out = []
         for i in range(count):
             ch = channels[i] if (channels and i < len(channels)) else (offset + i + 1)
             err = interp_error(by_channel.get(ch, []), float(setpoint))
-            out.append(round(tc_corr - err, 2))
+            # 溫度計（記錄器）補償亦先單獨四捨五入，再與熱電偶補償相加。
+            # 採「分量各自捨入後相加」而非「先合併再捨入」，避免如內插值 0.075
+            # 這類情況被重複捨入成 0.07；同時確保報表「溫度計補償(B)+熱電偶補償(C)
+            # =修正結果(F)」的拆分顯示值與總修正值完全一致。
+            rec_component = round(-err, 2)
+            out.append(round(tc_component + rec_component, 2))
         return out
 
     # ---------- 判定邏輯 ----------

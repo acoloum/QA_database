@@ -157,6 +157,27 @@ def test_compute_corrections_uses_thermocouple_curve(app, db_session):
         assert corr[0] == -0.75
 
 
+def test_compute_corrections_rounds_components_separately(app, db_session):
+    """分量各自捨入再相加，避免重複捨入：
+    記錄器CH1 於175內插器差值=-0.075 → 補償+0.075→四捨五入0.08；
+    熱電偶於175內插器差值=0.5925 → 補償-0.5925→四捨五入-0.59；
+    修正值=-0.59+0.08=-0.51（非先合併-0.5175再捨入成-0.52）。"""
+    with app.app_context():
+        PyrometryService.add_recorder({
+            "編號": "23B230004", "熱電偶補正值": -1.15,
+            "校正點": [
+                {"頻道": 1, "標準溫度": 100, "器差值": 0.0},
+                {"頻道": 1, "標準溫度": 200, "器差值": -0.1},
+            ],
+        })
+        PyrometryService.add_thermocouple({
+            "編號": "220716", "型式": "TYPE K",
+            "校正點": [{"標準溫度": 100, "器差值": 0.42}, {"標準溫度": 200, "器差值": 0.65}],
+        })
+        corr = PyrometryService.compute_corrections(setpoint=175, test_type="TUS", count=1)
+        assert corr[0] == -0.51
+
+
 def test_compute_corrections_sat_channel_offset_and_clamp(app, db_session):
     """SAT-1→CH13；設定溫度700超出校正範圍 → 夾擠取600端點器差值-0.2，修正值=-1.15+0.2=-0.95"""
     with app.app_context():
