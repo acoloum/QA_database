@@ -84,7 +84,7 @@ const D3Pane = ({
 
         <hr className="my-3" />
         <h6 className="mb-2 text-muted small">D3 相關附件</h6>
-        <AttachmentList entityType="capa" entityId={capaId} dStep="D3" />
+        <AttachmentList entityType="capa" entityId={capaId} dStep="D3" canDelete={!readonly} />
         {!readonly && <AttachmentUploader entityType="capa" entityId={capaId} dStep="D3" />}
 
         <SaveBar onSave={onSave} saving={saving} readonly={readonly} />
