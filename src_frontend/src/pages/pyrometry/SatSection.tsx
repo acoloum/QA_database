@@ -4,8 +4,9 @@ import { Button, Col, Form, Nav, Row } from 'react-bootstrap';
 import TusChart from '../../components/pyrometry/TusChart';
 import TusDataTable from '../../components/pyrometry/TusDataTable';
 import type { SatPoint, SatReading } from '../../types';
+import ChartRangeControls from './ChartRangeControls';
 import { resolvePyrometryChartSettings } from './pyrometryChartSettings';
-import type { ChartData } from './pyrometryFormUtils';
+import { parseActiveZone, type ChartData } from './pyrometryFormUtils';
 import SatZoneTab from './SatZoneTab';
 import { evaluateSatPoint } from './satEvaluation';
 
@@ -104,37 +105,16 @@ const SatSection = ({
             />
           </Col>
           <Col md={12}>
-            <div className="d-flex align-items-center gap-3 p-2 bg-light rounded border">
-              <span className="fw-semibold text-nowrap" style={{ fontSize: 13 }}>SAT 恆溫穩定期：</span>
-              <div className="d-flex align-items-center gap-1">
-                <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>開始</Form.Label>
-                <Form.Select
-                  size="sm"
-                  style={{ minWidth: 120 }}
-                  value={satRangeStart}
-                  onChange={event => onSatRangeStartChange(Number(event.target.value))}
-                >
-                  {satTimeLabels.map((time, index) => <option key={index} value={index}>{time}</option>)}
-                </Form.Select>
-              </div>
-              <div className="d-flex align-items-center gap-1">
-                <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>結束</Form.Label>
-                <Form.Select
-                  size="sm"
-                  style={{ minWidth: 120 }}
-                  value={satRangeEnd}
-                  onChange={event => onSatRangeEndChange(Number(event.target.value))}
-                >
-                  {satTimeLabels.map((time, index) => <option key={index} value={index}>{time}</option>)}
-                </Form.Select>
-              </div>
-              <Button size="sm" variant="primary" onClick={onApplyRangeSat}>
-                套用並回填讀值
-              </Button>
-              <span className="text-muted" style={{ fontSize: 11 }}>
-                共 {satRangeEnd >= satRangeStart ? satRangeEnd - satRangeStart + 1 : 0} 筆
-              </span>
-            </div>
+            <ChartRangeControls
+              label="SAT 恆溫穩定期"
+              start={satRangeStart}
+              end={satRangeEnd}
+              timeLabels={satTimeLabels}
+              applyLabel="套用並回填讀值"
+              onStartChange={onSatRangeStartChange}
+              onEndChange={onSatRangeEndChange}
+              onApply={onApplyRangeSat}
+            />
           </Col>
           <Col md={12}>
             <div className="d-flex align-items-center gap-2 mb-1">
@@ -171,7 +151,7 @@ const SatSection = ({
           偏差＝（校正測試讀值＋修正值）− 控制讀值；每筆讀值均需符合公差 ±{tolerance || '?'}°C
         </div>
 
-        <Nav variant="tabs" activeKey={activeZone} onSelect={key => onActiveZoneChange(Number(key))}>
+        <Nav variant="tabs" activeKey={activeZone} onSelect={key => onActiveZoneChange(parseActiveZone(key, activeZone, satPoints.length - 1))}>
           {satPoints.map((point, index) => {
             const { allPass, hasData } = evaluateSatPoint(point, tolerance);
             return (

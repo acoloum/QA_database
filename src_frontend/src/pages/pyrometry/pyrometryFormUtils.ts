@@ -3,6 +3,7 @@ import type { SatPoint, SatReading, TusPoint } from '../../types';
 export type ChartData = { 時間: string[]; 數值: Record<string, number[]> };
 export type ItemRow = { 工件料號: string; 生產批號: string; 內外徑尺寸: string; 支數: string };
 export type ReportFieldsResponse = Record<string, string | number | boolean | ItemRow[] | null | undefined>;
+export type PyrometryUploadDestination = 'recorder' | 'sat' | 'furnace';
 
 const ITEM_ROW_KEYS: (keyof ItemRow)[] = ['工件料號', '生產批號', '內外徑尺寸', '支數'];
 
@@ -42,6 +43,30 @@ export const emptySatPoint = (ch?: number): SatPoint => ({
   修正值: '',
   readings: Array.from({ length: 10 }, emptyReading),
 });
+
+export const parseOptionalChannel = (value: string): number | null => {
+  const text = value.trim();
+  if (!text) return null;
+  const parsed = Number(text);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 99 ? parsed : null;
+};
+
+export const parseRangeIndex = (value: string | null | undefined, fallback = 0): number => {
+  const text = String(value ?? '').trim();
+  if (!text) return fallback;
+  const parsed = Number(text);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+};
+
+export const parseActiveZone = (
+  value: string | null | undefined,
+  fallback = 0,
+  maxIndex?: number,
+): number => {
+  const parsed = parseRangeIndex(value, fallback);
+  if (maxIndex == null) return parsed;
+  return parsed <= maxIndex ? parsed : fallback;
+};
 
 export const computeRangeStats = (
   數值: Record<string, number[]>,
@@ -121,5 +146,45 @@ export const inheritReportFields = (
   return {
     meta: { ...currentMeta, ...meta },
     itemRows: itemRows.length ? itemRows : currentRows,
+  };
+};
+
+export const applyParsedPyrometryData = ({
+  destination,
+  parsedData,
+  tusPoints,
+  satPoints,
+}: {
+  destination: PyrometryUploadDestination;
+  parsedData: ChartData;
+  tusPoints: TusPoint[];
+  satPoints: SatPoint[];
+}) => {
+  const chartData = { 時間: parsedData.時間, 數值: parsedData.數值 };
+  const lastIndex = Math.max(chartData.時間.length - 1, 0);
+
+  if (destination === 'recorder') {
+    return {
+      chartData,
+      rangeStart: 0,
+      rangeEnd: lastIndex,
+      tusPoints: applyChartRangeToTusPoints(tusPoints, chartData, 0, lastIndex),
+    };
+  }
+
+  if (destination === 'sat') {
+    return {
+      satChartData: chartData,
+      satRangeStart: 0,
+      satRangeEnd: lastIndex,
+      satPoints: applyChartRangeToSatReadings(satPoints, chartData, 0, lastIndex, '校正測試讀值'),
+    };
+  }
+
+  return {
+    furnaceChartData: chartData,
+    furnaceRangeStart: 0,
+    furnaceRangeEnd: lastIndex,
+    satPoints: applyChartRangeToSatReadings(satPoints, chartData, 0, lastIndex, '控制儀表讀值'),
   };
 };

@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   addSatReadingToPoint,
+  applyParsedPyrometryData,
   applyChartRangeToSatReadings,
   applyChartRangeToTusPoints,
   computeRangeStats,
   inheritReportFields,
+  parseActiveZone,
+  parseOptionalChannel,
+  parseRangeIndex,
   removeSatReadingFromPoint,
   splitReportFields,
   type ReportFieldsResponse,
@@ -134,5 +138,64 @@ describe('pyrometryFormUtils', () => {
 
     const noRows = inheritReportFields(currentMeta, currentRows, { 客戶名稱: '新客戶' });
     expect(noRows.itemRows).toBe(currentRows);
+  });
+
+  it('parses optional channel values without converting invalid text to NaN', () => {
+    expect(parseOptionalChannel('')).toBeNull();
+    expect(parseOptionalChannel('  ')).toBeNull();
+    expect(parseOptionalChannel('13')).toBe(13);
+    expect(parseOptionalChannel('13.5')).toBeNull();
+    expect(parseOptionalChannel('abc')).toBeNull();
+    expect(parseOptionalChannel('0')).toBeNull();
+  });
+
+  it('parses range and active zone indices with safe fallback', () => {
+    expect(parseRangeIndex('2')).toBe(2);
+    expect(parseRangeIndex('2.5', 1)).toBe(1);
+    expect(parseRangeIndex('', 1)).toBe(1);
+    expect(parseRangeIndex('-1', 1)).toBe(1);
+    expect(parseActiveZone('1', 0, 2)).toBe(1);
+    expect(parseActiveZone('5', 0, 2)).toBe(0);
+  });
+
+  it('applies parsed recorder data and returns the range plus updated TUS points', () => {
+    const result = applyParsedPyrometryData({
+      destination: 'recorder',
+      parsedData: {
+        時間: ['09:00', '09:10'],
+        數值: { CH1: [180, 181] },
+      },
+      tusPoints: [{ 點位: 'TUS-1', 熱電偶編號: '', 頻道: 1, 修正值: '', 最高溫: '', 最低溫: '' }],
+      satPoints: [],
+    });
+
+    expect(result.chartData).toEqual({ 時間: ['09:00', '09:10'], 數值: { CH1: [180, 181] } });
+    expect(result.rangeStart).toBe(0);
+    expect(result.rangeEnd).toBe(1);
+    expect(result.tusPoints?.[0]).toMatchObject({ 最高溫: '181', 最低溫: '180' });
+  });
+
+  it('applies parsed furnace data to SAT control readings', () => {
+    const result = applyParsedPyrometryData({
+      destination: 'furnace',
+      parsedData: {
+        時間: ['09:00'],
+        數值: { F1: [180.123] },
+      },
+      tusPoints: [],
+      satPoints: [{
+        控溫區: 'Zone1',
+        頻道: 13,
+        修正值: '',
+        readings: [{ 控制儀表讀值: '', 校正測試讀值: '181' }],
+      }],
+    });
+
+    expect(result.furnaceChartData).toEqual({ 時間: ['09:00'], 數值: { F1: [180.123] } });
+    expect(result.furnaceRangeStart).toBe(0);
+    expect(result.furnaceRangeEnd).toBe(0);
+    expect(result.satPoints?.[0].readings).toEqual([
+      { 控制儀表讀值: '180.12', 校正測試讀值: '181' },
+    ]);
   });
 });

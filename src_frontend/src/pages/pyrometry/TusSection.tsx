@@ -3,6 +3,7 @@ import { Button, Col, Form, Row, Table } from 'react-bootstrap';
 import TusChart from '../../components/pyrometry/TusChart';
 import TusDataTable from '../../components/pyrometry/TusDataTable';
 import type { TusPoint } from '../../types';
+import ChartRangeControls from './ChartRangeControls';
 import { resolvePyrometryChartSettings } from './pyrometryChartSettings';
 import type { ChartData } from './pyrometryFormUtils';
 
@@ -73,35 +74,16 @@ const TusSection = ({
             />
           </Col>
           <Col md={12}>
-            <div className="d-flex align-items-center gap-3 p-2 bg-light rounded border">
-              <span className="fw-semibold text-nowrap" style={{ fontSize: 13 }}>恆溫穩定期：</span>
-              <div className="d-flex align-items-center gap-1">
-                <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>開始</Form.Label>
-                <Form.Select
-                  size="sm"
-                  style={{ minWidth: 120 }}
-                  value={rangeStart}
-                  onChange={event => onRangeStartChange(Number(event.target.value))}
-                >
-                  {timeLabels.map((time, index) => <option key={index} value={index}>{time}</option>)}
-                </Form.Select>
-              </div>
-              <div className="d-flex align-items-center gap-1">
-                <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>結束</Form.Label>
-                <Form.Select
-                  size="sm"
-                  style={{ minWidth: 120 }}
-                  value={rangeEnd}
-                  onChange={event => onRangeEndChange(Number(event.target.value))}
-                >
-                  {timeLabels.map((time, index) => <option key={index} value={index}>{time}</option>)}
-                </Form.Select>
-              </div>
-              <Button size="sm" variant="primary" onClick={onApplyRangeTus}>套用並回填量測點</Button>
-              <span className="text-muted" style={{ fontSize: 11 }}>
-                共 {rangeEnd >= rangeStart ? rangeEnd - rangeStart + 1 : 0} 筆
-              </span>
-            </div>
+            <ChartRangeControls
+              label="恆溫穩定期"
+              start={rangeStart}
+              end={rangeEnd}
+              timeLabels={timeLabels}
+              applyLabel="套用並回填量測點"
+              onStartChange={onRangeStartChange}
+              onEndChange={onRangeEndChange}
+              onApply={onApplyRangeTus}
+            />
           </Col>
           <Col md={12}>
             <div className="d-flex align-items-center gap-2 mb-1">

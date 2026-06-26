@@ -22,13 +22,16 @@ import {
   applyChartRangeToSatReadings,
   applyChartRangeToTusPoints,
   addSatReadingToPoint,
+  applyParsedPyrometryData,
   emptyItemRow,
   emptySatPoint,
   emptyTusPoint,
   inheritReportFields,
+  parseOptionalChannel,
   removeSatReadingFromPoint,
   type ChartData,
   type ItemRow,
+  type PyrometryUploadDestination,
   type ReportFieldsResponse,
 } from './pyrometryFormUtils';
 
@@ -140,13 +143,13 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   // TUS 量測點更新
   const updateTus = (i: number, k: keyof TusPoint, v: string) =>
     setTusPoints(prev => prev.map((p, idx) =>
-      idx === i ? { ...p, [k]: k === '頻道' ? (v === '' ? null : Number(v)) : v } : p,
+      idx === i ? { ...p, [k]: k === '頻道' ? parseOptionalChannel(v) : v } : p,
     ));
 
   // SAT zone 欄位更新（控溫區、頻道、修正值）
   const updateSatField = (i: number, k: keyof SatPoint, v: string) =>
     setSatPoints(prev => prev.map((p, idx) =>
-      idx === i ? { ...p, [k]: k === '頻道' ? (v === '' ? null : Number(v)) : v } : p,
+      idx === i ? { ...p, [k]: k === '頻道' ? parseOptionalChannel(v) : v } : p,
     ));
 
   // SAT 單筆讀值更新
@@ -237,24 +240,26 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     }
   };
 
-  const handleFileUpload = async (file: File, dest: 'recorder' | 'sat' | 'furnace') => {
+  const handleFileUpload = async (file: File, dest: PyrometryUploadDestination) => {
     const r = await parseMutation.mutateAsync(file);
     if (!r.success) return;
-    const lastIdx = r.data.時間.length - 1;
-    if (dest === 'furnace') {
-      setFurnaceChartData({ 時間: r.data.時間, 數值: r.data.數值 });
-      setFurnaceRangeStart(0); setFurnaceRangeEnd(lastIdx);
-    } else if (dest === 'recorder') {
-      setChartData({ 時間: r.data.時間, 數值: r.data.數值 });
-      setRangeStart(0); setRangeEnd(lastIdx);
-      // 初始回填 TUS 量測點（全範圍 max/min）
-      setTusPoints(prev => applyChartRangeToTusPoints(prev, r.data, 0, lastIdx));
-    } else {
-      // dest === 'sat'：每個通道每個時間點 → 一筆讀值
-      setSatChartData({ 時間: r.data.時間, 數值: r.data.數值 });
-      setSatRangeStart(0); setSatRangeEnd(lastIdx);
-      setSatPoints(prev => applyChartRangeToSatReadings(prev, r.data, 0, lastIdx, '校正測試讀值'));
-    }
+    const result = applyParsedPyrometryData({
+      destination: dest,
+      parsedData: r.data,
+      tusPoints,
+      satPoints,
+    });
+    if (result.chartData) setChartData(result.chartData);
+    if (result.rangeStart != null) setRangeStart(result.rangeStart);
+    if (result.rangeEnd != null) setRangeEnd(result.rangeEnd);
+    if (result.tusPoints) setTusPoints(result.tusPoints);
+    if (result.satChartData) setSatChartData(result.satChartData);
+    if (result.satRangeStart != null) setSatRangeStart(result.satRangeStart);
+    if (result.satRangeEnd != null) setSatRangeEnd(result.satRangeEnd);
+    if (result.furnaceChartData) setFurnaceChartData(result.furnaceChartData);
+    if (result.furnaceRangeStart != null) setFurnaceRangeStart(result.furnaceRangeStart);
+    if (result.furnaceRangeEnd != null) setFurnaceRangeEnd(result.furnaceRangeEnd);
+    if (result.satPoints) setSatPoints(result.satPoints);
   };
 
   const handleSave = async () => {

@@ -1,7 +1,8 @@
-import { Button, Col, Form } from 'react-bootstrap';
+import { Button, Col } from 'react-bootstrap';
 
 import TusChart from '../../components/pyrometry/TusChart';
 import TusDataTable from '../../components/pyrometry/TusDataTable';
+import ChartRangeControls from './ChartRangeControls';
 import { resolvePyrometryChartSettings } from './pyrometryChartSettings';
 import type { ChartData } from './pyrometryFormUtils';
 
@@ -49,39 +50,18 @@ const FurnaceRecorderSection = ({
         />
       </Col>
       <Col md={12}>
-        <div className="d-flex align-items-center gap-3 p-2 bg-light rounded border">
-          <span className="fw-semibold text-nowrap" style={{ fontSize: 13 }}>爐體恆溫穩定期：</span>
-          <div className="d-flex align-items-center gap-1">
-            <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>開始</Form.Label>
-            <Form.Select
-              size="sm"
-              style={{ minWidth: 120 }}
-              value={furnaceRangeStart}
-              aria-label="爐體恆溫穩定期開始"
-              onChange={event => onFurnaceRangeStartChange(Number(event.target.value))}
-            >
-              {furnaceTimeLabels.map((time, index) => <option key={index} value={index}>{time}</option>)}
-            </Form.Select>
-          </div>
-          <div className="d-flex align-items-center gap-1">
-            <Form.Label className="mb-0 text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>結束</Form.Label>
-            <Form.Select
-              size="sm"
-              style={{ minWidth: 120 }}
-              value={furnaceRangeEnd}
-              aria-label="爐體恆溫穩定期結束"
-              onChange={event => onFurnaceRangeEndChange(Number(event.target.value))}
-            >
-              {furnaceTimeLabels.map((time, index) => <option key={index} value={index}>{time}</option>)}
-            </Form.Select>
-          </div>
-          <Button size="sm" variant="primary" onClick={onApplyRangeFurnace}>
-            套用並回填控制儀表讀值
-          </Button>
-          <span className="text-muted" style={{ fontSize: 11 }}>
-            共 {furnaceRangeEnd >= furnaceRangeStart ? furnaceRangeEnd - furnaceRangeStart + 1 : 0} 筆
-          </span>
-        </div>
+        <ChartRangeControls
+          label="爐體恆溫穩定期"
+          start={furnaceRangeStart}
+          end={furnaceRangeEnd}
+          timeLabels={furnaceTimeLabels}
+          applyLabel="套用並回填控制儀表讀值"
+          startAriaLabel="爐體恆溫穩定期開始"
+          endAriaLabel="爐體恆溫穩定期結束"
+          onStartChange={onFurnaceRangeStartChange}
+          onEndChange={onFurnaceRangeEndChange}
+          onApply={onApplyRangeFurnace}
+        />
       </Col>
       <Col md={12}>
         <div className="d-flex align-items-center gap-2 mb-1">
