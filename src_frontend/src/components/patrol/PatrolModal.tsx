@@ -1,6 +1,6 @@
 
-import { useState, useEffect, useCallback, Fragment, useMemo } from 'react';
-import { Modal, Button, Form, Row, Col, Table, Alert } from 'react-bootstrap';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Modal, Button, Form, Row, Col, Alert } from 'react-bootstrap';
 import toast from 'react-hot-toast';
 import {
     usePatrolOptions,
@@ -13,13 +13,12 @@ import { parseSpec } from '../../utils/parseSpec';
 import {
     buildPatrolPayload,
     buildPatrolUpdatePayload,
-    getPatrolDetailValue,
     getValidPatrolDetails,
-    isPatrolCellNG,
-    isPatrolConcentricityNG,
     type PatrolDetailInput,
 } from './patrolFormUtils';
 import { formatLocalDate } from '../../utils/dateUtils';
+import { ToleranceBadgeList } from '../common/toleranceDisplay';
+import PatrolMeasurementTable from './PatrolMeasurementTable';
 
 interface PatrolModalProps {
     show: boolean;
@@ -128,10 +127,6 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         });
     };
 
-    const getDetailValue = (group: string, pos: string, item: string, type: 'min' | 'max') => {
-        return getPatrolDetailValue(details, group, pos, item, type);
-    };
-
     const handleSubmit = async () => {
         // Client-side required field validation
         const missingFields: string[] = [];
@@ -186,79 +181,6 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     // 從擠壓規格字串解析各量測項目的標準值
     // 例：「85*2.8」→ { 外徑: 85, 厚度: 2.8 }
     const specStdValues = useMemo(() => parseSpec(spec), [spec]);
-
-    // 判斷單一儲存格是否 NG（雙側比對：同時檢查上下限）
-    const isCellNG = (pos: string, item: string, type: 'min' | 'max', gName: string): boolean => {
-        return isPatrolCellNG({
-            details,
-            tolerances,
-            specStdValues,
-            group: gName,
-            pos,
-            item,
-            type,
-        });
-    };
-
-    // 判斷同心度是否 NG（同心度 = 最大厚度 - 最小厚度）
-    // 同心度是差值（絕對值），calcLimits 無法算出界限時直接用公差值作為絕對界限
-    const isConcentricityNG = (pos: string, gName: string): boolean => {
-        return isPatrolConcentricityNG({
-            details,
-            tolerances,
-            specStdValues,
-            group: gName,
-            pos,
-        });
-    };
-
-    // Render helper
-    const renderTableRows = () => {
-        const rows = [];
-        const positions = ['前段', '中段', '後段'];
-        const items = ['外徑', '內徑', '厚度'];
-
-        for (let i = 1; i <= groupCount; i++) {
-            const gName = `第${i}組`;
-            rows.push(
-                <tr key={i}>
-                    <td className="fw-bold bg-light">{gName}</td>
-                    {positions.map(pos =>
-                        items.map(item => {
-                            if (item === '內徑' && !showInner) return null;
-                            const minNG = isCellNG(pos, item, 'min', gName) || (item === '厚度' && isConcentricityNG(pos, gName));
-                            const maxNG = isCellNG(pos, item, 'max', gName) || (item === '厚度' && isConcentricityNG(pos, gName));
-                            return (
-                                <Fragment key={`${pos}-${item}`}>
-                                    <td style={{ padding: '2px' }}>
-                                        <Form.Control
-                                            size="sm"
-                                            type="number"
-                                            step="0.01"
-                                            value={getDetailValue(gName, pos, item, 'min')}
-                                            onChange={e => handleDetailChange(gName, pos, item, 'min', e.target.value)}
-                                            className={`patrol-input${minNG ? ' is-invalid-breathing' : ''}`}
-                                        />
-                                    </td>
-                                    <td style={{ padding: '2px' }}>
-                                        <Form.Control
-                                            size="sm"
-                                            type="number"
-                                            step="0.01"
-                                            value={getDetailValue(gName, pos, item, 'max')}
-                                            onChange={e => handleDetailChange(gName, pos, item, 'max', e.target.value)}
-                                            className={`patrol-input${maxNG ? ' is-invalid-breathing' : ''}`}
-                                        />
-                                    </td>
-                                </Fragment>
-                            );
-                        })
-                    )}
-                </tr>
-            );
-        }
-        return rows;
-    };
 
     const isSaving = createMutation.isPending || updateMutation.isPending;
 
@@ -319,93 +241,19 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                                         <Alert variant="info" className="mb-4">
                                             <h6 className="alert-heading">📐 公差標準已載入</h6>
                                             <div className="d-flex flex-wrap gap-3">
-                                                {tolerances.map((t, idx) => {
-                                                    let rangeDisplay = '';
-                                                    // 檢查是否存在這些屬性（避免 undefined 問題）
-                                                    const hasSizeLimits = '尺寸下限' in t && '尺寸上限' in t;
-                                                    const hasTolLimits = '公差上限' in t && '公差下限' in t;
-
-                                                    // 同心度專用邏輯：
-                                                    // 1. 優先使用標準值（最大厚度-最小厚度的最大允許值）
-                                                    // 2. 沒有標準值時，使用公差上限（當公差下限=0 時）
-                                                    const isConcentricity = t.項目 === '同心度';
-                                                    if (isConcentricity) {
-                                                        if ('標準值' in t && t.標準值 != null) {
-                                                            rangeDisplay = `最大${t.標準值}`;
-                                                        } else if (hasTolLimits && t.公差上限 != null && t.公差下限 === 0) {
-                                                            rangeDisplay = `最大${t.公差上限}`;
-                                                        } else if (hasTolLimits && t.公差上限 != null) {
-                                                            rangeDisplay = `最大${t.公差上限}`;
-                                                        } else if (hasTolLimits && t.公差下限 != null) {
-                                                            rangeDisplay = `最小${t.公差下限}`;
-                                                        }
-                                                    } else if (hasSizeLimits && t.尺寸下限 != null && t.尺寸上限 != null) {
-                                                        rangeDisplay = `${t.尺寸下限}~${t.尺寸上限}`;
-                                                    } else if (hasTolLimits && t.公差上限 != null && t.公差下限 != null) {
-                                                        const max = t.公差上限;
-                                                        const min = t.公差下限;
-                                                        if (max === min) {
-                                                            rangeDisplay = `±${max}`;
-                                                        } else if (min === 0 && max > 0) {
-                                                            rangeDisplay = `+${max}/-${min}`;
-                                                        } else if (max === 0 && min < 0) {
-                                                            rangeDisplay = `+${max}/${min}`;
-                                                        } else {
-                                                            rangeDisplay = `+${max}/${min}`;
-                                                        }
-                                                    } else if ('尺寸上限' in t && t.尺寸上限 != null) {
-                                                        rangeDisplay = `最大${t.尺寸上限}`;
-                                                    } else if ('尺寸下限' in t && t.尺寸下限 != null) {
-                                                        rangeDisplay = `最小${t.尺寸下限}`;
-                                                    } else if ('公差上限' in t && t.公差上限 != null) {
-                                                        rangeDisplay = `±${t.公差上限}`;
-                                                    } else if ('公差下限' in t && t.公差下限 != null) {
-                                                        rangeDisplay = `${t.公差下限}`;
-                                                    } else if ('標準值' in t && t.標準值 != null) {
-                                                        // 同心度專用：最大厚度-最小厚度 <= 標準值
-                                                        rangeDisplay = `最大${t.標準值}`;
-                                                    }
-                                                    return (
-                                                        <span key={idx} className="badge bg-primary">
-                                                            {t.項目}: {rangeDisplay} {t.單位}
-                                                        </span>
-                                                    );
-                                                })}
+                                                <ToleranceBadgeList tolerances={tolerances} />
                                             </div>
                                         </Alert>
                                     )}
 
-                                    <div className="table-responsive" style={{ overflow: 'auto', maxHeight: '50vh', display: 'block' }}>
-                                        <Table bordered size="sm" className="text-center align-middle" style={{ minWidth: showInner ? '1550px' : '1050px', tableLayout: 'fixed' }}>
-                                            <thead className="table-light">
-                                                <tr>
-                                                    <th rowSpan={3} style={{ width: '50px' }}>組別</th>
-                                                    <th colSpan={showInner ? 6 : 4}>前段</th>
-                                                    <th colSpan={showInner ? 6 : 4}>中段</th>
-                                                    <th colSpan={showInner ? 6 : 4}>後段</th>
-                                                </tr>
-                                                <tr>
-                                                    {['前段', '中段', '後段'].map(sec =>
-                                                        ['外徑', '內徑', '厚度'].map(item => {
-                                                            if (item === '內徑' && !showInner) return null;
-                                                            return <th key={`${sec}-${item}`} colSpan={2}>{item}</th>;
-                                                        })
-                                                    )}
-                                                </tr>
-                                                <tr>
-                                                    {['前段', '中段', '後段'].map(sec =>
-                                                        ['外徑', '內徑', '厚度'].map(item => {
-                                                            if (item === '內徑' && !showInner) return null;
-                                                            return <Fragment key={`${sec}-${item}-hd`}><th>MIN</th><th>MAX</th></Fragment>;
-                                                        })
-                                                    )}
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {renderTableRows()}
-                                            </tbody>
-                                        </Table>
-                                    </div>
+                                    <PatrolMeasurementTable
+                                        groupCount={groupCount}
+                                        showInner={showInner}
+                                        details={details}
+                                        tolerances={tolerances}
+                                        specStdValues={specStdValues}
+                                        onDetailChange={handleDetailChange}
+                                    />
 
                                     <div className="d-flex gap-2 mt-3">
                                         <Button variant="outline-primary" onClick={() => setGroupCount(c => c + 1)}>

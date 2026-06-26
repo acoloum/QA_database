@@ -27,6 +27,7 @@ import {
     getShippingInspectionItems,
     getShippingItemInputOffsets,
 } from './shippingInspectionItems';
+import { ToleranceBadgeList } from '../common/toleranceDisplay';
 
 interface ShippingModalProps {
     show: boolean;
@@ -362,37 +363,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                             <Alert variant="info" className="mb-4">
                                 <h6 className="alert-heading">📐 公差標準已載入</h6>
                                 <div className="d-flex flex-wrap gap-3">
-                                    {tolerance.tolerances.map((t, idx) => {
-                                        let rangeDisplay = '';
-                                        if (t.尺寸下限 !== null && t.尺寸上限 !== null) {
-                                            rangeDisplay = `${t.尺寸下限}~${t.尺寸上限}`;
-                                        } else if (t.公差上限 !== null && t.公差下限 !== null) {
-                                            const max = t.公差上限;
-                                            const min = t.公差下限;
-                                            if (max === min) {
-                                                rangeDisplay = `±${max}`;
-                                            } else if (min === 0 && max > 0) {
-                                                rangeDisplay = `+${max}/-${min}`;
-                                            } else if (max === 0 && min < 0) {
-                                                rangeDisplay = `+${max}/${min}`;
-                                            } else {
-                                                rangeDisplay = `+${max}/${min}`;
-                                            }
-                                        } else if (t.尺寸上限 !== null) {
-                                            rangeDisplay = `最大${t.尺寸上限}`;
-                                        } else if (t.尺寸下限 !== null) {
-                                            rangeDisplay = `最小${t.尺寸下限}`;
-                                        } else if (t.公差上限 !== null) {
-                                            rangeDisplay = `±${t.公差上限}`;
-                                        } else if (t.公差下限 !== null) {
-                                            rangeDisplay = `${t.公差下限}`;
-                                        }
-                                        return (
-                                            <span key={idx} className="badge bg-primary">
-                                                {t.項目}: {rangeDisplay} {t.單位}
-                                            </span>
-                                        );
-                                    })}
+                                    <ToleranceBadgeList tolerances={tolerance.tolerances} />
                                 </div>
                             </Alert>
                         )}

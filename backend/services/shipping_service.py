@@ -24,6 +24,7 @@ from .spc_analysis_service import (
     calculate_distribution_stats,
     calculate_process_capability,
 )
+from .shipping_import import build_shipping_measurements_from_row
 
 
 class ShippingService:
@@ -532,27 +533,6 @@ class ShippingService:
 
         from .tolerance_service import ToleranceService
 
-        # 量測項目與其型別（minmax 讀 -min/-max，single 讀單值）；量測值只寫子表
-        IMPORT_ITEMS = (
-            ('外徑', True), ('內徑', True), ('厚度', True),
-            ('同心度', False), ('長度', False), ('硬度', False),
-            ('韋伯氏硬度', False), ('真直度', False), ('真圓度', False),
-        )
-
-        def parse_num(s):
-            if s is None:
-                return None
-            try:
-                return float(s)
-            except (ValueError, TypeError):
-                return None
-
-        def get_val(md, k):
-            val = md.get(k)
-            if pd.isna(val) or val is None or str(val).strip() == "":
-                return None
-            return str(val)
-
         # 同批匯入常有重複的人員/廠商/規格，以快取避免逐列重複查詢
         inspector_cache: Dict[str, Any] = {}
         vendor_cache: Dict[str, Any] = {}
@@ -599,25 +579,8 @@ class ShippingService:
                 )
 
                 # 由 Excel 平鋪欄位建立子表明細（量測值只寫子表 ShippingMeasurement）
-                for g in range(1, 11):
-                    for item_name, is_minmax in IMPORT_ITEMS:
-                        if is_minmax:
-                            v_min = parse_num(get_val(main_data, f'{item_name}{g}-min'))
-                            v_max = parse_num(get_val(main_data, f'{item_name}{g}-max'))
-                            v_single = None
-                        else:
-                            v_min, v_max = None, None
-                            v_single = parse_num(get_val(main_data, f'{item_name}{g}'))
-
-                        if v_min is not None or v_max is not None or v_single is not None:
-                            shipping_data.measurements.append(ShippingMeasurement(
-                                group_num=g,
-                                item=item_name,
-                                value_min=v_min,
-                                value_max=v_max,
-                                value_single=v_single,
-                                is_ng=False,
-                            ))
+                for measurement in build_shipping_measurements_from_row(main_data):
+                    shipping_data.measurements.append(ShippingMeasurement(**measurement, is_ng=False))
 
                 # 公差查詢（快取）並計算 is_ng
                 tol_key = (shipping_data.material, shipping_data.spec, shipping_data.vendor_id)

@@ -15,6 +15,7 @@ from .spc_analysis_service import (
     calculate_distribution_stats,
     calculate_process_capability,
 )
+from .patrol_excel_utils import build_patrol_measurements_from_row, sanitize_sheet_name
 from ..utils import (
     bounded_int,
     format_value,
@@ -825,14 +826,6 @@ class PatrolService:
                     # 把 SPC workbook 的工作表複製到主 workbook
                     spc_wb = load_workbook(spc_output)
                     # 建立工作表名稱前綴（截斷以避免超過 31 字元限制）
-                    # 清除 Excel 工作表名稱不允許的字元: * ? / \ [ ] :
-                    def sanitize_sheet_name(name: str) -> str:
-                        # * 以 X 代替，其餘不允許字元直接移除
-                        name = name.replace('*', 'X')
-                        for ch in ['?', '/', '\\', '[', ']', ':']:
-                            name = name.replace(ch, '')
-                        return name.strip()
-
                     spec_short = sanitize_sheet_name(group_info['spec'][:8]) if group_info['spec'] else '無規格'
                     mat_short = sanitize_sheet_name(group_info['material'][:6]) if group_info['material'] else '無材質'
                     prefix = f"{spec_short}-{mat_short}"
@@ -958,42 +951,14 @@ class PatrolService:
                 db.session.flush()
 
                 # Process details from columns
-                measurement_cols = [
-                    ("外徑前段最小", "外徑", "前段", "min"), ("外徑前段最大", "外徑", "前段", "max"),
-                    ("外徑中段最小", "外徑", "中段", "min"), ("外徑中段最大", "外徑", "中段", "max"),
-                    ("外徑後段最小", "外徑", "後段", "min"), ("外徑後段最大", "外徑", "後段", "max"),
-                    ("內徑前段最小", "內徑", "前段", "min"), ("內徑前段最大", "內徑", "前段", "max"),
-                    ("內徑中段最小", "內徑", "中段", "min"), ("內徑中段最大", "內徑", "中段", "max"),
-                    ("內徑後段最小", "內徑", "後段", "min"), ("內徑後段最大", "內徑", "後段", "max"),
-                    ("厚度前段最小", "厚度", "前段", "min"), ("厚度前段最大", "厚度", "前段", "max"),
-                    ("厚度中段最小", "厚度", "中段", "min"), ("厚度中段最大", "厚度", "中段", "max"),
-                    ("厚度後段最小", "厚度", "後段", "min"), ("厚度後段最大", "厚度", "後段", "max")
-                ]
-
-                measurements = {}
-                for col_name, item, pos, min_max in measurement_cols:
-                    val = main_data.get(col_name)
-                    if pd.isna(val) == False and str(val).strip() != "":
-                        key = f"{item}_{pos}"
-                        if key not in measurements:
-                            measurements[key] = {"min": "", "max": ""}
-                        measurements[key][min_max] = str(val)
-
-                for key, vals in measurements.items():
-                    item, pos = key.split("_")
-                    min_val = vals["min"]
-                    max_val = vals["max"]
-                    
-                    if min_val == "" and max_val == "":
-                        continue
-
+                for measurement in build_patrol_measurements_from_row(main_data):
                     new_detail = PatrolDetail(
                         main_id=new_patrol.id,
                         group=1, # Default to group 1 for flattened Excel structure usually
-                        item=item,
-                        position=pos,
-                        min_val=min_val if min_val != "" else None,
-                        max_val=max_val if max_val != "" else None
+                        item=measurement["item"],
+                        position=measurement["position"],
+                        min_val=measurement["min_val"],
+                        max_val=measurement["max_val"],
                     )
                     db.session.add(new_detail)
 

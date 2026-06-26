@@ -10,6 +10,7 @@ import {
 import type { CustomerComplaint, ComplaintType } from '../../types';
 import { buildComplaintPayload, getDefaultReplyDeadlines } from './complaintFormUtils';
 import { formatLocalDate } from '../../utils/dateUtils';
+import { ComplaintResponseSection, ComplaintWarrantySection } from './ComplaintSections';
 
 interface ComplaintModalProps {
     show: boolean;
@@ -169,8 +170,6 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
     };
 
     const isPending = createMutation.isPending || updateMutation.isPending;
-    const isWarrantyType = complaintType === 'warranty' || complaintType === 'field_failure';
-
     return (
         <Modal show={show} onHide={onHide} size="xl">
             <Modal.Header closeButton>
@@ -314,44 +313,15 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
                 </Row>
 
                 {/* ─ Warranty / Field Failure 額外欄位 ─ */}
-                {isWarrantyType && (
-                    <>
-                        <h6 className="text-muted mb-3">
-                            {complaintType === 'warranty' ? 'Warranty 申請資訊' : 'Field Failure 資訊'}
-                        </h6>
-                        <Row className="g-3 mb-3">
-                            <Col md={4}>
-                                <Form.Group>
-                                    <Form.Label>裝置序號</Form.Label>
-                                    <Form.Control
-                                        value={deviceSerial}
-                                        onChange={e => setDeviceSerial(e.target.value)}
-                                    />
-                                </Form.Group>
-                            </Col>
-                            <Col md={4}>
-                                <Form.Group>
-                                    <Form.Label>使用環境</Form.Label>
-                                    <Form.Control
-                                        value={usageEnv}
-                                        onChange={e => setUsageEnv(e.target.value)}
-                                    />
-                                </Form.Group>
-                            </Col>
-                            <Col md={4}>
-                                <Form.Group>
-                                    <Form.Label>故障時數（hr）</Form.Label>
-                                    <Form.Control
-                                        type="number"
-                                        min="0"
-                                        value={failureHours}
-                                        onChange={e => setFailureHours(e.target.value)}
-                                    />
-                                </Form.Group>
-                            </Col>
-                        </Row>
-                    </>
-                )}
+                <ComplaintWarrantySection
+                    complaintType={complaintType}
+                    deviceSerial={deviceSerial}
+                    usageEnv={usageEnv}
+                    failureHours={failureHours}
+                    onDeviceSerialChange={setDeviceSerial}
+                    onUsageEnvChange={setUsageEnv}
+                    onFailureHoursChange={setFailureHours}
+                />
 
                 {/* ─ 應答時效 ─ */}
                 <h6 className="text-muted mb-3">應答時效</h6>
@@ -380,43 +350,14 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
 
                 {/* ─ 處理回覆（僅編輯模式）─ */}
                 {isEdit && (
-                    <>
-                        <h6 className="text-muted mb-3">處理回覆</h6>
-                        <Row className="g-3 mb-3">
-                            <Col md={4}>
-                                <Form.Group>
-                                    <Form.Label>狀態</Form.Label>
-                                    <Form.Select value={status} onChange={e => setStatus(e.target.value)}>
-                                        {['待處理', '處理中', '已結案'].map(s => (
-                                            <option key={s} value={s}>{s}</option>
-                                        ))}
-                                    </Form.Select>
-                                </Form.Group>
-                            </Col>
-                            <Col md={12}>
-                                <Form.Group>
-                                    <Form.Label>初步回覆內容</Form.Label>
-                                    <Form.Control
-                                        as="textarea"
-                                        rows={2}
-                                        value={initialReply}
-                                        onChange={e => setInitialReply(e.target.value)}
-                                    />
-                                </Form.Group>
-                            </Col>
-                            <Col md={12}>
-                                <Form.Group>
-                                    <Form.Label>最終回覆內容</Form.Label>
-                                    <Form.Control
-                                        as="textarea"
-                                        rows={2}
-                                        value={finalReply}
-                                        onChange={e => setFinalReply(e.target.value)}
-                                    />
-                                </Form.Group>
-                            </Col>
-                        </Row>
-                    </>
+                    <ComplaintResponseSection
+                        status={status}
+                        initialReply={initialReply}
+                        finalReply={finalReply}
+                        onStatusChange={setStatus}
+                        onInitialReplyChange={setInitialReply}
+                        onFinalReplyChange={setFinalReply}
+                    />
                 )}
             </Modal.Body>
 
