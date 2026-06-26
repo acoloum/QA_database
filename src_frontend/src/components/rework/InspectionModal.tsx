@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { useInspectors } from '../../hooks/useInspectors';
 import { buildReworkInspectionPayload } from './reworkFormPayload';
 import { useCreateReworkInspection } from './useReworkMutations';
+import { formatLocalDate } from '../../utils/dateUtils';
 
 interface InspectionModalProps {
     show: boolean;
@@ -33,7 +34,7 @@ const InspectionModal = ({ show, handleClose, onSuccess, reworkNumber }: Inspect
         setInspectionItem('');
         setInspectionResult('合格');
         setDefectQty('0');
-        setInspectionDate(new Date().toISOString().split('T')[0]);
+        setInspectionDate(formatLocalDate());
         setRemark('');
     };
 

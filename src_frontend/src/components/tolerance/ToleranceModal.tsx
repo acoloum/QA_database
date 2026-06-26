@@ -28,6 +28,7 @@ import {
     validateToleranceRows,
     type ToleranceDetailRow,
 } from './toleranceFormUtils';
+import { formatLocalDate } from '../../utils/dateUtils';
 
 interface ToleranceModalProps {
     show: boolean;
@@ -101,7 +102,7 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
     const createEmptyRow = useCallback((): ToleranceDetailRow => createToleranceDetailRow(generateId()), []);
 
     const resetForm = useCallback(() => {
-        setDate(new Date().toISOString().split('T')[0]);
+        setDate(formatLocalDate());
         setMaterial('');
         setSpec('');
         setVendorId('');

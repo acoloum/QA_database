@@ -36,6 +36,13 @@ describe('buildFurnacePayload', () => {
     expect(() => buildFurnacePayload({
       爐號: 'F-01',
       名稱: '1號爐',
+      TUS點數: '',
+      SAT點數: 2,
+    })).toThrow('TUS點數');
+
+    expect(() => buildFurnacePayload({
+      爐號: 'F-01',
+      名稱: '1號爐',
       TUS點數: 0,
       SAT點數: 2,
     })).toThrow('TUS點數');

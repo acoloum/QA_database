@@ -15,6 +15,7 @@ import {
     type ShippingGroupMeasurements,
     type ShippingItemConfig,
 } from './shippingMeasurementUtils';
+import { formatLocalDate } from '../../utils/dateUtils';
 import {
     buildShippingPayload,
     emptyShippingGroup,
@@ -67,7 +68,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     const toleranceRequestSeq = useRef(0);
 
     // 表單基本欄位
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [date, setDate] = useState(formatLocalDate());
     const [inspectorName, setInspectorName] = useState('');
     const [vendorName, setVendorName] = useState('');
     const [material, setMaterial] = useState('');
@@ -117,7 +118,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     }, [ITEMS]);
 
     const resetForm = useCallback(() => {
-        setDate(new Date().toISOString().split('T')[0]);
+        setDate(formatLocalDate());
         setInspectorName('');
         setVendorName('');
         setMaterial('');

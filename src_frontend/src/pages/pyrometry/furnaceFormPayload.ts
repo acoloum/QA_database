@@ -1,6 +1,10 @@
 import type { Furnace } from '../../types';
 
-export type FurnaceFormState = Partial<Furnace>;
+type FurnaceIntegerField = 'TUS點數' | 'SAT點數' | 'TUS頻率_月' | 'SAT頻率_月';
+
+export type FurnaceFormState = Omit<Partial<Furnace>, FurnaceIntegerField> & {
+  [key in FurnaceIntegerField]?: number | string | null;
+};
 
 const text = (value: unknown) => String(value ?? '').trim();
 

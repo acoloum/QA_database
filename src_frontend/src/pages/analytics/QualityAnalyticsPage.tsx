@@ -19,12 +19,13 @@ import {
     useRepeatIssues,
     useVendorRanking,
 } from '../../hooks/useQualityAnalytics';
+import { formatLocalMonth } from '../../utils/dateUtils';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend);
 
 const COLORS = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed', '#0891b2'];
 
-const currentMonth = () => new Date().toISOString().slice(0, 7);
+const currentMonth = () => formatLocalMonth();
 
 const QualityAnalyticsPage = () => {
     const [dateFrom, setDateFrom] = useState('');

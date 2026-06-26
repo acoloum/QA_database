@@ -10,7 +10,7 @@ import PaginationBar from '../../components/common/PaginationBar';
 import { useNavigate } from 'react-router-dom';
 import { useNCMRList, useDeleteNCMR, useCreateCAPA, useNCMRDetail } from '../../hooks/useNCMR';
 import type { NCMRListParams } from '../../hooks/useNCMR';
-import { formatNcmrQuantity } from './ncmrPageUtils';
+import { buildNcmrPrintHtml, buildReworkFromNcmrUrl } from './ncmrPageUtils';
 
 const EMPTY_FILTERS: NCMRListParams = {
     page: 1, per_page: 20,
@@ -56,30 +56,8 @@ const NCMRPage = () => {
 
     useEffect(() => {
         if (printItem && printDetail) {
-            const d = printDetail;
-            const ncmrNo = d.NCMR單號 || d.單號 || (d.識別碼 ? `NCMR-${d.識別碼}` : '');
-            const printContent = `<!DOCTYPE html>
-<html lang="zh-TW"><head><meta charset="UTF-8"><title>不合格品異常單 - ${ncmrNo}</title>
-<style>body{font-family:'Microsoft JhengHei',Arial,sans-serif;padding:20px}table{width:100%;border-collapse:collapse;margin-bottom:20px}th,td{border:1px solid #333;padding:8px;font-size:14px}th{background:#f0f0f0;text-align:center;width:150px}</style>
-</head><body>
-<div style="text-align:center"><h2>不合格品異常單 (NCMR)</h2></div>
-<table>
-<tr><th>單號</th><td>${ncmrNo}</td><th>發現日期</th><td>${d.日期 || d.發現日期 || ''}</td></tr>
-<tr><th>來源</th><td>${d.來源 || ''}</td><th>廠商</th><td>${d.廠商 || ''}</td></tr>
-<tr><th>材質</th><td>${d.材質 || ''}</td><th>規格</th><td>${d.產品資訊 || ''}</td></tr>
-<tr><th>不合格數量</th><td colspan="3">${formatNcmrQuantity(d.不合格數量)}</td></tr>
-<tr><th>批號/訂單號</th><td colspan="3">${d.批號 || ''}</td></tr>
-<tr><th>不良描述</th><td colspan="3">${d.不良描述 || ''}</td></tr>
-<tr><th>不良原因大類</th><td>${d.不良原因大類 || ''}</td><th>不良原因細項</th><td>${d.不良原因細項 || ''}</td></tr>
-<tr><th>發現人員</th><td>${d.發現人員姓名 || ''}</td><th>判定結果</th><td>${d.判定結果 || ''}</td></tr>
-<tr><th>狀態</th><td>${d.狀態 || ''}</td><th>建立日期</th><td>${d.建立日期 || d.日期 || ''}</td></tr>
-</table>
-<div style="text-align:center;margin-top:20px">
-<button onclick="window.print()" style="padding:10px 20px;font-size:16px;cursor:pointer">列印</button>
-<button onclick="window.close()" style="padding:10px 20px;font-size:16px;cursor:pointer;margin-left:10px">關閉</button>
-</div></body></html>`;
             const pw = window.open('', '_blank', 'width=800,height=600');
-            if (pw) { pw.document.write(printContent); pw.document.close(); }
+            if (pw) { pw.document.write(buildNcmrPrintHtml(printDetail)); pw.document.close(); }
             queueMicrotask(() => setPrintItem(null));
         }
     }, [printItem, printDetail]);
@@ -103,7 +81,7 @@ const NCMRPage = () => {
             confirmLabel: '開立',
             confirmVariant: 'primary',
             onConfirm: () => {
-              window.open(`/rework?ncmr_id=${id}&ncmr_no=${no || id}`, '_blank');
+              window.open(buildReworkFromNcmrUrl(id, no), '_blank');
             },
         });
     };

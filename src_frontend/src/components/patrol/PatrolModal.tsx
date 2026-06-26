@@ -19,6 +19,7 @@ import {
     isPatrolConcentricityNG,
     type PatrolDetailInput,
 } from './patrolFormUtils';
+import { formatLocalDate } from '../../utils/dateUtils';
 
 interface PatrolModalProps {
     show: boolean;
@@ -41,7 +42,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     const updateMutation = useUpdatePatrol();
 
     // Form State
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [date, setDate] = useState(formatLocalDate());
     const [machine, setMachine] = useState('');
     const [operator, setOperator] = useState('');
     const [inspector, setInspector] = useState('');
@@ -56,7 +57,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     const [showInner, setShowInner] = useState(false);
 
     const resetForm = useCallback(() => {
-        setDate(new Date().toISOString().split('T')[0]);
+        setDate(formatLocalDate());
         setMachine('');
         setOperator('');
         setInspector('');

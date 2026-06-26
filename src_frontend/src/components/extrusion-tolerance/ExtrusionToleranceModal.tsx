@@ -13,6 +13,7 @@ import {
     createExtrusionToleranceRow,
     type ExtrusionToleranceRow,
 } from './extrusionToleranceFormPayload';
+import { formatLocalDate } from '../../utils/dateUtils';
 
 const ITEMS = ['外徑', '內徑', '厚度', '同心度'];
 
@@ -33,7 +34,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
     const [spec, setSpec] = useState('');
     const [vendor, setVendor] = useState('');
     const [note, setNote] = useState('');
-    const [createdAt, setCreatedAt] = useState(new Date().toISOString().split('T')[0]);
+    const [createdAt, setCreatedAt] = useState(formatLocalDate());
     const [rows, setRows] = useState<ExtrusionToleranceRow[]>([createExtrusionToleranceRow()]);
 
     const reset = useCallback(() => {
@@ -41,7 +42,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
         setSpec('');
         setVendor('');
         setNote('');
-        setCreatedAt(new Date().toISOString().split('T')[0]);
+        setCreatedAt(formatLocalDate());
         setRows([createExtrusionToleranceRow()]);
     }, []);
 
@@ -57,7 +58,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
             setSpec(m.規格 || '');
             setVendor(m.廠商 || '');
             setNote(m.備註 || '');
-            setCreatedAt(m.建立日期?.split('T')[0] || new Date().toISOString().split('T')[0]);
+            setCreatedAt(m.建立日期?.split('T')[0] || formatLocalDate());
             setRows(
                 detail.details.length > 0
                     ? detail.details.map((d) => ({

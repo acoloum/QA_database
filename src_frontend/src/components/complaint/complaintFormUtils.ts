@@ -1,4 +1,5 @@
 import type { ComplaintStatus, ComplaintType, CustomerComplaint } from '../../types';
+import { addLocalDays } from '../../utils/dateUtils';
 
 const DEFAULT_REPLY_DAYS: Record<ComplaintType, number> = {
   quality: 14,
@@ -7,9 +8,7 @@ const DEFAULT_REPLY_DAYS: Record<ComplaintType, number> = {
 };
 
 export const addDays = (base: string, days: number) => {
-  const date = new Date(base);
-  date.setDate(date.getDate() + days);
-  return date.toISOString().split('T')[0];
+  return addLocalDays(base, days);
 };
 
 export const getDefaultReplyDeadlines = (complaintDate: string, complaintType: ComplaintType) => ({

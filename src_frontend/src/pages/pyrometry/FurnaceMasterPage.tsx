@@ -15,13 +15,13 @@ import {
   Legend,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { buildFurnacePayload } from './furnaceFormPayload';
+import { buildFurnacePayload, type FurnaceFormState } from './furnaceFormPayload';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 const PROCESS_TYPES = ['T6時效', 'T4', '退火'];
 
-const emptyForm = (): Partial<Furnace> => ({
+const emptyForm = (): FurnaceFormState => ({
   爐號: '', 名稱: '', 製程類型: '', TUS點數: 12, SAT點數: 2,
   TUS頻率_月: 3, SAT頻率_月: 3, TUS允許公差: '', SAT允許誤差: '',
   有效加熱區尺寸: '', 儀器型式: '', CQI9等級: '', 啟用狀態: true, 備註: '',
@@ -30,7 +30,7 @@ const emptyForm = (): Partial<Furnace> => ({
 const FurnaceMasterPage = () => {
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
-  const [form, setForm] = useState<Partial<Furnace>>(emptyForm());
+  const [form, setForm] = useState<FurnaceFormState>(emptyForm());
   const [showTrend, setShowTrend] = useState(false);
   const [trendFurnaceId, setTrendFurnaceId] = useState<number | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
@@ -51,7 +51,7 @@ const FurnaceMasterPage = () => {
       await deleteMutation.mutateAsync(f.識別碼);
     },
   });
-  const set = (k: keyof Furnace, v: unknown) => setForm(prev => ({ ...prev, [k]: v }));
+  const set = (k: keyof FurnaceFormState, v: unknown) => setForm(prev => ({ ...prev, [k]: v }));
   const handleSave = () => {
     try {
       saveMutation.mutate({ payload: buildFurnacePayload(form) }, { onSuccess: () => setShowModal(false) });
@@ -131,19 +131,19 @@ const FurnaceMasterPage = () => {
               </Col>
               <Col md={3}>
                 <Form.Label>TUS點數</Form.Label>
-                <Form.Control size="sm" type="number" value={form.TUS點數 ?? 12} onChange={e => set('TUS點數', Number(e.target.value))} />
+                <Form.Control size="sm" type="number" value={form.TUS點數 ?? ''} onChange={e => set('TUS點數', e.target.value)} />
               </Col>
               <Col md={3}>
                 <Form.Label>SAT點數</Form.Label>
-                <Form.Control size="sm" type="number" value={form.SAT點數 ?? 2} onChange={e => set('SAT點數', Number(e.target.value))} />
+                <Form.Control size="sm" type="number" value={form.SAT點數 ?? ''} onChange={e => set('SAT點數', e.target.value)} />
               </Col>
               <Col md={3}>
                 <Form.Label>TUS頻率(月)</Form.Label>
-                <Form.Control size="sm" type="number" value={form.TUS頻率_月 ?? 3} onChange={e => set('TUS頻率_月', Number(e.target.value))} />
+                <Form.Control size="sm" type="number" value={form.TUS頻率_月 ?? ''} onChange={e => set('TUS頻率_月', e.target.value)} />
               </Col>
               <Col md={3}>
                 <Form.Label>SAT頻率(月)</Form.Label>
-                <Form.Control size="sm" type="number" value={form.SAT頻率_月 ?? 3} onChange={e => set('SAT頻率_月', Number(e.target.value))} />
+                <Form.Control size="sm" type="number" value={form.SAT頻率_月 ?? ''} onChange={e => set('SAT頻率_月', e.target.value)} />
               </Col>
               <Col md={3}>
                 <Form.Label>TUS允許公差(±°C)</Form.Label>

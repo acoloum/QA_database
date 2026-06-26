@@ -1,4 +1,5 @@
 import type { NCMR, NCMRCreateInput, NCMRUpdateInput } from '../../types';
+import { formatLocalDate } from '../../utils/dateUtils';
 
 export interface NcmrFormValues {
   date: string;
@@ -16,7 +17,7 @@ export interface NcmrFormValues {
   result: string;
 }
 
-export const getTodayText = () => new Date().toISOString().split('T')[0];
+export const getTodayText = () => formatLocalDate();
 
 const toText = (value: string | number | null | undefined) => value == null ? '' : String(value);
 

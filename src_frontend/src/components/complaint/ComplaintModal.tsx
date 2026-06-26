@@ -9,6 +9,7 @@ import {
 } from '../../hooks/useComplaint';
 import type { CustomerComplaint, ComplaintType } from '../../types';
 import { buildComplaintPayload, getDefaultReplyDeadlines } from './complaintFormUtils';
+import { formatLocalDate } from '../../utils/dateUtils';
 
 interface ComplaintModalProps {
     show: boolean;
@@ -36,7 +37,7 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
 
     // 表單狀態
     const [customer,               setCustomer]               = useState('');
-    const [complaintDate,          setComplaintDate]          = useState(new Date().toISOString().split('T')[0]);
+    const [complaintDate,          setComplaintDate]          = useState(formatLocalDate());
     const [material,               setMaterial]               = useState('');
     const [spec,                   setSpec]                   = useState('');
     const [extrusionNos,           setExtrusionNos]           = useState<string[]>([]);
@@ -100,7 +101,7 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
                 setRepeatWarning(editData.is_repeat);
             } else {
                 setCustomer('');
-                setComplaintDate(new Date().toISOString().split('T')[0]);
+                setComplaintDate(formatLocalDate());
                 setMaterial('');
                 setSpec('');
                 setExtrusionNos([]);

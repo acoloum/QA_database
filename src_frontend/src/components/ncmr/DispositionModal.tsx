@@ -11,6 +11,7 @@ import {
     parseDispositionNumberInput,
     parseNullableDispositionNumberInput,
 } from './dispositionFormUtils';
+import { buildReworkFromNcmrUrl } from '../../pages/ncmr/ncmrPageUtils';
 
 interface DispositionModalProps {
     show: boolean;
@@ -105,7 +106,7 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
             confirmLabel: '開立',
             confirmVariant: 'primary',
             onConfirm: () => {
-              window.open(`/rework?ncmr_id=${item.id}&ncmr_no=${item.no || item.id}`, '_blank');
+              window.open(buildReworkFromNcmrUrl(item.id, item.no), '_blank');
             },
         });
     };
