@@ -15,6 +15,7 @@ from .pyrometry_calculations import (
     to_float,
     validate_test_payload,
 )
+from .pyrometry_persistence import build_point_model_kwargs
 
 
 def _furnace_to_dict(f: Furnace) -> Dict[str, Any]:
@@ -402,29 +403,9 @@ class PyrometryService:
             db.session.add(t)
             db.session.flush()
 
+            point_model = TusPoint if test_type == "TUS" else SatPoint
             for p in judged["points"]:
-                if test_type == "TUS":
-                    tch = p.get("頻道")
-                    db.session.add(TusPoint(
-                        test_id=t.id, position=p.get("點位"), tc_no=p.get("熱電偶編號"),
-                        channel=int(tch) if tch is not None else None,
-                        correction=to_float(p.get("修正值")),
-                        temp_max=to_float(p.get("最高溫")),
-                        temp_min=to_float(p.get("最低溫")),
-                        max_dev=to_float(p.get("最大偏差")),
-                        is_pass=p.get("是否合格", True),
-                    ))
-                else:
-                    ch = p.get("頻道")
-                    db.session.add(SatPoint(
-                        test_id=t.id, zone=p.get("控溫區"),
-                        channel=int(ch) if ch is not None else None,
-                        readings=p.get("readings") or None,
-                        diff=to_float(p.get("差值")),
-                        correction=to_float(p.get("修正值")),
-                        deviation=to_float(p.get("偏差")),
-                        is_pass=p.get("是否合格", True),
-                    ))
+                db.session.add(point_model(**build_point_model_kwargs(test_type, t.id, p)))
             db.session.commit()
             return t.id
         except Exception as e:
@@ -520,27 +501,9 @@ class PyrometryService:
 
             TusPoint.query.filter_by(test_id=test_id).delete()
             SatPoint.query.filter_by(test_id=test_id).delete()
+            point_model = TusPoint if test_type == "TUS" else SatPoint
             for p in judged["points"]:
-                if test_type == "TUS":
-                    tch = p.get("頻道")
-                    db.session.add(TusPoint(
-                        test_id=t.id, position=p.get("點位"), tc_no=p.get("熱電偶編號"),
-                        channel=int(tch) if tch is not None else None,
-                        correction=to_float(p.get("修正值")),
-                        temp_max=to_float(p.get("最高溫")),
-                        temp_min=to_float(p.get("最低溫")),
-                        max_dev=to_float(p.get("最大偏差")),
-                        is_pass=p.get("是否合格", True)))
-                else:
-                    ch = p.get("頻道")
-                    db.session.add(SatPoint(
-                        test_id=t.id, zone=p.get("控溫區"),
-                        channel=int(ch) if ch is not None else None,
-                        readings=p.get("readings") or None,
-                        diff=to_float(p.get("差值")),
-                        correction=to_float(p.get("修正值")),
-                        deviation=to_float(p.get("偏差")),
-                        is_pass=p.get("是否合格", True)))
+                db.session.add(point_model(**build_point_model_kwargs(test_type, t.id, p)))
             db.session.commit()
             return True
         except Exception as e:

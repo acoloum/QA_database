@@ -25,6 +25,7 @@ from .spc_analysis_service import (
     calculate_process_capability,
 )
 from .shipping_import import build_shipping_measurements_from_row
+from .shipping_export import build_shipping_export_columns, build_shipping_export_row
 
 
 class ShippingService:
@@ -630,49 +631,12 @@ class ShippingService:
             items = query.all()
             
             if not items:
-                # Empty DF with columns
-                cols = ['識別碼', '檢驗日期', '材質', '檢驗規格', '訂單號碼', '檢驗人員', '廠商名稱', '組數']
-                for i in range(1, 11):
-                    cols.extend([f'外徑{i}-最小', f'外徑{i}-最大', f'內徑{i}-最小', f'內徑{i}-最大', f'真圓度{i}', f'厚度{i}-最小', f'厚度{i}-最大'])
-                    cols.extend([f'同心度{i}', f'長度{i}', f'硬度{i}', f'真直度{i}'])
-                df = pd.DataFrame(columns=cols)
+                df = pd.DataFrame(columns=build_shipping_export_columns())
             else:
-                export_data = []
-                for item in items:
-                    row = ShippingService._map_row_to_dict(item)
-                    meas = row.get('measurements', {})
-
-                    def mv(g, item_name, key):
-                        cell = meas.get(str(g), {}).get(item_name)
-                        if not cell:
-                            return ''
-                        v = cell.get(key)
-                        return v if v is not None else ''
-
-                    export_row = {
-                        '識別碼': row['識別碼'],
-                        '檢驗日期': row['檢驗日期'],
-                        '材質': row['材質'],
-                        '檢驗規格': row['檢驗規格'],
-                        '訂單號碼': row['訂單號碼'],
-                        '檢驗人員': row['檢驗人員'],
-                        '廠商名稱': row['廠商中文名稱'],
-                        '組數': row.get('組數', 5)
-                    }
-                    for i in range(1, 11):
-                        export_row[f'外徑{i}-最小'] = mv(i, '外徑', 'value_min')
-                        export_row[f'外徑{i}-最大'] = mv(i, '外徑', 'value_max')
-                        export_row[f'內徑{i}-最小'] = mv(i, '內徑', 'value_min')
-                        export_row[f'內徑{i}-最大'] = mv(i, '內徑', 'value_max')
-                        export_row[f'真圓度{i}'] = mv(i, '真圓度', 'value_single')
-                        export_row[f'厚度{i}-最小'] = mv(i, '厚度', 'value_min')
-                        export_row[f'厚度{i}-最大'] = mv(i, '厚度', 'value_max')
-                        export_row[f'同心度{i}'] = mv(i, '同心度', 'value_single')
-                        export_row[f'長度{i}'] = mv(i, '長度', 'value_single')
-                        export_row[f'硬度{i}'] = mv(i, '硬度', 'value_single')
-                        export_row[f'真直度{i}'] = mv(i, '真直度', 'value_single')
-
-                    export_data.append(export_row)
+                export_data = [
+                    build_shipping_export_row(ShippingService._map_row_to_dict(item))
+                    for item in items
+                ]
                 
                 df = pd.DataFrame(export_data)
 

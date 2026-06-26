@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Modal, Form, Row, Col, Button } from 'react-bootstrap';
+import { Modal, Form, Button } from 'react-bootstrap';
 import toast from 'react-hot-toast';
 import type { TusPoint, SatPoint, SatReading } from '../../types';
 import { useInspectors } from '../../hooks/useInspectors';
@@ -27,13 +27,19 @@ import {
   emptySatPoint,
   emptyTusPoint,
   inheritReportFields,
-  parseOptionalChannel,
   removeSatReadingFromPoint,
   type ChartData,
   type ItemRow,
   type PyrometryUploadDestination,
   type ReportFieldsResponse,
 } from './pyrometryFormUtils';
+import {
+  updateItemRowAt,
+  updateSatFieldAt,
+  updateSatReadingAt,
+  updateTusPointAt,
+} from './pyrometryPointUpdates';
+import PyrometryBasicSection from './PyrometryBasicSection';
 
 interface Props { editId: number | null; onClose: () => void; onSaved: () => void; }
 
@@ -142,23 +148,15 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
 
   // TUS 量測點更新
   const updateTus = (i: number, k: keyof TusPoint, v: string) =>
-    setTusPoints(prev => prev.map((p, idx) =>
-      idx === i ? { ...p, [k]: k === '頻道' ? parseOptionalChannel(v) : v } : p,
-    ));
+    setTusPoints(prev => updateTusPointAt(prev, i, k, v));
 
   // SAT zone 欄位更新（控溫區、頻道、修正值）
   const updateSatField = (i: number, k: keyof SatPoint, v: string) =>
-    setSatPoints(prev => prev.map((p, idx) =>
-      idx === i ? { ...p, [k]: k === '頻道' ? parseOptionalChannel(v) : v } : p,
-    ));
+    setSatPoints(prev => updateSatFieldAt(prev, i, k, v));
 
   // SAT 單筆讀值更新
   const updateSatReading = (i: number, ri: number, k: keyof SatReading, v: string) =>
-    setSatPoints(prev => prev.map((p, idx) =>
-      idx === i
-        ? { ...p, readings: p.readings.map((r, rIdx) => rIdx === ri ? { ...r, [k]: v } : r) }
-        : p,
-    ));
+    setSatPoints(prev => updateSatReadingAt(prev, i, ri, k, v));
 
   const addSatReading = (i: number) =>
     setSatPoints(prev => prev.map((p, idx) =>
@@ -171,7 +169,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     ));
 
   const updateItemRow = (idx: number, k: keyof ItemRow, v: string) =>
-    setItemRows(prev => prev.map((row, i) => i === idx ? { ...row, [k]: v } : row));
+    setItemRows(prev => updateItemRowAt(prev, idx, k, v));
 
   // TUS 恆溫穩定期 → 回填最高/最低溫
   const applyRangeTus = () => {
@@ -327,60 +325,30 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
       <Modal.Body>
         {error && <div className="alert alert-danger py-1">{error}</div>}
         <Form>
-          {/* ── 基本資料 ── */}
-          <Row className="g-2 mb-3">
-            <Col md={3}>
-              <Form.Label>爐子 *</Form.Label>
-              <Form.Select size="sm" value={furnaceId}
-                onChange={e => { setFurnaceId(e.target.value); applyFurnaceDefaults(e.target.value, testType); }}>
-                <option value="">請選擇</option>
-                {(furnaces || []).map(f => <option key={f.識別碼} value={f.識別碼}>{f.爐號} {f.名稱}</option>)}
-              </Form.Select>
-            </Col>
-            <Col md={2}>
-              <Form.Label>類型 *</Form.Label>
-              <Form.Select size="sm" value={testType}
-                onChange={e => { const v = e.target.value as 'TUS' | 'SAT'; setTestType(v); applyFurnaceDefaults(furnaceId, v); }}>
-                <option value="TUS">TUS</option>
-                <option value="SAT">SAT</option>
-              </Form.Select>
-            </Col>
-            <Col md={2}>
-              <Form.Label>測試日期 *</Form.Label>
-              <Form.Control size="sm" type="date" value={testDate} onChange={e => setTestDate(e.target.value)} />
-            </Col>
-            <Col md={2}>
-              <Form.Label>設定溫度(°C) *</Form.Label>
-              <Form.Control size="sm" value={setpoint} onChange={e => setSetpoint(e.target.value)} />
-            </Col>
-            <Col md={2}>
-              <Form.Label>允許公差(±°C)</Form.Label>
-              <Form.Control size="sm" value={tolerance} onChange={e => setTolerance(e.target.value)} />
-            </Col>
-            <Col md={3}>
-              <Form.Label>測試人員</Form.Label>
-              <Form.Select size="sm" value={testerId} onChange={e => setTesterId(e.target.value)}>
-                <option value="">請選擇</option>
-                {(inspectors || []).map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-              </Form.Select>
-            </Col>
-            <Col md={3}>
-              <Form.Label>測試儀器編號</Form.Label>
-              <Form.Control size="sm" value={testInstrument} onChange={e => setTestInstrument(e.target.value)} />
-            </Col>
-            <Col md={3}>
-              <Form.Label>標準校正儀器編號</Form.Label>
-              <Form.Control size="sm" value={stdInstrument} onChange={e => setStdInstrument(e.target.value)} />
-            </Col>
-            <Col md={2}>
-              <Form.Label>儀器校正到期日</Form.Label>
-              <Form.Control size="sm" type="date" value={calDueDate} onChange={e => setCalDueDate(e.target.value)} />
-            </Col>
-            <Col md={12}>
-              <Form.Label>備註</Form.Label>
-              <Form.Control as="textarea" rows={2} size="sm" value={note} onChange={e => setNote(e.target.value)} />
-            </Col>
-          </Row>
+          <PyrometryBasicSection
+            furnaces={furnaces || []}
+            inspectors={inspectors || []}
+            furnaceId={furnaceId}
+            testType={testType}
+            testDate={testDate}
+            setpoint={setpoint}
+            tolerance={tolerance}
+            testerId={testerId}
+            testInstrument={testInstrument}
+            stdInstrument={stdInstrument}
+            calDueDate={calDueDate}
+            note={note}
+            onFurnaceChange={value => { setFurnaceId(value); applyFurnaceDefaults(value, testType); }}
+            onTestTypeChange={value => { setTestType(value); applyFurnaceDefaults(furnaceId, value); }}
+            onTestDateChange={setTestDate}
+            onSetpointChange={setSetpoint}
+            onToleranceChange={setTolerance}
+            onTesterIdChange={setTesterId}
+            onTestInstrumentChange={setTestInstrument}
+            onStdInstrumentChange={setStdInstrument}
+            onCalDueDateChange={setCalDueDate}
+            onNoteChange={setNote}
+          />
 
           <ReportFieldsSection
             showReport={showReport}
