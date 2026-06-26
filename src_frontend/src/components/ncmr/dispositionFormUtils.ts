@@ -6,7 +6,7 @@ const parseDispositionNumber = (value: string) => {
 };
 
 export const parseDispositionNumberInput = (value: string) =>
-  parseDispositionNumber(value) ?? 0;
+  parseDispositionNumber(value);
 
 export const parseNullableDispositionNumberInput = (value: string) =>
   parseDispositionNumber(value);

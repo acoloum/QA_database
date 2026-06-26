@@ -7,6 +7,7 @@ describe('shippingMeasurementNumber', () => {
     expect(parseShippingMeasurementNumber('0')).toBe(0);
     expect(parseShippingMeasurementNumber('9.8')).toBe(9.8);
     expect(parseShippingMeasurementNumber('9.8abc')).toBeNull();
+    expect(parseShippingMeasurementNumber('   ')).toBeNull();
     expect(parseShippingMeasurementNumber(null)).toBeNull();
   });
 

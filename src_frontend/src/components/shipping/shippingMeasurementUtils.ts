@@ -19,6 +19,15 @@ interface CalculateShippingViolationsParams {
   spec: string;
 }
 
+const resolveStandardValue = (
+  parsedValue: number | undefined,
+  configuredValue: number | null,
+) => {
+  if (parsedValue !== undefined && parsedValue !== 0) return parsedValue;
+  if (configuredValue !== null && configuredValue !== 0) return configuredValue;
+  return null;
+};
+
 export const calculateShippingViolations = ({
   items,
   groupKeys,
@@ -32,7 +41,8 @@ export const calculateShippingViolations = ({
   const specValues = parseSpec(spec);
 
   items.forEach(item => {
-    const tolItem = tolerance.tolerances.find(t => t.項目 === (item.toleranceKey ?? item.key));
+    const toleranceItemKey = item.toleranceKey ?? item.key;
+    const tolItem = tolerance.tolerances.find(t => t.項目 === toleranceItemKey);
     if (!tolItem) return;
 
     let lsl = -Infinity;
@@ -42,14 +52,13 @@ export const calculateShippingViolations = ({
       lsl = tolItem.尺寸下限;
       usl = tolItem.尺寸上限;
     } else if (tolItem.公差下限 !== null && tolItem.公差上限 !== null) {
-      let std: number = specValues[item.key] ?? 0;
-      if (std === 0 && tolItem.標準值 !== null) {
-        std = tolItem.標準值;
-      }
-      std = std || 0;
-      if (std === 0) return;
-      lsl = std + (tolItem.公差下限 ?? 0);
-      usl = std + (tolItem.公差上限 ?? 0);
+      const standardValue = resolveStandardValue(
+        specValues[toleranceItemKey] ?? specValues[item.key],
+        tolItem.標準值,
+      );
+      if (standardValue === null) return;
+      lsl = standardValue + (tolItem.公差下限 ?? 0);
+      usl = standardValue + (tolItem.公差上限 ?? 0);
     } else if (tolItem.尺寸上限 !== null) {
       lsl = 0;
       usl = tolItem.尺寸上限;

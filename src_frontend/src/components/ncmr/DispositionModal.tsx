@@ -21,7 +21,11 @@ interface DispositionModalProps {
 
 const DISPOSITION_TYPES: DispositionType[] = ['矯正重工', '報廢', '挑選全檢', '讓步放行'];
 
-const emptyForm = (): NcmrDisposition => ({
+type DispositionFormState = Omit<NcmrDisposition, '處置數量'> & {
+    處置數量: number | null;
+};
+
+const emptyForm = (): DispositionFormState => ({
     處置類型: '報廢',
     處置數量: 0,
     是否超出客戶規格: false,
@@ -37,7 +41,7 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
     const createCAPA = useCreateCAPA();
     const navigate = useNavigate();
 
-    const [form, setForm] = useState<NcmrDisposition>(emptyForm());
+    const [form, setForm] = useState<DispositionFormState>(emptyForm());
     const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
     // 計算不良總數、已處置數、未處置數
@@ -46,14 +50,20 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
     const remaining = defectTotal - disposed;
     const canClose = defectTotal > 0 && remaining === 0 && dispositions.length > 0;
 
-    const setField = (k: keyof NcmrDisposition, v: unknown) =>
+    const setField = (k: keyof DispositionFormState, v: unknown) =>
         setForm(prev => ({ ...prev, [k]: v }));
 
     // 新增處置明細
     const handleAdd = async () => {
         if (!ncmrId) return;
         try {
-            await createDisp.mutateAsync({ ncmrId, data: form });
+            await createDisp.mutateAsync({
+                ncmrId,
+                data: {
+                    ...form,
+                    處置數量: form.處置數量 ?? 0,
+                },
+            });
             setForm(emptyForm());
         } catch (e) {
             console.error(e);
@@ -170,7 +180,7 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
                         </div>
                         <div className="col-md-6">
                             <Form.Label>處置數量</Form.Label>
-                            <Form.Control type="number" value={form.處置數量}
+                            <Form.Control type="number" value={form.處置數量 ?? ''}
                                 onChange={e => setField('處置數量', parseDispositionNumberInput(e.target.value))} />
                         </div>
                     </div>

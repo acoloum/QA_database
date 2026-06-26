@@ -51,6 +51,40 @@ describe('calculateShippingViolations', () => {
     });
   });
 
+  it('使用 toleranceKey 對應規格標準值計算相對公差', () => {
+    const violations = calculateShippingViolations({
+      items: [
+        { label: '顯示長度', key: '顯示長度', toleranceKey: '長度', type: 'single' },
+      ],
+      groupKeys: ['1'],
+      groups: {
+        '1': {
+          顯示長度: { value_single: '100.6', is_ng: false },
+        },
+      },
+      tolerance: {
+        success: true,
+        found: true,
+        tolerances: [
+          {
+            項目: '長度',
+            標準值: null,
+            公差上限: 0.5,
+            公差下限: -0.5,
+            尺寸上限: null,
+            尺寸下限: null,
+            單位: 'mm',
+          },
+        ],
+      },
+      spec: '10*8*100',
+    });
+
+    expect(violations).toEqual({
+      '1:顯示長度:value_single': true,
+    });
+  });
+
   it('沒有公差資料時回傳空物件', () => {
     expect(calculateShippingViolations({
       items: [{ label: '外徑', key: '外徑', type: 'minmax' }],
