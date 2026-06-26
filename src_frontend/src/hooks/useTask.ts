@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import type { ActionTask, TaskStatus, PaginatedResponse } from '../types';
+import { normalizeTaskListResponse } from './taskResponseUtils';
 
 export interface TaskListParams {
     source_type?: string;
@@ -46,8 +47,7 @@ export const useTasksBySource = (sourceType: string, sourceId: number | null) =>
             const res = await api.get<ActionTask[]>('/tasks', {
                 params: { source_type: sourceType, source_id: sourceId },
             });
-            const d = res.data as unknown as { data?: ActionTask[] } | ActionTask[];
-            return (Array.isArray(d) ? d : d.data) ?? [];
+            return normalizeTaskListResponse(res.data);
         },
         enabled: !!sourceId,
     });

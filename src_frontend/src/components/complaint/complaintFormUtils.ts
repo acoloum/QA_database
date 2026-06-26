@@ -40,6 +40,12 @@ interface BuildComplaintPayloadParams {
 
 const trimmedOrUndefined = (value: string) => value.trim() || undefined;
 
+const numberOrUndefined = (value: string) => {
+  if (value.trim() === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
 export const buildComplaintPayload = ({
   isEdit,
   customer,
@@ -71,7 +77,7 @@ export const buildComplaintPayload = ({
   complaint_type: complaintType,
   device_serial: trimmedOrUndefined(deviceSerial),
   usage_env: trimmedOrUndefined(usageEnv),
-  failure_hours: failureHours ? Number(failureHours) : undefined,
+  failure_hours: numberOrUndefined(failureHours),
   initial_reply_deadline: initialReplyDeadline || undefined,
   final_reply_deadline: finalReplyDeadline || undefined,
   status: isEdit ? (status as ComplaintStatus) : undefined,

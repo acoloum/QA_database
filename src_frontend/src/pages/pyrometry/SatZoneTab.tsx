@@ -1,6 +1,7 @@
 import { Button, Col, Form, Row, Table } from 'react-bootstrap';
 
 import type { SatPoint, SatReading } from '../../types';
+import { calculateSatReadingDisplay, evaluateSatPoint, parseSatNumber } from './satEvaluation';
 
 interface Props {
   point: SatPoint;
@@ -19,19 +20,9 @@ const SatZoneTab = ({
   onAddReading,
   onRemoveReading,
 }: Props) => {
-  const tol = parseFloat(String(tolerance)) || 0;
-  const corr = parseFloat(String(point.修正值 ?? 0)) || 0;
-
-  const validReadings = point.readings.filter(
-    reading => reading.校正測試讀值 !== '' && reading.校正測試讀值 !== null,
-  );
-  const passCount = validReadings.filter(reading => {
-    const ctrl = parseFloat(String(reading.控制儀表讀值));
-    const test = parseFloat(String(reading.校正測試讀值));
-    if (isNaN(ctrl) || isNaN(test)) return false;
-    const dev = Math.round((test - ctrl + corr) * 100) / 100;
-    return Math.abs(dev) <= tol;
-  }).length;
+  const toleranceValue = parseSatNumber(tolerance) ?? 0;
+  const correction = parseSatNumber(point.修正值) ?? 0;
+  const pointResult = evaluateSatPoint(point, tolerance);
 
   return (
     <>
@@ -71,7 +62,7 @@ const SatZoneTab = ({
         </Col>
         <Col md="auto" className="ms-auto text-end">
           <span className="text-muted" style={{ fontSize: 12 }}>
-            有效讀值 {validReadings.length} 筆，合格 {passCount} / {validReadings.length}
+            有效讀值 {pointResult.validCount} 筆，合格 {pointResult.passCount} / {pointResult.validCount}
           </span>
         </Col>
       </Row>
@@ -90,12 +81,12 @@ const SatZoneTab = ({
         </thead>
         <tbody>
           {point.readings.map((reading, readingIndex) => {
-            const ctrl = parseFloat(String(reading.控制儀表讀值));
-            const test = parseFloat(String(reading.校正測試讀值));
-            const diff = (!isNaN(ctrl) && !isNaN(test)) ? Math.round((test - ctrl) * 100) / 100 : null;
-            const dev = diff !== null ? Math.round((diff + corr) * 100) / 100 : null;
-            const pass = dev !== null ? Math.abs(dev) <= tol : null;
-            const devColor = dev === null ? undefined : Math.abs(dev) > tol ? '#842029' : '#0a3622';
+            const { diff, deviation, pass } = calculateSatReadingDisplay({
+              reading,
+              correction,
+              tolerance: toleranceValue,
+            });
+            const devColor = deviation === null ? undefined : Math.abs(deviation) > toleranceValue ? '#842029' : '#0a3622';
             return (
               <tr key={readingIndex} style={pass === false ? { background: '#fff5f5' } : undefined}>
                 <td className="text-muted" style={{ fontSize: 11 }}>{readingIndex + 1}</td>
@@ -116,8 +107,8 @@ const SatZoneTab = ({
                   />
                 </td>
                 <td className="text-muted">{diff ?? '—'}</td>
-                <td style={{ fontWeight: dev !== null ? 600 : undefined, color: devColor }}>
-                  {dev ?? '—'}
+                <td style={{ fontWeight: deviation !== null ? 600 : undefined, color: devColor }}>
+                  {deviation ?? '—'}
                 </td>
                 <td>
                   {pass === null ? '—' : pass

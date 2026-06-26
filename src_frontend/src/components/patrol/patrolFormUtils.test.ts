@@ -40,6 +40,20 @@ describe('patrolFormUtils', () => {
     expect(isNg).toBe(true);
   });
 
+  it('巡檢單格 NG 判斷不使用部分非法數字的截斷結果', () => {
+    const isNg = isPatrolCellNG({
+      details: [{ group: '第1組', pos: '前段', item: '外徑', min: '84.9abc', max: '' }],
+      tolerances: [{ 項目: '外徑', 位置: '', 尺寸下限: 85, 尺寸上限: 86, 公差下限: null, 公差上限: null, 標準值: null, 單位: 'mm' }],
+      specStdValues: {},
+      group: '第1組',
+      pos: '前段',
+      item: '外徑',
+      type: 'min',
+    });
+
+    expect(isNg).toBe(false);
+  });
+
   it('用厚度最大最小差判斷同心度 NG', () => {
     const isNg = isPatrolConcentricityNG({
       details,
@@ -50,6 +64,20 @@ describe('patrolFormUtils', () => {
     });
 
     expect(isNg).toBe(true);
+  });
+
+  it('同心度 NG 判斷遇到非法厚度值時不使用截斷結果', () => {
+    const isNg = isPatrolConcentricityNG({
+      details: [
+        { group: '第1組', pos: '前段', item: '厚度', min: '2.4abc', max: '3.0' },
+      ],
+      tolerances: [{ 項目: '同心度', 位置: '', 尺寸下限: null, 尺寸上限: null, 公差下限: 0, 公差上限: 0.4, 標準值: null, 單位: 'mm' }],
+      specStdValues: {},
+      group: '第1組',
+      pos: '前段',
+    });
+
+    expect(isNg).toBe(false);
   });
 
   it('只把有輸入 min 或 max 的明細組成 payload', () => {

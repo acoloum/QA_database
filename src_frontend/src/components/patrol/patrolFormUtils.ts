@@ -70,7 +70,8 @@ export const isPatrolCellNG = ({
   const valueText = getPatrolDetailValue(details, group, pos, item, type);
   if (valueText === '') return false;
 
-  const value = parseFloat(valueText);
+  const value = parsePatrolMeasurement(valueText);
+  if (value === null) return false;
   const { lsl, usl } = calcPatrolLimits(tolerance, item, specStdValues);
   if (lsl != null && value < lsl) return true;
   if (usl != null && value > usl) return true;
@@ -96,7 +97,11 @@ export const isPatrolConcentricityNG = ({
   const maxText = getPatrolDetailValue(details, group, pos, '厚度', 'max');
   if (minText === '' || maxText === '') return false;
 
-  const concentricity = parseFloat(maxText) - parseFloat(minText);
+  const minValue = parsePatrolMeasurement(minText);
+  const maxValue = parsePatrolMeasurement(maxText);
+  if (minValue === null || maxValue === null) return false;
+
+  const concentricity = maxValue - minValue;
   const { lsl, usl } = calcPatrolLimits(tolerance, '同心度', specStdValues);
   const effectiveLsl = lsl ?? (tolerance.公差下限 != null ? tolerance.公差下限 : null);
   const effectiveUsl = usl ?? (tolerance.公差上限 != null ? tolerance.公差上限 : null);

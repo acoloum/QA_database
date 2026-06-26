@@ -6,6 +6,7 @@ import TusDataTable from '../../components/pyrometry/TusDataTable';
 import type { SatPoint, SatReading } from '../../types';
 import type { ChartData } from './pyrometryFormUtils';
 import SatZoneTab from './SatZoneTab';
+import { evaluateSatPoint } from './satEvaluation';
 
 interface Props {
   satPoints: SatPoint[];
@@ -168,15 +169,7 @@ const SatSection = ({
 
         <Nav variant="tabs" activeKey={activeZone} onSelect={key => onActiveZoneChange(Number(key))}>
           {satPoints.map((point, index) => {
-            const tol = parseFloat(String(tolerance)) || 0;
-            const corr = parseFloat(String(point.修正值 ?? 0)) || 0;
-            const allPass = point.readings.every(reading => {
-              const ctrl = parseFloat(String(reading.控制儀表讀值));
-              const test = parseFloat(String(reading.校正測試讀值));
-              if (isNaN(ctrl) || isNaN(test)) return true;
-              return Math.abs(test - ctrl + corr) <= tol;
-            });
-            const hasData = point.readings.some(reading => reading.校正測試讀值 !== '' && reading.校正測試讀值 !== null);
+            const { allPass, hasData } = evaluateSatPoint(point, tolerance);
             return (
               <Nav.Item key={index}>
                 <Nav.Link eventKey={index} style={{ fontSize: 13, padding: '6px 14px' }}>

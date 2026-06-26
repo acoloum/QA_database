@@ -87,4 +87,29 @@ describe('complaintFormUtils', () => {
     expect(payload.failure_hours).toBe(12);
     expect(payload.device_serial).toBe('SN-1');
   });
+
+  it('故障時數非法值轉為 undefined 且保留 0', () => {
+    const base = {
+      isEdit: false,
+      customer: '客戶A',
+      complaintDate: '2026-06-20',
+      material: '',
+      spec: '',
+      extrusionNos: [],
+      description: '故障',
+      severity: '',
+      defectCategory: '',
+      complaintType: 'field_failure' as const,
+      deviceSerial: '',
+      usageEnv: '',
+      initialReplyDeadline: '',
+      finalReplyDeadline: '',
+      status: '待處理',
+      initialReply: '',
+      finalReply: '',
+    };
+
+    expect(buildComplaintPayload({ ...base, failureHours: 'abc' }).failure_hours).toBeUndefined();
+    expect(buildComplaintPayload({ ...base, failureHours: '0' }).failure_hours).toBe(0);
+  });
 });
