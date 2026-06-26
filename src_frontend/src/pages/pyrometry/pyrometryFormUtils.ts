@@ -101,3 +101,25 @@ export const applyChartRangeToSatReadings = (
     return { ...point, readings };
   });
 };
+
+export const addSatReadingToPoint = (point: SatPoint): SatPoint => ({
+  ...point,
+  readings: [...point.readings, emptyReading()],
+});
+
+export const removeSatReadingFromPoint = (point: SatPoint, readingIndex: number): SatPoint => ({
+  ...point,
+  readings: point.readings.filter((_, index) => index !== readingIndex),
+});
+
+export const inheritReportFields = (
+  currentMeta: Record<string, string>,
+  currentRows: ItemRow[],
+  inherited: ReportFieldsResponse,
+) => {
+  const { itemRows, meta } = splitReportFields(inherited);
+  return {
+    meta: { ...currentMeta, ...meta },
+    itemRows: itemRows.length ? itemRows : currentRows,
+  };
+};

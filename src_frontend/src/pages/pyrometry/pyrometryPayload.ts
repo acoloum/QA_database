@@ -45,6 +45,14 @@ export interface PyrometryPayload {
   報告欄位: Record<string, string | ItemRow[]>;
 }
 
+const parseRequiredPositiveId = (value: string, label: string) => {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`請選擇${label}`);
+  }
+  return parsed;
+};
+
 export const buildPyrometryPayload = ({
   furnaceId,
   testType,
@@ -94,12 +102,12 @@ export const buildPyrometryPayload = ({
       } : null));
 
   return {
-    爐子ID: Number(furnaceId),
+    爐子ID: parseRequiredPositiveId(furnaceId, '爐子'),
     測試類型: testType,
     測試日期: testDate,
     設定溫度: setpoint,
     允許公差: tolerance,
-    測試人員: testerId ? Number(testerId) : null,
+    測試人員: testerId ? parseRequiredPositiveId(testerId, '測試人員') : null,
     測試儀器編號: testInstrument,
     標準校正儀器編號: stdInstrument,
     儀器校正到期日: calDueDate || null,

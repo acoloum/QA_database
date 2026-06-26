@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button, Card, Table, Modal, Form, Row, Col, Badge } from 'react-bootstrap';
+import toast from 'react-hot-toast';
 import type { Furnace } from '../../types';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import { useDeleteFurnace, useFurnaces, useFurnaceTusTrend, useSaveFurnace } from '../../hooks/usePyrometry';
@@ -14,6 +15,7 @@ import {
   Legend,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
+import { buildFurnacePayload } from './furnaceFormPayload';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -50,6 +52,13 @@ const FurnaceMasterPage = () => {
     },
   });
   const set = (k: keyof Furnace, v: unknown) => setForm(prev => ({ ...prev, [k]: v }));
+  const handleSave = () => {
+    try {
+      saveMutation.mutate({ payload: buildFurnacePayload(form) }, { onSuccess: () => setShowModal(false) });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '爐子設備資料格式不正確');
+    }
+  };
 
   return (
     <div>
@@ -170,7 +179,7 @@ const FurnaceMasterPage = () => {
           <Button variant="secondary" onClick={() => setShowModal(false)}>取消</Button>
           <Button
             variant="primary"
-            onClick={() => saveMutation.mutate({ payload: form }, { onSuccess: () => setShowModal(false) })}
+            onClick={handleSave}
             disabled={saveMutation.isPending}
           >
             {saveMutation.isPending ? '儲存中…' : '儲存'}

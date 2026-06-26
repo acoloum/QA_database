@@ -10,13 +10,14 @@ import {
 import CAPAModal from '../../components/capa/CAPAModal';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import type { CAPAListItem } from '../../types';
+import { parseCapaOpenId } from './capaPageUtils';
 
 const PAGE_SIZE = 20;
 
 const CAPAPage = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const initialOpenId = Number(searchParams.get('editId') ?? searchParams.get('openId'));
+    const initialOpenId = parseCapaOpenId(searchParams);
 
     // 篩選
     const [sourceType,  setSourceType]  = useState('');
@@ -26,16 +27,23 @@ const CAPAPage = () => {
     const [page,        setPage]        = useState(1);
 
     // Modal
-    const [showModal, setShowModal] = useState(Number.isFinite(initialOpenId) && initialOpenId > 0);
+    const [showModal, setShowModal] = useState(initialOpenId !== null);
     const [editId,    setEditId]    = useState<number | null>(
-        Number.isFinite(initialOpenId) && initialOpenId > 0 ? initialOpenId : null
+        initialOpenId
     );
     const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
     // URL 參數觸發開啟（來自 NCMR / 客訴頁開立後跳轉）
     useEffect(() => {
-        const openId = searchParams.get('editId') ?? searchParams.get('openId');
-        if (openId) {
+        const openId = parseCapaOpenId(searchParams);
+        const hasOpenParam = searchParams.has('editId') || searchParams.has('openId');
+        if (openId !== null) {
+            queueMicrotask(() => {
+                setEditId(openId);
+                setShowModal(true);
+            });
+        }
+        if (hasOpenParam) {
             navigate('/capa', { replace: true });
         }
     }, [searchParams, navigate]);

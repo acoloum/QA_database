@@ -39,6 +39,18 @@ def test_validate_test_payload_rejects_invalid_type():
         })
 
 
+def test_validate_test_payload_rejects_invalid_furnace_id():
+    for furnace_id in (0, "0", "abc"):
+        with pytest.raises(PyrometryValidationError, match="爐子ID"):
+            validate_test_payload({
+                "爐子ID": furnace_id,
+                "測試日期": "2026-06-20",
+                "設定溫度": "180",
+                "測試類型": "TUS",
+                "points": [],
+            })
+
+
 def test_evaluate_helpers_keep_existing_judgement_contract():
     tus = evaluate_tus(180, 10, [{"最高溫": 191, "最低溫": 180}])
     sat = evaluate_sat(5, [{"控溫區": "Z1", "修正值": 0, "readings": [

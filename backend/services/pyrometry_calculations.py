@@ -41,12 +41,15 @@ def validate_test_payload(data: Dict[str, Any], default_test_type: str | None = 
     if not isinstance(data.get("points", []), list):
         raise PyrometryValidationError("points 必須為陣列")
     try:
+        furnace_id = int(data.get("爐子ID"))
+        if furnace_id <= 0:
+            raise ValueError
         float(data.get("設定溫度"))
         float(data.get("允許公差") or 0)
         parse_date(data.get("測試日期"))
     except (TypeError, ValueError):
-        raise PyrometryValidationError("測試日期、設定溫度或允許公差格式不正確")
-    return {**data, "測試類型": test_type}
+        raise PyrometryValidationError("爐子ID、測試日期、設定溫度或允許公差格式不正確")
+    return {**data, "測試類型": test_type, "爐子ID": furnace_id}
 
 
 def interp_error(points: List, setpoint: float) -> float:

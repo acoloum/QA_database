@@ -124,4 +124,36 @@ describe('buildPyrometryPayload', () => {
       爐體穩定結束: 0,
     });
   });
+
+  it('rejects empty or invalid furnace ids before sending payload', () => {
+    const build = (furnaceId: string) => () => buildPyrometryPayload({
+      furnaceId,
+      testType: 'TUS',
+      testDate: '2026-06-19',
+      setpoint: '180',
+      tolerance: '10',
+      testerId: '',
+      testInstrument: '',
+      stdInstrument: '',
+      calDueDate: '',
+      note: '',
+      tusPoints: [],
+      satPoints: [],
+      chartData: null,
+      rangeStart: 0,
+      rangeEnd: 0,
+      satChartData: null,
+      satRangeStart: 0,
+      satRangeEnd: 0,
+      furnaceChartData: null,
+      furnaceRangeStart: 0,
+      furnaceRangeEnd: 0,
+      reportMeta,
+      itemRows,
+    });
+
+    expect(build('')).toThrow('請選擇爐子');
+    expect(build('0')).toThrow('請選擇爐子');
+    expect(build('abc')).toThrow('請選擇爐子');
+  });
 });

@@ -21,11 +21,12 @@ import { buildPyrometryEditFormState } from './pyrometryFormHydration';
 import {
   applyChartRangeToSatReadings,
   applyChartRangeToTusPoints,
+  addSatReadingToPoint,
   emptyItemRow,
-  emptyReading,
   emptySatPoint,
   emptyTusPoint,
-  splitReportFields,
+  inheritReportFields,
+  removeSatReadingFromPoint,
   type ChartData,
   type ItemRow,
   type ReportFieldsResponse,
@@ -158,12 +159,12 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
 
   const addSatReading = (i: number) =>
     setSatPoints(prev => prev.map((p, idx) =>
-      idx === i ? { ...p, readings: [...p.readings, emptyReading()] } : p,
+      idx === i ? addSatReadingToPoint(p) : p,
     ));
 
   const removeSatReading = (i: number, ri: number) =>
     setSatPoints(prev => prev.map((p, idx) =>
-      idx === i ? { ...p, readings: p.readings.filter((_, rIdx) => rIdx !== ri) } : p,
+      idx === i ? removeSatReadingFromPoint(p, ri) : p,
     ));
 
   const updateItemRow = (idx: number, k: keyof ItemRow, v: string) =>
@@ -228,9 +229,9 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
       }
       const tusId = list.data[0].識別碼;
       const detail = await loadTestDetail.mutateAsync(tusId) as { 報告欄位?: ReportFieldsResponse };
-      const { itemRows: inheritedItems, meta } = splitReportFields(detail.報告欄位 || {});
-      setReportMeta(prev => ({ ...prev, ...meta }));
-      if (inheritedItems.length) setItemRows(inheritedItems);
+      const inheritedFields = inheritReportFields(reportMeta, itemRows, detail.報告欄位 || {});
+      setReportMeta(inheritedFields.meta);
+      setItemRows(inheritedFields.itemRows);
     } catch {
       toast.error('繼承失敗，請稍後再試');
     }

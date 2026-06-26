@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  addSatReadingToPoint,
   applyChartRangeToSatReadings,
   applyChartRangeToTusPoints,
   computeRangeStats,
+  inheritReportFields,
+  removeSatReadingFromPoint,
   splitReportFields,
   type ReportFieldsResponse,
 } from './pyrometryFormUtils';
@@ -97,5 +100,39 @@ describe('pyrometryFormUtils', () => {
       { 控制儀表讀值: '180.11', 校正測試讀值: '181' },
       { 控制儀表讀值: '180.5', 校正測試讀值: '182' },
     ]);
+  });
+
+  it('adds and removes SAT readings without mutating the original point', () => {
+    const point = {
+      控溫區: 'Zone1',
+      頻道: 13,
+      修正值: '',
+      readings: [{ 控制儀表讀值: '180', 校正測試讀值: '181' }],
+    };
+
+    const added = addSatReadingToPoint(point);
+    expect(added.readings).toHaveLength(2);
+    expect(point.readings).toHaveLength(1);
+
+    const removed = removeSatReadingFromPoint(added, 0);
+    expect(removed.readings).toEqual([{ 控制儀表讀值: '', 校正測試讀值: '' }]);
+  });
+
+  it('inherits report fields by merging metadata and replacing rows only when provided', () => {
+    const currentMeta = { 客戶名稱: '原客戶', 測試條件: '滿爐' };
+    const currentRows = [{ 工件料號: 'P-OLD', 生產批號: 'B-OLD', 內外徑尺寸: '40x3', 支數: '10' }];
+
+    const result = inheritReportFields(currentMeta, currentRows, {
+      客戶名稱: '新客戶',
+      料號批次: [{ 工件料號: 'P-NEW', 生產批號: 'B-NEW', 內外徑尺寸: '50x3', 支數: '20' }],
+    });
+
+    expect(result.meta).toEqual({ 客戶名稱: '新客戶', 測試條件: '滿爐' });
+    expect(result.itemRows).toEqual([
+      { 工件料號: 'P-NEW', 生產批號: 'B-NEW', 內外徑尺寸: '50x3', 支數: '20' },
+    ]);
+
+    const noRows = inheritReportFields(currentMeta, currentRows, { 客戶名稱: '新客戶' });
+    expect(noRows.itemRows).toBe(currentRows);
   });
 });
