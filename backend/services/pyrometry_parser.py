@@ -6,6 +6,7 @@
 時間標籤一律輸出為分鐘級（單日 HH:MM；跨日 MM/DD HH:MM），
 方便在前端以分鐘為單位選取恆溫穩定期。並自動略過文字副標題列。
 """
+from dataclasses import dataclass
 from typing import Dict, Any, BinaryIO, List
 import datetime
 import pandas as pd
@@ -13,6 +14,14 @@ import pandas as pd
 _TIME_KEYWORDS = ('時間', 'time', '日期', 'date', '時刻')
 MAX_TEMPERATURE_ROWS = 10000
 MAX_TEMPERATURE_COLUMNS = 128
+
+
+@dataclass
+class TimeColumnDetection:
+    second_is_time: bool
+    time_raw: List
+    channel_cols: List
+    channel_df: pd.DataFrame
 
 
 def _name_is_time(name) -> bool:
@@ -67,6 +76,53 @@ def _build_time_labels(time_raw: List) -> List[str]:
     return [t.strftime(fmt) for t in ts]
 
 
+def detect_time_columns(raw: pd.DataFrame) -> TimeColumnDetection:
+    """判斷記錄器資料是單時間欄或日期+時間雙欄。"""
+    cols = list(raw.columns)
+    second_is_time = raw.shape[1] >= 3 and (
+        _name_is_time(cols[1]) or not _is_numeric_series(raw.iloc[:, 1])
+    )
+    if second_is_time:
+        return TimeColumnDetection(
+            second_is_time=True,
+            time_raw=list(zip(raw.iloc[:, 0], raw.iloc[:, 1])),
+            channel_cols=cols[2:],
+            channel_df=raw.iloc[:, 2:].copy(),
+        )
+    return TimeColumnDetection(
+        second_is_time=False,
+        time_raw=list(raw.iloc[:, 0]),
+        channel_cols=cols[1:],
+        channel_df=raw.iloc[:, 1:].copy(),
+    )
+
+
+def filter_numeric_rows(time_raw: List, channel_df: pd.DataFrame):
+    """略過副標題列：該列所有通道欄均為非數值時移除。"""
+    numeric_mask = channel_df.apply(pd.to_numeric, errors="coerce").notna().any(axis=1)
+    filtered_time = [t for t, keep in zip(time_raw, numeric_mask) if keep]
+    filtered_channels = channel_df[numeric_mask].reset_index(drop=True)
+    return filtered_time, filtered_channels
+
+
+def build_channel_values(channel_cols: List, channel_df: pd.DataFrame):
+    """建立通道摘要與前端繪圖需要的數值序列。"""
+    channels, values = [], {}
+    for col in channel_cols:
+        numeric = pd.to_numeric(channel_df[col], errors="coerce")
+        non_null = numeric.dropna()
+        if non_null.empty:
+            continue
+        col_name = str(col)
+        values[col_name] = [None if pd.isna(v) else float(v) for v in numeric]
+        channels.append({
+            "名稱": col_name,
+            "最高溫": float(non_null.max()),
+            "最低溫": float(non_null.min()),
+        })
+    return channels, values
+
+
 def parse_temperature_file(file_obj: BinaryIO, filename: str) -> Dict[str, Any]:
     """解析溫度記錄器 CSV/Excel。
 
@@ -92,42 +148,12 @@ def parse_temperature_file(file_obj: BinaryIO, filename: str) -> Dict[str, Any]:
     if raw.shape[1] < 2:
         raise ValueError("檔案需至少包含時間欄與一個熱電偶欄")
 
-    cols = list(raw.columns)
-
-    # 第二欄是否也是時間欄（日期+時刻雙欄）：欄名含關鍵字、或內容非數值
-    second_is_time = raw.shape[1] >= 3 and (
-        _name_is_time(cols[1]) or not _is_numeric_series(raw.iloc[:, 1])
-    )
-
-    if second_is_time:
-        time_raw = list(zip(raw.iloc[:, 0], raw.iloc[:, 1]))
-        channel_cols = cols[2:]
-        channel_df = raw.iloc[:, 2:].copy()
-    else:
-        time_raw = list(raw.iloc[:, 0])
-        channel_cols = cols[1:]
-        channel_df = raw.iloc[:, 1:].copy()
-
-    # 略過副標題列：該列所有通道欄均為非數值（文字或空）
-    numeric_mask = channel_df.apply(pd.to_numeric, errors="coerce").notna().any(axis=1)
-    time_raw = [t for t, keep in zip(time_raw, numeric_mask) if keep]
-    channel_df = channel_df[numeric_mask].reset_index(drop=True)
+    detected = detect_time_columns(raw)
+    time_raw, channel_df = filter_numeric_rows(detected.time_raw, detected.channel_df)
 
     time_strs = _build_time_labels(time_raw)
 
-    channels, values = [], {}
-    for col in channel_cols:
-        numeric = pd.to_numeric(channel_df[col], errors="coerce")
-        non_null = numeric.dropna()
-        if non_null.empty:
-            continue
-        col_name = str(col)
-        values[col_name] = [None if pd.isna(v) else float(v) for v in numeric]
-        channels.append({
-            "名稱": col_name,
-            "最高溫": float(non_null.max()),
-            "最低溫": float(non_null.min()),
-        })
+    channels, values = build_channel_values(detected.channel_cols, channel_df)
 
     if not channels:
         raise ValueError("未找到有效的溫度通道數值")

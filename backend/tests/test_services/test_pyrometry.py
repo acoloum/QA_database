@@ -306,6 +306,32 @@ def test_parse_timeseries_csv_summary(tmp_path):
     assert result["數值"]["TC-01"] == [178, 186, 182]
 
 
+def test_pyrometry_parser_helpers_detect_time_columns_and_channel_values():
+    from backend.services.pyrometry_parser import (
+        build_channel_values,
+        detect_time_columns,
+        filter_numeric_rows,
+    )
+    import pandas as pd
+
+    raw = pd.DataFrame({
+        "日期": ["副標題", "2026/06/15", "2026/06/15"],
+        "時間": ["文字列", "09:00:00", "09:10:00"],
+        "TC-01": ["溫度", "180.1", "181.2"],
+    })
+
+    detected = detect_time_columns(raw)
+    assert detected.second_is_time is True
+    assert detected.time_raw[0] == ("副標題", "文字列")
+
+    filtered_time, filtered_channels = filter_numeric_rows(detected.time_raw, detected.channel_df)
+    assert filtered_time == [("2026/06/15", "09:00:00"), ("2026/06/15", "09:10:00")]
+
+    channels, values = build_channel_values(detected.channel_cols, filtered_channels)
+    assert channels == [{"名稱": "TC-01", "最高溫": 181.2, "最低溫": 180.1}]
+    assert values == {"TC-01": [180.1, 181.2]}
+
+
 def test_parse_temperature_file_rejects_too_many_rows(tmp_path):
     from backend.services.pyrometry_parser import parse_temperature_file
     csv = tmp_path / "too_many_rows.csv"

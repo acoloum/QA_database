@@ -13,7 +13,6 @@ import {
 import {
     calculateShippingViolations,
     type ShippingGroupMeasurements,
-    type ShippingItemConfig,
 } from './shippingMeasurementUtils';
 import { formatLocalDate } from '../../utils/dateUtils';
 import {
@@ -23,6 +22,11 @@ import {
     initEmptyShippingGroups,
     validateShippingForm,
 } from './shippingFormPayload';
+import {
+    BASE_SHIPPING_ITEMS,
+    getShippingInspectionItems,
+    getShippingItemInputOffsets,
+} from './shippingInspectionItems';
 
 interface ShippingModalProps {
     show: boolean;
@@ -30,26 +34,6 @@ interface ShippingModalProps {
     onSuccess: () => void;
     editId: number | null;
 }
-
-type ItemConfig = ShippingItemConfig;
-
-// 所有廠商的基本量測項目
-const BASE_ITEMS: ItemConfig[] = [
-    { label: "外徑", key: "外徑", type: "minmax" },
-    { label: "內徑", key: "內徑", type: "minmax" },
-    { label: "厚度", key: "厚度", type: "minmax" },
-    { label: "同心度", key: "同心度", type: "single" },
-    { label: "長度", key: "長度", type: "single" },
-    { label: "硬度", key: "硬度", type: "single" },
-    { label: "真直度", key: "真直度", type: "single" }
-];
-
-// 安泰廠商的額外量測項目
-const ROUNDNESS_ITEM: ItemConfig = { label: "真圓度", key: "真圓度", type: "single" };
-const VICKERS_HARDNESS_ITEM: ItemConfig = { label: "韋伯氏硬度(HW)", key: "韋伯氏硬度", type: "single" };
-
-// 安泰廠商名稱
-const ANTAI_VENDOR_NAME = "安泰";
 
 const DEFAULT_GROUP_COUNT = 5;
 
@@ -85,36 +69,14 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     // 欄位格式錯誤（key: 欄位名稱, value: 錯誤訊息）
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-    // 判斷是否為安泰廠商
-    const isAntai = vendorName === ANTAI_VENDOR_NAME;
-
     // 依廠商決定量測項目清單
     // 安泰：真圓度插入內徑後、硬度改標示為洛氏硬度(HRB)、新增韋伯氏硬度(HW)
-    const ITEMS = useMemo(() => {
-        if (!isAntai) return BASE_ITEMS;
-        const items = [...BASE_ITEMS];
-        // 真圓度插在內徑後面（index 2）
-        items.splice(2, 0, ROUNDNESS_ITEM);
-        // 將硬度改標示為洛氏硬度(HRB)，並設 toleranceKey 對應公差表中的「洛氏硬度」
-        const hardnessIdx = items.findIndex(item => item.key === '硬度');
-        if (hardnessIdx !== -1) {
-            items[hardnessIdx] = { ...items[hardnessIdx], label: '洛氏硬度(HRB)', toleranceKey: '洛氏硬度' };
-            // 韋伯氏硬度(HW) 插在洛氏硬度後面
-            items.splice(hardnessIdx + 1, 0, VICKERS_HARDNESS_ITEM);
-        }
-        return items;
-    }, [isAntai]);
+    const ITEMS = useMemo(() => getShippingInspectionItems(vendorName), [vendorName]);
 
     // 預先計算 tab index 用的偏移量（垂直導覽）
     const { ITEM_OFFSETS, TOTAL_INPUTS_PER_GROUP } = useMemo(() => {
-        const offsets = ITEMS.reduce((acc, _, index) => {
-            const prevOffset = index > 0 ? acc[index - 1] : 0;
-            const prevCount = index > 0 ? (ITEMS[index - 1].type === 'minmax' ? 2 : 1) : 0;
-            acc.push(prevOffset + prevCount);
-            return acc;
-        }, [] as number[]);
-        const total = offsets[ITEMS.length - 1] + (ITEMS[ITEMS.length - 1].type === 'minmax' ? 2 : 1);
-        return { ITEM_OFFSETS: offsets, TOTAL_INPUTS_PER_GROUP: total };
+        const { itemOffsets, totalInputsPerGroup } = getShippingItemInputOffsets(ITEMS);
+        return { ITEM_OFFSETS: itemOffsets, TOTAL_INPUTS_PER_GROUP: totalInputsPerGroup };
     }, [ITEMS]);
 
     const resetForm = useCallback(() => {
@@ -124,7 +86,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         setMaterial('');
         setSpec('');
         setOrderNo('');
-        setGroups(initEmptyShippingGroups(DEFAULT_GROUP_COUNT, BASE_ITEMS));
+        setGroups(initEmptyShippingGroups(DEFAULT_GROUP_COUNT, BASE_SHIPPING_ITEMS));
         setTolerance(null);
         setViolations({});
         setFieldErrors({});
