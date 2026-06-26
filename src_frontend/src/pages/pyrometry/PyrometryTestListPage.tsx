@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Button, Card, Table, Form, Row, Col, Badge, Pagination } from 'react-bootstrap';
+import { Button, Card, Table, Form, Row, Col, Badge } from 'react-bootstrap';
 import type { PyrometryTestRow } from '../../types';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
+import PaginationBar from '../../components/common/PaginationBar';
 import { useDeletePyrometryTest, useExportPyrometryTest, useFurnaces, usePyrometryTests } from '../../hooks/usePyrometry';
 import PyrometryTestForm from './PyrometryTestForm';
 
@@ -119,13 +120,7 @@ const PyrometryTestListPage = () => {
                   ))}
                 </tbody>
               </Table>
-              {totalPages > 1 && (
-                <Pagination size="sm">
-                  {Array.from({ length: totalPages }, (_, i) => (
-                    <Pagination.Item key={i + 1} active={page === i + 1} onClick={() => setPage(i + 1)}>{i + 1}</Pagination.Item>
-                  ))}
-                </Pagination>
-              )}
+              <PaginationBar page={page} perPage={20} total={result?.total ?? 0} totalPages={totalPages} onPageChange={setPage} />
             </>
           )}
         </Card.Body>

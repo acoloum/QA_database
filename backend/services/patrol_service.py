@@ -15,7 +15,11 @@ from .spc_analysis_service import (
     calculate_distribution_stats,
     calculate_process_capability,
 )
-from .patrol_excel_utils import build_patrol_measurements_from_row, sanitize_sheet_name
+from .patrol_excel_utils import (
+    build_patrol_measurements_from_row,
+    copy_spc_workbook_sheets,
+    sanitize_sheet_name,
+)
 from ..utils import (
     bounded_int,
     format_value,
@@ -23,15 +27,6 @@ from ..utils import (
     validate_patrol_data,
     handle_db_error
 )
-
-def _remap_sheet_ref(formula: str, name_map: dict) -> str:
-    """將圖表公式中的工作表參考（如 '管制圖數據'!A1:A10）替換為新名稱"""
-    for old_name, new_name in name_map.items():
-        # Excel 公式中的工作表名稱可能用單引號包裹
-        formula = formula.replace(f"'{old_name}'!", f"'{new_name}'!")
-        formula = formula.replace(f"{old_name}!", f"'{new_name}'!")
-    return formula
-
 
 class PatrolService:
     @staticmethod
@@ -823,67 +818,12 @@ class PatrolService:
                     }
                     spc_output = SpcReportService.generate_report(stats_data, field_label, filters)
 
-                    # 把 SPC workbook 的工作表複製到主 workbook
                     spc_wb = load_workbook(spc_output)
                     # 建立工作表名稱前綴（截斷以避免超過 31 字元限制）
                     spec_short = sanitize_sheet_name(group_info['spec'][:8]) if group_info['spec'] else '無規格'
                     mat_short = sanitize_sheet_name(group_info['material'][:6]) if group_info['material'] else '無材質'
                     prefix = f"{spec_short}-{mat_short}"
-
-                    # 建立舊工作表名稱 → 新工作表名稱的對照表
-                    sheet_name_map = {}
-                    for spc_sheet in spc_wb.sheetnames:
-                        new_name = sanitize_sheet_name(f"{prefix} {spc_sheet}")
-                        if len(new_name) > 31:
-                            new_name = new_name[:31]
-                        base_name = new_name
-                        counter = 1
-                        while new_name in wb.sheetnames:
-                            suffix = f"_{counter}"
-                            new_name = base_name[:31 - len(suffix)] + suffix
-                            counter += 1
-                        sheet_name_map[spc_sheet] = new_name
-
-                    for spc_sheet in spc_wb.sheetnames:
-                        new_name = sheet_name_map[spc_sheet]
-                        source_ws = spc_wb[spc_sheet]
-                        target_ws = wb.create_sheet(title=new_name)
-
-                        # 複製儲存格內容、樣式
-                        for row_cells in source_ws.iter_rows():
-                            for cell in row_cells:
-                                new_cell = target_ws.cell(
-                                    row=cell.row, column=cell.column, value=cell.value
-                                )
-                                if cell.has_style:
-                                    new_cell.font = cell.font.copy()
-                                    new_cell.fill = cell.fill.copy()
-                                    new_cell.border = cell.border.copy()
-                                    new_cell.alignment = cell.alignment.copy()
-                                    new_cell.number_format = cell.number_format
-
-                        # 複製合併儲存格
-                        for merged_range in source_ws.merged_cells.ranges:
-                            target_ws.merge_cells(str(merged_range))
-
-                        # 複製欄寬
-                        for col_letter, dim in source_ws.column_dimensions.items():
-                            target_ws.column_dimensions[col_letter].width = dim.width
-
-                        # 複製圖表，並更新數據參考的工作表名稱
-                        for chart in source_ws._charts:
-                            # 更新圖表 series 中的工作表參考
-                            for series in chart.series:
-                                if series.val and hasattr(series.val, 'numRef') and series.val.numRef:
-                                    series.val.numRef.f = _remap_sheet_ref(
-                                        series.val.numRef.f, sheet_name_map)
-                                if series.cat and hasattr(series.cat, 'numRef') and series.cat.numRef:
-                                    series.cat.numRef.f = _remap_sheet_ref(
-                                        series.cat.numRef.f, sheet_name_map)
-                                if series.cat and hasattr(series.cat, 'strRef') and series.cat.strRef:
-                                    series.cat.strRef.f = _remap_sheet_ref(
-                                        series.cat.strRef.f, sheet_name_map)
-                            target_ws.add_chart(chart)
+                    copy_spc_workbook_sheets(wb, spc_wb, prefix)
 
                 # 輸出最終結果
                 output = BytesIO()

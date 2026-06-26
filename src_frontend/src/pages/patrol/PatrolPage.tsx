@@ -3,9 +3,10 @@ import { useState } from 'react';
 import PatrolModal from '../../components/patrol/PatrolModal';
 import PatrolCharts from '../../components/patrol/PatrolCharts';
 import PatrolImportModal from '../../components/patrol/PatrolImportModal';
-import { Button, Form, Card, Row, Col, Table, Badge, Pagination } from 'react-bootstrap';
+import { Button, Form, Card, Row, Col, Table, Badge } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
+import PaginationBar from '../../components/common/PaginationBar';
 import { usePatrolList, usePatrolOptions, useDeletePatrol, useExportPatrolRawData } from '../../hooks/usePatrol';
 
 const PatrolPage = () => {
@@ -90,8 +91,6 @@ const PatrolPage = () => {
     };
 
     const data = patrolData?.data || [];
-    const totalPages = patrolData?.pages || 1;
-
     return (
         <div className="container-fluid p-4">
             <div className="d-flex justify-content-between align-items-center mb-4">
@@ -233,22 +232,7 @@ const PatrolPage = () => {
                         </tbody>
                     </Table>
 
-                    {/* Pagination */}
-                    {totalPages > 1 && (
-                        <div className="d-flex justify-content-center mt-3">
-                            <Pagination>
-                                <Pagination.First onClick={() => setPage(1)} disabled={page === 1} />
-                                <Pagination.Prev onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} />
-                                {[...Array(totalPages)].map((_, idx) => (
-                                    <Pagination.Item key={idx + 1} active={idx + 1 === page} onClick={() => setPage(idx + 1)}>
-                                        {idx + 1}
-                                    </Pagination.Item>
-                                ))}
-                                <Pagination.Next onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} />
-                                <Pagination.Last onClick={() => setPage(totalPages)} disabled={page === totalPages} />
-                            </Pagination>
-                        </div>
-                    )}
+                    <PaginationBar page={page} perPage={20} total={patrolData?.total ?? 0} totalPages={patrolData?.pages ?? 1} onPageChange={setPage} />
                 </Card.Body>
             </Card>
 

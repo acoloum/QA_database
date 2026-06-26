@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Card, Table, Form, Row, Col, Pagination } from 'react-bootstrap';
+import { Button, Card, Table, Form, Row, Col } from 'react-bootstrap';
 import {
     useExtrusionToleranceList,
     useDeleteExtrusionTolerance,
@@ -8,6 +8,7 @@ import {
 import ExtrusionToleranceModal from '../../components/extrusion-tolerance/ExtrusionToleranceModal';
 import ViewExtrusionToleranceModal from '../../components/extrusion-tolerance/ViewExtrusionToleranceModal';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
+import PaginationBar from '../../components/common/PaginationBar';
 
 const ExtrusionTolerancePage = () => {
     const [page, setPage] = useState(1);
@@ -109,13 +110,7 @@ const ExtrusionTolerancePage = () => {
                         </Table>
                     )}
 
-                    {totalPages > 1 && (
-                        <Pagination size="sm">
-                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                                <Pagination.Item key={p} active={p === page} onClick={() => setPage(p)}>{p}</Pagination.Item>
-                            ))}
-                        </Pagination>
-                    )}
+                    <PaginationBar page={page} perPage={20} total={result?.total ?? 0} totalPages={totalPages} onPageChange={setPage} />
                 </Card.Body>
             </Card>
 

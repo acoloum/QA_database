@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Modal, Button, Form, Table, Alert } from 'react-bootstrap';
+import { Modal, Button, Form, Alert } from 'react-bootstrap';
 import toast from 'react-hot-toast';
 import type { ToleranceResult, ShippingMeasurementItem } from '../../types';
 import {
@@ -28,6 +28,7 @@ import {
     getShippingItemInputOffsets,
 } from './shippingInspectionItems';
 import { ToleranceBadgeList } from '../common/toleranceDisplay';
+import ShippingMeasurementTable from './ShippingMeasurementTable';
 
 interface ShippingModalProps {
     show: boolean;
@@ -368,91 +369,18 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                             </Alert>
                         )}
 
-                        {/* 量測資料表格（橫軸為量測項目，縱軸為組別） */}
-                        <div className="table-responsive">
-                            <Table bordered className="text-center align-middle shipping-table">
-                                <thead className="table-primary">
-                                    <tr>
-                                        <th className="text-nowrap">項目 \ 組別</th>
-                                        {sortedGroupKeys.map(gKey => (
-                                            <th key={gKey}>
-                                                <div className="d-flex align-items-center justify-content-center gap-1">
-                                                    <span>{gKey}</span>
-                                                    {sortedGroupKeys.length > 1 && (
-                                                        <button
-                                                            type="button"
-                                                            className="btn btn-outline-danger btn-sm p-0 lh-1"
-                                                            style={{ width: '18px', height: '18px', fontSize: '10px' }}
-                                                            onClick={() => removeGroup(gKey)}
-                                                            title={`移除第 ${gKey} 組`}
-                                                        >
-                                                            ✕
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </th>
-                                        ))}
-                                        <th>
-                                            <button
-                                                type="button"
-                                                className="btn btn-outline-primary btn-sm"
-                                                onClick={addGroup}
-                                                title="新增量測組"
-                                            >
-                                                ＋
-                                            </button>
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {ITEMS.map((item, idx) => (
-                                        <tr key={item.key}>
-                                            <th className="bg-light text-nowrap">{item.label}</th>
-                                            {sortedGroupKeys.map((gKey, gIdx) => (
-                                                <td key={gKey} className={item.type === 'minmax' ? 'shipping-cell-double' : 'shipping-cell-single'}>
-                                                    {item.type === 'minmax' ? (
-                                                        <div className="d-flex gap-2 justify-content-center flex-nowrap">
-                                                            <Form.Control
-                                                                size="sm"
-                                                                placeholder="Min"
-                                                                style={{ fontSize: '0.75rem', padding: '2px 4px', width: '60px' }}
-                                                                className={`text-center shipping-input ${fieldErrors[`${gKey}:${item.key}:value_min`] ? 'is-invalid-format' : ''} ${violations[`${gKey}:${item.key}:value_min`] ? 'is-invalid-breathing' : ''}`}
-                                                                value={groups[gKey]?.[item.key]?.value_min ?? ''}
-                                                                onChange={e => updateMeasValue(gKey, item.key, 'value_min', e.target.value)}
-                                                                tabIndex={100 + gIdx * TOTAL_INPUTS_PER_GROUP + ITEM_OFFSETS[idx]}
-                                                            />
-                                                            <Form.Control
-                                                                size="sm"
-                                                                placeholder="Max"
-                                                                style={{ fontSize: '0.75rem', padding: '2px 4px', width: '60px' }}
-                                                                className={`text-center shipping-input ${fieldErrors[`${gKey}:${item.key}:value_max`] ? 'is-invalid-format' : ''} ${violations[`${gKey}:${item.key}:value_max`] ? 'is-invalid-breathing' : ''}`}
-                                                                value={groups[gKey]?.[item.key]?.value_max ?? ''}
-                                                                onChange={e => updateMeasValue(gKey, item.key, 'value_max', e.target.value)}
-                                                                tabIndex={100 + gIdx * TOTAL_INPUTS_PER_GROUP + ITEM_OFFSETS[idx] + 1}
-                                                            />
-                                                        </div>
-                                                    ) : (
-                                                        <Form.Control
-                                                            size="sm"
-                                                            style={{ fontSize: '0.75rem', padding: '2px 4px', width: '60px' }}
-                                                            className={`text-center mx-auto shipping-input ${fieldErrors[`${gKey}:${item.key}:value_single`] ? 'is-invalid-format' : ''} ${violations[`${gKey}:${item.key}:value_single`] ? 'is-invalid-breathing' : ''}`}
-                                                            value={groups[gKey]?.[item.key]?.value_single ?? ''}
-                                                            onChange={e => updateMeasValue(gKey, item.key, 'value_single', e.target.value)}
-                                                            tabIndex={100 + gIdx * TOTAL_INPUTS_PER_GROUP + ITEM_OFFSETS[idx]}
-                                                        />
-                                                    )}
-                                                </td>
-                                            ))}
-                                            {/* 新增組按鈕欄位佔位 */}
-                                            <td className="text-muted" style={{ fontSize: '0.7rem', color: '#ccc' }}>—</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </Table>
-                        </div>
-                        <div className="text-muted small mb-2">
-                            共 {sortedGroupKeys.length} 組量測資料 · 點擊表頭「＋」新增組，「✕」移除組
-                        </div>
+                        <ShippingMeasurementTable
+                            items={ITEMS}
+                            groupKeys={sortedGroupKeys}
+                            groups={groups}
+                            itemOffsets={ITEM_OFFSETS}
+                            totalInputsPerGroup={TOTAL_INPUTS_PER_GROUP}
+                            fieldErrors={fieldErrors}
+                            violations={violations}
+                            onMeasurementChange={updateMeasValue}
+                            onAddGroup={addGroup}
+                            onRemoveGroup={removeGroup}
+                        />
                     </Form>
                 )}
             </Modal.Body>

@@ -7,6 +7,7 @@ import ShippingCharts from '../../components/shipping/ShippingCharts';
 import { useShippingList, useDeleteShipping, useExportShippingData } from '../../hooks/useShipping';
 import { useShippingToleranceMap } from '../../hooks/useShippingToleranceMap';
 import { evaluateShippingViolation } from '../../components/shipping/shippingViolationUtils';
+import PaginationBar from '../../components/common/PaginationBar';
 
 const ShippingPage = () => {
     const navigate = useNavigate();
@@ -262,27 +263,8 @@ const ShippingPage = () => {
                         </table>
                     </div>
 
-                    {/* Pagination */}
-                    <div className="d-flex justify-content-center py-4 bg-light-subtle rounded-bottom">
-                        <nav>
-                            <ul className="pagination mb-0">
-                                <li className={`page-item ${page === 1 ? 'disabled' : ''}`}>
-                                    <button className="page-link" onClick={() => setPage(p => Math.max(1, p - 1))}>
-                                        上一頁
-                                    </button>
-                                </li>
-                                <li className="page-item active">
-                                    <span className="page-link">
-                                        第 {page} / {totalPages} 頁
-                                    </span>
-                                </li>
-                                <li className={`page-item ${page === totalPages ? 'disabled' : ''}`}>
-                                    <button className="page-link" onClick={() => setPage(p => Math.min(totalPages, p + 1))}>
-                                        下一頁
-                                    </button>
-                                </li>
-                            </ul>
-                        </nav>
+                    <div className="py-4 bg-light-subtle rounded-bottom">
+                        <PaginationBar page={page} totalPages={totalPages} onPageChange={setPage} />
                     </div>
                 </div>
             </div>

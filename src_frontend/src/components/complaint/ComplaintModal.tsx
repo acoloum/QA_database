@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-    Modal, Button, Form, Row, Col, Alert, Badge
+    Modal, Button, Alert, Badge
 } from 'react-bootstrap';
 import {
     useCreateComplaint,
@@ -10,7 +10,12 @@ import {
 import type { CustomerComplaint, ComplaintType } from '../../types';
 import { buildComplaintPayload, getDefaultReplyDeadlines } from './complaintFormUtils';
 import { formatLocalDate } from '../../utils/dateUtils';
-import { ComplaintResponseSection, ComplaintWarrantySection } from './ComplaintSections';
+import {
+    ComplaintBasicSection,
+    ComplaintDeadlineSection,
+    ComplaintResponseSection,
+    ComplaintWarrantySection,
+} from './ComplaintSections';
 
 interface ComplaintModalProps {
     show: boolean;
@@ -194,123 +199,32 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
                     </Alert>
                 )}
 
-                {/* ─ 基本資訊 ─ */}
-                <h6 className="text-muted mb-3">基本資訊</h6>
-                <Row className="g-3 mb-3">
-                    <Col md={4}>
-                        <Form.Group>
-                            <Form.Label>客戶 <span className="text-danger">*</span></Form.Label>
-                            <Form.Control
-                                value={customer}
-                                onChange={e => setCustomer(e.target.value)}
-                                placeholder="客戶名稱"
-                            />
-                        </Form.Group>
-                    </Col>
-                    <Col md={4}>
-                        <Form.Group>
-                            <Form.Label>客訴日期 <span className="text-danger">*</span></Form.Label>
-                            <Form.Control
-                                type="date"
-                                value={complaintDate}
-                                onChange={e => setComplaintDate(e.target.value)}
-                            />
-                        </Form.Group>
-                    </Col>
-                    <Col md={4}>
-                        <Form.Group>
-                            <Form.Label>客訴類型</Form.Label>
-                            <Form.Select
-                                value={complaintType}
-                                onChange={e => setComplaintType(e.target.value as ComplaintType)}
-                            >
-                                {Object.entries(COMPLAINT_TYPE_LABELS).map(([k, v]) => (
-                                    <option key={k} value={k}>{v}</option>
-                                ))}
-                            </Form.Select>
-                        </Form.Group>
-                    </Col>
-                    <Col md={4}>
-                        <Form.Group>
-                            <Form.Label>材質</Form.Label>
-                            <Form.Control
-                                value={material}
-                                onChange={e => setMaterial(e.target.value)}
-                                placeholder="如：6061、6063…"
-                            />
-                        </Form.Group>
-                    </Col>
-                    <Col md={4}>
-                        <Form.Group>
-                            <Form.Label>規格</Form.Label>
-                            <Form.Control
-                                value={spec}
-                                onChange={e => setSpec(e.target.value)}
-                                placeholder="如：T5、T6…"
-                            />
-                        </Form.Group>
-                    </Col>
-                    <Col md={4}>
-                        <Form.Group>
-                            <Form.Label>擠製編號</Form.Label>
-                            <div className="d-flex gap-1">
-                                <Form.Control
-                                    value={extrusionInput}
-                                    onChange={e => setExtrusionInput(e.target.value)}
-                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addExtrusionNo(); } }}
-                                    placeholder="輸入後按 Enter 或 +"
-                                />
-                                <Button variant="outline-secondary" onClick={addExtrusionNo}>+</Button>
-                            </div>
-                            {extrusionNos.length > 0 && (
-                                <div className="mt-1 d-flex flex-wrap gap-1">
-                                    {extrusionNos.map(no => (
-                                        <Badge key={no} bg="secondary" className="d-flex align-items-center gap-1" style={{ fontSize: '0.8rem' }}>
-                                            {no}
-                                            <span
-                                                style={{ cursor: 'pointer', lineHeight: 1 }}
-                                                onClick={() => removeExtrusionNo(no)}
-                                            >×</span>
-                                        </Badge>
-                                    ))}
-                                </div>
-                            )}
-                        </Form.Group>
-                    </Col>
-                    <Col md={4}>
-                        <Form.Group>
-                            <Form.Label>嚴重度</Form.Label>
-                            <Form.Select value={severity} onChange={e => setSeverity(e.target.value)}>
-                                {SEVERITY_OPTIONS.map(s => (
-                                    <option key={s} value={s}>{s}</option>
-                                ))}
-                            </Form.Select>
-                        </Form.Group>
-                    </Col>
-                    <Col md={4}>
-                        <Form.Group>
-                            <Form.Label>不良類別</Form.Label>
-                            <Form.Select value={defectCategory} onChange={e => setDefectCategory(e.target.value)}>
-                                <option value="">— 請選擇 —</option>
-                                {DEFECT_CATEGORY_OPTIONS.map(opt => (
-                                    <option key={opt} value={opt}>{opt}</option>
-                                ))}
-                            </Form.Select>
-                        </Form.Group>
-                    </Col>
-                    <Col md={12}>
-                        <Form.Group>
-                            <Form.Label>問題描述 <span className="text-danger">*</span></Form.Label>
-                            <Form.Control
-                                as="textarea"
-                                rows={3}
-                                value={description}
-                                onChange={e => setDescription(e.target.value)}
-                                placeholder="詳述客訴問題內容"
-                            />
-                        </Form.Group>
-                    </Col>
-                </Row>
+                <ComplaintBasicSection
+                    customer={customer}
+                    complaintDate={complaintDate}
+                    complaintType={complaintType}
+                    material={material}
+                    spec={spec}
+                    extrusionInput={extrusionInput}
+                    extrusionNos={extrusionNos}
+                    severity={severity}
+                    defectCategory={defectCategory}
+                    description={description}
+                    complaintTypeLabels={COMPLAINT_TYPE_LABELS}
+                    severityOptions={SEVERITY_OPTIONS}
+                    defectCategoryOptions={DEFECT_CATEGORY_OPTIONS}
+                    onCustomerChange={setCustomer}
+                    onComplaintDateChange={setComplaintDate}
+                    onComplaintTypeChange={setComplaintType}
+                    onMaterialChange={setMaterial}
+                    onSpecChange={setSpec}
+                    onExtrusionInputChange={setExtrusionInput}
+                    onAddExtrusionNo={addExtrusionNo}
+                    onRemoveExtrusionNo={removeExtrusionNo}
+                    onSeverityChange={setSeverity}
+                    onDefectCategoryChange={setDefectCategory}
+                    onDescriptionChange={setDescription}
+                />
 
                 {/* ─ Warranty / Field Failure 額外欄位 ─ */}
                 <ComplaintWarrantySection
@@ -323,30 +237,12 @@ const ComplaintModal = ({ show, onHide, editData, onSuccess }: ComplaintModalPro
                     onFailureHoursChange={setFailureHours}
                 />
 
-                {/* ─ 應答時效 ─ */}
-                <h6 className="text-muted mb-3">應答時效</h6>
-                <Row className="g-3 mb-3">
-                    <Col md={6}>
-                        <Form.Group>
-                            <Form.Label>初步回覆期限</Form.Label>
-                            <Form.Control
-                                type="date"
-                                value={initialReplyDeadline}
-                                onChange={e => setInitialReplyDeadline(e.target.value)}
-                            />
-                        </Form.Group>
-                    </Col>
-                    <Col md={6}>
-                        <Form.Group>
-                            <Form.Label>最終回覆期限</Form.Label>
-                            <Form.Control
-                                type="date"
-                                value={finalReplyDeadline}
-                                onChange={e => setFinalReplyDeadline(e.target.value)}
-                            />
-                        </Form.Group>
-                    </Col>
-                </Row>
+                <ComplaintDeadlineSection
+                    initialReplyDeadline={initialReplyDeadline}
+                    finalReplyDeadline={finalReplyDeadline}
+                    onInitialReplyDeadlineChange={setInitialReplyDeadline}
+                    onFinalReplyDeadlineChange={setFinalReplyDeadline}
+                />
 
                 {/* ─ 處理回覆（僅編輯模式）─ */}
                 {isEdit && (
