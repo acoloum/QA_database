@@ -1,5 +1,6 @@
 import type { ShippingInspection } from '../../types';
 import type { ShippingToleranceMap } from '../../hooks/useShippingToleranceMap';
+import { isMeasurementOutOfTolerance } from './shippingMeasurementNumber';
 
 const MINMAX_ITEMS = new Set(['外徑', '內徑', '厚度']);
 const ALL_ITEMS = ['外徑', '內徑', '真圓度', '厚度', '同心度', '長度', '硬度', '真直度', '韋伯氏硬度'];
@@ -32,17 +33,14 @@ export const evaluateShippingViolation = (
                 if (!measItem) continue;
 
                 if (MINMAX_ITEMS.has(itemName)) {
-                    const minValue = measItem.value_min != null ? Number(measItem.value_min) : NaN;
-                    const maxValue = measItem.value_max != null ? Number(measItem.value_max) : NaN;
-                    if (!Number.isNaN(minValue) && (minValue < tol.lsl || minValue > tol.usl)) {
+                    if (isMeasurementOutOfTolerance(measItem.value_min, tol)) {
                         return { hasViolation: true, found: true };
                     }
-                    if (!Number.isNaN(maxValue) && (maxValue < tol.lsl || maxValue > tol.usl)) {
+                    if (isMeasurementOutOfTolerance(measItem.value_max, tol)) {
                         return { hasViolation: true, found: true };
                     }
                 } else {
-                    const value = measItem.value_single != null ? Number(measItem.value_single) : NaN;
-                    if (!Number.isNaN(value) && (value < tol.lsl || value > tol.usl)) {
+                    if (isMeasurementOutOfTolerance(measItem.value_single, tol)) {
                         return { hasViolation: true, found: true };
                     }
                 }

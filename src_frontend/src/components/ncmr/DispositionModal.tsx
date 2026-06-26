@@ -7,6 +7,10 @@ import {
     useDispositions, useCreateDisposition, useDeleteDisposition,
     useUpdateNCMR, useCreateCAPA, useNcmrReworks,
 } from '../../hooks/useNCMR';
+import {
+    parseDispositionNumberInput,
+    parseNullableDispositionNumberInput,
+} from './dispositionFormUtils';
 
 interface DispositionModalProps {
     show: boolean;
@@ -167,7 +171,7 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
                         <div className="col-md-6">
                             <Form.Label>處置數量</Form.Label>
                             <Form.Control type="number" value={form.處置數量}
-                                onChange={e => setField('處置數量', Number(e.target.value))} />
+                                onChange={e => setField('處置數量', parseDispositionNumberInput(e.target.value))} />
                         </div>
                     </div>
 
@@ -196,12 +200,12 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
                             <div className="col-md-6">
                                 <Form.Label>合格數</Form.Label>
                                 <Form.Control type="number" value={form.合格數 ?? ''}
-                                    onChange={e => setField('合格數', Number(e.target.value))} />
+                                    onChange={e => setField('合格數', parseNullableDispositionNumberInput(e.target.value))} />
                             </div>
                             <div className="col-md-6">
                                 <Form.Label>不合格數</Form.Label>
                                 <Form.Control type="number" value={form.不合格數 ?? ''}
-                                    onChange={e => setField('不合格數', Number(e.target.value))} />
+                                    onChange={e => setField('不合格數', parseNullableDispositionNumberInput(e.target.value))} />
                             </div>
                         </div>
                     )}
@@ -237,7 +241,7 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
                                             <div className="col-md-4">
                                                 <Form.Label>數量上限</Form.Label>
                                                 <Form.Control type="number" value={form.授權數量上限 ?? ''}
-                                                    onChange={e => setField('授權數量上限', Number(e.target.value))} />
+                                                    onChange={e => setField('授權數量上限', parseNullableDispositionNumberInput(e.target.value))} />
                                             </div>
                                         </div>
                                     )}

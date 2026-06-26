@@ -202,8 +202,8 @@ export const buildReworkExecutionPayload = ({
   ...(method ? { 重工方式: method } : {}),
   ...(sopNo ? { SOP編號: sopNo } : {}),
   ...(consumables ? { 耗材記錄: consumables } : {}),
-  完成數量: parseFloat(completedQty) || 0,
-  不良數量: parseFloat(defectQty) || 0,
+  完成數量: parseReworkCostNumber(completedQty, 0),
+  不良數量: parseReworkCostNumber(defectQty, 0),
   ...(status ? { 執行狀況: status } : {}),
   ...(abnormalStatus ? { 異常狀況: abnormalStatus } : {}),
 });
@@ -221,7 +221,7 @@ export const buildReworkInspectionPayload = ({
   ...(inspector ? { 檢驗人員姓名: inspector } : {}),
   ...(inspectionItem ? { 檢驗項目: inspectionItem } : {}),
   ...(inspectionResult ? { 檢驗結果: inspectionResult } : {}),
-  不良數量: parseInt(defectQty) || 0,
+  不良數量: parseReworkCostNumber(defectQty, 0),
   ...(inspectionDate ? { 檢驗日期: inspectionDate } : {}),
   ...(remark ? { 檢驗備註: remark } : {}),
 });

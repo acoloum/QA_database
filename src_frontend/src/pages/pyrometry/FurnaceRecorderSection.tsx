@@ -2,6 +2,7 @@ import { Button, Col, Form } from 'react-bootstrap';
 
 import TusChart from '../../components/pyrometry/TusChart';
 import TusDataTable from '../../components/pyrometry/TusDataTable';
+import { resolvePyrometryChartSettings } from './pyrometryChartSettings';
 import type { ChartData } from './pyrometryFormUtils';
 
 interface Props {
@@ -32,6 +33,7 @@ const FurnaceRecorderSection = ({
   onToggleFurnaceDetail,
 }: Props) => {
   if (!furnaceChartData) return null;
+  const { setpointValue, toleranceValue } = resolvePyrometryChartSettings({ setpoint, tolerance });
 
   return (
     <>
@@ -39,8 +41,8 @@ const FurnaceRecorderSection = ({
         <TusChart
           時間={furnaceChartData.時間}
           數值={furnaceChartData.數值}
-          設定溫度={Number(setpoint) || 180}
-          公差={Number(tolerance) || 10}
+          設定溫度={setpointValue}
+          公差={toleranceValue}
           startIdx={furnaceRangeStart}
           endIdx={furnaceRangeEnd}
           標題="爐體記錄溫度曲線"
@@ -95,8 +97,8 @@ const FurnaceRecorderSection = ({
           <TusDataTable
             時間={furnaceChartData.時間}
             數值={furnaceChartData.數值}
-            設定溫度={Number(setpoint) || 180}
-            公差={Number(tolerance) || 10}
+            設定溫度={setpointValue}
+            公差={toleranceValue}
             穩定開始={furnaceRangeStart}
             穩定結束={furnaceRangeEnd}
           />

@@ -5,6 +5,7 @@ import {
   buildReworkApplicationUpdatePayload,
   buildReworkCostPayload,
   buildReworkExecutionPayload,
+  buildReworkInspectionPayload,
   calculateReworkTotalCost,
   formatDateTimeLocal,
   parseReworkCostNumber,
@@ -103,6 +104,29 @@ describe('reworkFormPayload', () => {
     });
   });
 
+  it('執行紀錄數量非法值不使用 parseFloat 截斷結果且保留 0', () => {
+    expect(buildReworkExecutionPayload({
+      reworkNumber: '',
+      responsiblePerson: '',
+      department: '',
+      collaborators: '',
+      startTime: '',
+      expectedEndTime: '',
+      actualEndTime: '',
+      equipment: '',
+      method: '',
+      sopNo: '',
+      consumables: '',
+      completedQty: '3abc',
+      defectQty: '0',
+      status: '',
+      abnormalStatus: '',
+    })).toMatchObject({
+      完成數量: 0,
+      不良數量: 0,
+    });
+  });
+
   it('計算成本總額並保留幣別', () => {
     expect(buildReworkCostPayload({
       reworkNumber: 'RW-001',
@@ -119,6 +143,32 @@ describe('reworkFormPayload', () => {
       數量: 4,
       總成本: 50,
       成本幣別: 'TWD',
+    });
+  });
+
+  it('檢驗不良數量非法值不使用 parseInt 截斷結果且保留 0', () => {
+    expect(buildReworkInspectionPayload({
+      reworkNumber: '',
+      inspector: '',
+      inspectionItem: '',
+      inspectionResult: '',
+      defectQty: '2abc',
+      inspectionDate: '',
+      remark: '',
+    })).toMatchObject({
+      不良數量: 0,
+    });
+
+    expect(buildReworkInspectionPayload({
+      reworkNumber: '',
+      inspector: '',
+      inspectionItem: '',
+      inspectionResult: '',
+      defectQty: '0',
+      inspectionDate: '',
+      remark: '',
+    })).toMatchObject({
+      不良數量: 0,
     });
   });
 

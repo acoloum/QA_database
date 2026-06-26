@@ -1,5 +1,6 @@
 import type { ShippingMeasurementItem, ToleranceResult } from '../../types';
 import { parseSpec } from '../../utils/parseSpec';
+import { isMeasurementOutOfTolerance } from './shippingMeasurementNumber';
 
 export interface ShippingItemConfig {
   label: string;
@@ -66,14 +67,11 @@ export const calculateShippingViolations = ({
       if (item.type === 'minmax') {
         const minKey = `${gKey}:${item.key}:value_min`;
         const maxKey = `${gKey}:${item.key}:value_max`;
-        const minNum = measItem.value_min != null ? Number(measItem.value_min) : NaN;
-        const maxNum = measItem.value_max != null ? Number(measItem.value_max) : NaN;
-        if (!Number.isNaN(minNum) && (minNum < lsl || minNum > usl)) violations[minKey] = true;
-        if (!Number.isNaN(maxNum) && (maxNum < lsl || maxNum > usl)) violations[maxKey] = true;
+        if (isMeasurementOutOfTolerance(measItem.value_min, { lsl, usl })) violations[minKey] = true;
+        if (isMeasurementOutOfTolerance(measItem.value_max, { lsl, usl })) violations[maxKey] = true;
       } else {
         const key = `${gKey}:${item.key}:value_single`;
-        const valNum = measItem.value_single != null ? Number(measItem.value_single) : NaN;
-        if (!Number.isNaN(valNum) && (valNum < lsl || valNum > usl)) violations[key] = true;
+        if (isMeasurementOutOfTolerance(measItem.value_single, { lsl, usl })) violations[key] = true;
       }
     });
   });

@@ -4,6 +4,7 @@ import { Button, Col, Form, Nav, Row } from 'react-bootstrap';
 import TusChart from '../../components/pyrometry/TusChart';
 import TusDataTable from '../../components/pyrometry/TusDataTable';
 import type { SatPoint, SatReading } from '../../types';
+import { resolvePyrometryChartSettings } from './pyrometryChartSettings';
 import type { ChartData } from './pyrometryFormUtils';
 import SatZoneTab from './SatZoneTab';
 import { evaluateSatPoint } from './satEvaluation';
@@ -56,8 +57,11 @@ const SatSection = ({
   onAddSatReading,
   onRemoveSatReading,
   onApplyCorrections,
-}: Props) => (
-  <>
+}: Props) => {
+  const { setpointValue, toleranceValue } = resolvePyrometryChartSettings({ setpoint, tolerance });
+
+  return (
+    <>
     <Row className="g-2 mb-3">
       <Col md={6}>
         <Form.Label>SAT 儀器詳細資料（CSV/Excel，選配）</Form.Label>
@@ -92,8 +96,8 @@ const SatSection = ({
             <TusChart
               時間={satChartData.時間}
               數值={satChartData.數值}
-              設定溫度={Number(setpoint) || 180}
-              公差={Number(tolerance) || 10}
+              設定溫度={setpointValue}
+              公差={toleranceValue}
               startIdx={satRangeStart}
               endIdx={satRangeEnd}
               標題="SAT 儀器溫度曲線"
@@ -142,8 +146,8 @@ const SatSection = ({
               <TusDataTable
                 時間={satChartData.時間}
                 數值={satChartData.數值}
-                設定溫度={Number(setpoint) || 180}
-                公差={Number(tolerance) || 10}
+                設定溫度={setpointValue}
+                公差={toleranceValue}
                 穩定開始={satRangeStart}
                 穩定結束={satRangeEnd}
               />
@@ -204,7 +208,8 @@ const SatSection = ({
         </div>
       </>
     )}
-  </>
-);
+    </>
+  );
+};
 
 export default SatSection;

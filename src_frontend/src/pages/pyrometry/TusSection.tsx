@@ -3,6 +3,7 @@ import { Button, Col, Form, Row, Table } from 'react-bootstrap';
 import TusChart from '../../components/pyrometry/TusChart';
 import TusDataTable from '../../components/pyrometry/TusDataTable';
 import type { TusPoint } from '../../types';
+import { resolvePyrometryChartSettings } from './pyrometryChartSettings';
 import type { ChartData } from './pyrometryFormUtils';
 
 interface Props {
@@ -39,8 +40,11 @@ const TusSection = ({
   onToggleDetail,
   onUpdateTus,
   onApplyCorrections,
-}: Props) => (
-  <>
+}: Props) => {
+  const { setpointValue, toleranceValue } = resolvePyrometryChartSettings({ setpoint, tolerance });
+
+  return (
+    <>
     <Row className="g-2 mb-3">
       <Col md={12}>
         <Form.Label>測試儀器數據（CSV/Excel）</Form.Label>
@@ -61,8 +65,8 @@ const TusSection = ({
             <TusChart
               時間={chartData.時間}
               數值={chartData.數值}
-              設定溫度={Number(setpoint) || 180}
-              公差={Number(tolerance) || 10}
+              設定溫度={setpointValue}
+              公差={toleranceValue}
               startIdx={rangeStart}
               endIdx={rangeEnd}
               標題="測試儀器（記錄器）溫度曲線"
@@ -113,8 +117,8 @@ const TusSection = ({
               <TusDataTable
                 時間={chartData.時間}
                 數值={chartData.數值}
-                設定溫度={Number(setpoint) || 180}
-                公差={Number(tolerance) || 10}
+                設定溫度={setpointValue}
+                公差={toleranceValue}
                 穩定開始={rangeStart}
                 穩定結束={rangeEnd}
               />
@@ -198,7 +202,8 @@ const TusSection = ({
         </Table>
       </>
     )}
-  </>
-);
+    </>
+  );
+};
 
 export default TusSection;
