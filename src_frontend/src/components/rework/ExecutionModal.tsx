@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
+import { Modal, Button } from 'react-bootstrap';
 import toast from 'react-hot-toast';
 import { useInspectors } from '../../hooks/useInspectors';
-import { buildReworkExecutionPayload } from './reworkFormPayload';
+import { buildReworkExecutionPayload, type ReworkExecutionFormValues } from './reworkFormPayload';
+import ReworkExecutionForm from './ReworkExecutionForm';
 import { useCreateReworkExecution } from './useReworkMutations';
 
 interface ExecutionModalProps {
@@ -11,6 +12,23 @@ interface ExecutionModalProps {
     onSuccess: () => void;
     reworkNumber: string;
 }
+
+const defaultExecutionForm = (): ReworkExecutionFormValues => ({
+    responsiblePerson: '',
+    department: '製造部',
+    collaborators: '',
+    startTime: '',
+    expectedEndTime: '',
+    actualEndTime: '',
+    equipment: '',
+    method: '',
+    sopNo: '',
+    consumables: '',
+    completedQty: '',
+    defectQty: '',
+    status: '',
+    abnormalStatus: '',
+});
 
 const ExecutionModal = ({ show, handleClose, onSuccess, reworkNumber }: ExecutionModalProps) => {
     const { data: inspectors = [] } = useInspectors({ enabled: show });
@@ -21,36 +39,10 @@ const ExecutionModal = ({ show, handleClose, onSuccess, reworkNumber }: Executio
         }
     });
 
-    const [responsiblePerson, setResponsiblePerson] = useState('');
-    const [department, setDepartment] = useState('製造部');
-    const [collaborators, setCollaborators] = useState('');
-    const [startTime, setStartTime] = useState('');
-    const [expectedEndTime, setExpectedEndTime] = useState('');
-    const [actualEndTime, setActualEndTime] = useState('');
-    const [equipment, setEquipment] = useState('');
-    const [method, setMethod] = useState('');
-    const [sopNo, setSopNo] = useState('');
-    const [consumables, setConsumables] = useState('');
-    const [completedQty, setCompletedQty] = useState('');
-    const [defectQty, setDefectQty] = useState('');
-    const [status, setStatus] = useState('');
-    const [abnormalStatus, setAbnormalStatus] = useState('');
+    const [form, setForm] = useState<ReworkExecutionFormValues>(defaultExecutionForm());
 
     const resetForm = () => {
-        setResponsiblePerson('');
-        setDepartment('製造部');
-        setCollaborators('');
-        setStartTime('');
-        setExpectedEndTime('');
-        setActualEndTime('');
-        setEquipment('');
-        setMethod('');
-        setSopNo('');
-        setConsumables('');
-        setCompletedQty('');
-        setDefectQty('');
-        setStatus('');
-        setAbnormalStatus('');
+        setForm(defaultExecutionForm());
     };
 
     useEffect(() => {
@@ -65,28 +57,19 @@ const ExecutionModal = ({ show, handleClose, onSuccess, reworkNumber }: Executio
         };
     }, [show]);
 
+    const setField = (field: keyof ReworkExecutionFormValues, value: string) => {
+        setForm(prev => ({ ...prev, [field]: value }));
+    };
+
     const handleSubmit = () => {
-        if (!responsiblePerson) {
+        if (!form.responsiblePerson) {
             toast.error('請選擇負責人員');
             return;
         }
 
         createExecution.mutate(buildReworkExecutionPayload({
             reworkNumber,
-            responsiblePerson,
-            department,
-            collaborators,
-            startTime,
-            expectedEndTime,
-            actualEndTime,
-            equipment,
-            method,
-            sopNo,
-            consumables,
-            completedQty,
-            defectQty,
-            status,
-            abnormalStatus
+            ...form,
         }));
     };
 
@@ -105,169 +88,12 @@ const ExecutionModal = ({ show, handleClose, onSuccess, reworkNumber }: Executio
                 <Modal.Title>新增執行記錄 - {reworkNumber}</Modal.Title>
             </Modal.Header>
             <Modal.Body>
-                <Form>
-                    <Row>
-                        <Col md={6}>
-                            <Form.Group className="mb-3">
-                                <Form.Label>負責人員 *</Form.Label>
-                                <Form.Select
-                                    value={responsiblePerson}
-                                    onChange={(e) => setResponsiblePerson(e.target.value)}
-                                >
-                                    <option value="">請選擇</option>
-                                    {inspectors.map(i => (
-                                        <option key={i.id} value={i.name}>{i.name}</option>
-                                    ))}
-                                </Form.Select>
-                            </Form.Group>
-                        </Col>
-                        <Col md={6}>
-                            <Form.Group className="mb-3">
-                                <Form.Label>執行部門</Form.Label>
-                                <Form.Select value={department} onChange={(e) => setDepartment(e.target.value)}>
-                                    <option value="製造部">製造部</option>
-                                    <option value="品保部">品保部</option>
-                                    <option value="工程部">工程部</option>
-                                </Form.Select>
-                            </Form.Group>
-                        </Col>
-                    </Row>
-
-                    <Row>
-                        <Col md={6}>
-                            <Form.Group className="mb-3">
-                                <Form.Label>開始時間</Form.Label>
-                                <Form.Control
-                                    type="datetime-local"
-                                    value={startTime}
-                                    onChange={(e) => setStartTime(e.target.value)}
-                                />
-                            </Form.Group>
-                        </Col>
-                        <Col md={6}>
-                            <Form.Group className="mb-3">
-                                <Form.Label>預計完成時間</Form.Label>
-                                <Form.Control
-                                    type="datetime-local"
-                                    value={expectedEndTime}
-                                    onChange={(e) => setExpectedEndTime(e.target.value)}
-                                />
-                            </Form.Group>
-                        </Col>
-                    </Row>
-
-                    <Row>
-                        <Col md={6}>
-                            <Form.Group className="mb-3">
-                                <Form.Label>實際完成時間</Form.Label>
-                                <Form.Control
-                                    type="datetime-local"
-                                    value={actualEndTime}
-                                    onChange={(e) => setActualEndTime(e.target.value)}
-                                />
-                            </Form.Group>
-                        </Col>
-                        <Col md={6}>
-                            <Form.Group className="mb-3">
-                                <Form.Label>使用設備</Form.Label>
-                                <Form.Control
-                                    value={equipment}
-                                    onChange={(e) => setEquipment(e.target.value)}
-                                    placeholder="設備名稱"
-                                />
-                            </Form.Group>
-                        </Col>
-                    </Row>
-
-                    <Row>
-                        <Col md={6}>
-                            <Form.Group className="mb-3">
-                                <Form.Label>重工方式</Form.Label>
-                                <Form.Control
-                                    value={method}
-                                    onChange={(e) => setMethod(e.target.value)}
-                                    placeholder="重工方式描述"
-                                />
-                            </Form.Group>
-                        </Col>
-                        <Col md={6}>
-                            <Form.Group className="mb-3">
-                                <Form.Label>SOP編號</Form.Label>
-                                <Form.Control
-                                    value={sopNo}
-                                    onChange={(e) => setSopNo(e.target.value)}
-                                    placeholder="SOP-XXX"
-                                />
-                            </Form.Group>
-                        </Col>
-                    </Row>
-
-                    <Form.Group className="mb-3">
-                        <Form.Label>耗材記錄</Form.Label>
-                        <Form.Control
-                            as="textarea"
-                            rows={2}
-                            value={consumables}
-                            onChange={(e) => setConsumables(e.target.value)}
-                            placeholder="使用的耗材記錄"
-                        />
-                    </Form.Group>
-
-                    <Row>
-                        <Col md={4}>
-                            <Form.Group className="mb-3">
-                                <Form.Label>完成數量</Form.Label>
-                                <Form.Control
-                                    type="number"
-                                    value={completedQty}
-                                    onChange={(e) => setCompletedQty(e.target.value)}
-                                />
-                            </Form.Group>
-                        </Col>
-                        <Col md={4}>
-                            <Form.Group className="mb-3">
-                                <Form.Label>不良數量</Form.Label>
-                                <Form.Control
-                                    type="number"
-                                    value={defectQty}
-                                    onChange={(e) => setDefectQty(e.target.value)}
-                                />
-                            </Form.Group>
-                        </Col>
-                        <Col md={4}>
-                            <Form.Group className="mb-3">
-                                <Form.Label>協同人員</Form.Label>
-                                <Form.Control
-                                    value={collaborators}
-                                    onChange={(e) => setCollaborators(e.target.value)}
-                                    placeholder="協同人員"
-                                />
-                            </Form.Group>
-                        </Col>
-                    </Row>
-
-                    <Form.Group className="mb-3">
-                        <Form.Label>執行狀況</Form.Label>
-                        <Form.Control
-                            as="textarea"
-                            rows={2}
-                            value={status}
-                            onChange={(e) => setStatus(e.target.value)}
-                            placeholder="執行狀況描述"
-                        />
-                    </Form.Group>
-
-                    <Form.Group className="mb-3">
-                        <Form.Label>異常狀況</Form.Label>
-                        <Form.Control
-                            as="textarea"
-                            rows={2}
-                            value={abnormalStatus}
-                            onChange={(e) => setAbnormalStatus(e.target.value)}
-                            placeholder="異常狀況描述"
-                        />
-                    </Form.Group>
-                </Form>
+                <ReworkExecutionForm
+                    inspectors={inspectors}
+                    values={form}
+                    onChange={setField}
+                    responsibleLabel="負責人員 *"
+                />
             </Modal.Body>
             <Modal.Footer>
                 <Button variant="secondary" onClick={handleClose}>取消</Button>
