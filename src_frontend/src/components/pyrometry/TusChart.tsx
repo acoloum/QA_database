@@ -25,6 +25,7 @@ interface TusChartProps {
   startIdx?: number;
   endIdx?: number;
   標題?: string;
+  excludedChannels?: string[];
 }
 
 const COLORS = [
@@ -33,7 +34,11 @@ const COLORS = [
   '#dcbeff', '#9a6324',
 ];
 
-const TusChart = ({ 時間, 數值, 設定溫度, 公差, startIdx, endIdx, 標題 }: TusChartProps) => {
+export const EXCLUDED_COLOR = '#adb5bd';
+export const channelLineColor = (index: number, excluded: boolean): string =>
+  excluded ? EXCLUDED_COLOR : COLORS[index % COLORS.length];
+
+const TusChart = ({ 時間, 數值, 設定溫度, 公差, startIdx, endIdx, 標題, excludedChannels = [] }: TusChartProps) => {
   const channels = sortChannels(Object.keys(數值));
   const upper = 設定溫度 + 公差;
   const lower = 設定溫度 - 公差;
@@ -53,9 +58,10 @@ const TusChart = ({ 時間, 數值, 設定溫度, 公差, startIdx, endIdx, 標�
 
   const datasets = [
     ...channels.map((ch, i) => {
-      const base = COLORS[i % COLORS.length];
-      const ptColor = 數值[ch].map((v, j) => ptStateColor(v, j, base));
-      const ptRadius = 數值[ch].map((v, j) => (ptIsOut(v, j) ? 4 : 2));
+      const isExcluded = excludedChannels.includes(ch);
+      const base = channelLineColor(i, isExcluded);
+      const ptColor = 數值[ch].map((v, j) => (isExcluded ? base : ptStateColor(v, j, base)));
+      const ptRadius = 數值[ch].map((v, j) => (!isExcluded && ptIsOut(v, j) ? 4 : 2));
       return {
         label: ch,
         data: 數值[ch],
