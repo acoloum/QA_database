@@ -309,6 +309,20 @@ def test_create_test_persists_exclusion(app, db_session):
         assert p2["排除原因"] == "熱電偶斷線"
 
 
+def test_create_test_requires_exclude_reason(app, db_session):
+    """已排除但未填原因 → 丟出驗證錯誤"""
+    from backend.services.pyrometry_calculations import PyrometryValidationError
+    with app.app_context():
+        fid = _make_furnace(tol=10)
+        with pytest.raises(PyrometryValidationError):
+            PyrometryService.create_test({
+                "爐子ID": fid, "測試類型": "TUS", "測試日期": "2026-04-15",
+                "設定溫度": 180, "允許公差": 10,
+                "points": [{"點位": "TUS-1", "最高溫": 999, "最低溫": 999,
+                            "已排除": True}],   # 缺原因
+            })
+
+
 def test_create_sat_test_auto_judges(app, db_session):
     with app.app_context():
         fid = PyrometryService.add_furnace({"爐號": "F-S", "名稱": "退火爐", "SAT允許誤差": 5})

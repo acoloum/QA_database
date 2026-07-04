@@ -49,6 +49,9 @@ def validate_test_payload(data: Dict[str, Any], default_test_type: str | None = 
         parse_date(data.get("測試日期"))
     except (TypeError, ValueError):
         raise PyrometryValidationError("爐子ID、測試日期、設定溫度或允許公差格式不正確")
+    for pt in data.get("points", []) or []:
+        if _is_excluded(pt) and not str(pt.get("排除原因") or "").strip():
+            raise PyrometryValidationError("排除的量測點必須填寫排除原因")
     return {**data, "測試類型": test_type, "爐子ID": furnace_id}
 
 
