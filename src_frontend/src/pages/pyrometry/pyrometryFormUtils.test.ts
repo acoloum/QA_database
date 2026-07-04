@@ -6,6 +6,7 @@ import {
   applyChartRangeToSatReadings,
   applyChartRangeToTusPoints,
   computeRangeStats,
+  detectSoakStartIndex,
   inheritReportFields,
   parseActiveZone,
   parseOptionalChannel,
@@ -197,5 +198,39 @@ describe('pyrometryFormUtils', () => {
     expect(result.satPoints?.[0].readings).toEqual([
       { 控制儀表讀值: '180.12', 校正測試讀值: '181' },
     ]);
+  });
+
+  describe('detectSoakStartIndex', () => {
+    it('finds the soak start index once all channels enter the tolerance band and stay there', () => {
+      expect(detectSoakStartIndex({ CH1: [100, 150, 178, 182, 181, 180] }, 180, 5)).toBe(2);
+    });
+
+    it('returns 0 when every value is already within tolerance', () => {
+      expect(detectSoakStartIndex({ CH1: [180, 181, 179, 180] }, 180, 5)).toBe(0);
+    });
+
+    it('returns 0 when the data never stabilizes (still out of range at the end)', () => {
+      expect(detectSoakStartIndex({ CH1: [100, 110, 120, 130] }, 180, 5)).toBe(0);
+    });
+
+    it('returns 0 when fewer than 2 stable points remain at the tail', () => {
+      expect(detectSoakStartIndex({ CH1: [100, 150, 170, 181] }, 180, 5)).toBe(0);
+    });
+
+    it('returns 0 when setpoint or tolerance is not a finite number', () => {
+      expect(detectSoakStartIndex({ CH1: [180, 181] }, NaN, 5)).toBe(0);
+      expect(detectSoakStartIndex({ CH1: [180, 181] }, 180, NaN)).toBe(0);
+    });
+
+    it('returns 0 when there are no channels', () => {
+      expect(detectSoakStartIndex({}, 180, 5)).toBe(0);
+    });
+
+    it('uses the channel that stabilizes latest across multiple channels', () => {
+      expect(detectSoakStartIndex({
+        CH1: [175, 181, 180, 181],
+        CH2: [100, 150, 178, 181],
+      }, 180, 5)).toBe(2);
+    });
   });
 });

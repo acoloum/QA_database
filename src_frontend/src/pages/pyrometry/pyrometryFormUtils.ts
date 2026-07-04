@@ -153,6 +153,30 @@ export const inheritReportFields = (
   };
 };
 
+export const detectSoakStartIndex = (
+  數值: Record<string, number[]>,
+  setpoint: number,
+  tolerance: number,
+): number => {
+  const channels = Object.values(數值);
+  if (!channels.length) return 0;
+  const length = channels[0].length;
+  if (length === 0 || !Number.isFinite(setpoint) || !Number.isFinite(tolerance)) return 0;
+  const upper = setpoint + tolerance;
+  const lower = setpoint - tolerance;
+  for (let i = length - 1; i >= 0; i--) {
+    const anyOut = channels.some(vals => {
+      const v = vals[i];
+      return v == null || v < lower || v > upper;
+    });
+    if (anyOut) {
+      const start = i + 1;
+      return start <= length - 2 ? start : 0;
+    }
+  }
+  return 0;
+};
+
 export const applyParsedPyrometryData = ({
   destination,
   parsedData,
