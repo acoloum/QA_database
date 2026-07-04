@@ -9,6 +9,11 @@ def test_ncmr_valid_transition():
     validate_status_transition('NCMR', '待處理', '已結案')
     validate_status_transition('NCMR', '矯正中', '已結案')
 
+def test_ncmr_legacy_car_status_transition():
+    # 「CAR處理中」是舊版流程遺留的狀態值，語意等同「矯正中」，須能繼續轉移
+    validate_status_transition('NCMR', 'CAR處理中', '矯正完成')
+    validate_status_transition('NCMR', 'CAR處理中', '已結案')
+
 def test_ncmr_invalid_transition():
     with pytest.raises(ValueError, match='非法狀態轉移'):
         validate_status_transition('NCMR', '已結案', '待處理')
