@@ -134,7 +134,7 @@ const TusSection = ({
               <th>最高溫</th>
               <th>最低溫</th>
               <th style={{ width: 70 }}>排除</th>
-              <th>排除原因</th>
+              <th style={{ minWidth: 150 }}>排除原因</th>
             </tr>
           </thead>
           <tbody>
@@ -202,6 +202,7 @@ const TusSection = ({
                     isInvalid={!!point.已排除 && !String(point.排除原因 ?? '').trim()}
                     onChange={event => onReasonChange(index, event.target.value)}
                   />
+                  <Form.Control.Feedback type="invalid">請填寫排除原因</Form.Control.Feedback>
                 </td>
               </tr>
             ))}

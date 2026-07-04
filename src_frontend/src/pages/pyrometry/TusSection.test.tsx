@@ -67,4 +67,31 @@ describe('TusSection', () => {
     await user.click(screen.getByRole('checkbox', { name: '排除 1' }));
     expect(onToggleExclude).toHaveBeenCalledWith(0, true);
   });
+
+  it('shows invalid feedback when excluded reason is blank', () => {
+    const excludedPoints: TusPoint[] = [
+      { 點位: 'TUS-1', 熱電偶編號: '', 頻道: 1, 修正值: '0.1', 最高溫: '181', 最低溫: '179', 已排除: true, 排除原因: '' },
+    ];
+
+    render(
+      <TusSection
+        tusPoints={excludedPoints}
+        setpoint="180" tolerance="10" chartData={null}
+        rangeStart={0} rangeEnd={0} showDetail={false} timeLabels={[]}
+        onFileUpload={() => undefined}
+        onRangeStartChange={() => undefined}
+        onRangeEndChange={() => undefined}
+        onApplyRangeTus={() => undefined}
+        onToggleDetail={() => undefined}
+        onUpdateTus={() => undefined}
+        onApplyCorrections={() => undefined}
+        onToggleExclude={() => undefined}
+        onReasonChange={() => undefined}
+      />,
+    );
+
+    const reasonInput = screen.getByRole('textbox', { name: '排除原因 1' });
+    expect(reasonInput).toHaveClass('is-invalid');
+    expect(screen.getByText('請填寫排除原因')).toBeInTheDocument();
+  });
 });
