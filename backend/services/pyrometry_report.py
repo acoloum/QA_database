@@ -28,6 +28,7 @@ _HDR_FILL = PatternFill('solid', fgColor='D9E1F2')
 _LABEL_FILL = PatternFill('solid', fgColor='F2F2F2')
 _RED_FILL = PatternFill('solid', fgColor='F8D7DA')    # 超上限
 _BLUE_FILL = PatternFill('solid', fgColor='CFE2FF')   # 低於下限
+_EXCLUDED_FILL = PatternFill('solid', fgColor='E2E3E5')   # 已排除：灰底
 _TITLE_FONT = Font(bold=True, size=14)
 _BOLD = Font(bold=True)
 
@@ -163,6 +164,8 @@ def build_tus_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
     r = hdr_row + 1
     worst = None      # 全數最大誤差（絕對值最大、保留正負）
     for p in detail["tus_points"]:
+        excluded = bool(p.get("已排除"))
+        reason = p.get("排除原因") or ""
         raw_min = _num(p.get("最低溫"))
         raw_max = _num(p.get("最高溫"))
         total = _num(p.get("修正值")) or 0
@@ -172,15 +175,19 @@ def build_tus_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
         g_max = round(raw_max + total, 2) if raw_max is not None else None
         e_min = round(g_min - setpoint, 2) if g_min is not None else None
         e_max = round(g_max - setpoint, 2) if g_max is not None else None
-        for v in (e_min, e_max):
-            if v is not None and (worst is None or abs(v) > abs(worst)):
-                worst = v
+        if not excluded:
+            for v in (e_min, e_max):
+                if v is not None and (worst is None or abs(v) > abs(worst)):
+                    worst = v
         ok = p.get("是否合格", True)
+        judge = f"已排除：{reason}" if excluded else ("合格" if ok else "不合格")
         vals = [p.get("點位", ""), raw_min, raw_max, "°C", b_rec, c_tc,
-                g_min, g_max, e_min, e_max, "合格" if ok else "不合格"]
+                g_min, g_max, e_min, e_max, judge]
         for i, v in enumerate(vals, start=1):
             cell = _set(ws, f"{chr(64 + i)}{r}", v)
-            if not ok and i == 11:
+            if excluded:
+                cell.fill = _EXCLUDED_FILL
+            elif not ok and i == 11:
                 cell.fill = _RED_FILL
         r += 1
 

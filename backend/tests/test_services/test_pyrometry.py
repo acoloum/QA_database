@@ -540,6 +540,27 @@ def test_export_test_xlsx(app, db_session):
         assert any(c.value == "台積電" for row in ws.iter_rows() for c in row)
 
 
+def test_export_tus_marks_excluded_row(app, db_session):
+    """TUS 匯出：已排除列判定欄顯示「已排除：<原因>」"""
+    import io as _io
+    from openpyxl import load_workbook
+    with app.app_context():
+        fid = PyrometryService.add_furnace({"爐號": "F-EXC", "名稱": "排除爐", "TUS允許公差": 10})
+        tid = PyrometryService.create_test({
+            "爐子ID": fid, "測試類型": "TUS", "測試日期": "2026-04-15",
+            "設定溫度": 180, "允許公差": 10,
+            "points": [
+                {"點位": "TUS-1", "最高溫": 183, "最低溫": 179},
+                {"點位": "TUS-2", "最高溫": 999, "最低溫": 999,
+                 "已排除": True, "排除原因": "熱電偶斷線"},
+            ],
+        })
+        content = PyrometryService.export_test_xlsx(tid)
+        wb = load_workbook(_io.BytesIO(content))
+        ws = wb["QRA073-TUS均勻性"]
+        assert any(c.value == "已排除：熱電偶斷線" for row in ws.iter_rows() for c in row)
+
+
 def test_export_sat_xlsx_uses_qra074(app, db_session):
     import io as _io
     from openpyxl import load_workbook
