@@ -23,6 +23,7 @@ import {
   applyChartRangeToTusPoints,
   addSatReadingToPoint,
   applyParsedPyrometryData,
+  computeQuarterLabel,
   emptyItemRow,
   emptySatPoint,
   emptyTusPoint,
@@ -47,6 +48,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const [furnaceId, setFurnaceId] = useState('');
   const [testType, setTestType] = useState<'TUS' | 'SAT'>('TUS');
   const [testDate, setTestDate] = useState('');
+  const [quarter, setQuarter] = useState('');
   const [setpoint, setSetpoint] = useState('');
   const [tolerance, setTolerance] = useState('');
   const [testerId, setTesterId] = useState('');
@@ -91,6 +93,11 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const parseMutation = useParsePyrometryData();
   const tusOnDateMutation = useTusTestOnDate();
 
+  const handleTestDateChange = (value: string) => {
+    setTestDate(value);
+    setQuarter(computeQuarterLabel(value));
+  };
+
   const applyFurnaceDefaults = (fid: string, type: 'TUS' | 'SAT') => {
     const f = (furnaces || []).find(x => String(x.識別碼) === fid);
     if (!f) return;
@@ -115,6 +122,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
       setFurnaceId(state.furnaceId);
       setTestType(state.testType);
       setTestDate(state.testDate);
+      setQuarter(state.quarter);
       setSetpoint(state.setpoint);
       setTolerance(state.tolerance);
       setTesterId(state.testerId);
@@ -292,6 +300,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
         furnaceId,
         testType,
         testDate,
+        quarter,
         setpoint,
         tolerance,
         testerId,
@@ -356,6 +365,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
             furnaceId={furnaceId}
             testType={testType}
             testDate={testDate}
+            quarter={quarter}
             setpoint={setpoint}
             tolerance={tolerance}
             testerId={testerId}
@@ -365,7 +375,8 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
             note={note}
             onFurnaceChange={value => { setFurnaceId(value); applyFurnaceDefaults(value, testType); }}
             onTestTypeChange={value => { setTestType(value); applyFurnaceDefaults(furnaceId, value); }}
-            onTestDateChange={setTestDate}
+            onTestDateChange={handleTestDateChange}
+            onQuarterChange={setQuarter}
             onSetpointChange={setSetpoint}
             onToleranceChange={setTolerance}
             onTesterIdChange={setTesterId}
