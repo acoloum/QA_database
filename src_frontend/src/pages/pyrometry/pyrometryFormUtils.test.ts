@@ -168,6 +168,7 @@ describe('pyrometryFormUtils', () => {
       },
       tusPoints: [{ 點位: 'TUS-1', 熱電偶編號: '', 頻道: 1, 修正值: '', 最高溫: '', 最低溫: '' }],
       satPoints: [],
+      // 不驗證自動偵測；setpoint/tolerance 為 NaN 讓 soakStart 退化為 0，維持舊行為
       setpoint: NaN,
       tolerance: NaN,
     });
@@ -192,6 +193,7 @@ describe('pyrometryFormUtils', () => {
         修正值: '',
         readings: [{ 控制儀表讀值: '', 校正測試讀值: '181' }],
       }],
+      // 不驗證自動偵測；setpoint/tolerance 為 NaN 讓 soakStart 退化為 0，維持舊行為
       setpoint: NaN,
       tolerance: NaN,
     });
