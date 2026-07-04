@@ -25,6 +25,7 @@ interface Props {
   onApplyCorrections: () => void;
   onToggleExclude: (index: number, checked: boolean) => void;
   onReasonChange: (index: number, value: string) => void;
+  excludedChannels?: string[];
 }
 
 const TusSection = ({
@@ -45,6 +46,7 @@ const TusSection = ({
   onApplyCorrections,
   onToggleExclude,
   onReasonChange,
+  excludedChannels = [],
 }: Props) => {
   const { setpointValue, toleranceValue } = resolvePyrometryChartSettings({ setpoint, tolerance });
 
@@ -75,6 +77,7 @@ const TusSection = ({
               startIdx={rangeStart}
               endIdx={rangeEnd}
               標題="測試儀器（記錄器）溫度曲線"
+              excludedChannels={excludedChannels}
             />
           </Col>
           <Col md={12}>

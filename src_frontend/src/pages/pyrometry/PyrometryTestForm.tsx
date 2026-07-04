@@ -168,6 +168,18 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
       idx === i ? removeSatReadingFromPoint(p, ri) : p,
     ));
 
+  // TUS／SAT 量測點「排除」核取方塊與排除原因
+  const handleToggleTusExclude = (index: number, checked: boolean) =>
+    setTusPoints(prev => prev.map((p, i) =>
+      i === index ? { ...p, 已排除: checked, 排除原因: checked ? p.排除原因 ?? '' : '' } : p));
+  const handleTusReason = (index: number, value: string) =>
+    setTusPoints(prev => prev.map((p, i) => (i === index ? { ...p, 排除原因: value } : p)));
+  const handleToggleSatExclude = (index: number, checked: boolean) =>
+    setSatPoints(prev => prev.map((p, i) =>
+      i === index ? { ...p, 已排除: checked, 排除原因: checked ? p.排除原因 ?? '' : '' } : p));
+  const handleSatReason = (index: number, value: string) =>
+    setSatPoints(prev => prev.map((p, i) => (i === index ? { ...p, 排除原因: value } : p)));
+
   const updateItemRow = (idx: number, k: keyof ItemRow, v: string) =>
     setItemRows(prev => updateItemRowAt(prev, idx, k, v));
 
@@ -263,6 +275,15 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const handleSave = async () => {
     setSaving(true); setError('');
     try {
+      const activePoints = testType === 'TUS' ? tusPoints : satPoints;
+      const missingReason = activePoints.some(
+        p => p.已排除 && !String(p.排除原因 ?? '').trim(),
+      );
+      if (missingReason) {
+        setError('排除的量測點必須填寫排除原因');
+        return;
+      }
+
       const payload = buildPyrometryPayload({
         furnaceId,
         testType,
@@ -382,6 +403,9 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
               onToggleDetail={() => setShowDetail(v => !v)}
               onUpdateTus={updateTus}
               onApplyCorrections={() => applyCorrections('TUS')}
+              onToggleExclude={handleToggleTusExclude}
+              onReasonChange={handleTusReason}
+              excludedChannels={tusPoints.filter(p => p.已排除).map(p => p.點位)}
             />
           )}
 
@@ -409,6 +433,8 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
               onAddSatReading={addSatReading}
               onRemoveSatReading={removeSatReading}
               onApplyCorrections={() => applyCorrections('SAT')}
+              onToggleExclude={handleToggleSatExclude}
+              onReasonChange={handleSatReason}
             />
           )}
         </Form>
