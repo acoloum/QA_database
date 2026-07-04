@@ -55,6 +55,8 @@ export interface TusPoint {
   最低溫: string | number | null;
   最大偏差?: string | number | null;
   是否合格?: boolean;
+  已排除?: boolean;
+  排除原因?: string;
 }
 
 export interface SatReading {
@@ -74,6 +76,8 @@ export interface SatPoint {
   差值?: string | number | null;
   偏差?: string | number | null;
   是否合格?: boolean;
+  已排除?: boolean;
+  排除原因?: string;
 }
 
 export interface RecorderCalPoint {

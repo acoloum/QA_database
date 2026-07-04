@@ -36,12 +36,16 @@ export const emptyTusPoint = (ch?: number): TusPoint => ({
   修正值: '',
   最高溫: '',
   最低溫: '',
+  已排除: false,
+  排除原因: '',
 });
 export const emptySatPoint = (ch?: number): SatPoint => ({
   控溫區: '',
   頻道: ch ?? null,
   修正值: '',
   readings: Array.from({ length: 10 }, emptyReading),
+  已排除: false,
+  排除原因: '',
 });
 
 export const parseOptionalChannel = (value: string): number | null => {
