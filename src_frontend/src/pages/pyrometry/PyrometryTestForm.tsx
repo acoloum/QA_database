@@ -94,7 +94,8 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const applyFurnaceDefaults = (fid: string, type: 'TUS' | 'SAT') => {
     const f = (furnaces || []).find(x => String(x.識別碼) === fid);
     if (!f) return;
-    setTolerance(type === 'TUS' ? f.TUS允許公差 : f.SAT允許誤差);
+    const tol = type === 'TUS' ? f.TUS允許公差 : f.SAT允許誤差;
+    setTolerance(tol == null ? '' : String(tol));
     const n = type === 'TUS' ? f.TUS點數 : f.SAT點數;
     if (type === 'TUS') {
       setTusPoints(Array.from({ length: n }, (_, i) => ({ ...emptyTusPoint(i + 1), 點位: `TUS-${i + 1}` })));
