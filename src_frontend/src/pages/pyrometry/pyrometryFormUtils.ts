@@ -182,6 +182,9 @@ export const detectSoakStartIndex = (
 export const computeQuarterLabel = (dateStr: string): string => {
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return '';
+  // 用 UTC 存取子而非 local time：<input type="date"> 給的日期字串會被解析成
+  // UTC 午夜，若改用 getFullYear()/getMonth()，在負時區主機上會被往前推一天，
+  // 季度邊界日（如每季第一天）可能因此被誤判成上一季。
   const year = d.getUTCFullYear();
   const month = d.getUTCMonth() + 1;
   const q = Math.floor((month - 1) / 3) + 1;
