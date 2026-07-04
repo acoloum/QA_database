@@ -15,6 +15,7 @@ describe('PyrometryBasicSection', () => {
         furnaceId=""
         testType="TUS"
         testDate="2026-06-27"
+        quarter="2026Q2"
         setpoint="180"
         tolerance="10"
         testerId=""
@@ -25,6 +26,7 @@ describe('PyrometryBasicSection', () => {
         onFurnaceChange={onFurnaceChange}
         onTestTypeChange={onTestTypeChange}
         onTestDateChange={vi.fn()}
+        onQuarterChange={vi.fn()}
         onSetpointChange={vi.fn()}
         onToleranceChange={vi.fn()}
         onTesterIdChange={vi.fn()}
@@ -41,5 +43,43 @@ describe('PyrometryBasicSection', () => {
 
     expect(onFurnaceChange).toHaveBeenCalledWith('1');
     expect(onTestTypeChange).toHaveBeenCalledWith('SAT');
+    expect(screen.getByDisplayValue('2026Q2')).toBeInTheDocument();
+  });
+
+  it('notifies quarter changes when user edits the field', () => {
+    const onQuarterChange = vi.fn();
+
+    render(
+      <PyrometryBasicSection
+        furnaces={[]}
+        inspectors={[]}
+        furnaceId=""
+        testType="TUS"
+        testDate="2026-07-03"
+        quarter="2026Q3"
+        setpoint=""
+        tolerance=""
+        testerId=""
+        testInstrument=""
+        stdInstrument=""
+        calDueDate=""
+        note=""
+        onFurnaceChange={vi.fn()}
+        onTestTypeChange={vi.fn()}
+        onTestDateChange={vi.fn()}
+        onQuarterChange={onQuarterChange}
+        onSetpointChange={vi.fn()}
+        onToleranceChange={vi.fn()}
+        onTesterIdChange={vi.fn()}
+        onTestInstrumentChange={vi.fn()}
+        onStdInstrumentChange={vi.fn()}
+        onCalDueDateChange={vi.fn()}
+        onNoteChange={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByDisplayValue('2026Q3'), { target: { value: '2026Q2' } });
+
+    expect(onQuarterChange).toHaveBeenCalledWith('2026Q2');
   });
 });

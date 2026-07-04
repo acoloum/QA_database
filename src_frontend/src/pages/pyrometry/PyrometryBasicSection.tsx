@@ -7,6 +7,7 @@ interface PyrometryBasicSectionProps {
   furnaceId: string;
   testType: 'TUS' | 'SAT';
   testDate: string;
+  quarter: string;
   setpoint: string;
   tolerance: string;
   testerId: string;
@@ -17,6 +18,7 @@ interface PyrometryBasicSectionProps {
   onFurnaceChange: (value: string) => void;
   onTestTypeChange: (value: 'TUS' | 'SAT') => void;
   onTestDateChange: (value: string) => void;
+  onQuarterChange: (value: string) => void;
   onSetpointChange: (value: string) => void;
   onToleranceChange: (value: string) => void;
   onTesterIdChange: (value: string) => void;
@@ -32,6 +34,7 @@ const PyrometryBasicSection = ({
   furnaceId,
   testType,
   testDate,
+  quarter,
   setpoint,
   tolerance,
   testerId,
@@ -42,6 +45,7 @@ const PyrometryBasicSection = ({
   onFurnaceChange,
   onTestTypeChange,
   onTestDateChange,
+  onQuarterChange,
   onSetpointChange,
   onToleranceChange,
   onTesterIdChange,
@@ -70,6 +74,10 @@ const PyrometryBasicSection = ({
     <Col md={2}>
       <Form.Label>測試日期 *</Form.Label>
       <Form.Control size="sm" type="date" value={testDate} onChange={e => onTestDateChange(e.target.value)} />
+    </Col>
+    <Col md={2}>
+      <Form.Label>季別</Form.Label>
+      <Form.Control size="sm" value={quarter} onChange={e => onQuarterChange(e.target.value)} />
     </Col>
     <Col md={2}>
       <Form.Label>設定溫度(°C) *</Form.Label>
