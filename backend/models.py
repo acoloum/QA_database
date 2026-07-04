@@ -801,6 +801,8 @@ class TusPoint(db.Model):
     temp_min   = db.Column('最低溫',   db.Numeric(8, 2), nullable=True)
     max_dev    = db.Column('最大偏差', db.Numeric(8, 2), nullable=True)
     is_pass    = db.Column('是否合格', db.Boolean, default=True)
+    excluded       = db.Column('已排除',   db.Boolean, nullable=False, default=False)
+    exclude_reason = db.Column('排除原因', db.Text, nullable=True)
 
 
 class SatPoint(db.Model):
@@ -818,6 +820,8 @@ class SatPoint(db.Model):
     correction    = db.Column('修正值',         db.Numeric(8, 2), nullable=True)
     deviation     = db.Column('偏差',           db.Numeric(8, 2), nullable=True)
     is_pass       = db.Column('是否合格',       db.Boolean, default=True)
+    excluded       = db.Column('已排除',   db.Boolean, nullable=False, default=False)
+    exclude_reason = db.Column('排除原因', db.Text, nullable=True)
 
 
 class Recorder(db.Model):
