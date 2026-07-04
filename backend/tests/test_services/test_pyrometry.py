@@ -596,3 +596,25 @@ def test_export_sat_marks_excluded_row(app, db_session):
         wb = load_workbook(_io.BytesIO(content))
         ws = wb["QRA074-SAT準確度"]
         assert any(c.value == "已排除：感測器故障" for row in ws.iter_rows() for c in row)
+
+
+def test_raw_chart_greys_excluded_channel():
+    """原始溫度曲線圖：已排除頻道的數列應標示為灰色線條（不經過存檔/重載，直接檢查記憶體中的 workbook）"""
+    from openpyxl import Workbook
+    from backend.services.pyrometry_report import build_raw_chart_sheet
+    wb = Workbook()
+    wb.remove(wb.active)
+    build_raw_chart_sheet(
+        wb, ["11:36", "11:38"],
+        {"TUS-1": [179, 183], "TUS-2": [999, 999]},
+        180, 10, sheet_name="原始數據", s_start=0, s_end=1,
+        excluded_channels={"TUS-2"})
+    ws = wb["原始數據"]
+    chart = ws._charts[0]
+    greys = [
+        s for s in chart.series
+        if s.graphicalProperties is not None
+        and s.graphicalProperties.line is not None
+        and "BFBFBF" in str(s.graphicalProperties.line.solidFill)
+    ]
+    assert greys, "已排除頻道應有灰色數列"

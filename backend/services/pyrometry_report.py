@@ -8,6 +8,8 @@ import re
 from typing import Dict, Any, Optional
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from openpyxl.chart import LineChart, Reference
+from openpyxl.chart.shapes import GraphicalProperties
+from openpyxl.drawing.line import LineProperties
 
 
 def _sort_channels(keys):
@@ -337,9 +339,11 @@ def build_sat_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
 # ----------------------------------------------------------------------------
 def build_raw_chart_sheet(wb, times, values: Dict[str, Any], setpoint: float, tol: float,
                           sheet_name: str = "原始數據", title: str = "TUS 溫度曲線",
-                          s_start: Optional[int] = None, s_end: Optional[int] = None):
+                          s_start: Optional[int] = None, s_end: Optional[int] = None,
+                          excluded_channels: Optional[set] = None):
     """原始數據（時間×通道）+ 溫度曲線圖。
-    若提供恆溫穩定期(s_start/s_end)，期內超限點標色：超上限紅、低於下限藍。"""
+    若提供恆溫穩定期(s_start/s_end)，期內超限點標色：超上限紅、低於下限藍。
+    已排除頻道（excluded_channels）不套用超限標色，且曲線圖數列改為灰色線條。"""
     if not times:
         return
     values = values or {}
@@ -347,6 +351,7 @@ def build_raw_chart_sheet(wb, times, values: Dict[str, Any], setpoint: float, to
     if not channels:
         return
     highlight = s_start is not None and s_end is not None
+    excluded_channels = excluded_channels or set()
     upper = setpoint + tol
     lower = setpoint - tol
 
@@ -364,7 +369,7 @@ def build_raw_chart_sheet(wb, times, values: Dict[str, Any], setpoint: float, to
             arr = values.get(ch) or []
             v = arr[j] if j < len(arr) else None
             cell = _set(ws, ws.cell(row=row, column=k).coordinate, v)
-            if highlight and (s_start <= j <= s_end) and (v is not None):
+            if highlight and (s_start <= j <= s_end) and (v is not None) and (ch not in excluded_channels):
                 if v > upper:
                     cell.fill = _RED_FILL    # 超上限
                 elif v < lower:
@@ -385,5 +390,10 @@ def build_raw_chart_sheet(wb, times, values: Dict[str, Any], setpoint: float, to
     cats = Reference(ws, min_col=1, min_row=2, max_row=len(times) + 1)
     chart.add_data(data, titles_from_data=True)
     chart.set_categories(cats)
+    for idx, ch in enumerate(channels):
+        if ch in excluded_channels:
+            gp = GraphicalProperties()
+            gp.line = LineProperties(solidFill="BFBFBF")
+            chart.series[idx].graphicalProperties = gp
     anchor_col = chr(64 + last_col + 2)
     ws.add_chart(chart, f"{anchor_col}2")
