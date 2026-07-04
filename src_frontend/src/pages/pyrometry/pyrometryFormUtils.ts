@@ -171,6 +171,7 @@ export const detectSoakStartIndex = (
     });
     if (anyOut) {
       const start = i + 1;
+      // 穩定期至少需保留 2 個資料點才視為有效偵測，否則回退為整段資料
       return start <= length - 2 ? start : 0;
     }
   }
