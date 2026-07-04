@@ -254,11 +254,14 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const handleFileUpload = async (file: File, dest: PyrometryUploadDestination) => {
     const r = await parseMutation.mutateAsync(file);
     if (!r.success) return;
+    const toNumberOrNaN = (value: string) => (value.trim() === '' ? NaN : Number(value));
     const result = applyParsedPyrometryData({
       destination: dest,
       parsedData: r.data,
       tusPoints,
       satPoints,
+      setpoint: toNumberOrNaN(setpoint),
+      tolerance: toNumberOrNaN(tolerance),
     });
     if (result.chartData) setChartData(result.chartData);
     if (result.rangeStart != null) setRangeStart(result.rangeStart);
