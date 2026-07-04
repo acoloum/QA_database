@@ -7,6 +7,7 @@ export interface BuildPyrometryPayloadInput {
   furnaceId: string;
   testType: PyrometryTestType;
   testDate: string;
+  quarter: string;
   setpoint: string;
   tolerance: string;
   testerId: string;
@@ -33,6 +34,7 @@ export interface PyrometryPayload {
   爐子ID: number;
   測試類型: PyrometryTestType;
   測試日期: string;
+  季別: string;
   設定溫度: string;
   允許公差: string;
   測試人員: number | null;
@@ -57,6 +59,7 @@ export const buildPyrometryPayload = ({
   furnaceId,
   testType,
   testDate,
+  quarter,
   setpoint,
   tolerance,
   testerId,
@@ -105,6 +108,7 @@ export const buildPyrometryPayload = ({
     爐子ID: parseRequiredPositiveId(furnaceId, '爐子'),
     測試類型: testType,
     測試日期: testDate,
+    季別: quarter,
     設定溫度: setpoint,
     允許公差: tolerance,
     測試人員: testerId ? parseRequiredPositiveId(testerId, '測試人員') : null,

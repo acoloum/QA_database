@@ -23,6 +23,7 @@ describe('buildPyrometryPayload', () => {
       furnaceId: '7',
       testType: 'TUS',
       testDate: '2026-06-19',
+      quarter: '2026Q2',
       setpoint: '180',
       tolerance: '10',
       testerId: '3',
@@ -49,6 +50,7 @@ describe('buildPyrometryPayload', () => {
       爐子ID: 7,
       測試類型: 'TUS',
       測試日期: '2026-06-19',
+      季別: '2026Q2',
       設定溫度: '180',
       允許公差: '10',
       測試人員: 3,
@@ -89,6 +91,7 @@ describe('buildPyrometryPayload', () => {
       furnaceId: '8',
       testType: 'SAT',
       testDate: '2026-06-19',
+      quarter: '2026Q3',
       setpoint: '180',
       tolerance: '5',
       testerId: '',
@@ -112,6 +115,7 @@ describe('buildPyrometryPayload', () => {
     });
 
     expect(payload.測試人員).toBeNull();
+    expect(payload.季別).toBe('2026Q3');
     expect(payload.points).toBe(satPoints);
     expect(payload.曲線資料).toEqual({
       時間: ['09:00'],
@@ -130,6 +134,7 @@ describe('buildPyrometryPayload', () => {
       furnaceId,
       testType: 'TUS',
       testDate: '2026-06-19',
+      quarter: '2026Q1',
       setpoint: '180',
       tolerance: '10',
       testerId: '',
