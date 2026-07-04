@@ -127,6 +127,15 @@ def evaluate_sat(tolerance: float, points: List[Dict[str, Any]]) -> Dict[str, An
     out_points = []
     overall_pass = True
     for p in points:
+        if _is_excluded(p):
+            np_point = {k: v for k, v in p.items() if k not in ("readings", "差值", "偏差", "是否合格")}
+            np_point["readings"] = p.get("readings") or []
+            np_point["已排除"] = True
+            np_point["差值"] = None
+            np_point["偏差"] = None
+            np_point["是否合格"] = None
+            out_points.append(np_point)
+            continue
         corr = to_float(p.get("修正值")) or 0.0
         raw_readings: List[Dict[str, Any]] = p.get("readings") or []
         if not raw_readings:
@@ -155,6 +164,7 @@ def evaluate_sat(tolerance: float, points: List[Dict[str, Any]]) -> Dict[str, An
             computed_readings.append(cr)
         overall_pass = overall_pass and zone_pass
         np_point = {k: v for k, v in p.items() if k not in ("readings", "差值", "偏差", "是否合格")}
+        np_point["已排除"] = False
         np_point["readings"] = computed_readings
         np_point["差值"] = worst_diff
         np_point["偏差"] = worst_dev

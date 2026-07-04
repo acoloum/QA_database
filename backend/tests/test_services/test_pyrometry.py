@@ -221,6 +221,22 @@ def test_evaluate_sat_pass_and_fail():
     assert result["是否合格"] is False
 
 
+def test_evaluate_sat_excludes_flagged_zone():
+    """已排除控溫區不計入整體判定，仍回傳並標記已排除"""
+    points = [
+        {"控溫區": "Z1", "修正值": 0, "readings": [
+            {"控制儀表讀值": 180, "校正測試讀值": 182}]},          # 偏差 +2，合格
+        {"控溫區": "Z2", "修正值": 0, "已排除": True, "readings": [
+            {"控制儀表讀值": 180, "校正測試讀值": 999}]},          # 異常，應被排除
+    ]
+    result = PyrometryService.evaluate_sat(tolerance=5, points=points)
+    assert result["是否合格"] is True
+    assert len(result["points"]) == 2
+    assert result["points"][1]["已排除"] is True
+    assert result["points"][1]["偏差"] is None
+    assert result["points"][1]["是否合格"] is None
+
+
 def _make_furnace(tol=10):
     return PyrometryService.add_furnace({"爐號": "F-T", "名稱": "測試爐", "TUS允許公差": tol})
 
