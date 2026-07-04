@@ -5,6 +5,7 @@ import {
   applyParsedPyrometryData,
   applyChartRangeToSatReadings,
   applyChartRangeToTusPoints,
+  computeQuarterLabel,
   computeRangeStats,
   detectSoakStartIndex,
   inheritReportFields,
@@ -354,6 +355,45 @@ describe('pyrometryFormUtils', () => {
         CH1: [175, 181, 180, 181],
         CH2: [100, 150, 178, 181],
       }, 180, 5)).toBe(2);
+    });
+  });
+
+  describe('computeQuarterLabel', () => {
+    it('computes Q1 for January (start of year)', () => {
+      expect(computeQuarterLabel('2026-01-15')).toBe('2026Q1');
+    });
+
+    it('computes Q1 for March (end of Q1)', () => {
+      expect(computeQuarterLabel('2026-03-31')).toBe('2026Q1');
+    });
+
+    it('computes Q2 for April (start of Q2)', () => {
+      expect(computeQuarterLabel('2026-04-01')).toBe('2026Q2');
+    });
+
+    it('computes Q2 for June (end of Q2)', () => {
+      expect(computeQuarterLabel('2026-06-30')).toBe('2026Q2');
+    });
+
+    it('computes Q3 for July (the late-test scenario)', () => {
+      expect(computeQuarterLabel('2026-07-03')).toBe('2026Q3');
+    });
+
+    it('computes Q4 for October (start of Q4)', () => {
+      expect(computeQuarterLabel('2026-10-01')).toBe('2026Q4');
+    });
+
+    it('computes Q4 for December (end of year)', () => {
+      expect(computeQuarterLabel('2026-12-31')).toBe('2026Q4');
+    });
+
+    it('handles year rollover correctly', () => {
+      expect(computeQuarterLabel('2027-01-01')).toBe('2027Q1');
+    });
+
+    it('returns empty string for invalid date strings', () => {
+      expect(computeQuarterLabel('')).toBe('');
+      expect(computeQuarterLabel('not-a-date')).toBe('');
     });
   });
 });

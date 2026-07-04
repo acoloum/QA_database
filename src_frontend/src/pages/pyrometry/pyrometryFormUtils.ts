@@ -179,6 +179,15 @@ export const detectSoakStartIndex = (
   return 0;
 };
 
+export const computeQuarterLabel = (dateStr: string): string => {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '';
+  const year = d.getUTCFullYear();
+  const month = d.getUTCMonth() + 1;
+  const q = Math.floor((month - 1) / 3) + 1;
+  return `${year}Q${q}`;
+};
+
 export const applyParsedPyrometryData = ({
   destination,
   parsedData,
