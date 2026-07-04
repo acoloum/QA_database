@@ -121,6 +121,23 @@ def test_evaluate_tus_applies_correction():
     assert result["TUS均勻度極差"] == 8         # 184 - 176
 
 
+def test_evaluate_tus_excludes_flagged_point():
+    """已排除點不計入均勻度/偏差/整體判定，但仍回傳且標記已排除"""
+    points = [
+        {"點位": "TUS-1", "最高溫": 183, "最低溫": 179},
+        {"點位": "TUS-2", "最高溫": 999, "最低溫": 999, "已排除": True},  # 異常值，應被排除
+    ]
+    result = PyrometryService.evaluate_tus(setpoint=180, tolerance=10, points=points)
+    assert result["是否合格"] is True                 # 異常點被排除，不拖累判定
+    assert result["TUS均勻度極差"] == 4               # 183-179，只算 TUS-1
+    assert result["TUS最大正偏差"] == 3               # 183-180
+    assert len(result["points"]) == 2                 # 排除點仍保留
+    excluded = result["points"][1]
+    assert excluded["已排除"] is True
+    assert excluded["最大偏差"] is None
+    assert excluded["是否合格"] is None
+
+
 def _make_recorder(tc=-1.15):
     return PyrometryService.add_recorder({
         "編號": "23B230004", "熱電偶補正值": tc,

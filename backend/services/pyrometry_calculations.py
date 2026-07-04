@@ -69,6 +69,14 @@ def interp_error(points: List, setpoint: float) -> float:
     return pts[-1][1]
 
 
+def _is_excluded(p) -> bool:
+    """判斷量測點是否被標記排除；接受 bool / 1 / "true" 等表示法。"""
+    v = p.get("已排除")
+    if isinstance(v, str):
+        return v.strip().lower() in ("true", "1", "yes")
+    return bool(v)
+
+
 def evaluate_tus(setpoint: float, tolerance: float, points: List[Dict[str, Any]]) -> Dict[str, Any]:
     sp = float(setpoint)
     tol = float(tolerance)
@@ -76,6 +84,14 @@ def evaluate_tus(setpoint: float, tolerance: float, points: List[Dict[str, Any]]
     all_max, all_min = [], []
     overall_pass = True
     for p in points:
+        excluded = _is_excluded(p)
+        if excluded:
+            np_point = dict(p)
+            np_point["已排除"] = True
+            np_point["最大偏差"] = None
+            np_point["是否合格"] = None
+            out_points.append(np_point)
+            continue
         tmax = to_float(p.get("最高溫"))
         tmin = to_float(p.get("最低溫"))
         corr = to_float(p.get("修正值")) or 0.0
@@ -92,6 +108,7 @@ def evaluate_tus(setpoint: float, tolerance: float, points: List[Dict[str, Any]]
         pt_pass = max_dev is None or abs(max_dev) <= tol
         overall_pass = overall_pass and pt_pass
         np_point = dict(p)
+        np_point["已排除"] = False
         np_point["最大偏差"] = round(max_dev, 2) if max_dev is not None else None
         np_point["是否合格"] = pt_pass
         out_points.append(np_point)
