@@ -32,6 +32,8 @@ describe('TusSection', () => {
         onToggleDetail={() => undefined}
         onUpdateTus={onUpdateTus}
         onApplyCorrections={onApplyCorrections}
+        onToggleExclude={() => undefined}
+        onReasonChange={() => undefined}
       />,
     );
 
@@ -40,5 +42,29 @@ describe('TusSection', () => {
 
     await user.type(screen.getByLabelText('點位 1'), 'A');
     expect(onUpdateTus).toHaveBeenCalledWith(0, '點位', expect.stringContaining('A'));
+  });
+
+  it('toggles exclusion and requires a reason input', async () => {
+    const user = userEvent.setup();
+    const onToggleExclude = vi.fn();
+    const onReasonChange = vi.fn();
+    render(
+      <TusSection
+        tusPoints={tusPoints}
+        setpoint="180" tolerance="10" chartData={null}
+        rangeStart={0} rangeEnd={0} showDetail={false} timeLabels={[]}
+        onFileUpload={() => undefined}
+        onRangeStartChange={() => undefined}
+        onRangeEndChange={() => undefined}
+        onApplyRangeTus={() => undefined}
+        onToggleDetail={() => undefined}
+        onUpdateTus={() => undefined}
+        onApplyCorrections={() => undefined}
+        onToggleExclude={onToggleExclude}
+        onReasonChange={onReasonChange}
+      />,
+    );
+    await user.click(screen.getByRole('checkbox', { name: '排除 1' }));
+    expect(onToggleExclude).toHaveBeenCalledWith(0, true);
   });
 });

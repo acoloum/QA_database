@@ -23,6 +23,8 @@ interface Props {
   onToggleDetail: () => void;
   onUpdateTus: (index: number, key: keyof TusPoint, value: string) => void;
   onApplyCorrections: () => void;
+  onToggleExclude: (index: number, checked: boolean) => void;
+  onReasonChange: (index: number, value: string) => void;
 }
 
 const TusSection = ({
@@ -41,6 +43,8 @@ const TusSection = ({
   onToggleDetail,
   onUpdateTus,
   onApplyCorrections,
+  onToggleExclude,
+  onReasonChange,
 }: Props) => {
   const { setpointValue, toleranceValue } = resolvePyrometryChartSettings({ setpoint, tolerance });
 
@@ -129,6 +133,8 @@ const TusSection = ({
               <th>修正值</th>
               <th>最高溫</th>
               <th>最低溫</th>
+              <th style={{ width: 70 }}>排除</th>
+              <th>排除原因</th>
             </tr>
           </thead>
           <tbody>
@@ -176,6 +182,25 @@ const TusSection = ({
                     value={String(point.最低溫 ?? '')}
                     aria-label={`最低溫 ${index + 1}`}
                     onChange={event => onUpdateTus(index, '最低溫', event.target.value)}
+                  />
+                </td>
+                <td className="text-center">
+                  <Form.Check
+                    type="checkbox"
+                    aria-label={`排除 ${index + 1}`}
+                    checked={!!point.已排除}
+                    onChange={event => onToggleExclude(index, event.target.checked)}
+                  />
+                </td>
+                <td>
+                  <Form.Control
+                    size="sm"
+                    value={point.排除原因 ?? ''}
+                    aria-label={`排除原因 ${index + 1}`}
+                    disabled={!point.已排除}
+                    placeholder={point.已排除 ? '必填' : ''}
+                    isInvalid={!!point.已排除 && !String(point.排除原因 ?? '').trim()}
+                    onChange={event => onReasonChange(index, event.target.value)}
                   />
                 </td>
               </tr>
