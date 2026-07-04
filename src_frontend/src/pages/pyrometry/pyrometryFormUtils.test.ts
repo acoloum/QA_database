@@ -168,6 +168,8 @@ describe('pyrometryFormUtils', () => {
       },
       tusPoints: [{ 點位: 'TUS-1', 熱電偶編號: '', 頻道: 1, 修正值: '', 最高溫: '', 最低溫: '' }],
       satPoints: [],
+      setpoint: NaN,
+      tolerance: NaN,
     });
 
     expect(result.chartData).toEqual({ 時間: ['09:00', '09:10'], 數值: { CH1: [180, 181] } });
@@ -190,6 +192,8 @@ describe('pyrometryFormUtils', () => {
         修正值: '',
         readings: [{ 控制儀表讀值: '', 校正測試讀值: '181' }],
       }],
+      setpoint: NaN,
+      tolerance: NaN,
     });
 
     expect(result.furnaceChartData).toEqual({ 時間: ['09:00'], 數值: { F1: [180.123] } });
@@ -197,6 +201,82 @@ describe('pyrometryFormUtils', () => {
     expect(result.furnaceRangeEnd).toBe(0);
     expect(result.satPoints?.[0].readings).toEqual([
       { 控制儀表讀值: '180.12', 校正測試讀值: '181' },
+    ]);
+  });
+
+  it('auto-detects TUS soak start from setpoint/tolerance and trims stats accordingly', () => {
+    const result = applyParsedPyrometryData({
+      destination: 'recorder',
+      parsedData: {
+        時間: ['09:00', '09:10', '09:20', '09:30'],
+        數值: { CH1: [100, 150, 178, 182] },
+      },
+      tusPoints: [{ 點位: 'TUS-1', 熱電偶編號: '', 頻道: 1, 修正值: '', 最高溫: '', 最低溫: '' }],
+      satPoints: [],
+      setpoint: 180,
+      tolerance: 5,
+    });
+
+    expect(result.rangeStart).toBe(2);
+    expect(result.rangeEnd).toBe(3);
+    expect(result.tusPoints?.[0]).toMatchObject({ 最高溫: '182', 最低溫: '178' });
+  });
+
+  it('auto-detects SAT soak start from setpoint/tolerance', () => {
+    const result = applyParsedPyrometryData({
+      destination: 'sat',
+      parsedData: {
+        時間: ['09:00', '09:10', '09:20', '09:30'],
+        數值: { CH13: [100, 150, 178, 182] },
+      },
+      tusPoints: [],
+      satPoints: [{
+        控溫區: 'Zone1',
+        頻道: 13,
+        修正值: '',
+        readings: [
+          { 控制儀表讀值: '180', 校正測試讀值: '' },
+          { 控制儀表讀值: '180', 校正測試讀值: '' },
+        ],
+      }],
+      setpoint: 180,
+      tolerance: 5,
+    });
+
+    expect(result.satRangeStart).toBe(2);
+    expect(result.satRangeEnd).toBe(3);
+    expect(result.satPoints?.[0].readings).toEqual([
+      { 控制儀表讀值: '180', 校正測試讀值: '178' },
+      { 控制儀表讀值: '180', 校正測試讀值: '182' },
+    ]);
+  });
+
+  it('auto-detects furnace body soak start from setpoint/tolerance', () => {
+    const result = applyParsedPyrometryData({
+      destination: 'furnace',
+      parsedData: {
+        時間: ['09:00', '09:10', '09:20', '09:30'],
+        數值: { F1: [100, 150, 178, 182] },
+      },
+      tusPoints: [],
+      satPoints: [{
+        控溫區: 'Zone1',
+        頻道: 13,
+        修正值: '',
+        readings: [
+          { 控制儀表讀值: '', 校正測試讀值: '181' },
+          { 控制儀表讀值: '', 校正測試讀值: '182' },
+        ],
+      }],
+      setpoint: 180,
+      tolerance: 5,
+    });
+
+    expect(result.furnaceRangeStart).toBe(2);
+    expect(result.furnaceRangeEnd).toBe(3);
+    expect(result.satPoints?.[0].readings).toEqual([
+      { 控制儀表讀值: '178', 校正測試讀值: '181' },
+      { 控制儀表讀值: '182', 校正測試讀值: '182' },
     ]);
   });
 

@@ -183,37 +183,42 @@ export const applyParsedPyrometryData = ({
   parsedData,
   tusPoints,
   satPoints,
+  setpoint,
+  tolerance,
 }: {
   destination: PyrometryUploadDestination;
   parsedData: ChartData;
   tusPoints: TusPoint[];
   satPoints: SatPoint[];
+  setpoint: number;
+  tolerance: number;
 }) => {
   const chartData = { 時間: parsedData.時間, 數值: parsedData.數值 };
   const lastIndex = Math.max(chartData.時間.length - 1, 0);
+  const soakStart = detectSoakStartIndex(chartData.數值, setpoint, tolerance);
 
   if (destination === 'recorder') {
     return {
       chartData,
-      rangeStart: 0,
+      rangeStart: soakStart,
       rangeEnd: lastIndex,
-      tusPoints: applyChartRangeToTusPoints(tusPoints, chartData, 0, lastIndex),
+      tusPoints: applyChartRangeToTusPoints(tusPoints, chartData, soakStart, lastIndex),
     };
   }
 
   if (destination === 'sat') {
     return {
       satChartData: chartData,
-      satRangeStart: 0,
+      satRangeStart: soakStart,
       satRangeEnd: lastIndex,
-      satPoints: applyChartRangeToSatReadings(satPoints, chartData, 0, lastIndex, '校正測試讀值'),
+      satPoints: applyChartRangeToSatReadings(satPoints, chartData, soakStart, lastIndex, '校正測試讀值'),
     };
   }
 
   return {
     furnaceChartData: chartData,
-    furnaceRangeStart: 0,
+    furnaceRangeStart: soakStart,
     furnaceRangeEnd: lastIndex,
-    satPoints: applyChartRangeToSatReadings(satPoints, chartData, 0, lastIndex, '控制儀表讀值'),
+    satPoints: applyChartRangeToSatReadings(satPoints, chartData, soakStart, lastIndex, '控制儀表讀值'),
   };
 };
