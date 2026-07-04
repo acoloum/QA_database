@@ -23,6 +23,7 @@ type MainData = {
   爐子ID?: string | number | null;
   測試類型?: 'TUS' | 'SAT';
   測試日期?: string | null;
+  季別?: string | null;
   設定溫度?: string | number | null;
   允許公差?: string | number | null;
   測試人員?: string | number | null;
@@ -44,6 +45,7 @@ export type PyrometryEditFormState = {
   furnaceId: string;
   testType: 'TUS' | 'SAT';
   testDate: string;
+  quarter: string;
   setpoint: string;
   tolerance: string;
   testerId: string;
@@ -81,6 +83,7 @@ export const buildPyrometryEditFormState = (editData: PyrometryEditData): Pyrome
     furnaceId: toText(main.爐子ID),
     testType,
     testDate: toText(main.測試日期),
+    quarter: toText(main.季別),
     setpoint: toText(main.設定溫度),
     tolerance: toText(main.允許公差),
     testerId: main.測試人員 ? String(main.測試人員) : '',
