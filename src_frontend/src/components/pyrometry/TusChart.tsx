@@ -61,7 +61,7 @@ const TusChart = ({ 時間, 數值, 設定溫度, 公差, startIdx, endIdx, 標�
       const isExcluded = excludedChannels.includes(ch);
       const base = channelLineColor(i, isExcluded);
       const ptColor = 數值[ch].map((v, j) => (isExcluded ? base : ptStateColor(v, j, base)));
-      const ptRadius = 數值[ch].map((v, j) => (!isExcluded && ptIsOut(v, j) ? 4 : 2));
+      const ptRadius = 數值[ch].map((v, j) => (!isExcluded && ptIsOut(v, j) ? 4 : 0));
       return {
         label: ch,
         data: 數值[ch],
@@ -95,41 +95,44 @@ const TusChart = ({ 時間, 數值, 設定溫度, 公差, startIdx, endIdx, 標�
   ];
 
   return (
-    <Line
-      data={{ labels: 時間, datasets }}
-      options={{
-        responsive: true,
-        plugins: {
-          legend: { position: 'bottom' as const },
-          title: { display: true, text: 標題 || 'TUS 溫度曲線' },
-          annotation: hasRange
-            ? {
-                annotations: {
-                  soakRange: {
-                    type: 'box' as const,
-                    xMin: startIdx,
-                    xMax: endIdx,
-                    backgroundColor: 'rgba(25, 118, 210, 0.12)',
-                    borderColor: 'rgba(25, 118, 210, 0.4)',
-                    borderWidth: 1,
-                    label: {
-                      display: true,
-                      content: '恆溫穩定期',
-                      position: 'start' as const,
-                      color: '#1565c0',
-                      font: { size: 11 },
+    <div style={{ height: 400 }}>
+      <Line
+        data={{ labels: 時間, datasets }}
+        options={{
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom' as const },
+            title: { display: true, text: 標題 || 'TUS 溫度曲線' },
+            annotation: hasRange
+              ? {
+                  annotations: {
+                    soakRange: {
+                      type: 'box' as const,
+                      xMin: startIdx,
+                      xMax: endIdx,
+                      backgroundColor: 'rgba(25, 118, 210, 0.12)',
+                      borderColor: 'rgba(25, 118, 210, 0.4)',
+                      borderWidth: 1,
+                      label: {
+                        display: true,
+                        content: '恆溫穩定期',
+                        position: 'start' as const,
+                        color: '#1565c0',
+                        font: { size: 11 },
+                      },
                     },
                   },
-                },
-              }
-            : {},
-        },
-        scales: {
-          y: { title: { display: true, text: '溫度 (°C)' } },
-          x: { title: { display: true, text: '時間' } },
-        },
-      }}
-    />
+                }
+              : {},
+          },
+          scales: {
+            y: { title: { display: true, text: '溫度 (°C)' } },
+            x: { title: { display: true, text: '時間' } },
+          },
+        }}
+      />
+    </div>
   );
 };
 
