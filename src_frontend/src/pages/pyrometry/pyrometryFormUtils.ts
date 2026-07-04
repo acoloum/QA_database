@@ -1,4 +1,5 @@
 import type { SatPoint, SatReading, TusPoint } from '../../types';
+import { sortChannels } from '../../components/pyrometry/channelSort';
 
 export type ChartData = { 時間: string[]; 數值: Record<string, number[]> };
 export type ItemRow = { 工件料號: string; 生產批號: string; 內外徑尺寸: string; 支數: string };
@@ -77,7 +78,7 @@ export const computeRangeStats = (
   start: number,
   end: number,
 ): { 名稱: string; 最高溫: number; 最低溫: number }[] =>
-  Object.keys(數值).map(ch => {
+  sortChannels(Object.keys(數值)).map(ch => {
     const slice = 數值[ch].slice(start, end + 1).filter((v): v is number => v !== null && v !== undefined);
     return {
       名稱: ch,
@@ -113,7 +114,7 @@ export const applyChartRangeToSatReadings = (
   end: number,
   targetField: keyof SatReading,
 ): SatPoint[] => {
-  const channels = Object.keys(chartData.數值);
+  const channels = sortChannels(Object.keys(chartData.數值));
   return points.map((point, index) => {
     const channel = channels[index];
     if (!channel) return point;

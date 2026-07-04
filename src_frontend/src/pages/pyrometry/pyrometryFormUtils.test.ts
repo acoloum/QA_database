@@ -63,6 +63,32 @@ describe('pyrometryFormUtils', () => {
     expect(result[0]).toMatchObject({ 最高溫: '182.35', 最低溫: '181.2' });
   });
 
+  it('aligns TUS max/min values by channel identity even when file columns are out of numeric order', () => {
+    // 上傳檔案的欄位順序不保證是 TUS-1...TUS-12 遞增（例如記錄器實際接線/匯出順序），
+    // TUS-10 在此故意排在第2欄，驗證表格列不會把其他通道的數值誤植到 TUS-10 或其他列上。
+    const points = [
+      { 點位: 'TUS-1', 熱電偶編號: '', 頻道: 1, 修正值: '', 最高溫: '', 最低溫: '' },
+      { 點位: 'TUS-2', 熱電偶編號: '', 頻道: 2, 修正值: '', 最高溫: '', 最低溫: '' },
+      { 點位: 'TUS-3', 熱電偶編號: '', 頻道: 3, 修正值: '', 最高溫: '', 最低溫: '' },
+      { 點位: 'TUS-10', 熱電偶編號: '', 頻道: 10, 修正值: '', 最高溫: '', 最低溫: '' },
+    ];
+
+    const result = applyChartRangeToTusPoints(points, {
+      時間: ['00:00', '00:01'],
+      數值: {
+        'TUS-1': [400, 401],
+        'TUS-10': [50, 52],
+        'TUS-2': [402, 403],
+        'TUS-3': [404, 405],
+      },
+    }, 0, 1);
+
+    expect(result.find(p => p.點位 === 'TUS-1')).toMatchObject({ 最高溫: '401', 最低溫: '400' });
+    expect(result.find(p => p.點位 === 'TUS-2')).toMatchObject({ 最高溫: '403', 最低溫: '402' });
+    expect(result.find(p => p.點位 === 'TUS-3')).toMatchObject({ 最高溫: '405', 最低溫: '404' });
+    expect(result.find(p => p.點位 === 'TUS-10')).toMatchObject({ 最高溫: '52', 最低溫: '50' });
+  });
+
   it('fills SAT test readings from chart values and preserves control readings', () => {
     const points = [{
       控溫區: 'Zone1',
@@ -83,6 +109,21 @@ describe('pyrometryFormUtils', () => {
       { 控制儀表讀值: '180', 校正測試讀值: '180.46' },
       { 控制儀表讀值: '181', 校正測試讀值: '181.23' },
     ]);
+  });
+
+  it('aligns SAT readings by channel identity even when file columns are out of numeric order', () => {
+    const points = [
+      { 控溫區: 'Zone1', 頻道: 13, 修正值: '', readings: [{ 控制儀表讀值: '', 校正測試讀值: '' }] },
+      { 控溫區: 'Zone2', 頻道: 14, 修正值: '', readings: [{ 控制儀表讀值: '', 校正測試讀值: '' }] },
+    ];
+
+    const result = applyChartRangeToSatReadings(points, {
+      時間: ['00:00'],
+      數值: { 'SAT-14': [200], 'SAT-13': [180] },
+    }, 0, 0, '校正測試讀值');
+
+    expect(result[0].readings).toEqual([{ 控制儀表讀值: '', 校正測試讀值: '180' }]);
+    expect(result[1].readings).toEqual([{ 控制儀表讀值: '', 校正測試讀值: '200' }]);
   });
 
   it('fills furnace control readings and preserves SAT test readings', () => {
