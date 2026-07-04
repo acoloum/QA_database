@@ -575,3 +575,24 @@ def test_export_sat_xlsx_uses_qra074(app, db_session):
         content = PyrometryService.export_test_xlsx(tid)
         wb = load_workbook(_io.BytesIO(content))
         assert "QRA074-SAT準確度" in wb.sheetnames
+
+
+def test_export_sat_marks_excluded_row(app, db_session):
+    """SAT 匯出：已排除列判定欄顯示「已排除：<原因>」"""
+    import io as _io
+    from openpyxl import load_workbook
+    with app.app_context():
+        fid = PyrometryService.add_furnace({"爐號": "F-SEXC", "名稱": "SAT排除爐", "SAT允許誤差": 5})
+        tid = PyrometryService.create_test({
+            "爐子ID": fid, "測試類型": "SAT", "測試日期": "2026-04-15",
+            "設定溫度": 180, "允許公差": 5,
+            "points": [
+                {"控溫區": "Z1", "修正值": 0, "readings": [
+                    {"控制儀表讀值": 180, "校正測試讀值": 182}]},
+                {"控溫區": "Z2", "修正值": 0, "已排除": True, "排除原因": "感測器故障",
+                 "readings": [{"控制儀表讀值": 180, "校正測試讀值": 999}]},
+            ]})
+        content = PyrometryService.export_test_xlsx(tid)
+        wb = load_workbook(_io.BytesIO(content))
+        ws = wb["QRA074-SAT準確度"]
+        assert any(c.value == "已排除：感測器故障" for row in ws.iter_rows() for c in row)

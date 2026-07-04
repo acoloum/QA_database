@@ -280,6 +280,8 @@ def build_sat_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
     r = hdr_row + 1
     worst = None
     for p in detail["sat_points"]:
+        excluded = bool(p.get("已排除"))
+        reason = p.get("排除原因") or ""
         corr = _num(p.get("修正值")) or 0
         c_tc = tc_corr or 0
         b_rec = round(corr - c_tc, 2)   # 溫度計（記錄器）補償 = 總修正 − 熱電偶補償
@@ -297,14 +299,16 @@ def build_sat_sheet(wb, detail: Dict[str, Any], meta: Dict[str, Any], tc_corr: f
             diff = _num(p.get("差值"))
             dev  = _num(p.get("偏差"))
         corrected = round(test + corr, 2) if test is not None else None
-        if dev is not None and (worst is None or abs(dev) > abs(worst)):
+        if not excluded and dev is not None and (worst is None or abs(dev) > abs(worst)):
             worst = dev
         ok = p.get("是否合格", True)
-        vals = [p.get("控溫區", ""), ctrl, test, diff, "°C", b_rec, c_tc, corrected, dev,
-                "合格" if ok else "不合格"]
+        judge = f"已排除：{reason}" if excluded else ("合格" if ok else "不合格")
+        vals = [p.get("控溫區", ""), ctrl, test, diff, "°C", b_rec, c_tc, corrected, dev, judge]
         for col, v in zip(cols, vals):
             cell = _set(ws, f"{col}{r}", v)
-            if not ok and col == "J":
+            if excluded:
+                cell.fill = _EXCLUDED_FILL
+            elif not ok and col == "J":
                 cell.fill = _RED_FILL
         r += 1
 
