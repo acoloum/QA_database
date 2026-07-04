@@ -33,6 +33,8 @@ interface Props {
   onAddSatReading: (index: number) => void;
   onRemoveSatReading: (index: number, readingIndex: number) => void;
   onApplyCorrections: () => void;
+  onToggleExclude: (index: number, checked: boolean) => void;
+  onReasonChange: (index: number, value: string) => void;
 }
 
 const SatSection = ({
@@ -58,6 +60,8 @@ const SatSection = ({
   onAddSatReading,
   onRemoveSatReading,
   onApplyCorrections,
+  onToggleExclude,
+  onReasonChange,
 }: Props) => {
   const { setpointValue, toleranceValue } = resolvePyrometryChartSettings({ setpoint, tolerance });
 
@@ -174,15 +178,40 @@ const SatSection = ({
         <div className="border border-top-0 rounded-bottom p-3 mb-3">
           {satPoints.map((point, index) =>
             index === activeZone ? (
-              <SatZoneTab
-                key={index}
-                point={point}
-                tolerance={tolerance}
-                onUpdateField={(key, value) => onUpdateSatField(index, key, value)}
-                onUpdateReading={(readingIndex, key, value) => onUpdateSatReading(index, readingIndex, key, value)}
-                onAddReading={() => onAddSatReading(index)}
-                onRemoveReading={readingIndex => onRemoveSatReading(index, readingIndex)}
-              />
+              <div key={index}>
+                <Row className="g-2 mb-2 align-items-start">
+                  <Col md="auto" className="text-center">
+                    <Form.Label className="mb-0 d-block" style={{ fontSize: 12 }}>排除</Form.Label>
+                    <Form.Check
+                      type="checkbox"
+                      aria-label={`排除 ${index + 1}`}
+                      checked={!!point.已排除}
+                      onChange={event => onToggleExclude(index, event.target.checked)}
+                    />
+                  </Col>
+                  <Col md={4}>
+                    <Form.Label className="mb-0" style={{ fontSize: 12 }}>排除原因</Form.Label>
+                    <Form.Control
+                      size="sm"
+                      value={point.排除原因 ?? ''}
+                      aria-label={`排除原因 ${index + 1}`}
+                      disabled={!point.已排除}
+                      placeholder={point.已排除 ? '必填' : ''}
+                      isInvalid={!!point.已排除 && !String(point.排除原因 ?? '').trim()}
+                      onChange={event => onReasonChange(index, event.target.value)}
+                    />
+                    <Form.Control.Feedback type="invalid">請填寫排除原因</Form.Control.Feedback>
+                  </Col>
+                </Row>
+                <SatZoneTab
+                  point={point}
+                  tolerance={tolerance}
+                  onUpdateField={(key, value) => onUpdateSatField(index, key, value)}
+                  onUpdateReading={(readingIndex, key, value) => onUpdateSatReading(index, readingIndex, key, value)}
+                  onAddReading={() => onAddSatReading(index)}
+                  onRemoveReading={readingIndex => onRemoveSatReading(index, readingIndex)}
+                />
+              </div>
             ) : null,
           )}
         </div>
