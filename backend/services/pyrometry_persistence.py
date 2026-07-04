@@ -21,6 +21,8 @@ def build_point_model_kwargs(test_type: str, test_id: int, point: dict[str, Any]
             "temp_min": to_float(point.get("最低溫")),
             "max_dev": to_float(point.get("最大偏差")),
             "is_pass": point.get("是否合格", True),
+            "excluded": bool(point.get("已排除")),
+            "exclude_reason": (point.get("排除原因") or None),
         }
 
     return {
@@ -32,4 +34,6 @@ def build_point_model_kwargs(test_type: str, test_id: int, point: dict[str, Any]
         "correction": to_float(point.get("修正值")),
         "deviation": to_float(point.get("偏差")),
         "is_pass": point.get("是否合格", True),
+        "excluded": bool(point.get("已排除")),
+        "exclude_reason": (point.get("排除原因") or None),
     }

@@ -439,6 +439,8 @@ class PyrometryService:
             "修正值": format_value(p.correction), "最高溫": format_value(p.temp_max),
             "最低溫": format_value(p.temp_min), "最大偏差": format_value(p.max_dev),
             "是否合格": p.is_pass,
+            "已排除": bool(p.excluded),
+            "排除原因": p.exclude_reason or "",
         } for p in sorted(t.tus_points, key=lambda x: x.id)]
         def _sat_readings(p):
             """取得讀值列表；舊格式（單欄）轉為一筆 reading 相容。"""
@@ -456,6 +458,8 @@ class PyrometryService:
             "差值": format_value(p.diff),
             "偏差": format_value(p.deviation),
             "是否合格": p.is_pass,
+            "已排除": bool(p.excluded),
+            "排除原因": p.exclude_reason or "",
             "readings": _sat_readings(p),
         } for p in sorted(t.sat_points, key=lambda x: x.id)]
         return {"success": True, "main": main, "tus_points": tus_points,

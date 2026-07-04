@@ -18,6 +18,8 @@ def test_build_point_model_kwargs_maps_tus_fields():
         "temp_min": 179.0,
         "max_dev": 1.0,
         "is_pass": False,
+        "excluded": False,
+        "exclude_reason": None,
     }
 
 
@@ -39,4 +41,6 @@ def test_build_point_model_kwargs_maps_sat_fields():
         "correction": 0.5,
         "deviation": -0.5,
         "is_pass": True,
+        "excluded": False,
+        "exclude_reason": None,
     }
