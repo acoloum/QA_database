@@ -29,6 +29,12 @@ import {
 } from './shippingInspectionItems';
 import { ToleranceBadgeList } from '../common/toleranceDisplay';
 import ShippingMeasurementTable from './ShippingMeasurementTable';
+import {
+    detectSegmentedKeys,
+    expandSegmentedItems,
+    hasMidRearSegmentValues,
+    remapGroupsOnSegmentToggle,
+} from './shippingSegmentUtils';
 
 interface ShippingModalProps {
     show: boolean;
@@ -64,6 +70,9 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     // 新格式量測資料：Record<組號字串, Record<項目名稱, Partial<ShippingMeasurementItem>>>
     const [groups, setGroups] = useState<Record<string, GroupMeas>>({});
 
+    // 已啟用分段量測的項目基鍵（如 '外徑'）
+    const [segmentedKeys, setSegmentedKeys] = useState<Set<string>>(new Set());
+
     // 公差狀態
     const [tolerance, setTolerance] = useState<ToleranceResult | null>(null);
     const [violations, setViolations] = useState<Record<string, boolean>>({});
@@ -75,11 +84,14 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     // 安泰：真圓度插入內徑後、硬度改標示為洛氏硬度(HRB)、新增韋伯氏硬度(HW)
     const ITEMS = useMemo(() => getShippingInspectionItems(vendorName), [vendorName]);
 
+    // 依分段狀態展開後的實際渲染項目清單
+    const ACTIVE_ITEMS = useMemo(() => expandSegmentedItems(ITEMS, segmentedKeys), [ITEMS, segmentedKeys]);
+
     // 預先計算 tab index 用的偏移量（垂直導覽）
     const { ITEM_OFFSETS, TOTAL_INPUTS_PER_GROUP } = useMemo(() => {
-        const { itemOffsets, totalInputsPerGroup } = getShippingItemInputOffsets(ITEMS);
+        const { itemOffsets, totalInputsPerGroup } = getShippingItemInputOffsets(ACTIVE_ITEMS);
         return { ITEM_OFFSETS: itemOffsets, TOTAL_INPUTS_PER_GROUP: totalInputsPerGroup };
-    }, [ITEMS]);
+    }, [ACTIVE_ITEMS]);
 
     const resetForm = useCallback(() => {
         setDate(formatLocalDate());
@@ -89,6 +101,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         setSpec('');
         setOrderNo('');
         setGroups(initEmptyShippingGroups(DEFAULT_GROUP_COUNT, BASE_SHIPPING_ITEMS));
+        setSegmentedKeys(new Set());
         setTolerance(null);
         setViolations({});
         setFieldErrors({});
@@ -127,6 +140,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                 for (const [gKey, items] of Object.entries(nested)) {
                     loaded[gKey] = { ...(loaded[gKey] ?? {}), ...items };
                 }
+                setSegmentedKeys(detectSegmentedKeys(nested, BASE_SHIPPING_ITEMS));
                 setGroups(loaded);
             }
         });
@@ -138,6 +152,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         let cancelled = false;
         queueMicrotask(() => {
             if (cancelled || editId) return;
+            setSegmentedKeys(new Set());
             setGroups(initEmptyShippingGroups(DEFAULT_GROUP_COUNT, ITEMS));
         });
         return () => { cancelled = true; };
@@ -197,7 +212,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         }
 
         const newViolations = calculateShippingViolations({
-            items: ITEMS,
+            items: ACTIVE_ITEMS,
             groupKeys: getSortedShippingGroupKeys(groups),
             groups,
             tolerance,
@@ -208,7 +223,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             if (!cancelled) setViolations(newViolations);
         });
         return () => { cancelled = true; };
-    }, [groups, tolerance, spec, ITEMS]);
+    }, [groups, tolerance, spec, ACTIVE_ITEMS]);
 
     /** 更新特定組、特定項目的量測值 */
     const updateMeasValue = (gKey: string, itemKey: string, field: keyof ShippingMeasurementItem, value: string) => {
@@ -236,7 +251,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     /** 新增量測組 */
     const addGroup = () => {
         const nextNum = String(Math.max(...Object.keys(groups).map(Number)) + 1);
-        setGroups(prev => ({ ...prev, [nextNum]: emptyShippingGroup(ITEMS) }));
+        setGroups(prev => ({ ...prev, [nextNum]: emptyShippingGroup(ACTIVE_ITEMS) }));
     };
 
     /** 移除指定量測組 */
@@ -249,6 +264,21 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         });
     };
 
+    /** 切換項目的分段量測模式（開啟：單段值搬到前段；關閉：只保留前段） */
+    const toggleSegment = (baseKey: string) => {
+        const enabled = segmentedKeys.has(baseKey);
+        if (enabled && hasMidRearSegmentValues(groups, baseKey)) {
+            if (!window.confirm('關閉分段後將只保留前段數據，確定要關閉嗎？')) return;
+        }
+        setGroups(prev => remapGroupsOnSegmentToggle(prev, baseKey, !enabled));
+        setSegmentedKeys(prev => {
+            const next = new Set(prev);
+            if (enabled) next.delete(baseKey);
+            else next.add(baseKey);
+            return next;
+        });
+    };
+
     const handleSubmit = async () => {
         const { validationErrors, fieldErrors: newFieldErrors } = validateShippingForm({
             date,
@@ -256,7 +286,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             vendorName,
             material,
             spec,
-            items: ITEMS,
+            items: ACTIVE_ITEMS,
             groups,
         });
 
@@ -278,7 +308,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             material,
             spec,
             orderNo,
-            items: ITEMS,
+            items: ACTIVE_ITEMS,
             groups,
         });
 
@@ -370,7 +400,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                         )}
 
                         <ShippingMeasurementTable
-                            items={ITEMS}
+                            items={ACTIVE_ITEMS}
                             groupKeys={sortedGroupKeys}
                             groups={groups}
                             itemOffsets={ITEM_OFFSETS}
@@ -380,6 +410,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                             onMeasurementChange={updateMeasValue}
                             onAddGroup={addGroup}
                             onRemoveGroup={removeGroup}
+                            onToggleSegment={toggleSegment}
                         />
                     </Form>
                 )}

@@ -19,6 +19,8 @@ const deferred = <T,>(): Deferred<T> => {
 
 const checkToleranceMutate = vi.fn();
 
+let shippingDetail: Record<string, unknown> | null = null;
+
 vi.mock('react-hot-toast', () => ({
   default: {
     success: vi.fn(),
@@ -29,7 +31,7 @@ vi.mock('react-hot-toast', () => ({
 vi.mock('../../hooks/useShipping', () => ({
   useInspectors: () => ({ data: [{ id: 1, name: '檢驗員A' }] }),
   useVendors: () => ({ data: [{ id: 10, name: '廠商A' }] }),
-  useShippingDetail: () => ({ data: null, isLoading: false }),
+  useShippingDetail: () => ({ data: shippingDetail, isLoading: false }),
   useCreateShipping: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateShipping: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useCheckTolerance: () => ({ mutateAsync: checkToleranceMutate }),
@@ -55,6 +57,35 @@ const toleranceResponse = (specLabel: string): ToleranceResult => ({
 describe('ShippingModal', () => {
   beforeEach(() => {
     checkToleranceMutate.mockReset();
+    shippingDetail = null;
+  });
+
+  it('載入含分段鍵的紀錄時自動展開外徑三列', async () => {
+    shippingDetail = {
+      識別碼: 5,
+      檢驗日期: '2026-07-01',
+      檢驗人員: '檢驗員A',
+      廠商中文名稱: '廠商A',
+      材質: 'A6061',
+      檢驗規格: '10*2',
+      組數: 1,
+      measurements: {
+        '1': {
+          '外徑@前段': { value_min: 9.8, value_max: 10.1, is_ng: false },
+          '外徑@中段': { value_min: 9.9, value_max: 10.2, is_ng: false },
+          '外徑@後段': { value_min: 9.7, value_max: 10.0, is_ng: false },
+        },
+      },
+    };
+
+    render(
+      <ShippingModal show editId={5} handleClose={() => undefined} onSuccess={() => undefined} />,
+    );
+
+    await waitFor(() => expect(screen.getByText('外徑(前)')).toBeInTheDocument());
+    expect(screen.getByText('外徑(中)')).toBeInTheDocument();
+    expect(screen.getByText('外徑(後)')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('9.9')).toBeInTheDocument();
   });
 
   it('ignores stale tolerance lookup results after form keys change', async () => {
