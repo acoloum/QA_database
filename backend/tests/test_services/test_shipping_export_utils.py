@@ -38,3 +38,31 @@ def test_build_shipping_export_row_maps_nested_measurements_and_empty_values():
     assert export_row["外徑1-最大"] == 10.2
     assert export_row["硬度1"] == ""
     assert export_row["廠商名稱"] == "廠商A"
+
+
+def test_build_shipping_export_row_segmented_od_uses_extremes():
+    """分段紀錄的外徑欄位取三段整體極值,欄位格式不變"""
+    row = {
+        "識別碼": 8,
+        "檢驗日期": "2026-07-09",
+        "材質": "6061",
+        "檢驗規格": "10*2",
+        "訂單號碼": "SO-2",
+        "檢驗人員": "檢驗員A",
+        "廠商中文名稱": "廠商A",
+        "組數": 1,
+        "measurements": {
+            "1": {
+                "外徑@前段": {"value_min": 9.8, "value_max": 10.1},
+                "外徑@中段": {"value_min": 9.9, "value_max": 10.2},
+                "外徑@後段": {"value_min": 9.7, "value_max": 10.0},
+            },
+        },
+    }
+
+    export_row = build_shipping_export_row(row, max_groups=1)
+
+    assert export_row["外徑1-最小"] == 9.7
+    assert export_row["外徑1-最大"] == 10.2
+    # 無資料的欄位維持空字串
+    assert export_row["內徑1-最小"] == ""

@@ -25,6 +25,24 @@ def _measurement_value(measurements: Mapping[str, Any], group_num: int, item_nam
     return value if value is not None else ""
 
 
+def _segmented_minmax(measurements: Mapping[str, Any], group_num: int, item_name: str) -> tuple[Any, Any]:
+    """取該組該項目所有段(含未分段)的整體最小/最大值。
+
+    分段資料的鍵為「項目@位置」;未分段即項目名。無資料時回傳空字串。
+    """
+    group = measurements.get(str(group_num), {}) or {}
+    mins: list[Any] = []
+    maxs: list[Any] = []
+    for key, cell in group.items():
+        if not cell or key.split('@', 1)[0] != item_name:
+            continue
+        if cell.get("value_min") is not None:
+            mins.append(cell["value_min"])
+        if cell.get("value_max") is not None:
+            maxs.append(cell["value_max"])
+    return (min(mins) if mins else "", max(maxs) if maxs else "")
+
+
 def build_shipping_export_row(row: Mapping[str, Any], max_groups: int = 10) -> dict[str, Any]:
     measurements = row.get("measurements", {})
     export_row = {
@@ -39,13 +57,16 @@ def build_shipping_export_row(row: Mapping[str, Any], max_groups: int = 10) -> d
     }
 
     for group_num in range(1, max_groups + 1):
-        export_row[f"外徑{group_num}-最小"] = _measurement_value(measurements, group_num, "外徑", "value_min")
-        export_row[f"外徑{group_num}-最大"] = _measurement_value(measurements, group_num, "外徑", "value_max")
-        export_row[f"內徑{group_num}-最小"] = _measurement_value(measurements, group_num, "內徑", "value_min")
-        export_row[f"內徑{group_num}-最大"] = _measurement_value(measurements, group_num, "內徑", "value_max")
+        od_min, od_max = _segmented_minmax(measurements, group_num, "外徑")
+        id_min, id_max = _segmented_minmax(measurements, group_num, "內徑")
+        th_min, th_max = _segmented_minmax(measurements, group_num, "厚度")
+        export_row[f"外徑{group_num}-最小"] = od_min
+        export_row[f"外徑{group_num}-最大"] = od_max
+        export_row[f"內徑{group_num}-最小"] = id_min
+        export_row[f"內徑{group_num}-最大"] = id_max
         export_row[f"真圓度{group_num}"] = _measurement_value(measurements, group_num, "真圓度", "value_single")
-        export_row[f"厚度{group_num}-最小"] = _measurement_value(measurements, group_num, "厚度", "value_min")
-        export_row[f"厚度{group_num}-最大"] = _measurement_value(measurements, group_num, "厚度", "value_max")
+        export_row[f"厚度{group_num}-最小"] = th_min
+        export_row[f"厚度{group_num}-最大"] = th_max
         export_row[f"同心度{group_num}"] = _measurement_value(measurements, group_num, "同心度", "value_single")
         export_row[f"長度{group_num}"] = _measurement_value(measurements, group_num, "長度", "value_single")
         export_row[f"硬度{group_num}"] = _measurement_value(measurements, group_num, "硬度", "value_single")
