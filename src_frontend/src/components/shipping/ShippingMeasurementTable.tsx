@@ -18,6 +18,7 @@ interface ShippingMeasurementTableProps {
     ) => void;
     onAddGroup: () => void;
     onRemoveGroup: (groupKey: string) => void;
+    onToggleSegment: (baseKey: string) => void;
 }
 
 const inputStyle = { fontSize: '0.75rem', padding: '2px 4px', width: '60px' };
@@ -33,6 +34,7 @@ const ShippingMeasurementTable = ({
     onMeasurementChange,
     onAddGroup,
     onRemoveGroup,
+    onToggleSegment,
 }: ShippingMeasurementTableProps) => (
     <>
         <div className="table-responsive">
@@ -73,7 +75,22 @@ const ShippingMeasurementTable = ({
                 <tbody>
                     {items.map((item, itemIndex) => (
                         <tr key={item.key}>
-                            <th className="bg-light text-nowrap">{item.label}</th>
+                            <th className="bg-light text-nowrap">
+                                <div className="d-flex align-items-center justify-content-between gap-1">
+                                    <span>{item.label}</span>
+                                    {item.segmentable && (!item.position || item.position === '前段') && (
+                                        <div className="form-check form-switch mb-0">
+                                            <Form.Check.Input
+                                                type="checkbox"
+                                                id={`segment-switch-${item.baseKey ?? item.key}`}
+                                                title="分段量測(前/中/後)"
+                                                checked={Boolean(item.position)}
+                                                onChange={() => onToggleSegment(item.baseKey ?? item.key)}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </th>
                             {groupKeys.map((groupKey, groupIndex) => (
                                 <td key={groupKey} className={item.type === 'minmax' ? 'shipping-cell-double' : 'shipping-cell-single'}>
                                     {item.type === 'minmax' ? (

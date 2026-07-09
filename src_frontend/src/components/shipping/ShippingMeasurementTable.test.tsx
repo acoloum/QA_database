@@ -30,6 +30,7 @@ describe('ShippingMeasurementTable', () => {
         onMeasurementChange={vi.fn()}
         onAddGroup={vi.fn()}
         onRemoveGroup={vi.fn()}
+        onToggleSegment={vi.fn()}
       />,
     );
 
@@ -55,6 +56,7 @@ describe('ShippingMeasurementTable', () => {
         onMeasurementChange={onMeasurementChange}
         onAddGroup={onAddGroup}
         onRemoveGroup={onRemoveGroup}
+        onToggleSegment={vi.fn()}
       />,
     );
 
@@ -65,5 +67,54 @@ describe('ShippingMeasurementTable', () => {
     expect(onMeasurementChange).toHaveBeenCalledWith('1', '外徑', 'value_min', '9.9');
     expect(onAddGroup).toHaveBeenCalledTimes(1);
     expect(onRemoveGroup).toHaveBeenCalledWith('2');
+  });
+
+  it('可分段項目顯示切換 switch 並回報基鍵', () => {
+    const onToggleSegment = vi.fn();
+    render(
+      <ShippingMeasurementTable
+        items={[{ label: '外徑', key: '外徑', type: 'minmax' as const, segmentable: true }]}
+        groupKeys={['1']}
+        groups={{ '1': {} }}
+        itemOffsets={[0]}
+        totalInputsPerGroup={2}
+        fieldErrors={{}}
+        violations={{}}
+        onMeasurementChange={vi.fn()}
+        onAddGroup={vi.fn()}
+        onRemoveGroup={vi.fn()}
+        onToggleSegment={onToggleSegment}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle('分段量測(前/中/後)'));
+    expect(onToggleSegment).toHaveBeenCalledWith('外徑');
+  });
+
+  it('分段展開後 switch 僅出現在前段列且為勾選狀態', () => {
+    const segItems = [
+      { label: '外徑(前)', key: '外徑@前段', type: 'minmax' as const, segmentable: true, baseKey: '外徑', position: '前段' },
+      { label: '外徑(中)', key: '外徑@中段', type: 'minmax' as const, segmentable: true, baseKey: '外徑', position: '中段' },
+      { label: '外徑(後)', key: '外徑@後段', type: 'minmax' as const, segmentable: true, baseKey: '外徑', position: '後段' },
+    ];
+    render(
+      <ShippingMeasurementTable
+        items={segItems}
+        groupKeys={['1']}
+        groups={{ '1': {} }}
+        itemOffsets={[0, 2, 4]}
+        totalInputsPerGroup={6}
+        fieldErrors={{}}
+        violations={{}}
+        onMeasurementChange={vi.fn()}
+        onAddGroup={vi.fn()}
+        onRemoveGroup={vi.fn()}
+        onToggleSegment={vi.fn()}
+      />,
+    );
+
+    const switches = screen.getAllByTitle('分段量測(前/中/後)');
+    expect(switches).toHaveLength(1);
+    expect(switches[0]).toBeChecked();
   });
 });
