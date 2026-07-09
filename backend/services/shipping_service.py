@@ -26,6 +26,7 @@ from .spc_analysis_service import (
 )
 from .shipping_import import build_shipping_measurements_from_row
 from .shipping_export import build_shipping_export_columns, build_shipping_export_row
+from .shipping_measurement_keys import build_measurement_key, parse_measurement_key
 
 
 class ShippingService:
@@ -68,7 +69,7 @@ class ShippingService:
         meas_map: Dict[str, Any] = {}
         for m in item.measurements:
             g = str(m.group_num)
-            meas_map.setdefault(g, {})[m.item] = {
+            meas_map.setdefault(g, {})[build_measurement_key(m.item, m.position)] = {
                 'lower_limit':  float(m.lower_limit)  if m.lower_limit  is not None else None,
                 'upper_limit':  float(m.upper_limit)  if m.upper_limit  is not None else None,
                 'value_min':    float(m.value_min)    if m.value_min    is not None else None,
@@ -468,8 +469,10 @@ class ShippingService:
                     continue
                 if not (1 <= g <= 10):
                     continue
-                for item_name, vals in (items or {}).items():
-                    if item_name not in VALID_ITEMS:
+                for item_key, vals in (items or {}).items():
+                    # 複合鍵「項目@位置」拆解；位置不合法（None）時略過
+                    item_name, position = parse_measurement_key(item_key)
+                    if item_name not in VALID_ITEMS or position is None:
                         continue
                     v_min    = vals.get('value_min')
                     v_max    = vals.get('value_max')
@@ -479,6 +482,7 @@ class ShippingService:
                         shipping_data.measurements.append(ShippingMeasurement(
                             group_num=g,
                             item=item_name,
+                            position=position,
                             lower_limit=vals.get('lower_limit'),
                             upper_limit=vals.get('upper_limit'),
                             value_min=v_min,
