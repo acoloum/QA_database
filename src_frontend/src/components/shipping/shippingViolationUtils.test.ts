@@ -47,4 +47,39 @@ describe('evaluateShippingViolation', () => {
 
     expect(result).toEqual({ found: true, hasViolation: false });
   });
+
+  it('分段複合鍵套用基礎項目公差判定 NG', () => {
+    const result = evaluateShippingViolation({
+      ...baseInspection,
+      measurements: {
+        '1': {
+          '外徑@中段': { value_min: 8.9, value_max: 9.5, is_ng: false },
+        },
+      },
+    } as ShippingInspection, {
+      '6061|||10mm|||A廠': {
+        外徑: { lsl: 9, usl: 10 },
+      },
+    });
+
+    expect(result).toEqual({ found: true, hasViolation: true });
+  });
+
+  it('分段量測皆在公差內時判合格', () => {
+    const result = evaluateShippingViolation({
+      ...baseInspection,
+      measurements: {
+        '1': {
+          '外徑@前段': { value_min: 9.2, value_max: 9.8, is_ng: false },
+          '外徑@後段': { value_min: 9.1, value_max: 9.9, is_ng: false },
+        },
+      },
+    } as ShippingInspection, {
+      '6061|||10mm|||A廠': {
+        外徑: { lsl: 9, usl: 10 },
+      },
+    });
+
+    expect(result).toEqual({ found: true, hasViolation: false });
+  });
 });
