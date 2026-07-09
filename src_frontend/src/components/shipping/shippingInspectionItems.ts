@@ -3,7 +3,7 @@ import type { ShippingItemConfig } from './shippingMeasurementUtils';
 export const ANTAI_VENDOR_NAME = '安泰';
 
 export const BASE_SHIPPING_ITEMS: ShippingItemConfig[] = [
-  { label: '外徑', key: '外徑', type: 'minmax' },
+  { label: '外徑', key: '外徑', type: 'minmax', segmentable: true },
   { label: '內徑', key: '內徑', type: 'minmax' },
   { label: '厚度', key: '厚度', type: 'minmax' },
   { label: '同心度', key: '同心度', type: 'single' },

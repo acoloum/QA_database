@@ -7,6 +7,12 @@ export interface ShippingItemConfig {
   key: string;
   type: 'minmax' | 'single';
   toleranceKey?: string;
+  /** 此項目可啟用前/中/後分段量測 */
+  segmentable?: boolean;
+  /** 展開後的段位置(前段/中段/後段);未分段列為 undefined */
+  position?: string;
+  /** 展開後回指原始項目 key(如 外徑@前段 → 外徑) */
+  baseKey?: string;
 }
 
 export type ShippingGroupMeasurements = Record<string, Partial<ShippingMeasurementItem>>;
