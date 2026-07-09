@@ -271,7 +271,8 @@ class ShippingService:
 
             rows = query.all()  # tuple: (id, date, order_num, group_count)
 
-            # 批次撈取這些記錄、此量測項目的子表明細 → {record_id: {group_num: measurement}}
+            # 批次撈取這些記錄、此量測項目的子表明細 → {record_id: {group_num: [各段量測]}}
+            # 分段量測（前/中/後段）同一組別會有多筆，一律以 list 收集
             record_ids = [r[0] for r in rows]
             meas_by_record = defaultdict(dict)
             if record_ids:
@@ -280,7 +281,7 @@ class ShippingService:
                     ShippingMeasurement.item == field,
                 ).all()
                 for m in meas_rows:
-                    meas_by_record[m.shipping_id][m.group_num] = m
+                    meas_by_record[m.shipping_id].setdefault(m.group_num, []).append(m)
 
             if not rows:
                 return {"labels": [], "avgs": [], "ranges": [], "x_cl":0, "x_ucl":0, "x_lcl":0, "r_cl":0, "r_ucl":0}
@@ -309,27 +310,25 @@ class ShippingService:
                     # 只處理記錄組數範圍內的組
                     if i > row_group_count:
                         continue
-                    m = group_meas.get(i)
-                    if not m:
-                        continue
-                    try:
-                        if is_minmax:
-                            # minmax 項目需 min/max 皆有值才計入（與舊版扁平邏輯一致）
-                            if m.value_min is not None and m.value_max is not None:
-                                v1 = float(m.value_min)
-                                v2 = float(m.value_max)
-                                val = (v1 + v2) / 2
-                                vals.append(val)
-                                all_values.extend([v1, v2])
-                                valid_groups += 1
-                        else:
-                            if m.value_single is not None:
-                                v = float(m.value_single)
-                                vals.append(v)
-                                all_values.append(v)
-                                valid_groups += 1
-                    except (ValueError, TypeError):
-                        pass
+                    for m in group_meas.get(i) or []:
+                        try:
+                            if is_minmax:
+                                # minmax 項目需 min/max 皆有值才計入（與舊版扁平邏輯一致）
+                                if m.value_min is not None and m.value_max is not None:
+                                    v1 = float(m.value_min)
+                                    v2 = float(m.value_max)
+                                    val = (v1 + v2) / 2
+                                    vals.append(val)
+                                    all_values.extend([v1, v2])
+                                    valid_groups += 1
+                            else:
+                                if m.value_single is not None:
+                                    v = float(m.value_single)
+                                    vals.append(v)
+                                    all_values.append(v)
+                                    valid_groups += 1
+                        except (ValueError, TypeError):
+                            pass
 
                 original_idx = len(rows) - 1 - idx
                 

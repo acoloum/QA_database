@@ -45,6 +45,26 @@ def test_invalid_position_skipped(db_session, setup_data):
     assert ShippingMeasurement.query.count() == 0
 
 
+def test_get_stats_includes_all_segments(db_session, setup_data):
+    """SPC 統計：分段資料三段皆納入計算，不互相覆蓋"""
+    payload = _base_payload({
+        '1': {
+            '外徑@前段': {'value_min': 9.8, 'value_max': 10.1},
+            '外徑@中段': {'value_min': 9.9, 'value_max': 10.2},
+            '外徑@後段': {'value_min': 9.7, 'value_max': 10.0},
+        },
+        '2': {'外徑': {'value_min': 9.5, 'value_max': 10.5}},
+    })
+    payload['組數'] = 2
+    ShippingService.save_data(payload)
+
+    stats = ShippingService.get_stats({'field': '外徑'})
+
+    # 4 筆中點：9.95, 10.05, 9.85, 10.0 → 平均 9.9625；全距 10.05-9.85=0.2
+    assert stats['avgs'] == [9.9625]
+    assert abs(stats['ranges'][0] - 0.2) < 1e-9
+
+
 def test_plain_keys_unchanged(db_session, setup_data):
     """未分段資料行為與現行完全相同"""
     payload = _base_payload({'1': {'外徑': {'value_min': 9.8, 'value_max': 10.2}}})
