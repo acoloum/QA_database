@@ -28,6 +28,7 @@ import {
     getShippingItemInputOffsets,
 } from './shippingInspectionItems';
 import { ToleranceBadgeList } from '../common/toleranceDisplay';
+import ConfirmActionModal, { type ConfirmActionState } from '../common/ConfirmActionModal';
 import ShippingMeasurementTable from './ShippingMeasurementTable';
 import {
     detectSegmentedKeys,
@@ -79,6 +80,9 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
 
     // 欄位格式錯誤（key: 欄位名稱, value: 錯誤訊息）
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+    // 需二次確認的動作（如關閉分段量測會刪除中/後段數據）
+    const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
     // 依廠商決定量測項目清單
     // 安泰：真圓度插入內徑後、硬度改標示為洛氏硬度(HRB)、新增韋伯氏硬度(HW)
@@ -264,12 +268,8 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         });
     };
 
-    /** 切換項目的分段量測模式（開啟：單段值搬到前段；關閉：只保留前段） */
-    const toggleSegment = (baseKey: string) => {
-        const enabled = segmentedKeys.has(baseKey);
-        if (enabled && hasMidRearSegmentValues(groups, baseKey)) {
-            if (!window.confirm('關閉分段後將只保留前段數據，確定要關閉嗎？')) return;
-        }
+    /** 實際套用分段切換：收合分段（只保留前段）或展開分段 */
+    const applySegmentToggle = (baseKey: string, enabled: boolean) => {
         setGroups(prev => remapGroupsOnSegmentToggle(prev, baseKey, !enabled));
         setSegmentedKeys(prev => {
             const next = new Set(prev);
@@ -277,6 +277,23 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             else next.add(baseKey);
             return next;
         });
+    };
+
+    /** 切換項目的分段量測模式（開啟：單段值搬到前段；關閉：只保留前段） */
+    const toggleSegment = (baseKey: string) => {
+        const enabled = segmentedKeys.has(baseKey);
+        // 關閉分段且中/後段仍有數據時，先跳出確認視窗避免誤刪；確認才收合
+        if (enabled && hasMidRearSegmentValues(groups, baseKey)) {
+            setConfirmAction({
+                title: '關閉分段量測',
+                message: '關閉分段後將只保留前段數據，確定要關閉嗎？',
+                confirmLabel: '關閉',
+                confirmVariant: 'danger',
+                onConfirm: () => applySegmentToggle(baseKey, enabled),
+            });
+            return;
+        }
+        applySegmentToggle(baseKey, enabled);
     };
 
     const handleSubmit = async () => {
@@ -342,6 +359,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     const sortedGroupKeys = getSortedShippingGroupKeys(groups);
 
     return (
+        <>
         <Modal show={show} onHide={handleClose} size="xl" dialogClassName="modal-shipping-wide">
             <Modal.Header closeButton>
                 <Modal.Title>{editId ? `編輯紀錄 #${editId}` : '新增檢驗紀錄'}</Modal.Title>
@@ -422,6 +440,8 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                 </Button>
             </Modal.Footer>
         </Modal>
+        <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
+        </>
     );
 };
 

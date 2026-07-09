@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ShippingModal from './ShippingModal';
@@ -86,6 +86,58 @@ describe('ShippingModal', () => {
     expect(screen.getByText('外徑(中)')).toBeInTheDocument();
     expect(screen.getByText('外徑(後)')).toBeInTheDocument();
     expect(screen.getByDisplayValue('9.9')).toBeInTheDocument();
+  });
+
+  it('關閉分段量測時以自訂確認視窗提示，取消不變、確認才收合', async () => {
+    shippingDetail = {
+      識別碼: 6,
+      檢驗日期: '2026-07-01',
+      檢驗人員: '檢驗員A',
+      廠商中文名稱: '廠商A',
+      材質: 'A6061',
+      檢驗規格: '10*2',
+      組數: 1,
+      measurements: {
+        '1': {
+          '外徑@前段': { value_min: 9.8, value_max: 10.1, is_ng: false },
+          '外徑@中段': { value_min: 9.9, value_max: 10.2, is_ng: false },
+          '外徑@後段': { value_min: 9.7, value_max: 10.0, is_ng: false },
+        },
+      },
+    };
+
+    render(
+      <ShippingModal show editId={6} handleClose={() => undefined} onSuccess={() => undefined} />,
+    );
+
+    await waitFor(() => expect(screen.getByText('外徑(中)')).toBeInTheDocument());
+
+    const findSegmentSwitch = () =>
+      screen.getAllByTitle('分段量測(前/中/後)').find(el => el.id === 'segment-switch-外徑') as HTMLInputElement;
+    expect(findSegmentSwitch()).toBeTruthy();
+
+    // 取得確認視窗（依標題定位）的容器，避免與出貨表單的按鈕混淆
+    const getConfirmDialog = () =>
+      screen.getByText('關閉分段量測').closest('.modal') as HTMLElement;
+
+    // 點擊關閉分段：應跳出自訂確認視窗，而非原生 window.confirm
+    fireEvent.click(findSegmentSwitch());
+    await waitFor(() => expect(screen.getByText('關閉分段量測')).toBeInTheDocument());
+    expect(screen.getByText('關閉分段後將只保留前段數據，確定要關閉嗎？')).toBeInTheDocument();
+
+    // 取消：資料維持不變，中段仍在
+    fireEvent.click(within(getConfirmDialog()).getByText('取消'));
+    await waitFor(() => expect(screen.queryByText('關閉分段量測')).not.toBeInTheDocument());
+    expect(screen.getByText('外徑(中)')).toBeInTheDocument();
+
+    // 再次關閉並確認：收合分段，只保留前段，中段消失
+    fireEvent.click(findSegmentSwitch());
+    await waitFor(() => expect(screen.getByText('關閉分段量測')).toBeInTheDocument());
+    fireEvent.click(within(getConfirmDialog()).getByText('關閉'));
+
+    await waitFor(() => expect(screen.queryByText('外徑(中)')).not.toBeInTheDocument());
+    expect(screen.queryByText('外徑(後)')).not.toBeInTheDocument();
+    expect(screen.getByText('外徑')).toBeInTheDocument();
   });
 
   it('ignores stale tolerance lookup results after form keys change', async () => {
