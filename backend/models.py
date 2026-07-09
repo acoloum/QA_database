@@ -214,10 +214,11 @@ class ShippingData(db.Model):
         return False
 
 class ShippingMeasurement(db.Model):
-    """出貨巡檢量測明細 — 每筆對應一個組別的一個量測項目"""
+    """出貨巡檢量測明細 — 每筆對應一個組別的一個量測項目(可含測量位置)"""
     __tablename__ = '出貨巡檢量測明細'
     __table_args__ = (
-        db.UniqueConstraint('出貨檢驗_ID', '組別', '量測項目', name='uq_shipping_group_item'),
+        db.UniqueConstraint('出貨檢驗_ID', '組別', '量測項目', '測量位置',
+                            name='uq_shipping_group_item'),
         db.Index('idx_shipping_meas_shipping_id', '出貨檢驗_ID'),
     )
 
@@ -225,6 +226,8 @@ class ShippingMeasurement(db.Model):
     shipping_id = db.Column('出貨檢驗_ID', db.Integer, db.ForeignKey('出貨檢驗數據.識別碼'), nullable=False)
     group_num   = db.Column('組別',        db.Integer, nullable=False)
     item        = db.Column('量測項目',    db.String(30), nullable=False)
+    # 空字串 = 未分段（刻意不用 NULL：PostgreSQL 唯一鍵不比較 NULL，會使重複防護失效）
+    position    = db.Column('測量位置',    db.String(10), nullable=False, default='', server_default='')
     lower_limit = db.Column('下限', db.Numeric(12, 4), nullable=True)
     upper_limit = db.Column('上限', db.Numeric(12, 4), nullable=True)
     value_min   = db.Column('量測最小值', db.Numeric(12, 4), nullable=True)
