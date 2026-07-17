@@ -29,6 +29,13 @@ def test_quantiles_are_ordered():
     assert q_mid == pytest.approx(10, abs=0.2)
 
 
+def test_lognormal_data_detected_as_lognormal():
+    rng = np.random.default_rng(3)
+    values = rng.lognormal(1.0, 0.8, 500).tolist()
+    d = assess_distribution(values)
+    assert d["model"] == "lognormal"
+
+
 def test_tail_ppm_reflects_spec_distance():
     rng = np.random.default_rng(7)
     values = rng.normal(10, 0.5, 500).tolist()

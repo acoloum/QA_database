@@ -31,6 +31,8 @@ def assess_distribution(all_values: List[float], field: Optional[str] = None) ->
         "normal_ok": True,
         "n": int(arr.size),
     }
+    # 門檻 n=20：AD 檢定在樣本數低於約20時檢定力不足；
+    # 同時作為 foldnorm/lognorm MLE 擬合穩定度下限，故此門檻亦一併套用於下方的形狀公差分支之前。
     if arr.size < 20 or float(np.std(arr, ddof=1)) == 0:
         return result  # 樣本太少：以常態近似，不做檢定
 
@@ -78,14 +80,37 @@ def _frozen(dist: Dict[str, Any]):
     return scipy_stats.norm(p[0], p[1])
 
 
+def _is_degenerate(dist: Dict[str, Any]) -> bool:
+    """資料不足或尺度參數為0時，分位數/PPM 計算會靜默產生 NaN；此處明確攔截。
+
+    n<20 沿用 assess_distribution 自身的樣本數門檻（見上方註解）。
+    """
+    if dist.get("n", 0) < 20:
+        return True
+    model = dist["model"]
+    p = dist["params"]
+    scale = p[1] if model == "normal" else p[2]
+    return scale == 0
+
+
 def dist_quantiles(dist: Dict[str, Any]):
-    """回傳 G 法所需分位數 (X0.135%, X50%, X99.865%)（§6.8.2.1）"""
+    """回傳 G 法所需分位數 (X0.135%, X50%, X99.865%)（§6.8.2.1）
+
+    資料不足或尺度為0（無法擬合）時回傳 (None, None, None)，避免靜默產生 NaN。
+    """
+    if _is_degenerate(dist):
+        return None, None, None
     f = _frozen(dist)
     return float(f.ppf(0.00135)), float(f.ppf(0.5)), float(f.ppf(0.99865))
 
 
-def tail_ppm(dist: Dict[str, Any], usl: Optional[float], lsl: Optional[float]) -> Dict[str, float]:
-    """依擬合分布估算超規 PPM（§6.8.2.3 Z 法：OOS 比例）"""
+def tail_ppm(dist: Dict[str, Any], usl: Optional[float], lsl: Optional[float]) -> Dict[str, Optional[float]]:
+    """依擬合分布估算超規 PPM（§6.8.2.3 Z 法：OOS 比例）
+
+    資料不足或尺度為0（無法擬合）時回傳全 None，避免靜默產生 NaN。
+    """
+    if _is_degenerate(dist):
+        return {"upper": None, "lower": None, "total": None}
     f = _frozen(dist)
     upper = float(f.sf(usl) * 1_000_000) if usl is not None else 0.0
     lower = float(f.cdf(lsl) * 1_000_000) if lsl is not None else 0.0
