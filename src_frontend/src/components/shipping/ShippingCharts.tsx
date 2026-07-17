@@ -14,6 +14,7 @@ import {
 } from 'chart.js';
 import { buildSpcChartModel } from '../../utils/spcChartModel';
 import SpcDashboardPanel from '../spc/SpcDashboardPanel';
+import OutlierManagerModal from '../spc/OutlierManagerModal';
 import type { SpcChartData } from '../../types';
 import { Button, Form } from 'react-bootstrap';
 import { useShippingStats, useExportSpcReport } from '../../hooks/useShipping';
@@ -45,6 +46,8 @@ const ANTAI_VENDOR_NAME = "安泰";
 
 const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointClick }: ShippingChartsProps) => {
     const [statsField, setStatsField] = useState('外徑');
+    const [outlierTargetId, setOutlierTargetId] = useState<number | null>(null);
+    const [selectedRecordId, setSelectedRecordId] = useState('');
 
     // 安泰廠商：硬度改標示為洛氏硬度(HRB)，並新增韋伯氏硬度(HW)
     const isAntai = vendor.includes(ANTAI_VENDOR_NAME);
@@ -92,14 +95,34 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                         {ITEMS.map(i => <option key={i.key} value={i.key}>{i.label}</option>)}
                     </Form.Select>
                 </div>
-                <Button
-                    variant="outline-primary"
-                    size="sm"
-                    onClick={handleExportReport}
-                    disabled={exportSpcReport.isPending || !spcModel.chartData}
-                >
-                    {exportSpcReport.isPending ? '匯出中...' : '📥 匯出 SPC 報告'}
-                </Button>
+                <div className="d-flex align-items-center gap-2">
+                    <Form.Select
+                        size="sm"
+                        style={{ width: 'auto' }}
+                        value={selectedRecordId}
+                        onChange={e => setSelectedRecordId(e.target.value)}
+                        disabled={spcModel.ids.length === 0}
+                    >
+                        <option value="">選擇記錄以管理離群值…</option>
+                        {spcModel.ids.map(id => <option key={id} value={id}>#{id}</option>)}
+                    </Form.Select>
+                    <Button
+                        variant="outline-secondary"
+                        size="sm"
+                        disabled={!selectedRecordId}
+                        onClick={() => setOutlierTargetId(Number(selectedRecordId))}
+                    >
+                        離群值管理
+                    </Button>
+                    <Button
+                        variant="outline-primary"
+                        size="sm"
+                        onClick={handleExportReport}
+                        disabled={exportSpcReport.isPending || !spcModel.chartData}
+                    >
+                        {exportSpcReport.isPending ? '匯出中...' : '📥 匯出 SPC 報告'}
+                    </Button>
+                </div>
             </div>
 
             <SpcDashboardPanel
@@ -109,6 +132,12 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                 sampleCount={statsData?.all_values?.length ?? 0}
                 onEditPoint={onPointClick}
                 filterXBarLegendLabels
+            />
+
+            <OutlierManagerModal
+                shippingId={outlierTargetId}
+                show={outlierTargetId != null}
+                onHide={() => setOutlierTargetId(null)}
             />
         </div>
     );

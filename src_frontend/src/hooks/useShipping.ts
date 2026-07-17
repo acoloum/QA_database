@@ -207,6 +207,38 @@ export const useExportSpcReport = () => {
     });
 };
 
+// 7. 離群值管理（AIAG-VDA SPC 2026 §6.6）
+export interface ShippingMeasurementItem {
+    識別碼: number;
+    組別: number;
+    量測項目: string;
+    測量位置: string;
+    量測值: number | null;
+    量測最小值: number | null;
+    量測最大值: number | null;
+    排除統計: boolean;
+    排除原因: string | null;
+}
+
+export const useShippingMeasurements = (shippingId: number | null) =>
+    useQuery<ShippingMeasurementItem[]>({
+        queryKey: ['shipping-measurements', shippingId],
+        queryFn: async () => (await api.get(`/data/${shippingId}/measurements`)).data,
+        enabled: shippingId != null,
+    });
+
+export const useSetMeasurementExclusion = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (p: { id: number; excluded: boolean; reason: string }) =>
+            (await api.patch(`/measurements/${p.id}/exclusion`, { 排除統計: p.excluded, 排除原因: p.reason })).data,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['shipping-measurements'] });
+            queryClient.invalidateQueries({ queryKey: ['shippingStats'] });
+        },
+    });
+};
+
 export const useExportShippingData = () => {
     return useMutation({
         mutationFn: async (params: ShippingSearchParams) => {
