@@ -34,3 +34,25 @@ def test_unknown_class_falls_back_to_other():
     t = resolve_targets(None, n_values=200)
     assert t["class"] == "其他"
     assert t["pk_target"] == 1.00
+
+
+def test_non_default_confidence_level_uses_its_own_table():
+    # 表 8-5，99.99% 信賴水準，N=100，主要基準1.33 → 1.38（非95%的1.35）
+    t = resolve_targets("主要", n_values=100, confidence="99.99%")
+    assert t["confidence"] == "99.99%"
+    assert t["pk_target"] == 1.38
+
+
+def test_boundary_n125_vs_n124_differs():
+    # 表 8-5，99.99%，主要：N=125 用基準值1.33；N=124 落入120列 → 1.34
+    t125 = resolve_targets("主要", n_values=125, confidence="99.99%")
+    t124 = resolve_targets("主要", n_values=124, confidence="99.99%")
+    assert t125["pk_target"] == 1.33
+    assert t124["pk_target"] == 1.34
+
+
+def test_unsupported_confidence_falls_back_to_95_percent():
+    t = resolve_targets("主要", n_values=100, confidence="90%")
+    t95 = resolve_targets("主要", n_values=100, confidence="95%")
+    assert t["confidence"] == "95%"
+    assert t["pk_target"] == t95["pk_target"]

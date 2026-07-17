@@ -15,6 +15,12 @@ CLASS_TARGETS = {
 BASE_COLUMNS = [2.33, 2.00, 1.67, 1.33, 1.00]
 TABLE_NS = [125, 120, 110, 100, 90, 80, 75]
 
+DEFAULT_CONFIDENCE = "95%"
+VALID_CONFIDENCES = ["95%", "99%", "99.90%", "99.99%"]
+
+# 注意：TARGET_ADJUST_P / TARGET_ADJUST_PK 內約140個數值，
+# 是由掃描版手冊（AIAG-VDA SPC 2026，表8-4/8-5，PDF第188頁渲染圖）人工轉錄，
+# 並非可程式化推導的公式結果。若任何數值看起來有誤，請對照該渲染圖人工複核。
 # 表 8-4：依樣本數調整 Cp/Pp 目標值（列 = N，欄對應 BASE_COLUMNS）
 TARGET_ADJUST_P = {
     "95%": {
@@ -110,9 +116,15 @@ def _adjust(table: Dict[str, Dict[int, list]], base: float, n: int, confidence: 
 def resolve_targets(
     characteristic_class: Optional[str],
     n_values: int,
-    confidence: str = "95%",
+    confidence: str = DEFAULT_CONFIDENCE,
 ) -> Dict[str, Any]:
-    """依特性重要度與樣本數解析目標值（表 8-3 + 表 8-4/8-5）。"""
+    """依特性重要度與樣本數解析目標值（表 8-3 + 表 8-4/8-5）。
+
+    不支援的 confidence 值會安全退回預設的 95%（不拋例外），
+    與 spc_stability.py 對未知準則名稱的容錯慣例一致。
+    """
+    if confidence not in VALID_CONFIDENCES:
+        confidence = DEFAULT_CONFIDENCE
     cls = characteristic_class if characteristic_class in VALID_CLASSES else "其他"
     base = CLASS_TARGETS[cls]
     p_target = _adjust(TARGET_ADJUST_P, base["p"], n_values, confidence)
