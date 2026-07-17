@@ -122,6 +122,9 @@ class PatrolDetail(db.Model):
     position = db.Column('測量位置', db.String)
     min_val = db.Column('最小值', db.Numeric)
     max_val = db.Column('最大值', db.Numeric)
+    # §6.6 離群值：標示無效並保留追溯，不得刪除；排除於統計計算之外
+    excluded         = db.Column('排除統計', db.Boolean, default=False, nullable=False)
+    exclusion_reason = db.Column('排除原因', db.String(200), nullable=True)
 
 class ShippingData(db.Model):
     __tablename__ = '出貨檢驗數據'
@@ -257,7 +260,7 @@ class SpcControlLimit(db.Model):
     """SPC 管制界限凍結檔 — §9.4 界限經確認後凍結，重算須留紀錄"""
     __tablename__ = 'SPC管制界限'
     __table_args__ = (
-        db.UniqueConstraint('資料來源', '廠商', '材質', '規格', '量測項目', name='uq_spc_limits'),
+        db.UniqueConstraint('資料來源', '廠商', '材質', '規格', '量測項目', '位置', name='uq_spc_limits'),
     )
     id         = db.Column('識別碼', db.Integer, primary_key=True)
     source     = db.Column('資料來源', db.String(20), nullable=False, default='shipping')
@@ -265,6 +268,8 @@ class SpcControlLimit(db.Model):
     material   = db.Column('材質', db.String(100), nullable=False, default='')
     spec       = db.Column('規格', db.String(100), nullable=False, default='')
     field      = db.Column('量測項目', db.String(30), nullable=False)
+    # 巡檢特有的位置維度（前/中/後段）；出貨無此維度，恆為空字串
+    position   = db.Column('位置', db.String(20), nullable=False, default='')
     x_cl       = db.Column('X中心線', db.Numeric(14, 6), nullable=False)
     x_ucl      = db.Column('X上限', db.Numeric(14, 6), nullable=False)
     x_lcl      = db.Column('X下限', db.Numeric(14, 6), nullable=False)
