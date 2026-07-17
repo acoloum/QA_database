@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import SpcDashboardPanel from './SpcDashboardPanel';
@@ -128,5 +128,23 @@ describe('SpcDashboardPanel', () => {
     );
 
     expect(screen.getByText('USL/LSL 規格限')).toBeInTheDocument();
+  });
+
+  it('點擊「計算方法說明」按鈕會開啟 SpcMethodologyModal', () => {
+    render(
+      <SpcDashboardPanel
+        model={model}
+        statsItem="外徑"
+        emptyMessage="沒有資料"
+        sampleCount={1}
+      />,
+    );
+
+    // Modal 內容（Modal.Title）預設不顯示
+    expect(screen.queryByText('SPC 計算方法說明（AIAG-VDA SPC 2026）')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /計算方法說明/ }));
+
+    expect(screen.getByText('SPC 計算方法說明（AIAG-VDA SPC 2026）')).toBeInTheDocument();
   });
 });
