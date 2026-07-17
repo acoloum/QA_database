@@ -530,13 +530,16 @@ def test_get_spc_applies_frozen_limits(app, db_session):
         result = PatrolService.get_spc({'item': '外徑', 'pos': '前段', 'mat': '6061', 'spec': '10*2'})
         assert result['limits_frozen'] is False
 
-        # 每組固定 2 筆量測值，即時重新計算的 avg_n 必為 2；凍結時刻意採用 avg_n=5，
-        # 兩者的 d2（SPC_CONSTANTS[2][3]=1.128 vs [5][3]=2.326）明顯不同，
-        # 確保下方斷言能證明 d2 覆蓋確實生效，而非恰好與現有資料吻合而巧合通過
+        # 每組固定 2 筆量測值（max_val-min_val 恆為 0.2），即時重新計算的
+        # r_cl 恰為 0.2、avg_n 必為 2；凍結時刻意將 r_cl 也設為 0.2（與即時
+        # 重算值相同，排除 r_cl 差異的干擾），僅 avg_n 改為 5，
+        # 讓兩者的 d2（SPC_CONSTANTS[2][3]=1.128 vs [5][3]=2.326）成為
+        # sigma_within=r_cl/d2 唯一的變因，確保下方斷言真正隔離並驗證
+        # d2 覆蓋邏輯本身，而非被 r_cl 的差異所混淆
         key = {"material": "6061", "spec": "10*2", "item": "外徑", "position": "前段"}
         PatrolService.freeze_control_limits(key, {
             "x_cl": 99.0, "x_ucl": 100.0, "x_lcl": 98.0,
-            "r_cl": 1.0, "r_ucl": 2.0, "r_lcl": 0, "avg_n": 5,
+            "r_cl": 0.2, "r_ucl": 2.0, "r_lcl": 0, "avg_n": 5,
         })
 
         frozen_result = PatrolService.get_spc({'item': '外徑', 'pos': '前段', 'mat': '6061', 'spec': '10*2'})
@@ -549,9 +552,9 @@ def test_get_spc_applies_frozen_limits(app, db_session):
         )
         assert skip_result['x_cl'] != pytest.approx(99.0)
 
-        # sigma_within = r_cl/d2；凍結值（r_cl=1.0, d2=2.326）與即時重算值
-        # （r_cl≈0.2, d2=1.128）差異極大，Cwk 必然隨之不同，證明 d2 重算
-        # 確實傳遞進製程能力計算，而非只停留在原始通過值
+        # r_cl 已固定為 0.2（凍結值與即時重算值相同），故 Cwk 的差異只可能
+        # 來自 d2（2.326 vs 1.128），證明 d2 覆蓋邏輯確實傳遞進製程能力計算，
+        # 而非被 r_cl 的差異所掩蓋（若刪除 d2 覆蓋程式碼，此斷言應會失敗）
         frozen_cwk = frozen_result['process_capability']['cwk']
         skip_cwk = skip_result['process_capability']['cwk']
         assert frozen_cwk is not None and skip_cwk is not None
