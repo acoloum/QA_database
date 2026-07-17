@@ -32,4 +32,22 @@ describe('ProcessCapabilityCard (AIAG-VDA 2026)', () => {
     expect(screen.getByText(/未達標/)).toBeInTheDocument();
     expect(screen.getByText(/初步值/)).toBeInTheDocument();
   });
+
+  it('象限 II:具績效但不穩定', () => {
+    render(<ProcessCapabilityCard statsItem="外徑" processCapability={{
+      available: true, applicable: 'performance', method: 'G',
+      cp: null, cpk: null, pp: 1.5, ppk: 1.4, usl: 11, lsl: 9,
+      targets, achieved: true, preliminary: false, stability_stable: false,
+    }} />);
+    expect(screen.getByText(/具績效但不穩定/)).toBeInTheDocument();
+  });
+
+  it('象限 III:無能力但穩定', () => {
+    render(<ProcessCapabilityCard statsItem="外徑" processCapability={{
+      available: true, applicable: 'capability', method: 'G',
+      cp: 1.1, cpk: 0.9, pp: 1.1, ppk: 0.9, usl: 11, lsl: 9,
+      targets, achieved: false, preliminary: false, stability_stable: true,
+    }} />);
+    expect(screen.getByText(/無能力但穩定/)).toBeInTheDocument();
+  });
 });

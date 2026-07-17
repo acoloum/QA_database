@@ -14,10 +14,10 @@ export interface ProcessCapability {
   cpk?: number | null;
   cpu?: number | null;
   cpl?: number | null;
-  pp?: number;
-  ppk?: number;
-  ppu?: number;
-  ppl?: number;
+  pp?: number | null;
+  ppk?: number | null;
+  ppu?: number | null;
+  ppl?: number | null;
   sigma_within?: number;
   sigma_overall?: number;
   valid_count?: number;
