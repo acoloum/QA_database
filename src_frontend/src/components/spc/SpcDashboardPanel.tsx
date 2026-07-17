@@ -1,4 +1,5 @@
-import { Badge, Card, Col, Row } from 'react-bootstrap';
+import { useState } from 'react';
+import { Badge, Button, Card, Col, Row } from 'react-bootstrap';
 
 import type { SpcViolation } from '../../types';
 import type { SpcChartModel } from '../../utils/spcChartModel';
@@ -7,6 +8,7 @@ import ProcessCapabilityCard from '../patrol/ProcessCapabilityCard';
 import WecoViolationAlert from '../patrol/WecoViolationAlert';
 import CpkTrendChart from './CpkTrendChart';
 import HistogramDistributionChart from './HistogramDistributionChart';
+import SpcMethodologyModal from './SpcMethodologyModal';
 
 interface SpcDashboardPanelProps {
   model: SpcChartModel;
@@ -51,6 +53,8 @@ const SpcDashboardPanel = ({
     cpkTrend,
   } = model;
 
+  const [showMethodology, setShowMethodology] = useState(false);
+
   if (!chartData) {
     return <div className="text-center py-5 text-muted">{emptyMessage}</div>;
   }
@@ -62,6 +66,13 @@ const SpcDashboardPanel = ({
 
   return (
     <>
+      <div className="text-end mb-2">
+        <Button variant="outline-secondary" size="sm" onClick={() => setShowMethodology(true)}>
+          <i className="bi bi-info-circle me-1"></i>計算方法說明
+        </Button>
+      </div>
+      <SpcMethodologyModal show={showMethodology} onHide={() => setShowMethodology(false)} />
+
       <WecoViolationAlert violations={allViolations} />
 
       {statsSummary && (
