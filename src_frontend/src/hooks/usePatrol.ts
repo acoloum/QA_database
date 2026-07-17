@@ -227,3 +227,84 @@ export const useImportPatrol = () => {
         },
     });
 };
+
+// --- 離群值管理（AIAG-VDA SPC 2026 §6.6）---
+
+export interface PatrolDetailItem {
+    識別碼: number;
+    組別: number;
+    測量項目: string;
+    測量位置: string;
+    最小值: number | null;
+    最大值: number | null;
+    排除統計: boolean;
+    排除原因: string | null;
+}
+
+export const usePatrolDetails = (mainId: number | null) =>
+    useQuery<PatrolDetailItem[]>({
+        queryKey: ['patrol-details', mainId],
+        queryFn: async () => (await api.get(`/patrol/${mainId}/details`)).data,
+        enabled: mainId != null,
+    });
+
+export const useSetPatrolDetailExclusion = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (p: { id: number; excluded: boolean; reason: string }) =>
+            (await api.patch(`/patrol-details/${p.id}/exclusion`, { 排除統計: p.excluded, 排除原因: p.reason })).data,
+        onSuccess: (_data, variables) => {
+            toast.success(variables.excluded ? '已標示為離群值' : '已恢復計入統計');
+            queryClient.invalidateQueries({ queryKey: ['patrol-details'] });
+            queryClient.invalidateQueries({ queryKey: ['patrolStats'] });
+        },
+        onError: (err: Error) => {
+            toast.error(`操作失敗：${err.message}`);
+        },
+    });
+};
+
+// --- 管制界限凍結（AIAG-VDA SPC 2026 §9.4）---
+
+export interface PatrolControlLimitsKey {
+    material: string;
+    spec: string;
+    item: string;
+    position: string;
+}
+
+export const useFreezePatrolLimits = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (key: PatrolControlLimitsKey & { note?: string }) =>
+            (await api.post('/patrol/control-limits', key)).data,
+        onSuccess: () => {
+            toast.success('管制界限已凍結');
+            queryClient.invalidateQueries({ queryKey: ['patrol-control-limits'] });
+            queryClient.invalidateQueries({ queryKey: ['patrolStats'] });
+        },
+        onError: (err: Error) => {
+            toast.error(`凍結失敗：${err.message}`);
+        },
+    });
+};
+
+export const useUnfreezePatrolLimits = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (key: PatrolControlLimitsKey) => {
+            const params = new URLSearchParams({
+                material: key.material, spec: key.spec, item: key.item, position: key.position,
+            });
+            return (await api.delete(`/patrol/control-limits?${params.toString()}`)).data;
+        },
+        onSuccess: () => {
+            toast.success('已解除管制界限凍結');
+            queryClient.invalidateQueries({ queryKey: ['patrol-control-limits'] });
+            queryClient.invalidateQueries({ queryKey: ['patrolStats'] });
+        },
+        onError: (err: Error) => {
+            toast.error(`解除失敗：${err.message}`);
+        },
+    });
+};
