@@ -15,6 +15,7 @@ from .spc_analysis_service import (
     calculate_distribution_stats,
     calculate_process_capability,
 )
+from .spc_stability import evaluate_stability
 from .patrol_excel_utils import (
     build_patrol_measurements_from_row,
     copy_spc_workbook_sheets,
@@ -57,6 +58,7 @@ class PatrolService:
 
         # --- 1. 公差查詢 ---
         tolerance_limits = {"USL": None, "LSL": None, "found": False}
+        char_class = "其他"
         if material:
             try:
                 from ..services.tolerance_service import ToleranceService
@@ -100,6 +102,7 @@ class PatrolService:
 
                     for t in tol_result.get('tolerances', []):
                         if t.get('項目') == item:
+                            char_class = t.get('特性重要度') or "其他"
                             tolerance_limits["公差下限"] = t.get('公差下限')
                             tolerance_limits["公差上限"] = t.get('公差上限')
                             tolerance_limits["尺寸下限"] = t.get('尺寸下限')
@@ -197,6 +200,12 @@ class PatrolService:
         control_limits = calculate_control_limits(avgs, ranges_list, subgroup_sizes)
         usl = tolerance_limits.get("USL")
         lsl = tolerance_limits.get("LSL")
+        stability = evaluate_stability(
+            avgs,
+            control_limits["x_cl"],
+            control_limits["x_ucl"],
+            control_limits["x_lcl"],
+        )
         process_capability = calculate_process_capability(
             avgs,
             all_values,
@@ -204,6 +213,8 @@ class PatrolService:
             control_limits["d2"],
             tolerance_limits,
             include_reason=False,
+            stability=stability,
+            characteristic_class=char_class,
         )
         distribution_stats = calculate_distribution_stats(all_values)
         cpk_trend = calculate_cpk_trend(all_values, dates_valid, subgroup_sizes, usl, lsl)
@@ -226,7 +237,9 @@ class PatrolService:
             "tolerance": tolerance_limits,
             "process_capability": process_capability,
             "distribution_stats": distribution_stats,
-            "cpk_trend": cpk_trend
+            "cpk_trend": cpk_trend,
+            "stability": stability,
+            "characteristic_class": char_class,
         }
 
     @staticmethod
