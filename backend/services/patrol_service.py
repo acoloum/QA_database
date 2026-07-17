@@ -15,6 +15,7 @@ from .spc_analysis_service import (
     calculate_distribution_stats,
     calculate_process_capability,
 )
+from .spc_constants import SPC_CONSTANTS
 from .spc_distribution import assess_distribution
 from .spc_stability import evaluate_stability
 from .patrol_excel_utils import (
@@ -100,8 +101,13 @@ class PatrolService:
             raise e
 
     @staticmethod
-    def get_spc(args: Dict[str, Any]) -> Dict[str, Any]:
-        """獲取巡檢 SPC 統計數據（含公差界限、製程能力、分佈統計）"""
+    def get_spc(args: Dict[str, Any], skip_frozen_limits: bool = False) -> Dict[str, Any]:
+        """獲取巡檢 SPC 統計數據（含公差界限、製程能力、分佈統計）
+
+        skip_frozen_limits: 內部專用（凍結路由呼叫時使用），略過凍結界限套用，
+        確保取得的是依目前資料即時重新計算的數值，不受既有凍結值影響（§9.4）。
+        不對外部 API 參數開放。
+        """
         item = args.get('item', '厚度')
         pos = args.get('pos', '')
         material = args.get('mat', '')
@@ -180,7 +186,7 @@ class PatrolService:
         # --- 2. 資料查詢 ---
         query = db.session.query(
             PatrolMain.date, PatrolDetail.main_id, PatrolDetail.group,
-            PatrolDetail.min_val, PatrolDetail.max_val
+            PatrolDetail.min_val, PatrolDetail.max_val, PatrolDetail.excluded,
         ).join(PatrolDetail).filter(PatrolDetail.item == item)
 
         if pos:
@@ -206,16 +212,20 @@ class PatrolService:
         if not rows:
             return {"labels": [], "avgs": [], "ranges": []}
 
-        # --- 3. 分組聚合 ---
+        # --- 3. 分組聚合（排除標示為離群的量測值，§6.6）---
         from collections import OrderedDict
         groups: Dict[str, List[float]] = OrderedDict()
         group_dates: Dict[str, str] = {}  # key -> full date string
         group_ids: Dict[str, int] = {}    # key -> main_id
+        excluded_count = 0
 
         for r in rows:
             val1 = r[3]
             val2 = r[4]
             if val1 is None or val2 is None:
+                continue
+            if r[5]:
+                excluded_count += 1
                 continue
 
             date_str = r[0].strftime('%m/%d') if hasattr(r[0], 'strftime') else str(r[0])
@@ -251,6 +261,22 @@ class PatrolService:
         control_limits = calculate_control_limits(avgs, ranges_list, subgroup_sizes)
         usl = tolerance_limits.get("USL")
         lsl = tolerance_limits.get("LSL")
+
+        # 管制界限凍結（§9.4）：若已凍結，套用凍結值取代重新計算的結果
+        limits_frozen = False
+        if not skip_frozen_limits:
+            frozen = PatrolService.get_frozen_limits({
+                "material": material, "spec": spec, "item": item, "position": pos,
+            })
+            limits_frozen = frozen is not None
+            if limits_frozen:
+                control_limits.update({k: frozen[k] for k in
+                    ("x_cl", "x_ucl", "x_lcl", "r_cl", "r_ucl", "r_lcl", "avg_n")})
+                # d2 須對應凍結當下的子組大小，避免 sigma_within = r_cl/d2
+                # 混用「凍結的 r_cl」與「目前資料的 avg_n 所查到的 d2」
+                frozen_avg_n = max(2, min(10, int(frozen["avg_n"])))
+                control_limits["d2"] = SPC_CONSTANTS[frozen_avg_n][3]
+
         stability = evaluate_stability(
             avgs,
             control_limits["x_cl"],
@@ -295,6 +321,8 @@ class PatrolService:
             "cpk_trend": cpk_trend,
             "stability": stability,
             "characteristic_class": char_class,
+            "excluded_count": excluded_count,
+            "limits_frozen": limits_frozen,
         }
 
     @staticmethod

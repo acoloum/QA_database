@@ -474,3 +474,63 @@ def test_set_patrol_detail_exclusion_raises_for_missing_id(app, db_session):
     with app.app_context():
         with pytest.raises(ValueError, match='不存在'):
             PatrolService.set_patrol_detail_exclusion(999999, excluded=True, reason='測試')
+
+
+def test_get_spc_excludes_marked_outlier_from_stats(app, db_session):
+    """標示為離群的量測明細應排除於統計計算之外，並反映於 excluded_count"""
+    with app.app_context():
+        for i in range(6):
+            patrol = PatrolMain(date=date(2026, 1, i + 1), material='6061', spec='10*2')
+            db_session.add(patrol)
+            db_session.flush()
+            db_session.add(PatrolDetail(
+                main_id=patrol.id, group=1, item='外徑', position='前段',
+                min_val=9.9, max_val=10.1
+            ))
+        db_session.commit()
+
+        baseline = PatrolService.get_spc({'item': '外徑', 'pos': '前段', 'mat': '6061', 'spec': '10*2'})
+        assert baseline['excluded_count'] == 0
+        assert len(baseline['avgs']) == 6
+
+        target_detail = PatrolDetail.query.join(PatrolMain).filter(
+            PatrolMain.date == date(2026, 1, 1)
+        ).first()
+        PatrolService.set_patrol_detail_exclusion(target_detail.id, excluded=True, reason='量測異常')
+
+        result = PatrolService.get_spc({'item': '外徑', 'pos': '前段', 'mat': '6061', 'spec': '10*2'})
+        assert result['excluded_count'] == 1
+        assert len(result['avgs']) == 5
+
+
+def test_get_spc_applies_frozen_limits(app, db_session):
+    """管制界限凍結後，get_spc 回傳的界限應為凍結值而非重新計算值"""
+    with app.app_context():
+        for i in range(6):
+            patrol = PatrolMain(date=date(2026, 1, i + 1), material='6061', spec='10*2')
+            db_session.add(patrol)
+            db_session.flush()
+            db_session.add(PatrolDetail(
+                main_id=patrol.id, group=1, item='外徑', position='前段',
+                min_val=9.9 + i * 0.05, max_val=10.1 + i * 0.05
+            ))
+        db_session.commit()
+
+        result = PatrolService.get_spc({'item': '外徑', 'pos': '前段', 'mat': '6061', 'spec': '10*2'})
+        assert result['limits_frozen'] is False
+
+        key = {"material": "6061", "spec": "10*2", "item": "外徑", "position": "前段"}
+        PatrolService.freeze_control_limits(key, {
+            "x_cl": 99.0, "x_ucl": 100.0, "x_lcl": 98.0,
+            "r_cl": 1.0, "r_ucl": 2.0, "r_lcl": 0, "avg_n": 2,
+        })
+
+        frozen_result = PatrolService.get_spc({'item': '外徑', 'pos': '前段', 'mat': '6061', 'spec': '10*2'})
+        assert frozen_result['limits_frozen'] is True
+        assert frozen_result['x_cl'] == pytest.approx(99.0)
+
+        skip_result = PatrolService.get_spc(
+            {'item': '外徑', 'pos': '前段', 'mat': '6061', 'spec': '10*2'},
+            skip_frozen_limits=True,
+        )
+        assert skip_result['x_cl'] != pytest.approx(99.0)
