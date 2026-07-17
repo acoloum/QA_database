@@ -120,6 +120,25 @@ def test_process_capability_supports_lower_one_sided_limits():
     assert result["cpk"] is None
 
 
+def test_zero_variance_returns_none_capability_indices():
+    # 量測值完全相同（如四捨五入後之常數資料）：sigma_overall=0，
+    # 指數應安全回傳 None/0.0，不得產生 NaN/inf 或除以零例外
+    result = calculate_process_capability(
+        avgs=[10, 10, 10, 10, 10],
+        all_values=[10, 10, 10, 10, 10, 10],
+        r_cl=0, d2=2.326,
+        tolerance_limits={"USL": 11, "LSL": 9},
+    )
+    assert result["available"] is True
+    assert result["pp"] is None
+    assert result["ppk"] is None
+    assert result["cp"] is None
+    assert result["cpk"] is None
+    assert result["cw"] is None
+    assert result["cwk"] is None
+    assert result["ppm"]["total"] == 0.0
+
+
 def test_distribution_stats_labels_non_normal_data():
     result = calculate_distribution_stats([1, 1, 1, 1, 10, 20])
 
