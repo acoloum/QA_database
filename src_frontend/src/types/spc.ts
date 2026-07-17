@@ -26,6 +26,38 @@ export interface ProcessCapability {
     lower: number;
     total: number;
   };
+  applicable?: 'capability' | 'performance';
+  method?: 'G' | 'Z';
+  cw?: number | null;
+  cwk?: number | null;
+  stability_stable?: boolean | null;
+  targets?: SpcTargets;
+  achieved?: boolean;
+  preliminary?: boolean;
+}
+
+export interface SpcTargets {
+  class: string;
+  confidence: string;
+  base_p_target: number;
+  base_pk_target: number;
+  p_target: number;
+  pk_target: number;
+  adjusted: boolean;
+  insufficient_sample: boolean;
+}
+
+export interface SpcStabilityViolation {
+  index: number;
+  rule: string;
+  label: string;
+}
+
+export interface SpcStability {
+  evaluated: boolean;
+  stable: boolean | null;
+  violations: SpcStabilityViolation[];
+  rules_used: string[];
 }
 
 export interface DistributionStats {
@@ -33,6 +65,8 @@ export interface DistributionStats {
   kurtosis?: number;
   normality?: 'good' | 'moderate' | 'poor';
   normality_label?: string;
+  model?: string;
+  model_label?: string;
 }
 
 export interface CpkTrend {
@@ -70,6 +104,9 @@ export interface SpcChartData {
   process_capability: ProcessCapability;
   distribution_stats: DistributionStats;
   cpk_trend: CpkTrend[];
+  stability?: SpcStability;
+  characteristic_class?: string;
+  excluded_count?: number;
 }
 
 export interface HistogramBin {

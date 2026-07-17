@@ -5,6 +5,7 @@ import type {
   HistogramBin,
   ProcessCapability,
   SpcChartData,
+  SpcStability,
   SpcViolation,
 } from '../types';
 import {
@@ -48,6 +49,7 @@ export interface SpcChartModel {
   histogramData: SpcHistogramData | null;
   distributionStats: DistributionStats | null;
   cpkTrend: CpkTrend[] | null;
+  stability: SpcStability | null;
 }
 
 const emptySpcChartModel = (): SpcChartModel => ({
@@ -60,6 +62,7 @@ const emptySpcChartModel = (): SpcChartModel => ({
   histogramData: null,
   distributionStats: null,
   cpkTrend: null,
+  stability: null,
 });
 
 export const buildSpcChartModel = (statsData: SpcChartData | null | undefined): SpcChartModel => {
@@ -226,5 +229,6 @@ export const buildSpcChartModel = (statsData: SpcChartData | null | undefined): 
     histogramData: histData,
     distributionStats: data.distribution_stats || null,
     cpkTrend: data.cpk_trend || [],
+    stability: data.stability || null,
   };
 };

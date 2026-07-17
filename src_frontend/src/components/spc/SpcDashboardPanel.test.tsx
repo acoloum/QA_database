@@ -59,6 +59,7 @@ const model: SpcChartModel = {
     { month: '2026-05', cpk: 1.1, count: 10 },
     { month: '2026-06', cpk: 1.2, count: 12 },
   ],
+  stability: null,
 };
 
 describe('SpcDashboardPanel', () => {
