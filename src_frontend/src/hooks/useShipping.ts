@@ -251,24 +251,6 @@ export interface ControlLimitsKey {
     field: string;
 }
 
-export interface FrozenLimits {
-    x_cl: number; x_ucl: number; x_lcl: number;
-    r_cl: number; r_ucl: number; r_lcl: number;
-    avg_n: number; note: string | null; updated_at: string | null;
-}
-
-export const useFrozenLimits = (key: ControlLimitsKey, enabled: boolean) =>
-    useQuery<FrozenLimits | Record<string, never>>({
-        queryKey: ['control-limits', key],
-        queryFn: async () => {
-            const params = new URLSearchParams({
-                vendor: key.vendor, material: key.material, spec: key.spec, field: key.field,
-            });
-            return (await api.get(`/control-limits?${params.toString()}`)).data;
-        },
-        enabled,
-    });
-
 export const useFreezeLimits = () => {
     const queryClient = useQueryClient();
     return useMutation({

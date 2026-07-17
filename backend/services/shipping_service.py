@@ -24,6 +24,7 @@ from .spc_analysis_service import (
     calculate_distribution_stats,
     calculate_process_capability,
 )
+from .spc_constants import SPC_CONSTANTS
 from .spc_distribution import assess_distribution
 from .spc_stability import evaluate_stability
 from .shipping_import import build_shipping_measurements_from_row
@@ -203,8 +204,13 @@ class ShippingService:
             raise e
 
     @staticmethod
-    def get_stats(args: Dict[str, Any]) -> Dict[str, Any]:
-        """獲取出貨檢驗的 SPC 統計數據（含公差界限）"""
+    def get_stats(args: Dict[str, Any], skip_frozen_limits: bool = False) -> Dict[str, Any]:
+        """獲取出貨檢驗的 SPC 統計數據（含公差界限）
+
+        skip_frozen_limits: 內部專用（凍結路由呼叫時使用），略過凍結界限套用，
+        確保取得的是依目前資料即時重新計算的數值，不受既有凍結值影響（§9.4：
+        重新計算須反映當下資料，而非讀回舊的凍結值）。不對外部 API 參數開放。
+        """
         field = args.get('field', '外徑') # Example: "外徑"
         vendor = args.get('vendor')
         material = args.get('material')
@@ -213,6 +219,10 @@ class ShippingService:
         end_date = args.get('end_date')
 
         # ── SPCCache 快取讀取 ──────────────────────────────────────────────
+        # 快取鍵未區分 skip_frozen_limits，若在此仍讀寫快取，會與一般查詢互相
+        # 污染（skip 呼叫可能讀到一般查詢快取的凍結覆蓋結果，或把未套用凍結
+        # 覆蓋的結果寫入快取讓一般查詢誤讀）。skip_frozen_limits=True 一律略
+        # 過快取，確保每次都拿到即時重新計算的數值。
         from datetime import timedelta
         from ..models import SPCCache
 
@@ -220,13 +230,15 @@ class ShippingService:
             f"spc2|{field}|{vendor or ''}|{material or ''}|"
             f"{spec or ''}|{start_date or ''}|{end_date or ''}"
         )
-        try:
-            _cached = SPCCache.query.filter_by(cache_key=_cache_key).first()
-            if _cached and _cached.expires_at > datetime.now(timezone.utc):
-                return _cached.result
-        except Exception:
-            # 快取讀取失敗不阻斷主流程
-            _cached = None
+        _cached = None
+        if not skip_frozen_limits:
+            try:
+                _cached = SPCCache.query.filter_by(cache_key=_cache_key).first()
+                if _cached and _cached.expires_at > datetime.now(timezone.utc):
+                    return _cached.result
+            except Exception:
+                # 快取讀取失敗不阻斷主流程
+                _cached = None
         # ───────────────────────────────────────────────────────────────────
 
         try:
@@ -426,13 +438,22 @@ class ShippingService:
             lsl = tolerance_limits.get("LSL")
 
             # 管制界限凍結（§9.4）：若已凍結，套用凍結值取代重新計算的結果
-            frozen = ShippingService.get_frozen_limits({
-                "vendor": vendor, "material": material, "spec": spec, "field": field,
-            })
-            limits_frozen = frozen is not None
-            if limits_frozen:
-                control_limits.update({k: frozen[k] for k in
-                    ("x_cl", "x_ucl", "x_lcl", "r_cl", "r_ucl", "r_lcl", "avg_n")})
+            # skip_frozen_limits 供凍結路由內部呼叫時使用，確保取得的是依目前
+            # 資料即時重新計算的數值，不被既有凍結值覆蓋（否則「重新凍結」會
+            # 只讀回舊值，無法反映流程變更後的最新資料）。
+            limits_frozen = False
+            if not skip_frozen_limits:
+                frozen = ShippingService.get_frozen_limits({
+                    "vendor": vendor, "material": material, "spec": spec, "field": field,
+                })
+                limits_frozen = frozen is not None
+                if limits_frozen:
+                    control_limits.update({k: frozen[k] for k in
+                        ("x_cl", "x_ucl", "x_lcl", "r_cl", "r_ucl", "r_lcl", "avg_n")})
+                    # d2 須對應凍結當下的子組大小，避免 sigma_within = r_cl/d2
+                    # 混用「凍結的 r_cl」與「目前資料的 avg_n 所查到的 d2」
+                    frozen_avg_n = max(2, min(10, int(frozen["avg_n"])))
+                    control_limits["d2"] = SPC_CONSTANTS[frozen_avg_n][3]
 
             # 穩定性判定（§9.2.2）— 決定回報能力(C)或績效(P)指數
             stability = evaluate_stability(
@@ -487,23 +508,26 @@ class ShippingService:
             }
 
             # ── SPCCache 快取寫入（1 小時過期）─────────────────────────────
-            try:
-                _now = datetime.now(timezone.utc)
-                _expires = _now + timedelta(hours=1)
-                if _cached:
-                    _cached.result = _result
-                    _cached.created_at = _now
-                    _cached.expires_at = _expires
-                else:
-                    db.session.add(SPCCache(
-                        cache_key=_cache_key,
-                        result=_result,
-                        expires_at=_expires,
-                    ))
-                db.session.commit()
-            except Exception:
-                # 快取寫入失敗不影響回傳結果
-                db.session.rollback()
+            # skip_frozen_limits=True 的結果未套用凍結覆蓋，不寫入快取，避免
+            # 之後一般查詢誤讀到未套用凍結覆蓋的結果（見上方快取讀取處說明）。
+            if not skip_frozen_limits:
+                try:
+                    _now = datetime.now(timezone.utc)
+                    _expires = _now + timedelta(hours=1)
+                    if _cached:
+                        _cached.result = _result
+                        _cached.created_at = _now
+                        _cached.expires_at = _expires
+                    else:
+                        db.session.add(SPCCache(
+                            cache_key=_cache_key,
+                            result=_result,
+                            expires_at=_expires,
+                        ))
+                    db.session.commit()
+                except Exception:
+                    # 快取寫入失敗不影響回傳結果
+                    db.session.rollback()
             # ───────────────────────────────────────────────────────────────
 
             return _result

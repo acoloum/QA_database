@@ -96,7 +96,9 @@ def freeze_control_limits_route():
             "spec": body.get('spec', ''),
             "field": body.get('field', '外徑'),
         }
-        stats = ShippingService.get_stats(key)
+        # skip_frozen_limits=True：即使此 key 已凍結，也要取得依目前資料重新計算
+        # 的數值，避免「重新凍結」只是把舊的凍結值原封不動寫回去（§9.4）
+        stats = ShippingService.get_stats(key, skip_frozen_limits=True)
         limits = {k: stats[k] for k in ("x_cl", "x_ucl", "x_lcl", "r_cl", "r_ucl", "r_lcl")}
         limits["avg_n"] = stats.get("avg_subgroup_size", 5)
         result = ShippingService.freeze_control_limits(key, limits, note=body.get('note', ''))
