@@ -6,7 +6,7 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.chart import LineChart, BarChart, Reference
 from openpyxl.chart.layout import Layout, ManualLayout
-from .spc_stability import evaluate_stability
+from .spc_stability import evaluate_stability, RULE_LABELS
 
 
 class SpcReportService:
@@ -127,7 +127,7 @@ class SpcReportService:
             ("分布模型", dist_info.get('label', '常態分布')),
             ("穩定性判定", "穩定（統計受控）" if stability.get('stable')
                           else ("不穩定" if stability.get('stable') is False else "無法評估")),
-            ("使用之穩定性準則", "、".join(stability.get('rules_used', [])) or "—"),
+            ("使用之穩定性準則", "、".join(RULE_LABELS.get(r, r) for r in stability.get('rules_used', [])) or "—"),
             ("特性重要度", targets.get('class', '其他')),
             ("Ppk/Cpk 目標值", targets.get('pk_target')),
             ("目標值樣本數調整", f"已依樣本數上修（{targets.get('confidence', '95%')}）" if targets.get('adjusted') else "無"),
