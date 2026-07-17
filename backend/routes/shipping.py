@@ -38,6 +38,34 @@ def get_shipping_stats():
         current_app.logger.exception("Shipping error: %s", str(e))
         return api_error(str(e), 500)
 
+@shipping_bp.route('/api/data/<int:data_id>/measurements', methods=['GET'])
+@auth_required
+def get_shipping_measurements(data_id):
+    """取得單筆出貨記錄的量測明細（含離群標記）"""
+    try:
+        return jsonify(ShippingService.get_measurements(data_id))
+    except Exception as e:
+        return api_error(str(e), 500)
+
+
+@shipping_bp.route('/api/measurements/<int:measurement_id>/exclusion', methods=['PATCH'])
+@auth_required
+def set_measurement_exclusion(measurement_id):
+    """標示/解除量測值離群排除（AIAG-VDA SPC 2026 §6.6）"""
+    try:
+        body = request.get_json(silent=True) or {}
+        result = ShippingService.set_measurement_exclusion(
+            measurement_id,
+            excluded=bool(body.get('排除統計')),
+            reason=body.get('排除原因'),
+        )
+        return jsonify(result)
+    except ValueError as e:
+        return api_error(str(e), 400)
+    except Exception as e:
+        return api_error(str(e), 500)
+
+
 @shipping_bp.route('/api/spc-report', methods=['GET'])
 @auth_required
 def export_spc_report():

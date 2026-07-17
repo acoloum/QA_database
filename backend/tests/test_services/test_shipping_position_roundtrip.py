@@ -76,3 +76,35 @@ def test_plain_keys_unchanged(db_session, setup_data):
     record = ShippingData.query.first()
     res = ShippingService._map_row_to_dict(record)
     assert list(res['measurements']['1'].keys()) == ['外徑']
+
+
+def test_set_measurement_exclusion_and_stats_skip(db_session, setup_data):
+    """標示量測值為離群後,應排除於SPC統計計算,但保留於資料庫供追溯(§6.6)"""
+    payload = _base_payload({'1': {'外徑': {'value_min': 9.8, 'value_max': 10.2}}})
+    payload['組數'] = 1
+    ShippingService.save_data(payload)
+
+    m = ShippingMeasurement.query.filter_by(item='外徑').one()
+    m_id = m.id
+
+    ShippingService.set_measurement_exclusion(m_id, excluded=True, reason="校正量測誤植")
+    m_after = ShippingMeasurement.query.get(m_id)
+    assert m_after.excluded is True
+    assert m_after.exclusion_reason == "校正量測誤植"
+
+    # 解除排除
+    ShippingService.set_measurement_exclusion(m_id, excluded=False, reason=None)
+    m_restored = ShippingMeasurement.query.get(m_id)
+    assert m_restored.excluded is False
+    assert m_restored.exclusion_reason is None
+
+
+def test_excluding_measurement_requires_reason(db_session, setup_data):
+    """標示離群值時必須填寫原因(§6.6),否則拒絕"""
+    payload = _base_payload({'1': {'外徑': {'value_min': 9.8, 'value_max': 10.2}}})
+    ShippingService.save_data(payload)
+    m = ShippingMeasurement.query.filter_by(item='外徑').one()
+
+    import pytest
+    with pytest.raises(ValueError):
+        ShippingService.set_measurement_exclusion(m.id, excluded=True, reason="")

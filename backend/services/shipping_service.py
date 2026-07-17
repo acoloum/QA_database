@@ -309,6 +309,7 @@ class ShippingService:
             dates_valid = []
             labels_valid = []
             insufficient_data = []
+            excluded_count = 0
 
             for idx, r in enumerate(rows):
                 vals: List[float] = []
@@ -321,6 +322,9 @@ class ShippingService:
                     if i > row_group_count:
                         continue
                     for m in group_meas.get(i) or []:
+                        if m.excluded:
+                            excluded_count += 1
+                            continue
                         try:
                             if is_minmax:
                                 # minmax 項目需 min/max 皆有值才計入（與舊版扁平邏輯一致）
@@ -410,6 +414,7 @@ class ShippingService:
                 "cpk_trend": cpk_trend,
                 "stability": stability,
                 "characteristic_class": char_class,
+                "excluded_count": excluded_count,
             }
 
             # ── SPCCache 快取寫入（1 小時過期）─────────────────────────────
@@ -532,6 +537,34 @@ class ShippingService:
         except Exception as e:
             db.session.rollback()
             raise e
+
+    @staticmethod
+    def set_measurement_exclusion(measurement_id: int, excluded: bool, reason: Optional[str]) -> Dict[str, Any]:
+        """標示/解除量測值離群排除（§6.6：不刪除、保留追溯、排除統計）"""
+        m = db.session.get(ShippingMeasurement, measurement_id)
+        if m is None:
+            raise ValueError("量測明細不存在")
+        if excluded and not (reason or "").strip():
+            raise ValueError("標示離群值必須填寫原因（§6.6）")
+        m.excluded = excluded
+        m.exclusion_reason = (reason or "").strip() or None if excluded else None
+        ShippingService._invalidate_spc_cache()
+        db.session.commit()
+        return {"id": m.id, "排除統計": m.excluded, "排除原因": m.exclusion_reason}
+
+    @staticmethod
+    def get_measurements(shipping_id: int) -> List[Dict[str, Any]]:
+        """取得單筆出貨記錄的全部量測明細（供離群值管理 UI）"""
+        rows = ShippingMeasurement.query.filter_by(shipping_id=shipping_id).order_by(
+            ShippingMeasurement.item, ShippingMeasurement.group_num, ShippingMeasurement.position
+        ).all()
+        return [{
+            "識別碼": m.id, "組別": m.group_num, "量測項目": m.item, "測量位置": m.position,
+            "量測值": float(m.value_single) if m.value_single is not None else None,
+            "量測最小值": float(m.value_min) if m.value_min is not None else None,
+            "量測最大值": float(m.value_max) if m.value_max is not None else None,
+            "排除統計": m.excluded, "排除原因": m.exclusion_reason,
+        } for m in rows]
 
     @staticmethod
     def delete_data(record_id: int) -> bool:
