@@ -50,6 +50,7 @@ def get_shipping_measurements(data_id):
 
 @shipping_bp.route('/api/measurements/<int:measurement_id>/exclusion', methods=['PATCH'])
 @auth_required
+@require_perm('shipping.edit')
 def set_measurement_exclusion(measurement_id):
     """標示/解除量測值離群排除（AIAG-VDA SPC 2026 §6.6）"""
     try:

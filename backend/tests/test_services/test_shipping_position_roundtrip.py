@@ -108,3 +108,55 @@ def test_excluding_measurement_requires_reason(db_session, setup_data):
     import pytest
     with pytest.raises(ValueError):
         ShippingService.set_measurement_exclusion(m.id, excluded=True, reason="")
+
+
+def test_measurement_exclusion_affects_get_stats(db_session, setup_data):
+    """排除量測值後,SPC統計(get_stats)應反映排除,不再計入平均值計算(§6.6)"""
+    payload = _base_payload({
+        '1': {'外徑': {'value_min': 9.8, 'value_max': 10.2}},  # 中點 10.0
+        '2': {'外徑': {'value_min': 9.9, 'value_max': 10.1}},  # 中點 10.0
+        '3': {'外徑': {'value_min': 9.0, 'value_max': 9.0}},   # 中點 9.0（離群）
+    })
+    payload['組數'] = 3
+    ShippingService.save_data(payload)
+
+    stats_before = ShippingService.get_stats({'field': '外徑'})
+    assert stats_before['excluded_count'] == 0
+    assert 9.0 in stats_before['all_values']
+    assert abs(stats_before['avgs'][0] - (10.0 + 10.0 + 9.0) / 3) < 1e-9
+
+    m3 = ShippingMeasurement.query.filter_by(item='外徑', group_num=3).one()
+    ShippingService.set_measurement_exclusion(m3.id, excluded=True, reason="量測異常，設備校正誤差")
+
+    stats_after = ShippingService.get_stats({'field': '外徑'})
+    assert stats_after['excluded_count'] == 1
+    assert 9.0 not in stats_after['all_values']
+    assert abs(stats_after['avgs'][0] - 10.0) < 1e-9
+
+
+def test_get_measurements_returns_all_details(db_session, setup_data):
+    """取得單筆出貨記錄的量測明細列表,含排除狀態,供離群值管理UI使用"""
+    payload = _base_payload({
+        '1': {
+            '外徑': {'value_min': 9.8, 'value_max': 10.2},
+            '硬度': {'value_single': 55},
+        },
+    })
+    ShippingService.save_data(payload)
+
+    record = ShippingData.query.first()
+    results = ShippingService.get_measurements(record.id)
+
+    assert len(results) == 2
+    items_by_name = {r['量測項目']: r for r in results}
+    assert set(items_by_name.keys()) == {'外徑', '硬度'}
+
+    od = items_by_name['外徑']
+    assert od['量測最小值'] == 9.8
+    assert od['量測最大值'] == 10.2
+    assert od['排除統計'] is False
+    assert od['排除原因'] is None
+
+    hardness = items_by_name['硬度']
+    assert hardness['量測值'] == 55
+    assert hardness['排除統計'] is False
