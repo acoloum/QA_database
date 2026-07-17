@@ -17,7 +17,14 @@ const OutlierManagerModal = ({ shippingId, show, onHide }: OutlierManagerModalPr
     const toggle = (id: number, currentlyExcluded: boolean) => {
         const reason = reasons[id] ?? '';
         if (!currentlyExcluded && !reason.trim()) return; // 標示離群必填原因
-        setExclusion.mutate({ id, excluded: !currentlyExcluded, reason });
+        setExclusion.mutate({ id, excluded: !currentlyExcluded, reason }, {
+            // 成功後清除本地暫存原因，避免下次排除時誤用舊原因造成追溯紀錄錯誤
+            onSuccess: () => setReasons(prev => {
+                const next = { ...prev };
+                delete next[id];
+                return next;
+            }),
+        });
     };
 
     return (

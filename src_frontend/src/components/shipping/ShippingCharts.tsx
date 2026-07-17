@@ -69,7 +69,8 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
 
     const exportSpcReport = useExportSpcReport();
 
-    const spcModel = useMemo(() => buildSpcChartModel(statsData as SpcChartData | null | undefined), [statsData]);
+    const typedStatsData = statsData as SpcChartData | null | undefined;
+    const spcModel = useMemo(() => buildSpcChartModel(typedStatsData), [typedStatsData]);
 
     const handleExportReport = () => {
         exportSpcReport.mutate({
@@ -104,7 +105,12 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                         disabled={spcModel.ids.length === 0}
                     >
                         <option value="">選擇記錄以管理離群值…</option>
-                        {spcModel.ids.map(id => <option key={id} value={id}>#{id}</option>)}
+                        {spcModel.ids.map((id, i) => {
+                            const date = typedStatsData?.dates?.[i];
+                            const label = typedStatsData?.labels?.[i];
+                            const extra = [date, label && label !== id ? label : null].filter(Boolean).join(' · ');
+                            return <option key={id} value={id}>#{id}{extra ? ` · ${extra}` : ''}</option>;
+                        })}
                     </Form.Select>
                     <Button
                         variant="outline-secondary"

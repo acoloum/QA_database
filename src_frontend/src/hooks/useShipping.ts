@@ -232,9 +232,13 @@ export const useSetMeasurementExclusion = () => {
     return useMutation({
         mutationFn: async (p: { id: number; excluded: boolean; reason: string }) =>
             (await api.patch(`/measurements/${p.id}/exclusion`, { 排除統計: p.excluded, 排除原因: p.reason })).data,
-        onSuccess: () => {
+        onSuccess: (_data, variables) => {
+            toast.success(variables.excluded ? '已標示為離群值' : '已恢復計入統計');
             queryClient.invalidateQueries({ queryKey: ['shipping-measurements'] });
             queryClient.invalidateQueries({ queryKey: ['shippingStats'] });
+        },
+        onError: (err: Error) => {
+            toast.error(`操作失敗：${err.message}`);
         },
     });
 };
