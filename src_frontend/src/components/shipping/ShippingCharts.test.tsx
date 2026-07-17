@@ -26,6 +26,8 @@ vi.mock('../../utils/spcChartModel', () => ({
     statsSummary: { count: 2, mean: '10.0', stdDev: '0.1', cv: '1', min: '9.8', max: '10.1', violations: 1 },
     processCapability: {
       available: true,
+      applicable: 'capability',
+      method: 'G',
       cp: 1.5,
       cpk: 1.33,
       pp: 1.4,

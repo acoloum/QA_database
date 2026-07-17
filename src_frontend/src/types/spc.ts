@@ -10,10 +10,10 @@ export interface ProcessCapability {
   usl?: number;
   lsl?: number;
   one_sided?: 'upper' | 'lower' | null;
-  cp?: number;
-  cpk?: number;
-  cpu?: number;
-  cpl?: number;
+  cp?: number | null;
+  cpk?: number | null;
+  cpu?: number | null;
+  cpl?: number | null;
   pp?: number;
   ppk?: number;
   ppu?: number;

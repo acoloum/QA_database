@@ -8,6 +8,8 @@ describe('PatrolChartsParts', () => {
   it('顯示製程能力指標', () => {
     render(<ProcessCapabilityCard processCapability={{
       available: true,
+      applicable: 'capability',
+      method: 'G',
       cp: 1.5,
       cpk: 1.33,
       pp: 1.4,
@@ -29,19 +31,20 @@ describe('PatrolChartsParts', () => {
   it('顯示單側下限製程能力指標', () => {
     render(<ProcessCapabilityCard processCapability={{
       available: true,
+      applicable: 'capability',
+      method: 'G',
       one_sided: 'lower',
       cpl: 1.45,
       cpk: 1.45,
       ppl: 1.22,
       ppk: 1.22,
-      usl: null,
       lsl: 8,
       ppm: { upper: 0, lower: 12, total: 12 },
     }} statsItem="硬度" />);
 
     expect(screen.getByText(/單側下限規格/)).toBeInTheDocument();
-    expect(screen.getAllByText('CPL').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('1.450').length).toBeGreaterThan(0);
+    expect(screen.getByText('Cpk.G')).toBeInTheDocument();
+    expect(screen.getByText('1.450')).toBeInTheDocument();
   });
 
   it('資料不足時顯示有效筆數提示', () => {
