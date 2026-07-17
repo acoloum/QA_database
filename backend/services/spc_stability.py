@@ -44,7 +44,7 @@ def evaluate_stability(
         "evaluated": False,
         "stable": None,
         "violations": [],
-        "rules_used": rules,
+        "rules_used": list(rules),
     }
     if len(avgs) < 5 or x_ucl <= x_cl:
         return result
