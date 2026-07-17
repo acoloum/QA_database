@@ -88,7 +88,8 @@ class ToleranceService:
                     "公差上限": format_value(d.tolerance_max),
                     "標準值": format_value(d.std_val),
                     "單位": d.unit,
-                    "備註": d.note
+                    "備註": d.note,
+                    "特性重要度": d.characteristic_class or '其他'
                 }
                 details.append(item)
             
@@ -120,10 +121,11 @@ class ToleranceService:
                     tolerance_max=d.get('公差上限'),
                     std_val=d.get('標準值'),
                     unit=d.get('單位', 'mm'),
-                    note=d.get('備註')
+                    note=d.get('備註'),
+                    characteristic_class=d.get('特性重要度', '其他')
                 )
                 db.session.add(detail)
-            
+
             db.session.commit()
             return main.id
         except Exception as e:
@@ -156,10 +158,11 @@ class ToleranceService:
                     tolerance_max=d.get('公差上限'),
                     std_val=d.get('標準值'),
                     unit=d.get('單位', 'mm'),
-                    note=d.get('備註')
+                    note=d.get('備註'),
+                    characteristic_class=d.get('特性重要度', '其他')
                 )
                 db.session.add(detail)
-            
+
             db.session.commit()
             return True
         except Exception as e:
@@ -363,7 +366,8 @@ class ToleranceService:
                     "位置": d.position or '',
                     "尺寸下限": d.dim_min, "尺寸上限": d.dim_max,
                     "公差下限": d.tolerance_min, "公差上限": d.tolerance_max,
-                    "標準值": d.std_val, "單位": d.unit or 'mm'
+                    "標準值": d.std_val, "單位": d.unit or 'mm',
+                    "特性重要度": d.characteristic_class or '其他'
                 })
             
             p_names = {

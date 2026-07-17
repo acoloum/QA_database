@@ -88,3 +88,29 @@ def test_tolerance_parse_spec_values_uses_shared_nominal_parser(app):
             '內徑': 27.5,
             '長度': 589.0,
         }
+
+
+def test_tolerance_detail_roundtrips_characteristic_class(app, db_session):
+    """特性重要度欄位應能透過 add_tolerance 寫入並經 get_tolerance_detail 讀出。"""
+    with app.app_context():
+        v = Vendor(name="Test Vendor CC")
+        db_session.add(v)
+        db_session.commit()
+
+        data = {
+            "材質": "TEST-CLS",
+            "規格": "1*2*3",
+            "廠商ID": v.id,
+            "備註": "",
+            "建立日期": datetime.now(),
+            "details": [{
+                "測量項目": "外徑", "測量位置": "",
+                "尺寸下限": 1.0, "尺寸上限": 2.0,
+                "公差下限": None, "公差上限": None,
+                "標準值": None, "單位": "mm", "備註": "",
+                "特性重要度": "關鍵",
+            }],
+        }
+        new_id = ToleranceService.add_tolerance(data)
+        got = ToleranceService.get_tolerance_detail(new_id)
+        assert got["details"][0]["特性重要度"] == "關鍵"

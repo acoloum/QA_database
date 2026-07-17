@@ -114,6 +114,7 @@ class ExtrusionToleranceService:
                 "公差上限": format_value(d.tolerance_max),
                 "標準值": format_value(d.std_val),
                 "單位": d.unit or 'mm',
+                "特性重要度": d.characteristic_class or '其他',
             }
             for d in sorted(t.details, key=lambda x: x.id)
         ]
@@ -141,6 +142,7 @@ class ExtrusionToleranceService:
                     tolerance_max=d.get('公差上限') or None,
                     std_val=d.get('標準值') or None,
                     unit=d.get('單位', 'mm'),
+                    characteristic_class=d.get('特性重要度', '其他'),
                 ))
 
             db.session.commit()
@@ -172,6 +174,7 @@ class ExtrusionToleranceService:
                     tolerance_max=d.get('公差上限') or None,
                     std_val=d.get('標準值') or None,
                     unit=d.get('單位', 'mm'),
+                    characteristic_class=d.get('特性重要度', '其他'),
                 ))
 
             db.session.commit()
