@@ -14,8 +14,12 @@ import {
 } from 'chart.js';
 import { buildSpcChartModel } from '../../utils/spcChartModel';
 import SpcDashboardPanel from '../spc/SpcDashboardPanel';
-import { Button, Form } from 'react-bootstrap';
-import { useExportPatrolSpcReport, usePatrolStats } from '../../hooks/usePatrol';
+import PatrolOutlierManagerModal from '../spc/PatrolOutlierManagerModal';
+import { Badge, Button, Form } from 'react-bootstrap';
+import {
+    useExportPatrolSpcReport, usePatrolStats,
+    useFreezePatrolLimits, useUnfreezePatrolLimits,
+} from '../../hooks/usePatrol';
 import type { SpcChartData } from '../../types';
 
 // 註冊 ChartJS 元件
@@ -47,6 +51,8 @@ const POSITIONS = ['前段', '中段', '後段'];
 const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, endDate, onEditPoint, statsItem, statsPos, onItemChange, onPosChange }: PatrolChartsProps) => {
     const exportSpcReport = useExportPatrolSpcReport();
     const [showSpecLimits, setShowSpecLimits] = useState(false);
+    const [outlierTargetId, setOutlierTargetId] = useState<number | null>(null);
+    const [selectedRecordId, setSelectedRecordId] = useState('');
 
     // 匯出 SPC 報告（含原始數據 + SPC 統計與圖表）
     const handleExportSpc = () => {
@@ -75,10 +81,27 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
         e_date: endDate
     });
 
+    const typedStatsData = statsData as SpcChartData | null | undefined;
+    const controlLimitsKey = { material, spec, item: statsItem, position: statsPos };
+    const freezeLimits = useFreezePatrolLimits();
+    const unfreezeLimits = useUnfreezePatrolLimits();
+
     const spcModel = useMemo(
-        () => buildSpcChartModel(statsData as SpcChartData | null | undefined, { showSpecLimits }),
-        [statsData, showSpecLimits]
+        () => buildSpcChartModel(typedStatsData, { showSpecLimits }),
+        [typedStatsData, showSpecLimits]
     );
+
+    // 記錄選單需去重：同一巡檢主檔可能對應多個組別，ids 陣列會重複同一 main_id
+    const recordOptions = useMemo(() => {
+        const seen = new Set<string>();
+        const opts: { id: string; date?: string }[] = [];
+        spcModel.ids.forEach((id, i) => {
+            if (seen.has(id)) return;
+            seen.add(id);
+            opts.push({ id, date: typedStatsData?.dates?.[i] });
+        });
+        return opts;
+    }, [spcModel.ids, typedStatsData]);
 
     return (
         <div className="mt-4">
@@ -110,9 +133,44 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
                         onChange={e => setShowSpecLimits(e.target.checked)}
                     />
                 </div>
-                <Button variant="outline-success" onClick={handleExportSpc} disabled={exportSpcReport.isPending}>
-                    <i className="bi bi-file-earmark-bar-graph"></i> {exportSpcReport.isPending ? '匯出中...' : '匯出 SPC 報告'}
-                </Button>
+                <div className="d-flex align-items-center gap-2">
+                    <Form.Select
+                        size="sm"
+                        style={{ width: 'auto' }}
+                        value={selectedRecordId}
+                        onChange={e => setSelectedRecordId(e.target.value)}
+                        disabled={recordOptions.length === 0}
+                    >
+                        <option value="">選擇記錄以管理離群值…</option>
+                        {recordOptions.map(o => (
+                            <option key={o.id} value={o.id}>#{o.id}{o.date ? ` · ${o.date}` : ''}</option>
+                        ))}
+                    </Form.Select>
+                    <Button
+                        variant="outline-secondary"
+                        size="sm"
+                        disabled={!selectedRecordId}
+                        onClick={() => setOutlierTargetId(Number(selectedRecordId))}
+                    >
+                        離群值管理
+                    </Button>
+                    {typedStatsData?.limits_frozen
+                        ? <Badge bg="info">管制界限已凍結</Badge>
+                        : <Badge bg="light" text="dark">界限逐次重算中</Badge>}
+                    <Button size="sm" variant="outline-primary"
+                        disabled={freezeLimits.isPending || !spcModel.chartData}
+                        onClick={() => freezeLimits.mutate(controlLimitsKey)}>
+                        凍結目前界限
+                    </Button>
+                    <Button size="sm" variant="outline-secondary"
+                        disabled={unfreezeLimits.isPending || !typedStatsData?.limits_frozen}
+                        onClick={() => unfreezeLimits.mutate(controlLimitsKey)}>
+                        解除凍結
+                    </Button>
+                    <Button variant="outline-success" onClick={handleExportSpc} disabled={exportSpcReport.isPending}>
+                        <i className="bi bi-file-earmark-bar-graph"></i> {exportSpcReport.isPending ? '匯出中...' : '匯出 SPC 報告'}
+                    </Button>
+                </div>
             </div>
 
             <SpcDashboardPanel
@@ -122,6 +180,12 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
                 sampleCount={statsData?.all_values?.length ?? 0}
                 onEditPoint={onEditPoint}
                 filterXBarLegendLabels
+            />
+
+            <PatrolOutlierManagerModal
+                mainId={outlierTargetId}
+                show={outlierTargetId != null}
+                onHide={() => setOutlierTargetId(null)}
             />
         </div>
     );
