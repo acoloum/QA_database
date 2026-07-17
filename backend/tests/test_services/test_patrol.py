@@ -384,7 +384,10 @@ def test_export_excel_batches_patrol_details(app, db_session):
 
 
 def test_get_patrol_details_returns_all_rows_with_exclusion_status(app, db_session):
-    """取得單筆巡檢記錄的全部量測明細，含各筆的排除狀態"""
+    """取得單筆巡檢記錄的全部量測明細，含各筆的排除狀態
+    涵蓋同一 main_id 下多筆明細（跨測量項目與測量位置），確認各筆能以
+    （組別、測量項目、測量位置）正確區分，而非僅驗證「有資料」。
+    """
     with app.app_context():
         patrol = PatrolMain(date=date(2026, 1, 1), material='6061', spec='10*2')
         db_session.add(patrol)
@@ -393,14 +396,39 @@ def test_get_patrol_details_returns_all_rows_with_exclusion_status(app, db_sessi
             main_id=patrol.id, group=1, item='外徑', position='前段',
             min_val=9.8, max_val=10.2
         ))
+        db_session.add(PatrolDetail(
+            main_id=patrol.id, group=1, item='內徑', position='前段',
+            min_val=5.8, max_val=6.2
+        ))
+        db_session.add(PatrolDetail(
+            main_id=patrol.id, group=1, item='外徑', position='中段',
+            min_val=9.7, max_val=10.1
+        ))
         db_session.commit()
 
         details = PatrolService.get_patrol_details(patrol.id)
-        assert len(details) == 1
-        assert details[0]['測量項目'] == '外徑'
-        assert details[0]['最小值'] == pytest.approx(9.8)
-        assert details[0]['排除統計'] is False
-        assert details[0]['排除原因'] is None
+        assert len(details) == 3
+
+        rows_by_key = {(d['組別'], d['測量項目'], d['測量位置']): d for d in details}
+        assert set(rows_by_key.keys()) == {
+            (1, '外徑', '前段'),
+            (1, '內徑', '前段'),
+            (1, '外徑', '中段'),
+        }
+
+        od_front = rows_by_key[(1, '外徑', '前段')]
+        assert od_front['最小值'] == pytest.approx(9.8)
+        assert od_front['最大值'] == pytest.approx(10.2)
+        assert od_front['排除統計'] is False
+        assert od_front['排除原因'] is None
+
+        id_front = rows_by_key[(1, '內徑', '前段')]
+        assert id_front['最小值'] == pytest.approx(5.8)
+        assert id_front['最大值'] == pytest.approx(6.2)
+
+        od_mid = rows_by_key[(1, '外徑', '中段')]
+        assert od_mid['最小值'] == pytest.approx(9.7)
+        assert od_mid['最大值'] == pytest.approx(10.1)
 
 
 def test_set_patrol_detail_exclusion_requires_reason(app, db_session):
