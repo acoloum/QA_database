@@ -62,6 +62,7 @@ class SpcReportService:
         row += 1
 
         avgs = stats_data.get('avgs', [])
+        pc = stats_data.get('process_capability', {})
         if avgs:
             stats_items = [
                 ("有效樣本數", len(avgs)),
@@ -106,6 +107,44 @@ class SpcReportService:
                         cell_val.fill = bad_fill
                 row += 1
 
+        # --- 研究資訊（AIAG-VDA SPC 2026 §11.2 報告要素）---
+        stability = stats_data.get('stability') or {}
+        targets = pc.get('targets') or {}
+        dist_info = pc.get('distribution') or {}
+        applicable = pc.get('applicable')
+
+        row += 1
+        ws.merge_cells(f'A{row}:F{row}')
+        ws[f'A{row}'] = "研究資訊（AIAG-VDA SPC 2026）"
+        ws[f'A{row}'].font = Font(name="微軟正黑體", size=12, bold=True)
+        row += 1
+
+        study_items = [
+            ("研究類型", "持續製程監控（回顧式管制圖）"),
+            ("適用指數", "能力 Cp/Cpk（穩定）" if applicable == "capability"
+                        else "績效 Pp/Ppk（不穩定或穩定性未證明）"),
+            ("計算方法", f"{pc.get('method', 'G')} 法（分位數法；常態時等同 6s 公式）"),
+            ("分布模型", dist_info.get('label', '常態分布')),
+            ("穩定性判定", "穩定（統計受控）" if stability.get('stable')
+                          else ("不穩定" if stability.get('stable') is False else "無法評估")),
+            ("使用之穩定性準則", "、".join(stability.get('rules_used', [])) or "—"),
+            ("特性重要度", targets.get('class', '其他')),
+            ("Ppk/Cpk 目標值", targets.get('pk_target')),
+            ("目標值樣本數調整", f"已依樣本數上修（{targets.get('confidence', '95%')}）" if targets.get('adjusted') else "無"),
+            ("樣本數(個別值)", len(stats_data.get('all_values', []))),
+            ("子組數", len(stats_data.get('avgs', []))),
+            ("排除之離群值筆數", stats_data.get('excluded_count', 0)),
+            ("初步值註記", "是（n<125 或子組<25）" if pc.get('preliminary') else "否"),
+        ]
+        for name, value in study_items:
+            ws.cell(row=row, column=1, value=name).font = normal_font
+            ws.cell(row=row, column=1).border = thin_border
+            cell_val = ws.cell(row=row, column=2, value=value if value is not None else 'N/A')
+            cell_val.font = normal_font
+            cell_val.border = thin_border
+            row += 1
+        row += 1
+
         # --- Control Limits ---
         row += 1
         ws.merge_cells(f'A{row}:F{row}')
@@ -139,7 +178,6 @@ class SpcReportService:
             row += 1
 
         # --- Process Capability ---
-        pc = stats_data.get('process_capability', {})
         if pc.get('available'):
             row += 1
             ws.merge_cells(f'A{row}:F{row}')
@@ -155,42 +193,45 @@ class SpcReportService:
                 cell.alignment = Alignment(horizontal='center')
             row += 1
 
+            pk_target = targets.get('pk_target', 1.33)
+
             def get_cpk_grade(val):
                 if val is None:
                     return ("N/A", None)
-                if val >= 1.67:
-                    return ("A (優秀)", good_fill)
-                elif val >= 1.33:
-                    return ("B (良好)", good_fill)
-                elif val >= 1.0:
-                    return ("C (可接受)", warn_fill)
-                else:
-                    return ("D (不足)", bad_fill)
+                if val >= pk_target:
+                    return (f"達標 (≥{pk_target:.2f})", good_fill)
+                return (f"未達標 (<{pk_target:.2f})", bad_fill)
 
+            method = pc.get('method', 'G')
+            cpk_label = f"Cpk.{method} (修正製程能力,僅穩定時)"
+            ppk_label = f"Ppk.{method} (修正製程績效)"
             pc_items = [
-                ("USL (規格上限)", pc.get('usl')),
-                ("LSL (規格下限)", pc.get('lsl')),
-                ("Cp (製程能力)", pc.get('cp')),
-                ("Cpk (修正製程能力)", pc.get('cpk')),
-                ("Pp (製程績效)", pc.get('pp')),
-                ("Ppk (修正製程績效)", pc.get('ppk')),
-                ("CPU (上限能力)", pc.get('cpu')),
-                ("CPL (下限能力)", pc.get('cpl')),
-                ("σ_within (組內標準差)", pc.get('sigma_within')),
-                ("σ_overall (整體標準差)", pc.get('sigma_overall')),
+                ("USL (規格上限)", pc.get('usl'), False),
+                ("LSL (規格下限)", pc.get('lsl'), False),
+                (f"Pp.{method} (製程績效)", pc.get('pp'), False),
+                (ppk_label, pc.get('ppk'), False),
+                (f"Cp.{method} (製程能力,僅穩定時)", pc.get('cp'), True),
+                (cpk_label, pc.get('cpk'), True),
+                ("Cw (組內能力參考)", pc.get('cw'), False),
+                ("Cwk (組內能力參考)", pc.get('cwk'), False),
+                ("σ_overall (整體標準差)", pc.get('sigma_overall'), False),
+                ("σ_within (組內標準差)", pc.get('sigma_within'), False),
             ]
 
-            for name, value in pc_items:
+            for name, value, capability_only in pc_items:
                 ws.cell(row=row, column=1, value=name).font = normal_font
                 ws.cell(row=row, column=1).border = thin_border
-                display_val = round(value, 4) if isinstance(value, (int, float)) else "N/A"
+                if value is None and capability_only:
+                    display_val = "不適用(未證明穩定)"
+                else:
+                    display_val = round(value, 4) if isinstance(value, (int, float)) else "N/A"
                 cell_val = ws.cell(row=row, column=2, value=display_val)
                 cell_val.font = normal_font
                 cell_val.border = thin_border
                 cell_val.alignment = Alignment(horizontal='center')
 
-                # Grade column for Cp/Cpk/Pp/Ppk
-                if name in ("Cpk (修正製程能力)", "Ppk (修正製程績效)"):
+                # Grade column for Cpk/Ppk
+                if name in (cpk_label, ppk_label):
                     grade, fill = get_cpk_grade(value)
                     cell_grade = ws.cell(row=row, column=3, value=grade)
                     cell_grade.font = normal_font
@@ -243,29 +284,27 @@ class SpcReportService:
             ws[f'A{row}'].font = Font(name="微軟正黑體", size=12, bold=True)
             row += 1
 
-            cpk_val = pc.get('cpk')
+            pk_val = pc.get('cpk') if applicable == 'capability' else pc.get('ppk')
+            pk_label = cpk_label if applicable == 'capability' else ppk_label
             conclusion_lines = []
-            if cpk_val is not None:
-                if cpk_val >= 1.67:
-                    conclusion_lines.append("✅ 製程能力優秀 (Cpk ≥ 1.67)，製程穩定且具備充裕的安全裕度。")
-                    conclusion_lines.append("建議：維持現有製程管控，可考慮減少抽檢頻率。")
-                elif cpk_val >= 1.33:
-                    conclusion_lines.append("✅ 製程能力良好 (Cpk ≥ 1.33)，製程穩定且符合規格要求。")
-                    conclusion_lines.append("建議：持續監控製程，維持現有管控水準。")
-                elif cpk_val >= 1.0:
-                    conclusion_lines.append("⚠️ 製程能力可接受 (Cpk ≥ 1.0)，但安全裕度較低。")
-                    conclusion_lines.append("建議：加強製程監控，分析變異來源，尋求改善。")
+            if pk_val is not None:
+                if pk_val >= pk_target:
+                    conclusion_lines.append(f"✅ 指數 {pk_label}={pk_val} 達到特性重要度「{targets.get('class', '其他')}」目標值 {pk_target:.2f}。")
+                    conclusion_lines.append("建議：維持現有製程管控。")
                 else:
-                    conclusion_lines.append("❌ 製程能力不足 (Cpk < 1.0)，產品超出規格的風險較高。")
-                    conclusion_lines.append("建議：立即進行製程改善，進行根本原因分析 (Root Cause Analysis)。")
+                    conclusion_lines.append(f"❌ 指數 {pk_label}={pk_val} 未達目標值 {pk_target:.2f}，需啟動改善（OCAP/根本原因分析）。")
+                    conclusion_lines.append("建議：分析變異來源並採取矯正措施。")
+
+                if stability.get('stable') is False:
+                    conclusion_lines.append("⚠️ 製程未通過穩定性準則，僅能報告績效指數 Pp/Ppk；請先消除特殊原因後重新評估能力。")
 
                 # Normality note
                 dist_stats = stats_data.get('distribution_stats', {})
                 normality = dist_stats.get('normality', '')
                 if normality == 'poor':
-                    conclusion_lines.append("⚠️ 注意：數據分佈明顯非常態，以上 Cpk 數值可能不準確，建議搭配其他分析方法。")
+                    conclusion_lines.append("⚠️ 注意：數據分佈明顯非常態，已改用 G 法分位數計算，但仍建議搭配其他分析方法確認。")
                 elif normality == 'moderate':
-                    conclusion_lines.append("📋 備註：數據分佈略偏常態，Cpk 數值僅供參考。")
+                    conclusion_lines.append("📋 備註：數據分佈略偏常態，指數數值僅供參考。")
 
             for line in conclusion_lines:
                 ws.cell(row=row, column=1, value=line).font = normal_font
