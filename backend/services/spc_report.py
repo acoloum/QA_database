@@ -6,39 +6,7 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.chart import LineChart, BarChart, Reference
 from openpyxl.chart.layout import Layout, ManualLayout
-
-
-def detect_weco_violations(data, cl, ucl, lcl, labels, chart_type):
-    """Detect WECO violations for Excel report generation."""
-    violations = []
-    if not data:
-        return violations
-    for i, val in enumerate(data):
-        reasons = []
-        # Rule 1: Beyond control limits
-        if val > ucl or val < lcl:
-            reasons.append("Rule 1: 超出控制限")
-        # Rule 2: 9 consecutive on same side
-        if i >= 8:
-            last9 = data[i - 8:i + 1]
-            if all(v > cl for v in last9) or all(v < cl for v in last9):
-                reasons.append("Rule 2: 連續9點同側")
-        # Rule 3: 6 consecutive trending
-        if i >= 5:
-            last6 = data[i - 5:i + 1]
-            inc = all(last6[j] > last6[j - 1] for j in range(1, len(last6)))
-            dec = all(last6[j] < last6[j - 1] for j in range(1, len(last6)))
-            if inc or dec:
-                reasons.append("Rule 3: 連續6點趨勢")
-        if reasons:
-            violations.append({
-                'label': labels[i] if i < len(labels) else str(i),
-                'chart_type': chart_type,
-                'value': val,
-                'reasons': reasons
-            })
-    return violations
-
+from .spc_stability import evaluate_stability
 
 
 class SpcReportService:
@@ -405,11 +373,32 @@ class SpcReportService:
             cell.border = thin_border
             cell.alignment = Alignment(horizontal='center')
 
-        # Detect WECO violations for the report
+        # Detect WECO violations for the report (統一改用 spc_stability 的穩定性判定引擎，§9.2.2)
         weco_row = 2
         if len(avgs) > 0:
-            x_violations = detect_weco_violations(avgs, x_cl, x_ucl, x_lcl, labels, 'X̄')
-            r_violations = detect_weco_violations(ranges, r_cl, r_ucl, 0, labels, 'R')
+            x_stability = stats_data.get('stability') or evaluate_stability(avgs, x_cl, x_ucl, x_lcl)
+            r_stability = evaluate_stability(ranges, r_cl, r_ucl, 0)
+
+            def _stability_to_rows(stability_result, chart_type, values, point_labels):
+                """將 evaluate_stability 的違規清單轉為報告列（保留原欄位結構）。
+
+                注意：stability_result['violations'][i]['label'] 是規則的中文說明
+                （例如「單點超出管制界限」），並非資料點本身的標籤；
+                資料點標籤需另從 point_labels[index] 取得。
+                """
+                rows = []
+                for v in stability_result.get('violations', []):
+                    idx = v['index']
+                    rows.append({
+                        'label': point_labels[idx] if idx < len(point_labels) else str(idx),
+                        'chart_type': chart_type,
+                        'value': values[idx],
+                        'reasons': [v['label']],
+                    })
+                return rows
+
+            x_violations = _stability_to_rows(x_stability, 'X̄', avgs, labels)
+            r_violations = _stability_to_rows(r_stability, 'R', ranges, labels)
 
             for v in x_violations + r_violations:
                 ws_weco.cell(row=weco_row, column=1, value=weco_row - 1).border = thin_border

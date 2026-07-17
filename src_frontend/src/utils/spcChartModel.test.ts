@@ -60,4 +60,28 @@ describe('buildSpcChartModel', () => {
     expect(model.histogramData?.bins.length).toBeGreaterThan(1);
     expect(model.cpkTrend).toHaveLength(2);
   });
+
+  it('依後端 rules_used 限縮 WECO 規則', () => {
+    const base = {
+      labels: Array.from({ length: 9 }, (_, i) => `P${i}`),
+      ids: [], dates: [], subgroup_sizes: [], all_values: [],
+      avgs: Array(9).fill(10.1),           // 連續9點同側 → run_9_same_side
+      ranges: Array(9).fill(0.2),
+      x_cl: 10, x_ucl: 10.9, x_lcl: 9.1, r_cl: 0.2, r_ucl: 0.5, r_lcl: 0,
+      avg_subgroup_size: 5,
+      tolerance: { found: false }, process_capability: { available: false },
+      distribution_stats: {}, cpk_trend: [],
+    };
+    const withRule = buildSpcChartModel({
+      ...base,
+      stability: { evaluated: true, stable: false, violations: [], rules_used: ['run_9_same_side'] },
+    } as never);
+    expect(withRule.analysis!.violations.length).toBeGreaterThan(0);
+
+    const withoutRule = buildSpcChartModel({
+      ...base,
+      stability: { evaluated: true, stable: true, violations: [], rules_used: ['beyond_limits'] },
+    } as never);
+    expect(withoutRule.analysis!.violations.length).toBe(0);
+  });
 });

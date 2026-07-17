@@ -74,7 +74,10 @@ export const buildSpcChartModel = (statsData: SpcChartData | null | undefined): 
   const ids = data.ids || [];
   const count = data.avgs.length;
 
-  const wecoRaw = analyzeWECO(data.avgs, data.x_cl, data.x_ucl, data.x_lcl, data.labels);
+  const wecoRaw = analyzeWECO(
+    data.avgs, data.x_cl, data.x_ucl, data.x_lcl, data.labels,
+    data.stability?.rules_used,
+  );
   const weco = {
     ...wecoRaw,
     violations: wecoRaw.violations.map(v => ({ ...v, type: 'xbar' as const })),

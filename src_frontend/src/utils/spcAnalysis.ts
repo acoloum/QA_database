@@ -3,7 +3,13 @@ export interface AnalyzedData {
     violations: { label: string; reasons: string[] }[];
 }
 
-export function analyzeWECO(data: number[], cl: number, ucl: number, lcl: number, labels: string[]): AnalyzedData {
+// 後端規則 id → 前端規則實作對映；預設集與後端 DEFAULT_STABILITY_RULES 一致
+export const DEFAULT_RULES = ['beyond_limits', 'run_9_same_side', 'trend_6'];
+
+export function analyzeWECO(
+    data: number[], cl: number, ucl: number, lcl: number, labels: string[],
+    enabledRules: string[] = DEFAULT_RULES,
+): AnalyzedData {
     const violations: { label: string; reasons: string[] }[] = [];
     const statuses: ('violation' | null)[] = new Array(data.length).fill(null);
 
@@ -21,17 +27,17 @@ export function analyzeWECO(data: number[], cl: number, ucl: number, lcl: number
         const reasons: string[] = [];
 
         // Rule 1: 單點超出控制限 (±3σ)
-        if (val > ucl || val < lcl) reasons.push("Rule 1: 超出控制限");
+        if (enabledRules.includes('beyond_limits') && (val > ucl || val < lcl)) reasons.push("Rule 1: 超出控制限");
 
         // Rule 2: 連續9點在中心線同側
-        if (i >= 8) {
+        if (enabledRules.includes('run_9_same_side') && i >= 8) {
             const last9 = data.slice(i - 8, i + 1);
             if (last9.every(v => v > cl) || last9.every(v => v < cl))
                 reasons.push("Rule 2: 連續9點同側");
         }
 
         // Rule 3: 連續6點連續上升或下降
-        if (i >= 5) {
+        if (enabledRules.includes('trend_6') && i >= 5) {
             const last6 = data.slice(i - 5, i + 1);
             let increasing = true, decreasing = true;
             for (let j = 1; j < last6.length; j++) {
@@ -42,7 +48,7 @@ export function analyzeWECO(data: number[], cl: number, ucl: number, lcl: number
         }
 
         // Rule 4: 連續14點交替上升下降
-        if (i >= 13) {
+        if (enabledRules.includes('alternating_14') && i >= 13) {
             const last14 = data.slice(i - 13, i + 1);
             let alternating = true;
             for (let j = 1; j < last14.length; j++) {
@@ -56,7 +62,7 @@ export function analyzeWECO(data: number[], cl: number, ucl: number, lcl: number
         }
 
         // Rule 5: 連續3點中有2點落在2σ外
-        if (i >= 2) {
+        if (enabledRules.includes('two_of_three_beyond_2s') && i >= 2) {
             const last3 = data.slice(i - 2, i + 1);
             const countAbove = last3.filter(v => v > sigma2_above).length;
             const countBelow = last3.filter(v => v < sigma2_below).length;
@@ -65,21 +71,21 @@ export function analyzeWECO(data: number[], cl: number, ucl: number, lcl: number
         }
 
         // Rule 6: 連續5點中有4點落在1σ外
-        if (i >= 4) {
+        if (enabledRules.includes('four_of_five_beyond_1s') && i >= 4) {
             const last5 = data.slice(i - 4, i + 1);
             const count = last5.filter(v => v > sigma1_above || v < sigma1_below).length;
             if (count >= 4) reasons.push("Rule 6: 5點中4點在1σ外");
         }
 
         // Rule 7: 連續15點在1σ内
-        if (i >= 14) {
+        if (enabledRules.includes('fifteen_within_1s') && i >= 14) {
             const last15 = data.slice(i - 14, i + 1);
             if (last15.every(v => v >= sigma1_below && v <= sigma1_above))
                 reasons.push("Rule 7: 連續15點在1σ内");
         }
 
         // Rule 8: 連續8點在中心線兩側但都不在1σ内
-        if (i >= 7) {
+        if (enabledRules.includes('eight_beyond_1s_both') && i >= 7) {
             const last8 = data.slice(i - 7, i + 1);
             // The logic in shipping.html was a bit complex, simplifying here to match concept:
             // "8 points in a row on both sides of centerline with none in Zone C (within 1 sigma)"
