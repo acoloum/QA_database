@@ -1,0 +1,9 @@
+-- AIAG-VDA SPC 2026 合規欄位：
+--   特性重要度（表 8-3 目標值分級）、量測值離群排除（§6.6）
+
+ALTER TABLE "廠商公差明細檔" ADD COLUMN IF NOT EXISTS "特性重要度" VARCHAR(10) NOT NULL DEFAULT '其他';
+ALTER TABLE "擠壓公差明細檔" ADD COLUMN IF NOT EXISTS "特性重要度" VARCHAR(10) NOT NULL DEFAULT '其他';
+
+-- §6.6：離群值不得刪除，須標示無效並保留追溯、排除於統計計算
+ALTER TABLE "出貨巡檢量測明細" ADD COLUMN IF NOT EXISTS "排除統計" BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE "出貨巡檢量測明細" ADD COLUMN IF NOT EXISTS "排除原因" VARCHAR(200);

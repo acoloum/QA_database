@@ -234,6 +234,9 @@ class ShippingMeasurement(db.Model):
     value_max   = db.Column('量測最大值', db.Numeric(12, 4), nullable=True)
     value_single= db.Column('量測值',     db.Numeric(12, 4), nullable=True)
     is_ng       = db.Column('是否超差',   db.Boolean, default=False, nullable=False)
+    # §6.6 離群值：標示無效並保留追溯，不得刪除；排除於統計計算之外
+    excluded         = db.Column('排除統計', db.Boolean, default=False, nullable=False)
+    exclusion_reason = db.Column('排除原因', db.String(200), nullable=True)
 
 
 class SPCCache(db.Model):
@@ -276,6 +279,8 @@ class VendorToleranceDetail(db.Model):
     std_val = db.Column('標準值', db.Float)
     unit = db.Column('單位', db.String)
     note = db.Column('備註', db.String)
+    # AIAG-VDA SPC 2026 表 8-3：特性重要度（關鍵/主要/次要/其他）決定能力指數目標值
+    characteristic_class = db.Column('特性重要度', db.String(10), default='其他')
 
 class ExtrusionToleranceMain(db.Model):
     """擠壓公差主檔"""
@@ -301,6 +306,8 @@ class ExtrusionToleranceDetail(db.Model):
     tolerance_max = db.Column('公差上限', db.Numeric)
     std_val = db.Column('標準值', db.Numeric)
     unit = db.Column('單位', db.String, default='mm')
+    # AIAG-VDA SPC 2026 表 8-3：特性重要度（關鍵/主要/次要/其他）決定能力指數目標值
+    characteristic_class = db.Column('特性重要度', db.String(10), default='其他')
 
 class NCMR(SoftDeleteMixin, db.Model):
     __tablename__ = '不合格品單'
