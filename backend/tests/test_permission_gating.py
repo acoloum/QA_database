@@ -82,3 +82,56 @@ def test_capa_step_update_requires_capa_edit_permission(client, db_session):
     )
 
     assert resp.status_code == 403
+
+
+@pytest.fixture
+def patrol_roles(db_session):
+    """patrol_editor 具備 patrol.edit；patrol_viewer 僅有 patrol.view。"""
+    db_session.add(Role(code='patrol_editor', name='巡檢可編輯',
+                        permissions={'patrol.edit': True, 'patrol.view': True}))
+    db_session.add(Role(code='patrol_viewer', name='巡檢唯讀',
+                        permissions={'patrol.view': True}))
+    db_session.commit()
+
+
+def test_patrol_exclusion_route_requires_patrol_edit_permission(client, db_session, patrol_roles):
+    from backend.models import PatrolMain, PatrolDetail
+    from datetime import date
+
+    patrol = PatrolMain(date=date(2026, 1, 1), material='6061', spec='10*2')
+    db_session.add(patrol)
+    db_session.flush()
+    detail = PatrolDetail(main_id=patrol.id, group=1, item='外徑', position='前段', min_val=9.8, max_val=10.2)
+    db_session.add(detail)
+    db_session.commit()
+
+    viewer = _make_user(db_session, 'patrol_viewer1', 'patrol_viewer')
+    resp = client.patch(f'/api/patrol-details/{detail.id}/exclusion',
+                         headers=_headers(viewer), json={'排除統計': True, '排除原因': '測試'})
+    assert resp.status_code == 403
+
+    editor = _make_user(db_session, 'patrol_editor1', 'patrol_editor')
+    resp = client.patch(f'/api/patrol-details/{detail.id}/exclusion',
+                         headers=_headers(editor), json={'排除統計': True, '排除原因': '測試'})
+    assert resp.status_code != 403
+
+
+def test_patrol_control_limits_routes_require_patrol_edit_permission(client, db_session, patrol_roles):
+    viewer = _make_user(db_session, 'patrol_viewer2', 'patrol_viewer')
+    body = {'material': '6061', 'spec': '10*2', 'item': '外徑', 'position': ''}
+
+    resp = client.post('/api/patrol/control-limits', headers=_headers(viewer), json=body)
+    assert resp.status_code == 403
+
+    resp = client.delete(
+        '/api/patrol/control-limits?material=6061&spec=10*2&item=外徑&position=',
+        headers=_headers(viewer),
+    )
+    assert resp.status_code == 403
+
+    # GET（查詢）不受權限限制，僅需登入
+    resp = client.get(
+        '/api/patrol/control-limits?material=6061&spec=10*2&item=外徑&position=',
+        headers=_headers(viewer),
+    )
+    assert resp.status_code != 403
