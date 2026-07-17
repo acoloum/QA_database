@@ -257,7 +257,8 @@ class SPCCache(db.Model):
 
 
 class SpcControlLimit(db.Model):
-    """SPC 管制界限凍結檔 — §9.4 界限經確認後凍結，重算須留紀錄"""
+    """SPC 管制界限凍結檔 — §9.4 界限經確認後凍結，重算須留紀錄
+    此表由出貨與巡檢共用，以 source（資料來源）與 position（位置，巡檢前/中/後段）區分；出貨無位置維度恆為空字串"""
     __tablename__ = 'SPC管制界限'
     __table_args__ = (
         db.UniqueConstraint('資料來源', '廠商', '材質', '規格', '量測項目', '位置', name='uq_spc_limits'),
