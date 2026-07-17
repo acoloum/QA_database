@@ -3,7 +3,9 @@ export interface AnalyzedData {
     violations: { label: string; reasons: string[] }[];
 }
 
-// 後端規則 id → 前端規則實作對映；預設集與後端 DEFAULT_STABILITY_RULES 一致
+// 後端規則 id → 前端規則實作對映；預設集與後端 DEFAULT_STABILITY_RULES 一致。
+// 注意：此清單需與後端 backend/services/spc_stability.py 的 DEFAULT_STABILITY_RULES
+// 保持同步，避免前後端對「失控」的判定準則產生落差。
 export const DEFAULT_RULES = ['beyond_limits', 'run_9_same_side', 'trend_6'];
 
 export function analyzeWECO(

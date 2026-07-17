@@ -6,9 +6,13 @@
 from typing import Any, Dict, List, Optional
 
 # 預設精簡準則集（§9.2.2.1：避免同時套用多項準則）
+# 注意：此清單需與前端 src_frontend/src/utils/spcAnalysis.ts 的 DEFAULT_RULES 保持一致，
+# 避免前後端對「失控」的判定準則產生落差。
 DEFAULT_STABILITY_RULES = ["beyond_limits", "run_9_same_side", "trend_6"]
 
 # 手冊 §9.2.2 列舉的完整準則（Western Electric / Nelson 子集）
+# 需與前端 spcAnalysis.ts 的 analyzeWECO 8 條規則一一對應（含 alternating_14、
+# eight_beyond_1s_both），否則前端的對應規則會因後端 rules_used 從未包含而永遠不會觸發。
 ALL_STABILITY_RULES = [
     "beyond_limits",           # 單點超出管制界限（±3σ）
     "two_of_three_beyond_2s",  # 連續3點中2點位於同側且超出2σ
@@ -16,6 +20,8 @@ ALL_STABILITY_RULES = [
     "run_9_same_side",         # 連續9點位於中心線同側
     "trend_6",                 # 連續6點持續上升或下降
     "fifteen_within_1s",       # 連續15點皆在中心線±1σ內
+    "alternating_14",          # 連續14點交替上升下降
+    "eight_beyond_1s_both",    # 連續8點在中心線兩側但都不在1σ內
 ]
 
 RULE_LABELS = {
@@ -25,6 +31,8 @@ RULE_LABELS = {
     "run_9_same_side": "連續9點同側",
     "trend_6": "連續6點趨勢",
     "fifteen_within_1s": "連續15點在1σ內",
+    "alternating_14": "連續14點交替上升下降",
+    "eight_beyond_1s_both": "連續8點在1σ外且兩側",
 }
 
 
@@ -84,6 +92,22 @@ def evaluate_stability(
             w = avgs[i - 14:i + 1]
             if all(abs(x - x_cl) <= sigma for x in w):
                 add(i, "fifteen_within_1s")
+        if "alternating_14" in rules and i >= 13:
+            w = avgs[i - 13:i + 1]
+            alternating = True
+            for j in range(1, len(w)):
+                if (j % 2 == 0 and w[j] < w[j - 1]) or (j % 2 != 0 and w[j] > w[j - 1]):
+                    alternating = False
+                    break
+            if alternating:
+                add(i, "alternating_14")
+        if "eight_beyond_1s_both" in rules and i >= 7:
+            w = avgs[i - 7:i + 1]
+            # 與前端 analyzeWECO Rule 8 相同的簡化邏輯：僅檢查窗口內是否
+            # 「完全沒有」落在 Zone C（±1σ內）的點，並非嚴格驗證真正交替兩側。
+            in_zone_c = any(x_cl - sigma < x < x_cl + sigma for x in w)
+            if not in_zone_c:
+                add(i, "eight_beyond_1s_both")
 
     result["evaluated"] = True
     result["stable"] = len(violations) == 0
