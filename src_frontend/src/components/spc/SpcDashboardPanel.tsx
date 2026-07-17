@@ -163,7 +163,7 @@ const SpcDashboardPanel = ({
           <span style={{ width: 16, height: 2, backgroundColor: '#20c997', marginRight: 8, display: 'inline-block', borderTop: '2px dashed #20c997' }}></span>
           <span className="small">移動平均 (MA5)</span>
         </div>
-        {processCapability?.available && (
+        {processCapability?.available && chartData.xBar.datasets.some(d => d.label === 'USL') && (
           <div className="d-flex align-items-center">
             <span style={{ width: 16, height: 2, backgroundColor: '#e83e8c', marginRight: 8, display: 'inline-block', borderTop: '2px dashed #e83e8c' }}></span>
             <span className="small">USL/LSL 規格限</span>

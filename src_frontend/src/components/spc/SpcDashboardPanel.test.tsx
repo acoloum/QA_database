@@ -94,4 +94,39 @@ describe('SpcDashboardPanel', () => {
 
     expect(screen.getByText('沒有足夠資料')).toBeInTheDocument();
   });
+
+  it('即使製程能力可用，X̄ 圖未實際繪製 USL 時不顯示規格限圖例', () => {
+    render(
+      <SpcDashboardPanel
+        model={{
+          ...model,
+          processCapability: { available: true, usl: 11, lsl: 9 },
+          // xBar.datasets 沒有 USL/LSL（對應 showSpecLimits 預設關閉的情境）
+        }}
+        statsItem="外徑"
+        emptyMessage="沒有資料"
+      />,
+    );
+
+    expect(screen.queryByText('USL/LSL 規格限')).not.toBeInTheDocument();
+  });
+
+  it('製程能力可用且 X̄ 圖已繪製 USL 時顯示規格限圖例', () => {
+    render(
+      <SpcDashboardPanel
+        model={{
+          ...model,
+          processCapability: { available: true, usl: 11, lsl: 9 },
+          chartData: {
+            xBar: { labels: ['A'], datasets: [{ label: 'USL', data: [11] }, { label: 'LSL', data: [9] }] },
+            rChart: { labels: ['A'], datasets: [] },
+          },
+        }}
+        statsItem="外徑"
+        emptyMessage="沒有資料"
+      />,
+    );
+
+    expect(screen.getByText('USL/LSL 規格限')).toBeInTheDocument();
+  });
 });
