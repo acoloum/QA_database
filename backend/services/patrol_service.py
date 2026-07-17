@@ -248,6 +248,32 @@ class PatrolService:
         }
 
     @staticmethod
+    def get_patrol_details(main_id: int) -> List[Dict[str, Any]]:
+        """取得單筆巡檢記錄的全部量測明細（供離群值管理 UI）"""
+        rows = PatrolDetail.query.filter_by(main_id=main_id).order_by(
+            PatrolDetail.item, PatrolDetail.group, PatrolDetail.position
+        ).all()
+        return [{
+            "識別碼": d.id, "組別": d.group, "測量項目": d.item, "測量位置": d.position,
+            "最小值": float(d.min_val) if d.min_val is not None else None,
+            "最大值": float(d.max_val) if d.max_val is not None else None,
+            "排除統計": d.excluded, "排除原因": d.exclusion_reason,
+        } for d in rows]
+
+    @staticmethod
+    def set_patrol_detail_exclusion(detail_id: int, excluded: bool, reason: Optional[str]) -> Dict[str, Any]:
+        """標示/解除巡檢量測明細離群排除（§6.6：不刪除、保留追溯、排除統計）"""
+        d = db.session.get(PatrolDetail, detail_id)
+        if d is None:
+            raise ValueError("量測明細不存在")
+        if excluded and not (reason or "").strip():
+            raise ValueError("標示離群值必須填寫原因（§6.6）")
+        d.excluded = excluded
+        d.exclusion_reason = (reason or "").strip() or None if excluded else None
+        db.session.commit()
+        return {"id": d.id, "排除統計": d.excluded, "排除原因": d.exclusion_reason}
+
+    @staticmethod
     def get_detail(id: int) -> Optional[Dict[str, Any]]:
         """獲取巡檢詳細資料（主檔+子檔）"""
         patrol = db.session.get(PatrolMain, id)

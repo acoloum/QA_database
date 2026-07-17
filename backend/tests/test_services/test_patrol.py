@@ -381,3 +381,68 @@ def test_export_excel_batches_patrol_details(app, db_session):
             if '巡檢子檔' in statement and statement.lstrip().upper().startswith('SELECT')
         ]
         assert len(detail_selects) <= 1
+
+
+def test_get_patrol_details_returns_all_rows_with_exclusion_status(app, db_session):
+    """取得單筆巡檢記錄的全部量測明細，含各筆的排除狀態"""
+    with app.app_context():
+        patrol = PatrolMain(date=date(2026, 1, 1), material='6061', spec='10*2')
+        db_session.add(patrol)
+        db_session.flush()
+        db_session.add(PatrolDetail(
+            main_id=patrol.id, group=1, item='外徑', position='前段',
+            min_val=9.8, max_val=10.2
+        ))
+        db_session.commit()
+
+        details = PatrolService.get_patrol_details(patrol.id)
+        assert len(details) == 1
+        assert details[0]['測量項目'] == '外徑'
+        assert details[0]['最小值'] == pytest.approx(9.8)
+        assert details[0]['排除統計'] is False
+        assert details[0]['排除原因'] is None
+
+
+def test_set_patrol_detail_exclusion_requires_reason(app, db_session):
+    """標示離群值時，未填原因應拋出 ValueError（§6.6）"""
+    with app.app_context():
+        patrol = PatrolMain(date=date(2026, 1, 1), material='6061', spec='10*2')
+        db_session.add(patrol)
+        db_session.flush()
+        detail = PatrolDetail(
+            main_id=patrol.id, group=1, item='外徑', position='前段',
+            min_val=9.8, max_val=10.2
+        )
+        db_session.add(detail)
+        db_session.commit()
+
+        with pytest.raises(ValueError, match='原因'):
+            PatrolService.set_patrol_detail_exclusion(detail.id, excluded=True, reason='')
+
+
+def test_set_patrol_detail_exclusion_round_trips(app, db_session):
+    """標示離群後可恢復計入，恢復時清除排除原因"""
+    with app.app_context():
+        patrol = PatrolMain(date=date(2026, 1, 1), material='6061', spec='10*2')
+        db_session.add(patrol)
+        db_session.flush()
+        detail = PatrolDetail(
+            main_id=patrol.id, group=1, item='外徑', position='前段',
+            min_val=9.8, max_val=10.2
+        )
+        db_session.add(detail)
+        db_session.commit()
+
+        result = PatrolService.set_patrol_detail_exclusion(detail.id, excluded=True, reason='量測儀器故障')
+        assert result['排除統計'] is True
+        assert result['排除原因'] == '量測儀器故障'
+
+        result = PatrolService.set_patrol_detail_exclusion(detail.id, excluded=False, reason='')
+        assert result['排除統計'] is False
+        assert result['排除原因'] is None
+
+
+def test_set_patrol_detail_exclusion_raises_for_missing_id(app, db_session):
+    with app.app_context():
+        with pytest.raises(ValueError, match='不存在'):
+            PatrolService.set_patrol_detail_exclusion(999999, excluded=True, reason='測試')
