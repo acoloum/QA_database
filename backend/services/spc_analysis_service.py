@@ -67,6 +67,7 @@ def calculate_process_capability(
     characteristic_class: str = "其他",
     confidence: str = "95%",
     field: Optional[str] = None,
+    dist: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """計算能力/績效指數 — AIAG-VDA SPC 2026。
 
@@ -106,10 +107,13 @@ def calculate_process_capability(
         return round(v, 3) if v is not None else None
 
     # --- 分布評估（§6.8.1）：形狀公差固定摺疊常態，其餘以 AD 檢定判斷 ---
-    dist = assess_distribution(all_values, field=field)
+    # 呼叫端若已算過（同一份 all_values/field）可傳入 dist 避免重複擬合（MLE 成本高）
+    if dist is None:
+        dist = assess_distribution(all_values, field=field)
     process_capability_dist = {
         "model": dist["model"], "label": dist["label"],
         "normal_ok": dist["normal_ok"], "ad_stat": dist["ad_stat"],
+        "params": dist["params"],
     }
     use_percentile = dist["model"] != "normal"
     q_lo = q_mid = q_hi = None
@@ -130,7 +134,7 @@ def calculate_process_capability(
             p_val = (float(usl) - float(lsl)) / (q_hi - q_lo)
             pu = (float(usl) - q_mid) / (q_hi - q_mid) if (q_hi - q_mid) > 0 else None
             pl = (q_mid - float(lsl)) / (q_mid - q_lo) if (q_mid - q_lo) > 0 else None
-            pk = min(v for v in [pu, pl] if v is not None) if (pu or pl) else None
+            pk = min(v for v in [pu, pl] if v is not None) if (pu is not None or pl is not None) else None
     elif sigma_overall > 0:
         # 常態：G 法退化公式（(U−L)/6s 等）
         if one_sided == "lower":
@@ -206,7 +210,11 @@ def calculate_process_capability(
     return process_capability
 
 
-def calculate_distribution_stats(all_values: List[float], field: Optional[str] = None) -> Dict[str, Any]:
+def calculate_distribution_stats(
+    all_values: List[float],
+    field: Optional[str] = None,
+    dist: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """計算偏態、峰態與常態性文字判讀。"""
     if len(all_values) < 4:
         return {}
@@ -227,7 +235,8 @@ def calculate_distribution_stats(all_values: List[float], field: Optional[str] =
         normality = "poor"
         normality_label = "分佈明顯非常態，Cpk 可能不準確"
 
-    dist = assess_distribution(all_values, field=field)
+    if dist is None:
+        dist = assess_distribution(all_values, field=field)
 
     return {
         "skewness": skewness,

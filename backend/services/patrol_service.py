@@ -15,6 +15,7 @@ from .spc_analysis_service import (
     calculate_distribution_stats,
     calculate_process_capability,
 )
+from .spc_distribution import assess_distribution
 from .spc_stability import evaluate_stability
 from .patrol_excel_utils import (
     build_patrol_measurements_from_row,
@@ -206,6 +207,8 @@ class PatrolService:
             control_limits["x_ucl"],
             control_limits["x_lcl"],
         )
+        # 分布評估僅算一次（MLE 擬合成本高），供能力計算與分布統計共用
+        dist = assess_distribution(all_values, field=item)
         process_capability = calculate_process_capability(
             avgs,
             all_values,
@@ -216,8 +219,9 @@ class PatrolService:
             stability=stability,
             characteristic_class=char_class,
             field=item,
+            dist=dist,
         )
-        distribution_stats = calculate_distribution_stats(all_values, field=item)
+        distribution_stats = calculate_distribution_stats(all_values, field=item, dist=dist)
         cpk_trend = calculate_cpk_trend(all_values, dates_valid, subgroup_sizes, usl, lsl)
 
         return {
