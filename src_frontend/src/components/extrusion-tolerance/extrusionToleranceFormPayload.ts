@@ -3,6 +3,7 @@ export interface ExtrusionToleranceRow {
   公差下限: string;
   公差上限: string;
   標準值: string;
+  特性重要度: string;
 }
 
 export interface BuildExtrusionTolerancePayloadParams {
@@ -19,6 +20,7 @@ export const createExtrusionToleranceRow = (): ExtrusionToleranceRow => ({
   公差下限: '',
   公差上限: '',
   標準值: '',
+  特性重要度: '其他',
 });
 
 const parseOptionalNumber = (value: string) => {
@@ -46,5 +48,6 @@ export const buildExtrusionTolerancePayload = ({
     公差上限: parseOptionalNumber(row.公差上限),
     標準值: parseOptionalNumber(row.標準值),
     單位: 'mm',
+    特性重要度: row.特性重要度 || '其他',
   })),
 });

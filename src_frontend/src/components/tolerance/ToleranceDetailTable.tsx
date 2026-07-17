@@ -57,6 +57,15 @@ const SortableRow = ({ id, detail, index, onChange, onRemove, canDelete, fieldEr
             <td><Form.Control size="sm" type="text" inputMode="decimal" value={detail.tol_min} isInvalid={!!fieldErrors[`${id}:tol_min`]} onChange={e => onChange(index, 'tol_min', e.target.value)} /></td>
             <td><Form.Control size="sm" type="text" inputMode="decimal" value={detail.tol_max} isInvalid={!!fieldErrors[`${id}:tol_max`]} onChange={e => onChange(index, 'tol_max', e.target.value)} /></td>
             <td><Form.Control size="sm" type="text" inputMode="decimal" value={detail.std} isInvalid={!!fieldErrors[`${id}:std`]} onChange={e => onChange(index, 'std', e.target.value)} /></td>
+            <td>
+                <Form.Select size="sm" value={detail.charClass}
+                    onChange={e => onChange(index, 'charClass', e.target.value)}>
+                    <option value="關鍵">關鍵</option>
+                    <option value="主要">主要</option>
+                    <option value="次要">次要</option>
+                    <option value="其他">其他</option>
+                </Form.Select>
+            </td>
             <td><Form.Control size="sm" value={detail.unit} onChange={e => onChange(index, 'unit', e.target.value)} /></td>
             <td><Form.Control size="sm" value={detail.remark} onChange={e => onChange(index, 'remark', e.target.value)} /></td>
             <td className="text-center">
@@ -119,6 +128,7 @@ const ToleranceDetailTable = ({
                                 <th>公差下限</th>
                                 <th>公差上限</th>
                                 <th>標準值</th>
+                                <th style={{ width: '9%' }}>特性重要度</th>
                                 <th style={{ width: '8%' }}>單位</th>
                                 <th>備註</th>
                                 <th style={{ width: '5%' }}></th>

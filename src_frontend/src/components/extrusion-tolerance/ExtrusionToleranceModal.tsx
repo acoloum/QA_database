@@ -66,6 +66,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                           公差下限: d.公差下限 != null ? String(d.公差下限) : '',
                           公差上限: d.公差上限 != null ? String(d.公差上限) : '',
                           標準值: d.標準值 != null ? String(d.標準值) : '',
+                          特性重要度: d.特性重要度 || '其他',
                       }))
                     : [createExtrusionToleranceRow()]
             );
@@ -148,6 +149,7 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                                     <th>公差下限</th>
                                     <th>公差上限</th>
                                     <th>標準值</th>
+                                    <th style={{ minWidth: '90px' }}>特性重要度</th>
                                     <th style={{ minWidth: '60px' }}>單位</th>
                                     <th></th>
                                 </tr>
@@ -163,6 +165,14 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                                         <td><Form.Control size="sm" type="number" value={r.公差下限} onChange={(e) => updateRow(i, '公差下限', e.target.value)} /></td>
                                         <td><Form.Control size="sm" type="number" value={r.公差上限} onChange={(e) => updateRow(i, '公差上限', e.target.value)} /></td>
                                         <td><Form.Control size="sm" type="number" value={r.標準值} onChange={(e) => updateRow(i, '標準值', e.target.value)} /></td>
+                                        <td>
+                                            <Form.Select size="sm" value={r.特性重要度} onChange={(e) => updateRow(i, '特性重要度', e.target.value)}>
+                                                <option value="關鍵">關鍵</option>
+                                                <option value="主要">主要</option>
+                                                <option value="次要">次要</option>
+                                                <option value="其他">其他</option>
+                                            </Form.Select>
+                                        </td>
                                         <td className="text-center align-middle">mm</td>
                                         <td>
                                             <Button size="sm" variant="outline-danger" onClick={() => setRows((prev) => prev.filter((_, j) => j !== i))}>✕</Button>

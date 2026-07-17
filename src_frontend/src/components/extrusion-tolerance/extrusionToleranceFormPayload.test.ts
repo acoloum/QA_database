@@ -15,6 +15,7 @@ describe('extrusionToleranceFormPayload', () => {
         公差下限: '0',
         公差上限: '0.2',
         標準值: '85',
+        特性重要度: '主要',
       }],
     });
 
@@ -30,6 +31,7 @@ describe('extrusionToleranceFormPayload', () => {
         公差上限: 0.2,
         標準值: 85,
         單位: 'mm',
+        特性重要度: '主要',
       }],
     });
   });
@@ -46,6 +48,7 @@ describe('extrusionToleranceFormPayload', () => {
         公差下限: '',
         公差上限: 'abc',
         標準值: '',
+        特性重要度: '其他',
       }],
     });
 
@@ -69,6 +72,7 @@ describe('extrusionToleranceFormPayload', () => {
       公差下限: '',
       公差上限: '',
       標準值: '',
+      特性重要度: '其他',
     });
   });
 });

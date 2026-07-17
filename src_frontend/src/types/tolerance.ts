@@ -57,6 +57,7 @@ export interface ToleranceDetailParams {
   標準值?: number | null;
   單位?: string;
   備註?: string;
+  特性重要度?: string;
 }
 
 export interface ToleranceCreateInput {

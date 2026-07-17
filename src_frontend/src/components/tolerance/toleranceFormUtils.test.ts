@@ -20,6 +20,7 @@ describe('toleranceFormUtils', () => {
       std: '',
       unit: 'mm',
       remark: '',
+      charClass: '其他',
     });
 
     expect(mapToleranceDetailToRow({
@@ -43,7 +44,23 @@ describe('toleranceFormUtils', () => {
       std: '10',
       unit: 'mm',
       remark: '重點尺寸',
+      charClass: '其他',
     });
+  });
+
+  it('特性重要度預設為其他且可往返', () => {
+    const row = createToleranceDetailRow('r1');
+    expect(row.charClass).toBe('其他');
+
+    const mapped = mapToleranceDetailToRow(
+      { 測量項目: '外徑', 特性重要度: '關鍵' } as never, 'r2');
+    expect(mapped.charClass).toBe('關鍵');
+
+    const payload = buildTolerancePayload({
+      date: '2026-07-17', material: 'M', spec: 'S', vendorId: '', remark: '',
+      details: [{ ...row, item: '外徑', charClass: '主要' }],
+    });
+    expect(payload.details[0].特性重要度).toBe('主要');
   });
 
   it('驗證明細數字欄位格式', () => {
@@ -77,6 +94,7 @@ describe('toleranceFormUtils', () => {
           std: '',
           unit: 'mm',
           remark: '',
+          charClass: '其他',
         },
         createToleranceDetailRow('row-2'),
       ],
@@ -98,6 +116,7 @@ describe('toleranceFormUtils', () => {
         標準值: null,
         單位: 'mm',
         備註: '',
+        特性重要度: '其他',
       }],
     });
   });
@@ -120,6 +139,7 @@ describe('toleranceFormUtils', () => {
         std: '2.8',
         unit: 'mm',
         remark: '',
+        charClass: '其他',
       }],
     });
 

@@ -12,6 +12,7 @@ export interface ToleranceDetailRow {
   std: string;
   unit: string;
   remark: string;
+  charClass: string;
 }
 
 export const createToleranceDetailRow = (id: string): ToleranceDetailRow => ({
@@ -25,6 +26,7 @@ export const createToleranceDetailRow = (id: string): ToleranceDetailRow => ({
   std: '',
   unit: 'mm',
   remark: '',
+  charClass: '其他',
 });
 
 const numberToText = (value: number | null | undefined) => (value != null ? String(value) : '');
@@ -43,6 +45,7 @@ export const mapToleranceDetailToRow = (
   std: numberToText(detail.標準值),
   unit: detail.單位 ?? 'mm',
   remark: detail.備註 ?? '',
+  charClass: detail.特性重要度 ?? '其他',
 });
 
 const NUMERIC_FIELDS: Array<{ field: keyof ToleranceDetailRow; label: string }> = [
@@ -111,5 +114,6 @@ export const buildTolerancePayload = ({
       標準值: toNumberOrNull(detail.std),
       單位: detail.unit,
       備註: detail.remark,
+      特性重要度: detail.charClass || '其他',
     })),
 });

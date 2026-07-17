@@ -21,6 +21,7 @@ export interface ExtrusionToleranceDetailItem {
     公差上限: number | null;
     標準值: number | null;
     單位: string;
+    特性重要度?: string;
 }
 
 export interface ExtrusionToleranceDetailResponse {
