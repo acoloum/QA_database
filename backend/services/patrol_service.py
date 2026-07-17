@@ -105,8 +105,8 @@ class PatrolService:
         """獲取巡檢 SPC 統計數據（含公差界限、製程能力、分佈統計）
 
         skip_frozen_limits: 內部專用（凍結路由呼叫時使用），略過凍結界限套用，
-        確保取得的是依目前資料即時重新計算的數值，不受既有凍結值影響（§9.4）。
-        不對外部 API 參數開放。
+        確保取得的是依目前資料即時重新計算的數值，不受既有凍結值影響（§9.4：
+        重新計算須反映當下資料，而非讀回舊的凍結值）。不對外部 API 參數開放。
         """
         item = args.get('item', '厚度')
         pos = args.get('pos', '')
@@ -222,6 +222,10 @@ class PatrolService:
         for r in rows:
             val1 = r[3]
             val2 = r[4]
+            # 先檢查數值是否存在：無量測值的列本來就不會計入統計，不應計入
+            # excluded_count，即使同時被標示為離群——與出貨模組（shipping_service.py）
+            # 的判斷順序不同，因為出貨的量測明細不會有「無值但標示離群」的情境，
+            # 此為刻意設計，非疏漏（見 test_get_spc_null_value_and_excluded_row_does_not_double_count）
             if val1 is None or val2 is None:
                 continue
             if r[5]:

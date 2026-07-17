@@ -504,8 +504,19 @@ def test_get_spc_excludes_marked_outlier_from_stats(app, db_session):
 
 
 def test_get_spc_applies_frozen_limits(app, db_session):
-    """管制界限凍結後，get_spc 回傳的界限應為凍結值而非重新計算值"""
+    """管制界限凍結後，get_spc 回傳的界限應為凍結值而非重新計算值，
+    且凍結子群體大小（avg_n）不同時，重算後的 d2 須確實傳遞到製程能力指數（Cwk），
+    而非僅止於 x_cl/r_cl 等原始通過值"""
     with app.app_context():
+        # 廠商公差：外徑標準值 10.0，公差 ±0.5（雙邊規格，允許 9.5–10.5）
+        vt_main = VendorToleranceMain(material='6061', spec='10*2')
+        db_session.add(vt_main)
+        db_session.flush()
+        db_session.add(VendorToleranceDetail(
+            main_id=vt_main.id, item='外徑',
+            std_val=10.0, tolerance_min=0.5, tolerance_max=0.5
+        ))
+
         for i in range(6):
             patrol = PatrolMain(date=date(2026, 1, i + 1), material='6061', spec='10*2')
             db_session.add(patrol)
@@ -519,10 +530,13 @@ def test_get_spc_applies_frozen_limits(app, db_session):
         result = PatrolService.get_spc({'item': '外徑', 'pos': '前段', 'mat': '6061', 'spec': '10*2'})
         assert result['limits_frozen'] is False
 
+        # 每組固定 2 筆量測值，即時重新計算的 avg_n 必為 2；凍結時刻意採用 avg_n=5，
+        # 兩者的 d2（SPC_CONSTANTS[2][3]=1.128 vs [5][3]=2.326）明顯不同，
+        # 確保下方斷言能證明 d2 覆蓋確實生效，而非恰好與現有資料吻合而巧合通過
         key = {"material": "6061", "spec": "10*2", "item": "外徑", "position": "前段"}
         PatrolService.freeze_control_limits(key, {
             "x_cl": 99.0, "x_ucl": 100.0, "x_lcl": 98.0,
-            "r_cl": 1.0, "r_ucl": 2.0, "r_lcl": 0, "avg_n": 2,
+            "r_cl": 1.0, "r_ucl": 2.0, "r_lcl": 0, "avg_n": 5,
         })
 
         frozen_result = PatrolService.get_spc({'item': '外徑', 'pos': '前段', 'mat': '6061', 'spec': '10*2'})
@@ -534,3 +548,32 @@ def test_get_spc_applies_frozen_limits(app, db_session):
             skip_frozen_limits=True,
         )
         assert skip_result['x_cl'] != pytest.approx(99.0)
+
+        # sigma_within = r_cl/d2；凍結值（r_cl=1.0, d2=2.326）與即時重算值
+        # （r_cl≈0.2, d2=1.128）差異極大，Cwk 必然隨之不同，證明 d2 重算
+        # 確實傳遞進製程能力計算，而非只停留在原始通過值
+        frozen_cwk = frozen_result['process_capability']['cwk']
+        skip_cwk = skip_result['process_capability']['cwk']
+        assert frozen_cwk is not None and skip_cwk is not None
+        assert frozen_cwk != pytest.approx(skip_cwk)
+
+
+def test_get_spc_null_value_and_excluded_row_does_not_double_count(app, db_session):
+    """量測明細無量測值且同時標示離群時，excluded_count 不應計入該列
+    （刻意設計，非疏漏：此列本來就不會被計入統計，見 patrol_service.get_spc 註解）"""
+    with app.app_context():
+        patrol = PatrolMain(date=date(2026, 1, 1), material='6061', spec='10*2')
+        db_session.add(patrol)
+        db_session.flush()
+        detail = PatrolDetail(
+            main_id=patrol.id, group=1, item='外徑', position='前段',
+            min_val=None, max_val=None
+        )
+        db_session.add(detail)
+        db_session.commit()
+
+        PatrolService.set_patrol_detail_exclusion(detail.id, excluded=True, reason='資料缺失')
+
+        result = PatrolService.get_spc({'item': '外徑', 'pos': '前段', 'mat': '6061', 'spec': '10*2'})
+        assert result['excluded_count'] == 0
+        assert result['avgs'] == []
