@@ -117,6 +117,19 @@ def test_patrol_exclusion_route_requires_patrol_edit_permission(client, db_sessi
 
 
 def test_patrol_control_limits_routes_require_patrol_edit_permission(client, db_session, patrol_roles):
+    from backend.models import PatrolMain, PatrolDetail
+    from datetime import date
+
+    # 供 POST 呼叫 get_spc 時有實際資料可計算，避免因無資料早退路徑
+    # （空 rows 只回傳 {"labels": [], "avgs": [], "ranges": []}）導致
+    # 路由裡 stats[k] 的 dict comprehension 因缺鍵而 500，與權限測試本意無關。
+    patrol = PatrolMain(date=date(2026, 1, 1), material='6061', spec='10*2')
+    db_session.add(patrol)
+    db_session.flush()
+    detail = PatrolDetail(main_id=patrol.id, group=1, item='外徑', position='', min_val=9.8, max_val=10.2)
+    db_session.add(detail)
+    db_session.commit()
+
     viewer = _make_user(db_session, 'patrol_viewer2', 'patrol_viewer')
     body = {'material': '6061', 'spec': '10*2', 'item': '外徑', 'position': ''}
 
@@ -133,5 +146,16 @@ def test_patrol_control_limits_routes_require_patrol_edit_permission(client, db_
     resp = client.get(
         '/api/patrol/control-limits?material=6061&spec=10*2&item=外徑&position=',
         headers=_headers(viewer),
+    )
+    assert resp.status_code != 403
+
+    editor = _make_user(db_session, 'patrol_editor2', 'patrol_editor')
+
+    resp = client.post('/api/patrol/control-limits', headers=_headers(editor), json=body)
+    assert resp.status_code != 403
+
+    resp = client.delete(
+        '/api/patrol/control-limits?material=6061&spec=10*2&item=外徑&position=',
+        headers=_headers(editor),
     )
     assert resp.status_code != 403
