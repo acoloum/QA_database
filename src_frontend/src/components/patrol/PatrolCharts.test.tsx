@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import PatrolCharts from './PatrolCharts';
 import * as usePatrolHooks from '../../hooks/usePatrol';
@@ -9,39 +9,44 @@ vi.mock('react-chartjs-2', () => ({
   Bar: () => <canvas aria-label="histogram chart" />,
 }));
 
+// 使用 vi.fn() 而非靜態工廠，讓個別測試可用 mockReturnValueOnce 覆寫（例如模擬 ids 重複的情境）
+const buildSpcChartModelMock = vi.fn();
+
 vi.mock('../../utils/spcChartModel', () => ({
-  buildSpcChartModel: () => ({
-    chartData: {
-      xBar: {
-        labels: ['1', '2'],
-        datasets: [{ label: '平均值', data: [9.8, 10.1] }],
-      },
-      rChart: {
-        labels: ['1', '2'],
-        datasets: [{ label: '全距', data: [0.1, 0.2] }],
-      },
-    },
-    ids: ['101', '102'],
-    analysis: { violations: [] },
-    rAnalysis: { violations: [] },
-    statsSummary: { count: 2, mean: '10.0', stdDev: '0.1', cv: '1', min: '9.8', max: '10.1', violations: 0 },
-    processCapability: {
-      available: true,
-      applicable: 'capability',
-      method: 'G',
-      cp: 1.5,
-      cpk: 1.33,
-      pp: 1.4,
-      ppk: 1.2,
-      usl: 11,
-      lsl: 9,
-      ppm: { upper: 0, lower: 0, total: 0 },
-    },
-    histogramData: null,
-    distributionStats: null,
-    cpkTrend: null,
-  }),
+  buildSpcChartModel: (...args: unknown[]) => buildSpcChartModelMock(...args),
 }));
+
+const defaultSpcModel = {
+  chartData: {
+    xBar: {
+      labels: ['1', '2'],
+      datasets: [{ label: '平均值', data: [9.8, 10.1] }],
+    },
+    rChart: {
+      labels: ['1', '2'],
+      datasets: [{ label: '全距', data: [0.1, 0.2] }],
+    },
+  },
+  ids: ['101', '102'],
+  analysis: { violations: [] },
+  rAnalysis: { violations: [] },
+  statsSummary: { count: 2, mean: '10.0', stdDev: '0.1', cv: '1', min: '9.8', max: '10.1', violations: 0 },
+  processCapability: {
+    available: true,
+    applicable: 'capability',
+    method: 'G',
+    cp: 1.5,
+    cpk: 1.33,
+    pp: 1.4,
+    ppk: 1.2,
+    usl: 11,
+    lsl: 9,
+    ppm: { upper: 0, lower: 0, total: 0 },
+  },
+  histogramData: null,
+  distributionStats: null,
+  cpkTrend: null,
+};
 
 vi.mock('../../hooks/usePatrol', async () => {
     const actual = await vi.importActual('../../hooks/usePatrol');
@@ -75,6 +80,10 @@ const defaultProps = {
 };
 
 describe('PatrolCharts', () => {
+    beforeEach(() => {
+        buildSpcChartModelMock.mockReturnValue(defaultSpcModel);
+    });
+
     it('顯示管制界限凍結狀態徽章與操作按鈕', () => {
         vi.mocked(usePatrolHooks.usePatrolStats).mockReturnValue({
             data: { ...baseStatsData, limits_frozen: true },
@@ -95,5 +104,24 @@ describe('PatrolCharts', () => {
         vi.mocked(usePatrolHooks.usePatrolStats).mockReturnValue({ data: baseStatsData } as never);
         render(<PatrolCharts {...defaultProps} />);
         expect(screen.getByRole('button', { name: '離群值管理' })).toBeDisabled();
+    });
+
+    it('記錄選單於同一 main_id 橫跨多個組別時仍去除重複', () => {
+        // 模擬 get_spc 依 (date, main_id, group) 組成標籤時，同一巡檢主檔 id 於 ids 陣列中重複出現的實際情境
+        buildSpcChartModelMock.mockReturnValueOnce({
+            ...defaultSpcModel,
+            ids: ['101', '101', '102'],
+        });
+        vi.mocked(usePatrolHooks.usePatrolStats).mockReturnValue({ data: baseStatsData } as never);
+        render(<PatrolCharts {...defaultProps} />);
+
+        const recordSelects = screen.getAllByRole('combobox');
+        const recordSelect = recordSelects[recordSelects.length - 1];
+        const optionValues = within(recordSelect)
+            .getAllByRole('option')
+            .map(o => (o as HTMLOptionElement).value)
+            .filter(v => v !== '');
+
+        expect(optionValues).toEqual(['101', '102']);
     });
 });
