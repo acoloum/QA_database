@@ -46,6 +46,59 @@ class ShippingService:
         ).delete(synchronize_session=False)
 
     @staticmethod
+    def _limits_key_filter(key: Dict[str, str]):
+        from ..models import SpcControlLimit
+        return SpcControlLimit.query.filter_by(
+            source='shipping',
+            vendor=key.get('vendor') or '',
+            material=key.get('material') or '',
+            spec=key.get('spec') or '',
+            field=key['field'],
+        )
+
+    @staticmethod
+    def get_frozen_limits(key: Dict[str, str]) -> Optional[Dict[str, float]]:
+        """查詢是否已凍結管制界限（§9.4）；若無則回傳 None。"""
+        rec = ShippingService._limits_key_filter(key).first()
+        if rec is None:
+            return None
+        return {
+            "x_cl": float(rec.x_cl), "x_ucl": float(rec.x_ucl), "x_lcl": float(rec.x_lcl),
+            "r_cl": float(rec.r_cl), "r_ucl": float(rec.r_ucl), "r_lcl": float(rec.r_lcl),
+            "avg_n": rec.avg_n, "note": rec.note,
+            "updated_at": rec.updated_at.isoformat() if rec.updated_at else None,
+        }
+
+    @staticmethod
+    def freeze_control_limits(key: Dict[str, str], limits: Dict[str, float], note: str = "") -> Dict[str, Any]:
+        """凍結目前管制界限（§9.4）：確認後鎖定，避免每次請求都重新計算。"""
+        from ..models import SpcControlLimit
+        rec = ShippingService._limits_key_filter(key).first()
+        if rec is None:
+            rec = SpcControlLimit(
+                source='shipping',
+                vendor=key.get('vendor') or '', material=key.get('material') or '',
+                spec=key.get('spec') or '', field=key['field'],
+            )
+            db.session.add(rec)
+        rec.x_cl, rec.x_ucl, rec.x_lcl = limits["x_cl"], limits["x_ucl"], limits["x_lcl"]
+        rec.r_cl, rec.r_ucl, rec.r_lcl = limits["r_cl"], limits["r_ucl"], limits.get("r_lcl", 0)
+        rec.avg_n = limits.get("avg_n", 5)
+        rec.note = note
+        db.session.commit()
+        ShippingService._invalidate_spc_cache()
+        db.session.commit()
+        return {"X中心線": float(rec.x_cl), "識別碼": rec.id}
+
+    @staticmethod
+    def unfreeze_control_limits(key: Dict[str, str]) -> None:
+        """解除管制界限凍結（§9.4）：恢復每次請求自動重新計算。"""
+        ShippingService._limits_key_filter(key).delete()
+        db.session.commit()
+        ShippingService._invalidate_spc_cache()
+        db.session.commit()
+
+    @staticmethod
     def _coerce_date(value: Any) -> Any:
         """將前端 JSON 日期字串轉成 date，保留既有 date 物件與空值。"""
         if not value or isinstance(value, date):
@@ -371,6 +424,16 @@ class ShippingService:
             control_limits = calculate_control_limits(avgs, ranges, subgroup_sizes)
             usl = tolerance_limits.get("USL")
             lsl = tolerance_limits.get("LSL")
+
+            # 管制界限凍結（§9.4）：若已凍結，套用凍結值取代重新計算的結果
+            frozen = ShippingService.get_frozen_limits({
+                "vendor": vendor, "material": material, "spec": spec, "field": field,
+            })
+            limits_frozen = frozen is not None
+            if limits_frozen:
+                control_limits.update({k: frozen[k] for k in
+                    ("x_cl", "x_ucl", "x_lcl", "r_cl", "r_ucl", "r_lcl", "avg_n")})
+
             # 穩定性判定（§9.2.2）— 決定回報能力(C)或績效(P)指數
             stability = evaluate_stability(
                 avgs,
@@ -420,6 +483,7 @@ class ShippingService:
                 "stability": stability,
                 "characteristic_class": char_class,
                 "excluded_count": excluded_count,
+                "limits_frozen": limits_frozen,
             }
 
             # ── SPCCache 快取寫入（1 小時過期）─────────────────────────────

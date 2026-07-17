@@ -16,8 +16,8 @@ import { buildSpcChartModel } from '../../utils/spcChartModel';
 import SpcDashboardPanel from '../spc/SpcDashboardPanel';
 import OutlierManagerModal from '../spc/OutlierManagerModal';
 import type { SpcChartData } from '../../types';
-import { Button, Form } from 'react-bootstrap';
-import { useShippingStats, useExportSpcReport } from '../../hooks/useShipping';
+import { Badge, Button, Form } from 'react-bootstrap';
+import { useShippingStats, useExportSpcReport, useFreezeLimits, useUnfreezeLimits } from '../../hooks/useShipping';
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
@@ -69,6 +69,9 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
     });
 
     const exportSpcReport = useExportSpcReport();
+    const controlLimitsKey = { vendor, material, spec, field: statsField };
+    const freezeLimits = useFreezeLimits();
+    const unfreezeLimits = useUnfreezeLimits();
 
     const typedStatsData = statsData as SpcChartData | null | undefined;
     const spcModel = useMemo(
@@ -131,6 +134,19 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                         onClick={() => setOutlierTargetId(Number(selectedRecordId))}
                     >
                         離群值管理
+                    </Button>
+                    {typedStatsData?.limits_frozen
+                        ? <Badge bg="info">管制界限已凍結</Badge>
+                        : <Badge bg="light" text="dark">界限逐次重算中</Badge>}
+                    <Button size="sm" variant="outline-primary"
+                        disabled={freezeLimits.isPending || !spcModel.chartData}
+                        onClick={() => freezeLimits.mutate(controlLimitsKey)}>
+                        凍結目前界限
+                    </Button>
+                    <Button size="sm" variant="outline-secondary"
+                        disabled={unfreezeLimits.isPending || !typedStatsData?.limits_frozen}
+                        onClick={() => unfreezeLimits.mutate(controlLimitsKey)}>
+                        解除凍結
                     </Button>
                     <Button
                         variant="outline-primary"

@@ -107,6 +107,7 @@ export interface SpcChartData {
   stability?: SpcStability;
   characteristic_class?: string;
   excluded_count?: number;
+  limits_frozen?: boolean;
 }
 
 export interface HistogramBin {

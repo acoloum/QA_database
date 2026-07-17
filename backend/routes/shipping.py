@@ -67,6 +67,64 @@ def set_measurement_exclusion(measurement_id):
         return api_error(str(e), 500)
 
 
+@shipping_bp.route('/api/control-limits', methods=['GET'])
+@auth_required
+def get_control_limits_route():
+    """查詢管制界限凍結狀態（AIAG-VDA SPC 2026 §9.4）"""
+    try:
+        key = {
+            "vendor": request.args.get('vendor', ''),
+            "material": request.args.get('material', ''),
+            "spec": request.args.get('spec', ''),
+            "field": request.args.get('field', '外徑'),
+        }
+        return jsonify(ShippingService.get_frozen_limits(key) or {})
+    except Exception as e:
+        return api_error(str(e), 500)
+
+
+@shipping_bp.route('/api/control-limits', methods=['POST'])
+@auth_required
+@require_perm('shipping.edit')
+def freeze_control_limits_route():
+    """凍結目前管制界限（AIAG-VDA SPC 2026 §9.4）"""
+    try:
+        body = request.get_json(silent=True) or {}
+        key = {
+            "vendor": body.get('vendor', ''),
+            "material": body.get('material', ''),
+            "spec": body.get('spec', ''),
+            "field": body.get('field', '外徑'),
+        }
+        stats = ShippingService.get_stats(key)
+        limits = {k: stats[k] for k in ("x_cl", "x_ucl", "x_lcl", "r_cl", "r_ucl", "r_lcl")}
+        limits["avg_n"] = stats.get("avg_subgroup_size", 5)
+        result = ShippingService.freeze_control_limits(key, limits, note=body.get('note', ''))
+        return jsonify(result)
+    except ValueError as e:
+        return api_error(str(e), 400)
+    except Exception as e:
+        return api_error(str(e), 500)
+
+
+@shipping_bp.route('/api/control-limits', methods=['DELETE'])
+@auth_required
+@require_perm('shipping.edit')
+def unfreeze_control_limits_route():
+    """解除管制界限凍結（AIAG-VDA SPC 2026 §9.4）"""
+    try:
+        key = {
+            "vendor": request.args.get('vendor', ''),
+            "material": request.args.get('material', ''),
+            "spec": request.args.get('spec', ''),
+            "field": request.args.get('field', '外徑'),
+        }
+        ShippingService.unfreeze_control_limits(key)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return api_error(str(e), 500)
+
+
 @shipping_bp.route('/api/spc-report', methods=['GET'])
 @auth_required
 def export_spc_report():

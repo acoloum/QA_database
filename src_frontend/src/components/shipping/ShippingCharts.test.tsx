@@ -49,6 +49,8 @@ vi.mock('../../hooks/useShipping', () => ({
   useExportSpcReport: () => ({ mutate: vi.fn(), isPending: false }),
   useShippingMeasurements: () => ({ data: [], isLoading: false }),
   useSetMeasurementExclusion: () => ({ mutate: vi.fn(), isPending: false }),
+  useFreezeLimits: () => ({ mutate: vi.fn(), isPending: false }),
+  useUnfreezeLimits: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 describe('ShippingCharts', () => {

@@ -253,6 +253,30 @@ class SPCCache(db.Model):
     expires_at = db.Column('過期時間', db.DateTime, nullable=False)
 
 
+class SpcControlLimit(db.Model):
+    """SPC 管制界限凍結檔 — §9.4 界限經確認後凍結，重算須留紀錄"""
+    __tablename__ = 'SPC管制界限'
+    __table_args__ = (
+        db.UniqueConstraint('資料來源', '廠商', '材質', '規格', '量測項目', name='uq_spc_limits'),
+    )
+    id         = db.Column('識別碼', db.Integer, primary_key=True)
+    source     = db.Column('資料來源', db.String(20), nullable=False, default='shipping')
+    vendor     = db.Column('廠商', db.String(100), nullable=False, default='')
+    material   = db.Column('材質', db.String(100), nullable=False, default='')
+    spec       = db.Column('規格', db.String(100), nullable=False, default='')
+    field      = db.Column('量測項目', db.String(30), nullable=False)
+    x_cl       = db.Column('X中心線', db.Numeric(14, 6), nullable=False)
+    x_ucl      = db.Column('X上限', db.Numeric(14, 6), nullable=False)
+    x_lcl      = db.Column('X下限', db.Numeric(14, 6), nullable=False)
+    r_cl       = db.Column('R中心線', db.Numeric(14, 6), nullable=False)
+    r_ucl      = db.Column('R上限', db.Numeric(14, 6), nullable=False)
+    r_lcl      = db.Column('R下限', db.Numeric(14, 6), nullable=False, default=0)
+    avg_n      = db.Column('子組大小', db.Integer, nullable=False, default=5)
+    note       = db.Column('備註', db.String(200))
+    created_at = db.Column('建立時間', db.DateTime, default=utc_now)
+    updated_at = db.Column('更新時間', db.DateTime, default=utc_now, onupdate=utc_now)
+
+
 class VendorToleranceMain(db.Model):
     __tablename__ = '廠商公差主檔'
     id = db.Column('識別碼', db.Integer, primary_key=True)
