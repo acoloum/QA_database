@@ -1,5 +1,5 @@
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -46,6 +46,7 @@ const POSITIONS = ['前段', '中段', '後段'];
 
 const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, endDate, onEditPoint, statsItem, statsPos, onItemChange, onPosChange }: PatrolChartsProps) => {
     const exportSpcReport = useExportPatrolSpcReport();
+    const [showSpecLimits, setShowSpecLimits] = useState(false);
 
     // 匯出 SPC 報告（含原始數據 + SPC 統計與圖表）
     const handleExportSpc = () => {
@@ -74,7 +75,10 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
         e_date: endDate
     });
 
-    const spcModel = useMemo(() => buildSpcChartModel(statsData as SpcChartData | null | undefined), [statsData]);
+    const spcModel = useMemo(
+        () => buildSpcChartModel(statsData as SpcChartData | null | undefined, { showSpecLimits }),
+        [statsData, showSpecLimits]
+    );
 
     return (
         <div className="mt-4">
@@ -97,6 +101,14 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
                     >
                         {ITEMS.map(i => <option key={i.key} value={i.key}>{i.label}</option>)}
                     </Form.Select>
+                    <Form.Check
+                        type="switch"
+                        id="show-spec-limits"
+                        className="ms-3"
+                        label="疊加規格界限（分析模式）"
+                        checked={showSpecLimits}
+                        onChange={e => setShowSpecLimits(e.target.checked)}
+                    />
                 </div>
                 <Button variant="outline-success" onClick={handleExportSpc} disabled={exportSpcReport.isPending}>
                     <i className="bi bi-file-earmark-bar-graph"></i> {exportSpcReport.isPending ? '匯出中...' : '匯出 SPC 報告'}

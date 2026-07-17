@@ -52,6 +52,11 @@ export interface SpcChartModel {
   stability: SpcStability | null;
 }
 
+export interface SpcChartModelOptions {
+  /** §9.3.1：現場管制圖不應顯示規格界限，預設 false，分析情境可開啟 */
+  showSpecLimits?: boolean;
+}
+
 const emptySpcChartModel = (): SpcChartModel => ({
   chartData: null,
   ids: [],
@@ -65,7 +70,10 @@ const emptySpcChartModel = (): SpcChartModel => ({
   stability: null,
 });
 
-export const buildSpcChartModel = (statsData: SpcChartData | null | undefined): SpcChartModel => {
+export const buildSpcChartModel = (
+  statsData: SpcChartData | null | undefined,
+  options: SpcChartModelOptions = {},
+): SpcChartModel => {
   if (!statsData || !statsData.avgs || statsData.avgs.length === 0) {
     return emptySpcChartModel();
   }
@@ -193,7 +201,7 @@ export const buildSpcChartModel = (statsData: SpcChartData | null | undefined): 
     { label: 'LCL', data: Array(count).fill(data.x_lcl), borderColor: 'red', borderDash: [5, 5], pointRadius: 0, order: 5 },
   ];
 
-  if (pc?.available && pc.usl != null && pc.lsl != null) {
+  if (options.showSpecLimits && pc?.available && pc.usl != null && pc.lsl != null) {
     xBarDatasets.push(
       { label: 'USL', data: Array(count).fill(pc.usl), borderColor: '#e83e8c', borderDash: [10, 5], borderWidth: 2, pointRadius: 0, order: 4 },
       { label: 'LSL', data: Array(count).fill(pc.lsl), borderColor: '#e83e8c', borderDash: [10, 5], borderWidth: 2, pointRadius: 0, order: 4 },

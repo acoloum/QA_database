@@ -48,6 +48,7 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
     const [statsField, setStatsField] = useState('外徑');
     const [outlierTargetId, setOutlierTargetId] = useState<number | null>(null);
     const [selectedRecordId, setSelectedRecordId] = useState('');
+    const [showSpecLimits, setShowSpecLimits] = useState(false);
 
     // 安泰廠商：硬度改標示為洛氏硬度(HRB)，並新增韋伯氏硬度(HW)
     const isAntai = vendor.includes(ANTAI_VENDOR_NAME);
@@ -70,7 +71,10 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
     const exportSpcReport = useExportSpcReport();
 
     const typedStatsData = statsData as SpcChartData | null | undefined;
-    const spcModel = useMemo(() => buildSpcChartModel(typedStatsData), [typedStatsData]);
+    const spcModel = useMemo(
+        () => buildSpcChartModel(typedStatsData, { showSpecLimits }),
+        [typedStatsData, showSpecLimits]
+    );
 
     const handleExportReport = () => {
         exportSpcReport.mutate({
@@ -95,6 +99,14 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                     >
                         {ITEMS.map(i => <option key={i.key} value={i.key}>{i.label}</option>)}
                     </Form.Select>
+                    <Form.Check
+                        type="switch"
+                        id="show-spec-limits"
+                        className="ms-3"
+                        label="疊加規格界限（分析模式）"
+                        checked={showSpecLimits}
+                        onChange={e => setShowSpecLimits(e.target.checked)}
+                    />
                 </div>
                 <div className="d-flex align-items-center gap-2">
                     <Form.Select

@@ -46,7 +46,7 @@ describe('buildSpcChartModel', () => {
   });
 
   it('建立 X-bar、R chart、摘要與直方圖資料', () => {
-    const model = buildSpcChartModel(statsData);
+    const model = buildSpcChartModel(statsData, { showSpecLimits: true });
 
     expect(model.ids).toEqual(['10', '11', '12']);
     expect(model.statsSummary).toMatchObject({
@@ -59,6 +59,24 @@ describe('buildSpcChartModel', () => {
     expect(model.chartData?.xBar.datasets.some(dataset => dataset.label === 'USL')).toBe(true);
     expect(model.histogramData?.bins.length).toBeGreaterThan(1);
     expect(model.cpkTrend).toHaveLength(2);
+  });
+
+  it('預設不在管制圖疊加規格界限，開啟選項才顯示', () => {
+    const statsData = {
+      labels: ['A', 'B', 'C', 'D', 'E'], ids: [], dates: [],
+      avgs: [10, 10.1, 9.9, 10, 10.1], ranges: [0.2, 0.2, 0.2, 0.2, 0.2],
+      subgroup_sizes: [], all_values: [],
+      x_cl: 10, x_ucl: 10.9, x_lcl: 9.1, r_cl: 0.2, r_ucl: 0.5, r_lcl: 0,
+      avg_subgroup_size: 5, tolerance: { found: true },
+      process_capability: { available: true, usl: 11, lsl: 9 },
+      distribution_stats: {}, cpk_trend: [],
+    } as never;
+
+    const hidden = buildSpcChartModel(statsData);
+    expect(hidden.chartData!.xBar.datasets.some(d => d.label === 'USL')).toBe(false);
+
+    const shown = buildSpcChartModel(statsData, { showSpecLimits: true });
+    expect(shown.chartData!.xBar.datasets.some(d => d.label === 'USL')).toBe(true);
   });
 
   it('依後端 rules_used 限縮 WECO 規則', () => {
