@@ -5,6 +5,7 @@ import numpy as np
 from scipy import stats as scipy_stats
 
 from .spc_constants import SPC_CONSTANTS
+from .spc_distribution import assess_distribution, dist_quantiles, tail_ppm
 from .spc_targets import resolve_targets
 
 
@@ -65,6 +66,7 @@ def calculate_process_capability(
     stability: Optional[Dict[str, Any]] = None,
     characteristic_class: str = "其他",
     confidence: str = "95%",
+    field: Optional[str] = None,
 ) -> Dict[str, Any]:
     """計算能力/績效指數 — AIAG-VDA SPC 2026。
 
@@ -103,9 +105,34 @@ def calculate_process_capability(
     def _r3(v):
         return round(v, 3) if v is not None else None
 
-    # --- 整體變異指數（G 法常態公式，§6.8.2.1）---
+    # --- 分布評估（§6.8.1）：形狀公差固定摺疊常態，其餘以 AD 檢定判斷 ---
+    dist = assess_distribution(all_values, field=field)
+    process_capability_dist = {
+        "model": dist["model"], "label": dist["label"],
+        "normal_ok": dist["normal_ok"], "ad_stat": dist["ad_stat"],
+    }
+    use_percentile = dist["model"] != "normal"
+    q_lo = q_mid = q_hi = None
+    if use_percentile:
+        q_lo, q_mid, q_hi = dist_quantiles(dist)
+
+    # --- 整體變異指數（常態：G 法常態公式 §6.8.2.1；非常態：G 法分位數公式 §6.8.2.1）---
     p_val = pu = pl = pk = None
-    if sigma_overall > 0:
+    if use_percentile and q_lo is not None and q_hi is not None and (q_hi - q_lo) > 0:
+        # G 法分位數公式（§6.8.2.1）
+        if one_sided == "lower":
+            pl = (q_mid - float(lsl)) / (q_mid - q_lo) if (q_mid - q_lo) > 0 else None
+            pk = pl
+        elif one_sided == "upper":
+            pu = (float(usl) - q_mid) / (q_hi - q_mid) if (q_hi - q_mid) > 0 else None
+            pk = pu
+        else:
+            p_val = (float(usl) - float(lsl)) / (q_hi - q_lo)
+            pu = (float(usl) - q_mid) / (q_hi - q_mid) if (q_hi - q_mid) > 0 else None
+            pl = (q_mid - float(lsl)) / (q_mid - q_lo) if (q_mid - q_lo) > 0 else None
+            pk = min(v for v in [pu, pl] if v is not None) if (pu or pl) else None
+    elif sigma_overall > 0:
+        # 常態：G 法退化公式（(U−L)/6s 等）
         if one_sided == "lower":
             pl = (x_bar - float(lsl)) / (3 * sigma_overall)
             pk = pl
@@ -132,15 +159,19 @@ def calculate_process_capability(
                 (x_bar - float(lsl)) / (3 * sigma_within),
             )
 
-    # --- PPM（Z 法概念；Phase 4 改依擬合分布）---
+    # --- PPM（依擬合分布估算尾端超規比例，§6.8.2.3；n<20 等無法擬合情形退回常態 Z 法）---
     ppm = {"upper": 0.0, "lower": 0.0, "total": 0.0}
     if sigma_overall > 0:
-        ppm_upper = ppm_lower = 0.0
-        if usl is not None:
-            ppm_upper = round(float(scipy_stats.norm.sf((float(usl) - x_bar) / sigma_overall) * 1_000_000), 1)
-        if lsl is not None and one_sided != "upper":
-            ppm_lower = round(float(scipy_stats.norm.sf((x_bar - float(lsl)) / sigma_overall) * 1_000_000), 1)
-        ppm = {"upper": ppm_upper, "lower": ppm_lower, "total": round(ppm_upper + ppm_lower, 1)}
+        ppm = tail_ppm(dist, usl=float(usl) if usl is not None else None,
+                       lsl=float(lsl) if (lsl is not None and one_sided != "upper") else None)
+        if ppm.get("total") is None:
+            # 樣本不足以擬合分布（n<20）：沿用常態 Z 法，避免小樣本時 PPM 變為 None（回歸既有行為）
+            ppm_upper = ppm_lower = 0.0
+            if usl is not None:
+                ppm_upper = round(float(scipy_stats.norm.sf((float(usl) - x_bar) / sigma_overall) * 1_000_000), 1)
+            if lsl is not None and one_sided != "upper":
+                ppm_lower = round(float(scipy_stats.norm.sf((x_bar - float(lsl)) / sigma_overall) * 1_000_000), 1)
+            ppm = {"upper": ppm_upper, "lower": ppm_lower, "total": round(ppm_upper + ppm_lower, 1)}
 
     # --- 目標值（表 8-3～8-5）與達標判定 ---
     targets = resolve_targets(characteristic_class, n_values=len(all_values), confidence=confidence)
@@ -167,6 +198,7 @@ def calculate_process_capability(
         "sigma_overall": round(sigma_overall, 6),
         "ppm": ppm,
         "targets": targets,
+        "distribution": process_capability_dist,
         "achieved": achieved,
         # 手冊建議 n≥125、k≥25 子組（表 6-4）；不足時標示為初步值
         "preliminary": len(all_values) < 125 or len(avgs) < 25,
@@ -174,7 +206,7 @@ def calculate_process_capability(
     return process_capability
 
 
-def calculate_distribution_stats(all_values: List[float]) -> Dict[str, Any]:
+def calculate_distribution_stats(all_values: List[float], field: Optional[str] = None) -> Dict[str, Any]:
     """計算偏態、峰態與常態性文字判讀。"""
     if len(all_values) < 4:
         return {}
@@ -195,11 +227,15 @@ def calculate_distribution_stats(all_values: List[float]) -> Dict[str, Any]:
         normality = "poor"
         normality_label = "分佈明顯非常態，Cpk 可能不準確"
 
+    dist = assess_distribution(all_values, field=field)
+
     return {
         "skewness": skewness,
         "kurtosis": kurtosis,
         "normality": normality,
         "normality_label": normality_label,
+        "model": dist["model"],
+        "model_label": dist["label"],
     }
 
 

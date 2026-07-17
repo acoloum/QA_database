@@ -385,8 +385,9 @@ class ShippingService:
                 tolerance_limits,
                 stability=stability,
                 characteristic_class=char_class,
+                field=field,
             )
-            distribution_stats = calculate_distribution_stats(all_values)
+            distribution_stats = calculate_distribution_stats(all_values, field=field)
             cpk_trend = calculate_cpk_trend(all_values, dates_valid, subgroup_sizes, usl, lsl, is_minmax=is_minmax)
 
             _result = {

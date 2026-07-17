@@ -215,8 +215,9 @@ class PatrolService:
             include_reason=False,
             stability=stability,
             characteristic_class=char_class,
+            field=item,
         )
-        distribution_stats = calculate_distribution_stats(all_values)
+        distribution_stats = calculate_distribution_stats(all_values, field=item)
         cpk_trend = calculate_cpk_trend(all_values, dates_valid, subgroup_sizes, usl, lsl)
 
         return {

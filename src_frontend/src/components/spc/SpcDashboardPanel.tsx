@@ -93,6 +93,7 @@ const SpcDashboardPanel = ({
           <Card.Body className="py-2">
             <Row className="text-center align-items-center">
               <Col xs="auto"><strong>常態性檢查</strong></Col>
+              <Col><span className="text-muted small me-1">分布模型</span><strong>{distributionStats.model_label ?? '常態分布'}</strong></Col>
               <Col><span className="text-muted small me-1">偏態</span><strong>{distributionStats.skewness}</strong></Col>
               <Col><span className="text-muted small me-1">峰態</span><strong>{distributionStats.kurtosis}</strong></Col>
               <Col xs="auto">

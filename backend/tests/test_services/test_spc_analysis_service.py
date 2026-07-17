@@ -166,3 +166,23 @@ def test_control_limits_lcl_can_be_negative():
         subgroup_sizes=[5, 5, 5, 5, 5],
     )
     assert result["x_lcl"] < 0
+
+
+def test_capability_uses_percentile_method_for_non_normal():
+    import numpy as np
+    rng = np.random.default_rng(3)
+    values = np.abs(rng.normal(0, 0.01, 300)).tolist()  # 摺疊常態形狀資料
+    avgs = [float(np.mean(values[i:i+5])) for i in range(0, 100, 5)]
+    result = calculate_process_capability(
+        avgs=avgs, all_values=values, r_cl=0.01, d2=2.326,
+        tolerance_limits={"USL": 0.05, "LSL": 0, "one_sided": "upper"},
+        field="真圓度",
+    )
+    assert result["distribution"]["model"] == "folded_normal"
+    assert result["ppk"] is not None
+    # G 法分位數:Ppk = (U − X50%) / (X99.865% − X50%)
+    from backend.services.spc_distribution import assess_distribution, dist_quantiles
+    d = assess_distribution(values, field="真圓度")
+    q_lo, q_mid, q_hi = dist_quantiles(d)
+    expected = (0.05 - q_mid) / (q_hi - q_mid)
+    assert result["ppk"] == pytest.approx(expected, abs=0.01)
