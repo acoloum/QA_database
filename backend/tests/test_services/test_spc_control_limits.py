@@ -112,3 +112,70 @@ def test_refreezing_an_already_frozen_key_captures_fresh_data(db_session, setup_
     frozen_second = ShippingService.get_frozen_limits(key)
     assert round(frozen_second["x_cl"], 4) == round(expected_x_cl, 4)
     assert frozen_second["x_cl"] != frozen_first["x_cl"]
+
+
+def test_freeze_then_exclude_keeps_frozen_limits_but_updates_dataset(db_session, setup_data):
+    """凍結管制界限（§9.4）後,再排除離群量測值（§6.6）:
+    已凍結的 x_cl/x_ucl/x_lcl 必須維持不變,但 get_stats 用於穩定性/能力
+    計算的資料集(avgs/all_values/excluded_count)須反映排除後的最新結果。"""
+    from backend.models import ShippingMeasurement
+
+    key = {"vendor": "Test Vendor", "material": "CTRL-MAT-FREEZE-EXCL", "spec": "10*2", "field": "外徑"}
+
+    # 建立5筆乾淨的基準資料(平均皆為10.0),再加1筆含離群量測值的資料，
+    # 讓「凍結當下」的資料集已包含之後才會被排除的離群值。
+    for i in range(5):
+        ShippingService.save_data({
+            '檢驗日期': f'2026-03-0{i + 1}', '檢驗人員姓名': 'Test Inspector',
+            '廠商中文名稱': 'Test Vendor', '檢驗規格': '10*2', '材質': 'CTRL-MAT-FREEZE-EXCL',
+            '訂單號碼': f'SO-FE-{i + 1}', '組數': 2,
+            'measurements': {
+                '1': {'外徑': {'value_min': 9.9, 'value_max': 10.1}},
+                '2': {'外徑': {'value_min': 9.9, 'value_max': 10.1}},
+            },
+        })
+
+    ShippingService.save_data({
+        '檢驗日期': '2026-03-06', '檢驗人員姓名': 'Test Inspector',
+        '廠商中文名稱': 'Test Vendor', '檢驗規格': '10*2', '材質': 'CTRL-MAT-FREEZE-EXCL',
+        '訂單號碼': 'SO-FE-6', '組數': 3,
+        'measurements': {
+            '1': {'外徑': {'value_min': 9.9, 'value_max': 10.1}},
+            '2': {'外徑': {'value_min': 9.9, 'value_max': 10.1}},
+            '3': {'外徑': {'value_min': 7.9, 'value_max': 7.9}},  # 離群值，稍後排除
+        },
+    })
+
+    stats_before = ShippingService.get_stats(key)
+    assert stats_before["limits_frozen"] is False
+    assert 7.9 in stats_before["all_values"]
+
+    # 凍結目前的管制界限
+    limits = {k: stats_before[k] for k in ("x_cl", "x_ucl", "x_lcl", "r_cl", "r_ucl", "r_lcl")}
+    limits["avg_n"] = stats_before["avg_subgroup_size"]
+    ShippingService.freeze_control_limits(key, limits, note="基準期確認")
+
+    stats_frozen = ShippingService.get_stats(key)
+    assert stats_frozen["limits_frozen"] is True
+    frozen_x_cl, frozen_x_ucl, frozen_x_lcl = (
+        stats_frozen["x_cl"], stats_frozen["x_ucl"], stats_frozen["x_lcl"],
+    )
+    assert stats_frozen["excluded_count"] == 0
+
+    # 排除離群量測值（§6.6：不刪除、保留追溯、排除統計）
+    outlier = ShippingMeasurement.query.filter_by(item="外徑", group_num=3).one()
+    ShippingService.set_measurement_exclusion(outlier.id, excluded=True, reason="量測異常，設備校正誤差")
+
+    stats_after = ShippingService.get_stats(key)
+
+    # 凍結界限須維持不變（不受排除影響）
+    assert stats_after["limits_frozen"] is True
+    assert stats_after["x_cl"] == frozen_x_cl
+    assert stats_after["x_ucl"] == frozen_x_ucl
+    assert stats_after["x_lcl"] == frozen_x_lcl
+
+    # 但統計用資料集已反映排除後的最新結果
+    assert stats_after["excluded_count"] == 1
+    assert 7.9 not in stats_after["all_values"]
+    # 第6筆原本平均為(10.0+10.0+7.9)/3，排除離群值後只剩前兩組，平均回到10.0
+    assert abs(stats_after["avgs"][-1] - 10.0) < 1e-9

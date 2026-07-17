@@ -72,11 +72,12 @@ export function analyzeWECO(
                 reasons.push("Rule 5: 3點中2點在2σ外");
         }
 
-        // Rule 6: 連續5點中有4點落在1σ外
+        // Rule 6: 連續5點中有4點落在同側1σ外（需同側，不可兩側合併計數）
         if (enabledRules.includes('four_of_five_beyond_1s') && i >= 4) {
             const last5 = data.slice(i - 4, i + 1);
-            const count = last5.filter(v => v > sigma1_above || v < sigma1_below).length;
-            if (count >= 4) reasons.push("Rule 6: 5點中4點在1σ外");
+            const countAbove = last5.filter(v => v > sigma1_above).length;
+            const countBelow = last5.filter(v => v < sigma1_below).length;
+            if (countAbove >= 4 || countBelow >= 4) reasons.push("Rule 6: 5點中4點在同側1σ外");
         }
 
         // Rule 7: 連續15點在1σ内
