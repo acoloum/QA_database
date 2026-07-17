@@ -39,7 +39,7 @@ def calculate_control_limits(
     x_cl = float(np.mean(base_avgs))
     r_cl = float(np.mean(base_ranges))
     x_ucl = x_cl + A2 * r_cl
-    x_lcl = max(x_cl - A2 * r_cl, 0)
+    x_lcl = x_cl - A2 * r_cl
 
     return {
         "x_cl": x_cl,

@@ -74,3 +74,13 @@ def test_calculate_cpk_trend_groups_values_by_month():
     )
 
     assert result == [{"month": "2026-01", "cpk": result[0]["cpk"], "count": 10}]
+
+
+def test_control_limits_lcl_can_be_negative():
+    # 中心線接近 0 時 LCL 不得被箝制為 0（真圓度等特性統計上允許負 LCL）
+    result = calculate_control_limits(
+        avgs=[0.01, 0.02, 0.015, 0.01, 0.02],
+        ranges=[0.03, 0.04, 0.03, 0.04, 0.03],
+        subgroup_sizes=[5, 5, 5, 5, 5],
+    )
+    assert result["x_lcl"] < 0
