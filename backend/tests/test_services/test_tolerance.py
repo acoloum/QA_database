@@ -51,12 +51,24 @@ def test_check_tolerance_match(app, db_session):
         # Case 1: Exact Match
         t1 = VendorToleranceMain(material="SUS304", spec="10*10", vendor_id=v1.id)
         db_session.add(t1)
-        
+        db_session.flush()
+
+        # 附加一筆明細，並標註特性重要度，驗證 check_tolerance 的序列化會帶出此欄位
+        d1 = VendorToleranceDetail(
+            main_id=t1.id,
+            item="外徑",
+            position="",
+            dim_min=9.9,
+            dim_max=10.1,
+            characteristic_class="關鍵"
+        )
+        db_session.add(d1)
+
         # Case 2: Partial Spec Match (Wildcard logic handled in code check_tolerance)
         # Service logic: input_spec.startswith(t_spec + '*')
-        
+
         db_session.commit()
-        
+
         # Test Exact Match
         args = {"material": "SUS304", "spec": "10*10", "vendor_id": v1.id}
         result = ToleranceService.check_tolerance(args)
@@ -64,6 +76,7 @@ def test_check_tolerance_match(app, db_session):
         assert result["found"] is True
         assert result["tolerance_id"] == t1.id
         assert result["matched_priority"] == 1 # Priority 1: Same Vendor + Same Material + Same Spec
+        assert result["tolerances"][0]["特性重要度"] == "關鍵"
 
 def test_check_tolerance_not_found(app, db_session):
     with app.app_context():
