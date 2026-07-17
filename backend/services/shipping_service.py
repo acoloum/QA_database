@@ -24,16 +24,25 @@ from .spc_analysis_service import (
     calculate_distribution_stats,
     calculate_process_capability,
 )
+from .spc_stability import evaluate_stability
 from .shipping_import import build_shipping_measurements_from_row
 from .shipping_export import build_shipping_export_columns, build_shipping_export_row
 from .shipping_measurement_keys import build_measurement_key, parse_measurement_key
+
+# 形狀公差特性：自然下界為 0，屬單側上限規格（§6.8.2.2、§6.8.1 摺疊分布特性）
+SHAPE_UPPER_FIELDS = {"同心度", "真圓度", "真直度"}
 
 
 class ShippingService:
     @staticmethod
     def _invalidate_spc_cache() -> None:
         """出貨資料異動後清除 SPC 快取，避免統計圖表讀到舊資料。"""
-        SPCCache.query.filter(SPCCache.cache_key.like('spc|%')).delete(synchronize_session=False)
+        SPCCache.query.filter(
+            or_(
+                SPCCache.cache_key.like('spc|%'),
+                SPCCache.cache_key.like('spc2|%'),
+            )
+        ).delete(synchronize_session=False)
 
     @staticmethod
     def _coerce_date(value: Any) -> Any:
@@ -154,7 +163,7 @@ class ShippingService:
         from ..models import SPCCache
 
         _cache_key = (
-            f"spc|{field}|{vendor or ''}|{material or ''}|"
+            f"spc2|{field}|{vendor or ''}|{material or ''}|"
             f"{spec or ''}|{start_date or ''}|{end_date or ''}"
         )
         try:
@@ -170,6 +179,7 @@ class ShippingService:
             # 1. Tolerance Lookup — reuse the same logic as the form
             from ..services.tolerance_service import ToleranceService
             tolerance_limits = {"USL": None, "LSL": None, "found": False}
+            char_class = "其他"
             if material:
                 # Resolve vendor_id from name for tolerance matching
                 vendor_id = None
@@ -200,6 +210,7 @@ class ShippingService:
                     # Find the matching detail for the current field
                     for t in tol_result.get('tolerances', []):
                         if t.get('項目') in field_match_set:
+                            char_class = t.get('特性重要度') or "其他"
 
                             tolerance_limits["公差下限"] = t.get('公差下限')
                             tolerance_limits["公差上限"] = t.get('公差上限')
@@ -212,18 +223,17 @@ class ShippingService:
                                 tolerance_limits["LSL"] = dim_min
                                 tolerance_limits["USL"] = dim_max
                             elif dim_min is None and dim_max is not None:
-                                # 單側上限尺寸規格（同心度、真圓度等），下限視為 0
+                                # 單側上限尺寸規格（同心度、真圓度等）：自然下界 0
                                 tolerance_limits["LSL"] = 0
                                 tolerance_limits["USL"] = dim_max
+                                if field in SHAPE_UPPER_FIELDS:
+                                    tolerance_limits["one_sided"] = "upper"
                             elif dim_min is not None and dim_max is None:
-                                # 單側下限規格（硬度等），記錄 LSL，USL 留空
-                                # Cp/Cpk 需雙側才能計算，此情形 available 不開啟
                                 tolerance_limits["LSL"] = dim_min
                                 tolerance_limits["one_sided"] = "lower"
                             else:
                                 tol_min = t.get('公差下限')
                                 tol_max = t.get('公差上限')
-                                # Try std_val first, then fall back to nominal from spec
                                 std = t.get('標準值')
                                 if std is None and field in nominal_from_spec:
                                     std = nominal_from_spec[field]
@@ -231,10 +241,10 @@ class ShippingService:
                                     tolerance_limits["LSL"] = std - abs(tol_min)
                                     tolerance_limits["USL"] = std + abs(tol_max)
                                 elif tol_min is None and tol_max is not None:
-                                    # 單側上限規格（同心度、真圓度、真直度等不可為負的項目）
-                                    # LSL 視為 0，USL 為公差上限絕對值
                                     tolerance_limits["LSL"] = 0
                                     tolerance_limits["USL"] = abs(tol_max)
+                                    if field in SHAPE_UPPER_FIELDS:
+                                        tolerance_limits["one_sided"] = "upper"
                             break
 
             # 2. Data Query (ORM)
@@ -356,12 +366,21 @@ class ShippingService:
             control_limits = calculate_control_limits(avgs, ranges, subgroup_sizes)
             usl = tolerance_limits.get("USL")
             lsl = tolerance_limits.get("LSL")
+            # 穩定性判定（§9.2.2）— 決定回報能力(C)或績效(P)指數
+            stability = evaluate_stability(
+                avgs,
+                control_limits["x_cl"],
+                control_limits["x_ucl"],
+                control_limits["x_lcl"],
+            )
             process_capability = calculate_process_capability(
                 avgs,
                 all_values,
                 control_limits["r_cl"],
                 control_limits["d2"],
                 tolerance_limits,
+                stability=stability,
+                characteristic_class=char_class,
             )
             distribution_stats = calculate_distribution_stats(all_values)
             cpk_trend = calculate_cpk_trend(all_values, dates_valid, subgroup_sizes, usl, lsl, is_minmax=is_minmax)
@@ -388,7 +407,9 @@ class ShippingService:
                 "tolerance": tolerance_limits,
                 "process_capability": process_capability,
                 "distribution_stats": distribution_stats,
-                "cpk_trend": cpk_trend
+                "cpk_trend": cpk_trend,
+                "stability": stability,
+                "characteristic_class": char_class,
             }
 
             # ── SPCCache 快取寫入（1 小時過期）─────────────────────────────
