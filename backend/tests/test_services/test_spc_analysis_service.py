@@ -6,6 +6,7 @@ from backend.services.spc_analysis_service import (
     calculate_distribution_stats,
     calculate_process_capability,
 )
+from backend.services.spc_stability import evaluate_stability
 
 
 def test_calculate_control_limits_uses_baseline_subgroups():
@@ -24,21 +25,82 @@ def test_calculate_control_limits_uses_baseline_subgroups():
 
 
 def test_process_capability_supports_two_sided_and_ppm():
+    avgs = [10, 10.1, 9.9, 10.2, 9.8]
+    stability = {"evaluated": True, "stable": True, "violations": [], "rules_used": []}
     result = calculate_process_capability(
-        avgs=[10, 10.1, 9.9, 10.2, 9.8],
+        avgs=avgs,
         all_values=[9.9, 10.0, 10.1, 10.2, 9.8, 10.0, 10.1, 9.9, 10.2, 9.8],
         r_cl=0.4,
         d2=2.326,
         tolerance_limits={"USL": 11, "LSL": 9},
         include_reason=True,
+        stability=stability,
     )
-
     assert result["available"] is True
-    assert result["usl"] == 11
-    assert result["lsl"] == 9
+    assert result["applicable"] == "capability"   # 穩定 → 報 Cp/Cpk
     assert result["cp"] is not None
     assert result["cpk"] is not None
+    assert result["cp"] == result["pp"]           # §6.2：C 與 P 公式相同（整體變異）
+    assert result["cpk"] == result["ppk"]
+    assert result["cw"] is not None               # 組內指數另列 Cw/Cwk 參考
+    assert result["method"] == "G"
     assert result["ppm"]["total"] >= 0
+
+
+def test_unstable_process_reports_performance_only():
+    stability = {"evaluated": True, "stable": False,
+                 "violations": [{"index": 0, "rule": "beyond_limits", "label": "x"}],
+                 "rules_used": ["beyond_limits"]}
+    result = calculate_process_capability(
+        avgs=[10, 10.1, 9.9, 10.2, 9.8],
+        all_values=[9.9, 10.0, 10.1, 10.2, 9.8, 10.0, 10.1, 9.9, 10.2, 9.8],
+        r_cl=0.4, d2=2.326,
+        tolerance_limits={"USL": 11, "LSL": 9},
+        stability=stability,
+    )
+    assert result["applicable"] == "performance"
+    assert result["cp"] is None and result["cpk"] is None
+    assert result["pp"] is not None and result["ppk"] is not None
+
+
+def test_no_stability_info_reports_performance_only():
+    result = calculate_process_capability(
+        avgs=[10, 10.1, 9.9, 10.2, 9.8],
+        all_values=[9.9, 10.0, 10.1, 10.2, 9.8, 10.0, 10.1, 9.9, 10.2, 9.8],
+        r_cl=0.4, d2=2.326,
+        tolerance_limits={"USL": 11, "LSL": 9},
+        stability=None,
+    )
+    assert result["applicable"] == "performance"
+    assert result["cp"] is None
+
+
+def test_upper_one_sided_limits():
+    # 同心度等單側上限特性：只計算 PPU/CPU 側（§6.8.2.2）
+    result = calculate_process_capability(
+        avgs=[0.02, 0.03, 0.025, 0.02, 0.03],
+        all_values=[0.02, 0.03, 0.025, 0.02, 0.03, 0.024],
+        r_cl=0.01, d2=2.326,
+        tolerance_limits={"USL": 0.05, "LSL": 0, "one_sided": "upper"},
+    )
+    assert result["one_sided"] == "upper"
+    assert result["ppk"] is not None
+    assert result["ppk"] == result["ppu"]
+    assert result["pp"] is None
+
+
+def test_targets_and_preliminary_flags():
+    result = calculate_process_capability(
+        avgs=[10, 10.1, 9.9, 10.2, 9.8],
+        all_values=[9.9, 10.0, 10.1, 10.2, 9.8, 10.0, 10.1, 9.9, 10.2, 9.8],
+        r_cl=0.4, d2=2.326,
+        tolerance_limits={"USL": 11, "LSL": 9},
+        characteristic_class="主要",
+    )
+    assert result["targets"]["class"] == "主要"
+    assert result["targets"]["insufficient_sample"] is True  # 只有 10 筆
+    assert result["preliminary"] is True                     # n<125 或子組<25
+    assert isinstance(result["achieved"], bool)
 
 
 def test_process_capability_supports_lower_one_sided_limits():
@@ -53,8 +115,9 @@ def test_process_capability_supports_lower_one_sided_limits():
     assert result["available"] is True
     assert result["one_sided"] == "lower"
     assert result["usl"] is None
-    assert result["cpl"] == result["cpk"]
     assert result["ppl"] == result["ppk"]
+    assert result["ppk"] is not None
+    assert result["cpk"] is None
 
 
 def test_distribution_stats_labels_non_normal_data():

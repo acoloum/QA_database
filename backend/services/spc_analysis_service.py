@@ -5,6 +5,7 @@ import numpy as np
 from scipy import stats as scipy_stats
 
 from .spc_constants import SPC_CONSTANTS
+from .spc_targets import resolve_targets
 
 
 def calculate_control_limits(
@@ -61,97 +62,115 @@ def calculate_process_capability(
     d2: float,
     tolerance_limits: Dict[str, Any],
     include_reason: bool = True,
+    stability: Optional[Dict[str, Any]] = None,
+    characteristic_class: str = "其他",
+    confidence: str = "95%",
 ) -> Dict[str, Any]:
-    """計算 Cp/Cpk/Pp/Ppk 與 PPM，支援雙側與單側下限規格。"""
+    """計算能力/績效指數 — AIAG-VDA SPC 2026。
+
+    - Pp/Ppk 與 Cp/Cpk 公式相同，皆採整體變異（§6.2、§6.8.2.1 常態 G 法）
+    - 僅在穩定性已證明（stability.stable=True）時回報 Cp/Cpk，否則只報 Pp/Ppk
+    - 組內變異（R̄/d2）之指數另列為 Cw/Cwk 參考值，不再命名為 Cp/Cpk
+    - 單側規格只計算對應側指數（§6.8.2.2）
+    """
     process_capability: Dict[str, Any] = {"available": False}
     if include_reason:
         process_capability["reason"] = "no_tolerance"
 
     usl = tolerance_limits.get("USL")
     lsl = tolerance_limits.get("LSL")
+    one_sided = tolerance_limits.get("one_sided")
 
+    has_spec = (
+        (one_sided == "lower" and lsl is not None)
+        or (one_sided == "upper" and usl is not None)
+        or (one_sided is None and usl is not None and lsl is not None)
+    )
     if len(avgs) < 5:
-        if (usl is not None and lsl is not None) or (tolerance_limits.get("one_sided") == "lower" and lsl is not None):
+        if has_spec:
             if include_reason:
                 process_capability["reason"] = "insufficient_data"
             process_capability["valid_count"] = len(avgs)
         return process_capability
-
-    x_bar = float(np.mean(avgs))
-    sigma_within = r_cl / d2 if r_cl > 0 else 0
-    sigma_overall = float(np.std(all_values, ddof=1)) if len(all_values) >= 2 else 0
-
-    if tolerance_limits.get("one_sided") == "lower" and lsl is not None:
-        process_capability.update({
-            "available": True,
-            "one_sided": "lower",
-            "lsl": float(lsl),
-            "usl": None,
-        })
-        if sigma_within > 0:
-            cpl = (x_bar - float(lsl)) / (3 * sigma_within)
-            process_capability.update({"cp": None, "cpk": round(cpl, 3), "cpu": None, "cpl": round(cpl, 3)})
-        else:
-            process_capability.update({"cp": None, "cpk": None, "cpu": None, "cpl": None})
-        if sigma_overall > 0:
-            ppl = (x_bar - float(lsl)) / (3 * sigma_overall)
-            process_capability.update({"pp": None, "ppk": round(ppl, 3), "ppu": None, "ppl": round(ppl, 3)})
-        else:
-            process_capability.update({"pp": None, "ppk": None, "ppu": None, "ppl": None})
-        process_capability["sigma_within"] = round(sigma_within, 6)
-        process_capability["sigma_overall"] = round(sigma_overall, 6)
+    if not has_spec:
         return process_capability
 
-    if usl is None or lsl is None:
-        return process_capability
+    x_bar = float(np.mean(all_values)) if all_values else float(np.mean(avgs))
+    sigma_overall = float(np.std(all_values, ddof=1)) if len(all_values) >= 2 else 0.0
+    sigma_within = r_cl / d2 if r_cl > 0 else 0.0
+    is_stable = bool(stability and stability.get("stable"))
+
+    def _r3(v):
+        return round(v, 3) if v is not None else None
+
+    # --- 整體變異指數（G 法常態公式，§6.8.2.1）---
+    p_val = pu = pl = pk = None
+    if sigma_overall > 0:
+        if one_sided == "lower":
+            pl = (x_bar - float(lsl)) / (3 * sigma_overall)
+            pk = pl
+        elif one_sided == "upper":
+            pu = (float(usl) - x_bar) / (3 * sigma_overall)
+            pk = pu
+        else:
+            p_val = (float(usl) - float(lsl)) / (6 * sigma_overall)
+            pu = (float(usl) - x_bar) / (3 * sigma_overall)
+            pl = (x_bar - float(lsl)) / (3 * sigma_overall)
+            pk = min(pu, pl)
+
+    # --- 組內參考指數 Cw/Cwk ---
+    cw = cwk = None
+    if sigma_within > 0:
+        if one_sided == "lower":
+            cwk = (x_bar - float(lsl)) / (3 * sigma_within)
+        elif one_sided == "upper":
+            cwk = (float(usl) - x_bar) / (3 * sigma_within)
+        else:
+            cw = (float(usl) - float(lsl)) / (6 * sigma_within)
+            cwk = min(
+                (float(usl) - x_bar) / (3 * sigma_within),
+                (x_bar - float(lsl)) / (3 * sigma_within),
+            )
+
+    # --- PPM（Z 法概念；Phase 4 改依擬合分布）---
+    ppm = {"upper": 0.0, "lower": 0.0, "total": 0.0}
+    if sigma_overall > 0:
+        ppm_upper = ppm_lower = 0.0
+        if usl is not None:
+            ppm_upper = round(float(scipy_stats.norm.sf((float(usl) - x_bar) / sigma_overall) * 1_000_000), 1)
+        if lsl is not None and one_sided != "upper":
+            ppm_lower = round(float(scipy_stats.norm.sf((x_bar - float(lsl)) / sigma_overall) * 1_000_000), 1)
+        ppm = {"upper": ppm_upper, "lower": ppm_lower, "total": round(ppm_upper + ppm_lower, 1)}
+
+    # --- 目標值（表 8-3～8-5）與達標判定 ---
+    targets = resolve_targets(characteristic_class, n_values=len(all_values), confidence=confidence)
+    achieved = pk is not None and pk >= targets["pk_target"]
 
     process_capability.update({
         "available": True,
-        "usl": float(usl),
-        "lsl": float(lsl),
+        "usl": float(usl) if usl is not None else None,
+        "lsl": float(lsl) if lsl is not None else None,
+        "one_sided": one_sided,
+        "method": "G",  # §6.8.2：G 法（常態情形之公式）
+        # 績效指數（一律計算）
+        "pp": _r3(p_val), "ppk": _r3(pk), "ppu": _r3(pu), "ppl": _r3(pl),
+        # 能力指數（僅穩定時回報；數值同績效指數，§6.2）
+        "cp": _r3(p_val) if is_stable else None,
+        "cpk": _r3(pk) if is_stable else None,
+        "cpu": _r3(pu) if is_stable else None,
+        "cpl": _r3(pl) if is_stable else None,
+        # 組內參考指數
+        "cw": _r3(cw), "cwk": _r3(cwk),
+        "applicable": "capability" if is_stable else "performance",
+        "stability_stable": stability.get("stable") if stability else None,
+        "sigma_within": round(sigma_within, 6),
+        "sigma_overall": round(sigma_overall, 6),
+        "ppm": ppm,
+        "targets": targets,
+        "achieved": achieved,
+        # 手冊建議 n≥125、k≥25 子組（表 6-4）；不足時標示為初步值
+        "preliminary": len(all_values) < 125 or len(avgs) < 25,
     })
-
-    if sigma_within > 0:
-        cp = (float(usl) - float(lsl)) / (6 * sigma_within)
-        cpu = (float(usl) - x_bar) / (3 * sigma_within)
-        cpl = (x_bar - float(lsl)) / (3 * sigma_within)
-        cpk = min(cpu, cpl)
-        process_capability.update({
-            "cp": round(cp, 3),
-            "cpk": round(cpk, 3),
-            "cpu": round(cpu, 3),
-            "cpl": round(cpl, 3),
-        })
-    else:
-        process_capability.update({"cp": None, "cpk": None, "cpu": None, "cpl": None})
-
-    if sigma_overall > 0:
-        pp = (float(usl) - float(lsl)) / (6 * sigma_overall)
-        ppu = (float(usl) - x_bar) / (3 * sigma_overall)
-        ppl = (x_bar - float(lsl)) / (3 * sigma_overall)
-        ppk = min(ppu, ppl)
-        z_upper = (float(usl) - x_bar) / sigma_overall
-        z_lower = (x_bar - float(lsl)) / sigma_overall
-        ppm_upper = round(float(scipy_stats.norm.sf(z_upper) * 1_000_000), 1)
-        ppm_lower = round(float(scipy_stats.norm.sf(z_lower) * 1_000_000), 1)
-        process_capability.update({
-            "pp": round(pp, 3),
-            "ppk": round(ppk, 3),
-            "ppu": round(ppu, 3),
-            "ppl": round(ppl, 3),
-            "ppm": {"upper": ppm_upper, "lower": ppm_lower, "total": round(ppm_upper + ppm_lower, 1)},
-        })
-    else:
-        process_capability.update({
-            "pp": None,
-            "ppk": None,
-            "ppu": None,
-            "ppl": None,
-            "ppm": {"upper": 0, "lower": 0, "total": 0},
-        })
-
-    process_capability["sigma_within"] = round(sigma_within, 6)
-    process_capability["sigma_overall"] = round(sigma_overall, 6)
     return process_capability
 
 
