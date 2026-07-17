@@ -206,6 +206,28 @@ def test_patrol_freeze_and_unfreeze_control_limits_round_trip(app, db_session):
         assert PatrolService.get_frozen_limits(key) is None
 
 
+def test_patrol_refreeze_control_limits_updates_existing_record(app, db_session):
+    """再次凍結相同 key 應更新既有紀錄，而非新增第二筆（迴歸測試，比照出貨端行為）"""
+    with app.app_context():
+        from backend.models import SpcControlLimit
+
+        key = {"material": "6061", "spec": "10*2", "item": "外徑", "position": "前段"}
+        limits_first = {"x_cl": 10.0, "x_ucl": 10.9, "x_lcl": 9.1, "r_cl": 0.5, "r_ucl": 1.2, "r_lcl": 0, "avg_n": 5}
+        limits_second = {"x_cl": 15.0, "x_ucl": 15.9, "x_lcl": 14.1, "r_cl": 0.6, "r_ucl": 1.3, "r_lcl": 0, "avg_n": 6}
+
+        PatrolService.freeze_control_limits(key, limits_first, note="第一次凍結")
+        PatrolService.freeze_control_limits(key, limits_second, note="第二次凍結")
+
+        frozen = PatrolService.get_frozen_limits(key)
+        assert frozen["x_cl"] == pytest.approx(15.0)
+        assert frozen["note"] == "第二次凍結"
+
+        rows = SpcControlLimit.query.filter_by(
+            source='patrol', vendor='', material="6061", spec="10*2", field="外徑", position="前段",
+        ).all()
+        assert len(rows) == 1
+
+
 def test_patrol_freeze_control_limits_is_scoped_by_position(app, db_session):
     """同一材質/規格/項目但位置不同時，凍結界限互不影響（巡檢特有的位置維度）"""
     with app.app_context():
