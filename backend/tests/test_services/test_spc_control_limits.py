@@ -1,4 +1,7 @@
+import pytest
+
 from backend.services.shipping_service import ShippingService
+from backend.services.patrol_service import PatrolService
 
 
 def test_freeze_query_and_unfreeze_control_limits(db_session, setup_data):
@@ -179,3 +182,57 @@ def test_freeze_then_exclude_keeps_frozen_limits_but_updates_dataset(db_session,
     assert 7.9 not in stats_after["all_values"]
     # 第6筆原本平均為(10.0+10.0+7.9)/3，排除離群值後只剩前兩組，平均回到10.0
     assert abs(stats_after["avgs"][-1] - 10.0) < 1e-9
+
+
+def test_patrol_get_frozen_limits_returns_none_when_absent(app, db_session):
+    with app.app_context():
+        assert PatrolService.get_frozen_limits({
+            "material": "6061", "spec": "10*2", "item": "外徑", "position": ""
+        }) is None
+
+
+def test_patrol_freeze_and_unfreeze_control_limits_round_trip(app, db_session):
+    with app.app_context():
+        key = {"material": "6061", "spec": "10*2", "item": "外徑", "position": "前段"}
+        limits = {"x_cl": 10.0, "x_ucl": 10.9, "x_lcl": 9.1, "r_cl": 0.5, "r_ucl": 1.2, "r_lcl": 0, "avg_n": 5}
+
+        PatrolService.freeze_control_limits(key, limits, note="製程確認穩定")
+        frozen = PatrolService.get_frozen_limits(key)
+        assert frozen is not None
+        assert frozen["x_cl"] == pytest.approx(10.0)
+        assert frozen["note"] == "製程確認穩定"
+
+        PatrolService.unfreeze_control_limits(key)
+        assert PatrolService.get_frozen_limits(key) is None
+
+
+def test_patrol_freeze_control_limits_is_scoped_by_position(app, db_session):
+    """同一材質/規格/項目但位置不同時，凍結界限互不影響（巡檢特有的位置維度）"""
+    with app.app_context():
+        key_front = {"material": "6061", "spec": "10*2", "item": "外徑", "position": "前段"}
+        key_mid = {"material": "6061", "spec": "10*2", "item": "外徑", "position": "中段"}
+        limits_front = {"x_cl": 10.0, "x_ucl": 10.9, "x_lcl": 9.1, "r_cl": 0.5, "r_ucl": 1.2, "r_lcl": 0, "avg_n": 5}
+        limits_mid = {"x_cl": 20.0, "x_ucl": 20.9, "x_lcl": 19.1, "r_cl": 0.5, "r_ucl": 1.2, "r_lcl": 0, "avg_n": 5}
+
+        PatrolService.freeze_control_limits(key_front, limits_front)
+        PatrolService.freeze_control_limits(key_mid, limits_mid)
+
+        assert PatrolService.get_frozen_limits(key_front)["x_cl"] == pytest.approx(10.0)
+        assert PatrolService.get_frozen_limits(key_mid)["x_cl"] == pytest.approx(20.0)
+
+
+def test_patrol_and_shipping_control_limits_do_not_collide(app, db_session):
+    """相同材質/規格/項目時，巡檢與出貨的凍結界限彼此獨立（source 欄位區隔）"""
+    with app.app_context():
+        from backend.services.shipping_service import ShippingService
+
+        shipping_key = {"vendor": "", "material": "6061", "spec": "10*2", "field": "外徑"}
+        patrol_key = {"material": "6061", "spec": "10*2", "item": "外徑", "position": ""}
+        limits = {"x_cl": 10.0, "x_ucl": 10.9, "x_lcl": 9.1, "r_cl": 0.5, "r_ucl": 1.2, "r_lcl": 0, "avg_n": 5}
+        limits_patrol = {"x_cl": 50.0, "x_ucl": 50.9, "x_lcl": 49.1, "r_cl": 0.5, "r_ucl": 1.2, "r_lcl": 0, "avg_n": 5}
+
+        ShippingService.freeze_control_limits(shipping_key, limits)
+        PatrolService.freeze_control_limits(patrol_key, limits_patrol)
+
+        assert ShippingService.get_frozen_limits(shipping_key)["x_cl"] == pytest.approx(10.0)
+        assert PatrolService.get_frozen_limits(patrol_key)["x_cl"] == pytest.approx(50.0)

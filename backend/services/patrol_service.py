@@ -32,6 +32,56 @@ from ..utils import (
 
 class PatrolService:
     @staticmethod
+    def _limits_key_filter(key: Dict[str, str]):
+        from ..models import SpcControlLimit
+        return SpcControlLimit.query.filter_by(
+            source='patrol',
+            vendor='',
+            material=key.get('material') or '',
+            spec=key.get('spec') or '',
+            field=key['item'],
+            position=key.get('position') or '',
+        )
+
+    @staticmethod
+    def get_frozen_limits(key: Dict[str, str]) -> Optional[Dict[str, float]]:
+        """查詢巡檢是否已凍結管制界限（§9.4）；若無則回傳 None。"""
+        rec = PatrolService._limits_key_filter(key).first()
+        if rec is None:
+            return None
+        return {
+            "x_cl": float(rec.x_cl), "x_ucl": float(rec.x_ucl), "x_lcl": float(rec.x_lcl),
+            "r_cl": float(rec.r_cl), "r_ucl": float(rec.r_ucl), "r_lcl": float(rec.r_lcl),
+            "avg_n": rec.avg_n, "note": rec.note,
+            "updated_at": rec.updated_at.isoformat() if rec.updated_at else None,
+        }
+
+    @staticmethod
+    def freeze_control_limits(key: Dict[str, str], limits: Dict[str, float], note: str = "") -> Dict[str, Any]:
+        """凍結巡檢目前管制界限（§9.4）：確認後鎖定，避免每次請求都重新計算。"""
+        from ..models import SpcControlLimit
+        rec = PatrolService._limits_key_filter(key).first()
+        if rec is None:
+            rec = SpcControlLimit(
+                source='patrol', vendor='',
+                material=key.get('material') or '', spec=key.get('spec') or '',
+                field=key['item'], position=key.get('position') or '',
+            )
+            db.session.add(rec)
+        rec.x_cl, rec.x_ucl, rec.x_lcl = limits["x_cl"], limits["x_ucl"], limits["x_lcl"]
+        rec.r_cl, rec.r_ucl, rec.r_lcl = limits["r_cl"], limits["r_ucl"], limits.get("r_lcl", 0)
+        rec.avg_n = limits.get("avg_n", 5)
+        rec.note = note
+        db.session.commit()
+        return {"X中心線": float(rec.x_cl), "識別碼": rec.id}
+
+    @staticmethod
+    def unfreeze_control_limits(key: Dict[str, str]) -> None:
+        """解除巡檢管制界限凍結（§9.4）：恢復每次請求自動重新計算。"""
+        PatrolService._limits_key_filter(key).delete()
+        db.session.commit()
+
+    @staticmethod
     def get_options() -> Dict[str, List[Dict[str, Any]]]:
         """獲取下拉選單選項"""
         try:
