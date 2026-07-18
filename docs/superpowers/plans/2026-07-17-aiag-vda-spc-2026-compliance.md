@@ -1,5 +1,7 @@
 # AIAG-VDA SPC 2026 合規改造實作計畫（P0～P2 全部）
 
+> **已部分取代（2026-07-18）：** 本文件保留原始提交歷史；其中固定 X̄-R、前 25 組直接凍結、小樣本／分布失敗時回退常態，以及舊 `SPC管制界限` 寫入流程，已由 `2026-07-18-shipping-patrol-spc-2026-current-data.md` 的 X̄-S 優先、逐點界限、時間模型、不可變研究核准與 OCAP 規格取代。未標示為取代的背景與追溯內容仍可供歷史查核。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 使系統的 SPC 計算、介面與報告符合 AIAG-VDA SPC 手冊 2026 第一版（ISO 22514/3534 體系）。

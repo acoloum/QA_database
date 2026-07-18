@@ -245,6 +245,8 @@ def calculate_process_capability(
     targets = resolve_targets(characteristic_class, n_values=len(all_values), confidence=confidence)
     achieved = pk is not None and pk >= targets["pk_target"]
 
+    # 已成功計算時不得殘留初始化階段的 no_tolerance／insufficient_data 理由。
+    process_capability.pop("reason", None)
     process_capability.update({
         "available": True,
         "usl": float(usl) if usl is not None else None,

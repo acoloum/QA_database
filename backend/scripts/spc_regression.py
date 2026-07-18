@@ -1,15 +1,18 @@
-"""
+r"""
 SPC 統計回歸比對工具
 
-用途：在把 ShippingService.get_stats 從「扁平欄位」改讀「子表」之前，
-先用目前版本產生一份基準快照；改寫後再跑一次比對，確保 Cp/Cpk、X-R 圖、
-PPM、分佈統計等數字逐筆一致。
+用途：驗證 SPC 2026 保存版本可重現的方法版本、資料雜湊、圖表選型、逐點界限、
+兩圖穩定性、時間模型、分布與能力／績效門檻。無參數執行時使用內建固定資料，
+不連線或修改正式資料庫；save/compare 模式保留供既有資料庫快照比對。
 
 執行方式（repo 根目錄）：
-    # 1. 改寫前：用現行（扁平）版本建立基準
+    # 1. 內建確效（CI 與部署前預設）
+    .\venv\Scripts\python.exe backend\scripts\spc_regression.py
+
+    # 2. 另存現有資料庫案例
     .\\venv\\Scripts\\python.exe -m backend.scripts.spc_regression save
 
-    # 2. 改寫後：比對新版（子表）與基準
+    # 3. 比對資料庫案例
     .\\venv\\Scripts\\python.exe -m backend.scripts.spc_regression compare
 
 可選參數：
@@ -29,7 +32,9 @@ import os
 import json
 import math
 import argparse
-from datetime import datetime, timezone
+from dataclasses import asdict
+from datetime import date, datetime, timedelta, timezone
+import hashlib
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
@@ -37,11 +42,122 @@ from backend.app import app
 from backend.extensions import db
 from backend.models import ShippingData, Vendor, SPCCache
 from backend.services.shipping_service import ShippingService
+from backend.services.spc_analysis_service import calculate_process_capability
+from backend.services.spc_chart_engine import calculate_chart_set
+from backend.services.spc_contracts import SpcSubgroup
+from backend.services.spc_distribution import assess_distribution
+from backend.services.spc_stability import evaluate_study_stability
+from backend.services.spc_study_service import SPC_CODE_VERSION, SPC_METHOD_VERSION
+from backend.services.spc_time_model import classify_time_model
 
 # get_stats 支援的量測項目（field_map 的鍵）
 ALL_FIELDS = ['外徑', '內徑', '厚度', '同心度', '長度', '硬度', '韋伯氏硬度', '真直度', '真圓度']
 
 DEFAULT_BASELINE = os.path.join(os.path.dirname(__file__), 'spc_baseline.json')
+
+
+def _validation_groups():
+    """固定且具時間順序的 X̄-S 子組，供無資料庫回歸驗證。"""
+    patterns = (
+        (9.86, 10.01, 10.15), (9.91, 10.07, 10.18),
+        (9.83, 9.98, 10.12), (9.90, 10.05, 10.20),
+        (9.85, 10.02, 10.17), (9.92, 10.06, 10.16),
+        (9.84, 9.99, 10.13), (9.89, 10.04, 10.19),
+        (9.87, 10.00, 10.14), (9.93, 10.08, 10.21),
+    )
+    return tuple(
+        SpcSubgroup(
+            key=f"validation:{index + 1}",
+            timestamp=date(2026, 7, 1) + timedelta(days=index),
+            values=values,
+            record_ids=(index + 1,),
+            measurement_ids=(index * 3 + 1, index * 3 + 2, index * 3 + 3),
+        )
+        for index, values in enumerate(patterns)
+    )
+
+
+def _assert_no_nonfinite(value, path="root"):
+    if isinstance(value, float) and not math.isfinite(value):
+        raise AssertionError(f"{path} 出現非有限數值：{value}")
+    if isinstance(value, dict):
+        for key, item in value.items():
+            _assert_no_nonfinite(item, f"{path}.{key}")
+    elif isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            _assert_no_nonfinite(item, f"{path}[{index}]")
+
+
+def cmd_validate(_args):
+    """以 JSON round-trip 驗證研究快照可保存、可重建且沒有 NaN。"""
+    groups = _validation_groups()
+    chart = calculate_chart_set(groups)
+    stability = evaluate_study_stability(chart)
+    values = [value for group in groups for value in group.values]
+    distribution = assess_distribution(values, field="外徑")
+    time_model = classify_time_model(chart, stability, distribution)
+    capability = calculate_process_capability(
+        avgs=[float(value) for value in chart.location.values if value is not None],
+        all_values=values,
+        r_cl=float(chart.variation.cl[0]),
+        d2=float(chart.variation.cl[0]) / chart.sigma_within,
+        tolerance_limits={"USL": 10.8, "LSL": 9.2},
+        stability=stability,
+        field="外徑",
+        dist=distribution,
+        time_model=time_model,
+    )
+    canonical_input = json.dumps(
+        [{"key": group.key, "timestamp": str(group.timestamp), "values": group.values}
+         for group in groups],
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    )
+    snapshot = {
+        "dataset_version": "spc-golden-2026.1",
+        "method_version": SPC_METHOD_VERSION,
+        "code_version": SPC_CODE_VERSION,
+        "data_hash": hashlib.sha256(canonical_input.encode("utf-8")).hexdigest(),
+        "chart": asdict(chart),
+        "stability": stability,
+        "distribution": distribution,
+        "time_model": time_model,
+        "capability": capability,
+    }
+    _assert_no_nonfinite(snapshot)
+    restored = json.loads(json.dumps(snapshot, ensure_ascii=False, allow_nan=False))
+    if restored["data_hash"] != snapshot["data_hash"]:
+        raise AssertionError("保存版本 JSON round-trip 後資料雜湊改變")
+    if not distribution.get("accepted"):
+        assert capability.get("available") is False
+        assert capability.get("capability_reason") == distribution.get("reason_code")
+    if not time_model.get("confirmed"):
+        assert capability.get("cpk") is None
+
+    summary = {
+        "dataset_version": restored["dataset_version"],
+        "method_version": restored["method_version"],
+        "code_version": restored["code_version"],
+        "data_hash": restored["data_hash"],
+        "chart_type": restored["chart"]["chart_type"],
+        "subgroup_sizes": restored["chart"]["subgroup_sizes"],
+        "location_limits": {
+            key: restored["chart"]["location"][key] for key in ("cl", "ucl", "lcl")
+        },
+        "variation_limits": {
+            key: restored["chart"]["variation"][key] for key in ("cl", "ucl", "lcl")
+        },
+        "location_stable": restored["stability"]["location"]["stable"],
+        "variation_stable": restored["stability"]["variation"]["stable"],
+        "time_model": restored["time_model"],
+        "distribution": {
+            "model": restored["distribution"]["model"],
+            "accepted": restored["distribution"]["accepted"],
+            "reason_code": restored["distribution"]["reason_code"],
+        },
+        "capability": restored["capability"],
+    }
+    print(json.dumps(summary, ensure_ascii=False, indent=2, allow_nan=False))
+    print("\n[PASS] SPC 2026 保存版本回歸驗證通過；無 NaN、無未說明的常態回退。")
 
 
 def clear_spc_cache():
@@ -125,8 +241,8 @@ def diff_values(a, b, abs_tol, rel_tol, path=""):
 
     if _is_number(a) and _is_number(b):
         fa, fb = float(a), float(b)
-        # 兩者皆 NaN 視為相等（量測值全相同時偏度/峰度為 NaN）
-        if math.isnan(fa) and math.isnan(fb):
+        if not math.isfinite(fa) or not math.isfinite(fb):
+            diffs.append((path, f"禁止非有限數值 baseline={a} new={b}"))
             return diffs
         if not math.isclose(fa, fb, abs_tol=abs_tol, rel_tol=rel_tol):
             diffs.append((path, f"數值不符 baseline={a} new={b}"))
@@ -246,7 +362,10 @@ def cmd_compare(args):
 
 def main():
     parser = argparse.ArgumentParser(description="SPC 統計回歸比對工具")
-    parser.add_argument('mode', choices=['save', 'compare'])
+    parser.add_argument(
+        'mode', nargs='?', default='validate',
+        choices=['validate', 'save', 'compare'],
+    )
     parser.add_argument('--max-combos', type=int, default=80)
     parser.add_argument('--min-records', type=int, default=1)
     parser.add_argument('--baseline', default=DEFAULT_BASELINE)
@@ -255,7 +374,9 @@ def main():
     parser.add_argument('--field', default=None, choices=ALL_FIELDS)
     args = parser.parse_args()
 
-    if args.mode == 'save':
+    if args.mode == 'validate':
+        cmd_validate(args)
+    elif args.mode == 'save':
         cmd_save(args)
     else:
         cmd_compare(args)
