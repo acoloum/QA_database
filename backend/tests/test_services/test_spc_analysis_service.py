@@ -24,6 +24,20 @@ def test_calculate_control_limits_uses_baseline_subgroups():
     assert result["d2"] == 2.326
 
 
+def test_calculate_control_limits_exposes_point_limits_for_unequal_n():
+    result = calculate_control_limits(
+        avgs=[10.0, 10.1, 9.9, 10.05, 9.95],
+        ranges=[0.2, 0.3, 0.25, 0.2, 0.35],
+        subgroup_sizes=[3, 4, 5, 3, 4],
+    )
+
+    assert result["variable_subgroup_size"] is True
+    assert len(result["x_ucls"]) == 5
+    assert result["x_ucls"][0] != result["x_ucls"][1]
+    assert result["x_ucls"][1] != result["x_ucls"][2]
+    assert result["r_cls"][0] != result["r_cls"][1]
+
+
 def test_process_capability_supports_two_sided_and_ppm():
     avgs = [10, 10.1, 9.9, 10.2, 9.8]
     stability = {"evaluated": True, "stable": True, "violations": [], "rules_used": []}

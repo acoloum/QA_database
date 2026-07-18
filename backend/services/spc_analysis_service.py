@@ -14,9 +14,14 @@ def calculate_control_limits(
     ranges: List[float],
     subgroup_sizes: List[int],
     baseline_limit: int = 25,
-) -> Dict[str, float]:
-    """依基準子群體計算 X-bar/R 管制限。"""
+) -> Dict[str, Any]:
+    """依基準子組估計變異，並按每組實際 n 產生 X̄/R 界限。
+
+    此函式是舊 API 的相容包裝。新研究流程使用 ``spc_chart_engine``；
+    這裡仍保留純量欄位，但逐點陣列才是不等子組的正式界限。
+    """
     if len(avgs) < 5:
+        empty_limits = [0.0] * len(avgs)
         return {
             "x_cl": 0.0,
             "x_ucl": 0.0,
@@ -27,6 +32,13 @@ def calculate_control_limits(
             "d2": 2.326,
             "avg_n": 5,
             "baseline_count": 0,
+            "x_ucls": empty_limits,
+            "x_lcls": empty_limits,
+            "r_cls": empty_limits,
+            "r_ucls": empty_limits,
+            "r_lcls": empty_limits,
+            "variable_subgroup_size": len(set(subgroup_sizes)) > 1,
+            "sigma_within": 0.0,
         }
 
     baseline_count = min(baseline_limit, len(avgs))
@@ -34,25 +46,57 @@ def calculate_control_limits(
     base_ranges = ranges[:baseline_count]
     base_ns = subgroup_sizes[:baseline_count]
 
-    avg_n = round(float(np.mean(base_ns)))
-    avg_n = max(2, min(10, avg_n))
-    A2, D3, D4, d2 = SPC_CONSTANTS[avg_n]
-
+    normalized_base_ns = [max(2, min(10, int(n))) for n in base_ns]
+    sigma_estimates = [
+        float(group_range) / SPC_CONSTANTS[n][3]
+        for group_range, n in zip(base_ranges, normalized_base_ns)
+    ]
+    sigma_within = float(np.mean(sigma_estimates))
     x_cl = float(np.mean(base_avgs))
-    r_cl = float(np.mean(base_ranges))
-    x_ucl = x_cl + A2 * r_cl
-    x_lcl = x_cl - A2 * r_cl
+    point_ns = [max(2, min(10, int(n))) for n in subgroup_sizes]
+    x_ucls = []
+    x_lcls = []
+    r_cls = []
+    r_ucls = []
+    r_lcls = []
+    for n in point_ns:
+        a2, d3, d4, d2_n = SPC_CONSTANTS[n]
+        expected_range = d2_n * sigma_within
+        x_ucls.append(x_cl + a2 * expected_range)
+        x_lcls.append(x_cl - a2 * expected_range)
+        r_cls.append(expected_range)
+        r_ucls.append(d4 * expected_range)
+        r_lcls.append(d3 * expected_range)
+
+    variable_n = len(set(point_ns)) > 1
+    avg_n = max(2, min(10, round(float(np.mean(base_ns)))))
+    d2 = SPC_CONSTANTS[avg_n][3]
+
+    # 固定 n 時完全維持舊純量語意；不等 n 時純量只提供保守相容值，
+    # 新契約與前端必須使用上方逐點陣列。
+    x_ucl = x_ucls[0] if not variable_n else max(x_ucls)
+    x_lcl = x_lcls[0] if not variable_n else min(x_lcls)
+    r_cl = r_cls[0] if not variable_n else float(np.mean(r_cls))
+    r_ucl = r_ucls[0] if not variable_n else max(r_ucls)
+    r_lcl = r_lcls[0] if not variable_n else min(r_lcls)
 
     return {
         "x_cl": x_cl,
         "x_ucl": x_ucl,
         "x_lcl": x_lcl,
         "r_cl": r_cl,
-        "r_ucl": D4 * r_cl,
-        "r_lcl": D3 * r_cl,
+        "r_ucl": r_ucl,
+        "r_lcl": r_lcl,
         "d2": d2,
         "avg_n": avg_n,
         "baseline_count": baseline_count,
+        "x_ucls": x_ucls,
+        "x_lcls": x_lcls,
+        "r_cls": r_cls,
+        "r_ucls": r_ucls,
+        "r_lcls": r_lcls,
+        "variable_subgroup_size": variable_n,
+        "sigma_within": sigma_within,
     }
 
 
