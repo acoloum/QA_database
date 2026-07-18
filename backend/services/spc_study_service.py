@@ -25,8 +25,12 @@ from ..utils import log_audit
 from .spc_adapters.patrol import build_patrol_study_input
 from .spc_adapters.shipping import build_shipping_study_input
 from .spc_analysis_service import calculate_process_capability
-from .spc_chart_engine import SpcChartNotApplicable, calculate_chart_set
-from .spc_contracts import SpcChartSet, SpcStudyInput, SpcSubgroup
+from .spc_chart_engine import (
+    SpcChartNotApplicable,
+    calculate_chart_observations,
+    calculate_chart_set,
+)
+from .spc_contracts import SpcChartSeries, SpcChartSet, SpcStudyInput, SpcSubgroup
 from .spc_distribution import assess_distribution
 from .spc_errors import (
     SpcConflict,
@@ -157,6 +161,134 @@ def _calculate_results(study_input: SpcStudyInput) -> dict[str, Any]:
     }
 
 
+def _approved_series_limits(
+    saved: Mapping[str, Any],
+    baseline_sizes: list[int],
+    current_sizes: tuple[int, ...],
+    *,
+    series_name: str,
+) -> tuple[tuple[float, ...], tuple[float, ...], tuple[float, ...]]:
+    """依核准時的實際子組大小，映射持續監控每一點的固定界限。"""
+
+    series = saved.get(series_name) or {}
+    arrays = {
+        name: [float(value) for value in (series.get(name) or [])]
+        for name in ("cl", "ucl", "lcl")
+    }
+    if not baseline_sizes or any(len(values) != len(baseline_sizes) for values in arrays.values()):
+        raise SpcValidationError(
+            "SPC_APPROVED_LIMITS_INVALID", "核准界限缺少完整逐點子組大小或界限"
+        )
+    by_size: dict[int, dict[str, float]] = {}
+    for index, subgroup_size in enumerate(baseline_sizes):
+        candidate = {name: values[index] for name, values in arrays.items()}
+        existing = by_size.setdefault(int(subgroup_size), candidate)
+        if any(abs(existing[name] - candidate[name]) > 1e-12 for name in arrays):
+            raise SpcValidationError(
+                "SPC_APPROVED_LIMITS_INCONSISTENT",
+                "相同子組大小保存了不一致的核准界限",
+            )
+    missing = sorted(set(current_sizes) - set(by_size))
+    if missing:
+        raise SpcValidationError(
+            "SPC_SUBGROUP_SIZE_NOT_APPROVED",
+            "目前資料包含核准基準未涵蓋的子組大小",
+            details={"subgroup_sizes": missing},
+        )
+    return tuple(
+        tuple(by_size[size][name] for size in current_sizes)
+        for name in ("cl", "ucl", "lcl")
+    )
+
+
+def _calculate_ongoing_results(
+    study_input: SpcStudyInput, active_limit: SpcLimitVersion
+) -> dict[str, Any]:
+    """只以已核准界限評估目前觀測值，不重新置中或建立新界限。"""
+
+    try:
+        current = calculate_chart_observations(
+            study_input.subgroups, active_limit.chart_type
+        )
+    except SpcChartNotApplicable as exc:
+        raise SpcValidationError(exc.code, str(exc)) from exc
+    if current.chart_type != active_limit.chart_type:
+        raise SpcValidationError(
+            "SPC_CHART_TYPE_MISMATCH",
+            "目前子組結構與核准界限的管制圖類型不一致",
+            details={"approved": active_limit.chart_type, "current": current.chart_type},
+        )
+    saved_limits = dict(active_limit.limits or {})
+    baseline_sizes = [int(value) for value in (saved_limits.get("subgroup_sizes") or [])]
+    x_cl, x_ucl, x_lcl = _approved_series_limits(
+        saved_limits, baseline_sizes, current.subgroup_sizes, series_name="location"
+    )
+    r_cl, r_ucl, r_lcl = _approved_series_limits(
+        saved_limits, baseline_sizes, current.subgroup_sizes, series_name="variation"
+    )
+    monitored = SpcChartSet(
+        chart_type=current.chart_type,
+        location=SpcChartSeries(
+            statistic=current.location.statistic,
+            values=current.location.values,
+            cl=x_cl,
+            ucl=x_ucl,
+            lcl=x_lcl,
+        ),
+        variation=SpcChartSeries(
+            statistic=current.variation.statistic,
+            values=current.variation.values,
+            cl=r_cl,
+            ucl=r_ucl,
+            lcl=r_lcl,
+        ),
+        subgroup_sizes=current.subgroup_sizes,
+        sigma_within=float(
+            (active_limit.study_version.chart_result or {}).get("sigma_within")
+            or current.sigma_within
+        ),
+        variation_source_pairs=current.variation_source_pairs,
+    )
+    approved_stability = dict(active_limit.study_version.stability_result or {})
+    approved_rules = approved_stability.get("rules_used")
+    if not isinstance(approved_rules, list) or not approved_rules:
+        raise SpcValidationError(
+            "SPC_APPROVED_RULES_MISSING",
+            "核准版本缺少正式失控規則集，不能執行持續監控",
+        )
+    stability = evaluate_study_stability(monitored, enabled_rules=approved_rules)
+    all_values = [
+        value
+        for subgroup in study_input.subgroups
+        for value in (subgroup.distribution_values or subgroup.values)
+    ]
+    return {
+        "chart_result": _chart_result(monitored),
+        "stability_result": stability,
+        "distribution_result": assess_distribution(
+            all_values, field=study_input.characteristic
+        ),
+        "time_model_result": {
+            "candidate": None,
+            "confirmed": False,
+            "statistically_controlled": stability.get("stable") is True,
+            "reason_code": "ONGOING_USES_APPROVED_LIMITS",
+            "limit_version_id": active_limit.id,
+        },
+        "capability_result": {
+            "available": False,
+            "reason": "ongoing_monitoring",
+            "capability_reason": "ONGOING_REQUIRES_SEPARATE_CAPABILITY_STUDY",
+        },
+        "applicability_result": {
+            "applicable": True,
+            "reason_code": None,
+            "chart_type": monitored.chart_type,
+            "active_limit_version_id": active_limit.id,
+        },
+    }
+
+
 def _timestamp_text(value: date | datetime | str | None) -> str | None:
     if isinstance(value, (date, datetime)):
         return value.isoformat()
@@ -231,35 +363,111 @@ def _recalculate_capability(
     )
 
 
+def _add_input_samples(
+    version: SpcStudyVersion, source: str, study_input: SpcStudyInput
+) -> None:
+    for index, subgroup in enumerate(study_input.subgroups):
+        db.session.add(SpcStudySample(
+            version_id=version.id,
+            source_record_type=(
+                "ShippingMeasurement" if source == "shipping" else "PatrolDetail"
+            ),
+            source_record_id=subgroup.record_ids[0],
+            source_measurement_id=(
+                subgroup.measurement_ids[0] if subgroup.measurement_ids else None
+            ),
+            source_record_ids=list(subgroup.record_ids),
+            source_measurement_ids=list(subgroup.measurement_ids),
+            sample_timestamp=_timestamp_text(subgroup.timestamp),
+            subgroup_key=subgroup.key,
+            subgroup_order=index,
+            values=list(subgroup.values),
+            distribution_values=list(
+                subgroup.distribution_values or subgroup.values
+            ),
+            excluded=False,
+            exclusion_snapshot=list(subgroup.exclusion_snapshot),
+        ))
+
+
+def _copy_saved_samples(
+    source_version: SpcStudyVersion, target_version: SpcStudyVersion
+) -> None:
+    for sample in source_version.samples:
+        db.session.add(SpcStudySample(
+            version_id=target_version.id,
+            source_record_type=sample.source_record_type,
+            source_record_id=sample.source_record_id,
+            source_measurement_id=sample.source_measurement_id,
+            source_record_ids=list(sample.source_record_ids or []),
+            source_measurement_ids=list(sample.source_measurement_ids or []),
+            sample_timestamp=sample.sample_timestamp,
+            subgroup_key=sample.subgroup_key,
+            subgroup_order=sample.subgroup_order,
+            values=list(sample.values or []),
+            distribution_values=list(sample.distribution_values or []),
+            excluded=sample.excluded,
+            exclusion_reason=sample.exclusion_reason,
+            exclusion_snapshot=list(sample.exclusion_snapshot or []),
+        ))
+
+
 class SpcStudyService:
     """SPC 研究與核准界限的應用服務。"""
 
     @staticmethod
-    def analyze(source: str, filters: Mapping[str, Any], actor_id: int) -> SpcStudyVersion:
+    def analyze(
+        source: str,
+        filters: Mapping[str, Any],
+        actor_id: int,
+        *,
+        study_type: str = "retrospective",
+    ) -> SpcStudyVersion:
         _require_permission(actor_id, "spc.view")
+        if study_type not in {"retrospective", "ongoing"}:
+            raise SpcValidationError("SPC_STUDY_TYPE_INVALID", "研究類型不受支援")
         study_input = _adapter_input(source, filters)
+        active_limit = None
+        if study_type == "ongoing":
+            active_limit = SpcLimitVersion.query.filter_by(
+                process_stream_key=study_input.process_stream_key,
+                characteristic=study_input.characteristic,
+                status="active",
+            ).first()
+            if active_limit is None:
+                raise SpcValidationError(
+                    "SPC_ACTIVE_LIMIT_REQUIRED",
+                    "持續 SPC 必須先有同一製程流與特性的生效核准界限",
+                )
         study = SpcStudy.query.filter_by(
             source=source,
+            study_type=study_type,
             process_stream_key=study_input.process_stream_key,
             characteristic=study_input.characteristic,
         ).first()
         if study is None:
             study = SpcStudy(
                 source=source,
-                study_type="retrospective",
+                study_type=study_type,
                 process_stream_key=study_input.process_stream_key,
                 characteristic=study_input.characteristic,
                 filters=dict(study_input.filters),
-                status="draft",
+                status="active" if study_type == "ongoing" else "draft",
                 created_by=actor_id,
             )
             db.session.add(study)
             db.session.flush()
+        elif study_type == "ongoing":
+            study.status = "active"
 
         latest = db.session.query(func.max(SpcStudyVersion.version_no)).filter_by(
             study_id=study.id
         ).scalar()
-        results = _calculate_results(study_input)
+        results = (
+            _calculate_ongoing_results(study_input, active_limit)
+            if active_limit is not None
+            else _calculate_results(study_input)
+        )
         version = SpcStudyVersion(
             study_id=study.id,
             version_no=int(latest or 0) + 1,
@@ -267,35 +475,42 @@ class SpcStudyService:
             code_version=SPC_CODE_VERSION,
             data_hash=study_input.data_hash,
             specification_snapshot=dict(study_input.specification),
-            status="draft",
+            status="active" if study_type == "ongoing" else "draft",
             created_by=actor_id,
             **results,
         )
         db.session.add(version)
         db.session.flush()
 
-        for index, subgroup in enumerate(study_input.subgroups):
-            db.session.add(SpcStudySample(
-                version_id=version.id,
-                source_record_type=(
-                    "ShippingMeasurement" if source == "shipping" else "PatrolDetail"
-                ),
-                source_record_id=subgroup.record_ids[0],
-                source_measurement_id=(
-                    subgroup.measurement_ids[0] if subgroup.measurement_ids else None
-                ),
-                source_record_ids=list(subgroup.record_ids),
-                source_measurement_ids=list(subgroup.measurement_ids),
-                sample_timestamp=_timestamp_text(subgroup.timestamp),
-                subgroup_key=subgroup.key,
-                subgroup_order=index,
-                values=list(subgroup.values),
-                distribution_values=list(
-                    subgroup.distribution_values or subgroup.values
-                ),
-                excluded=False,
-                exclusion_snapshot=list(subgroup.exclusion_snapshot),
-            ))
+        _add_input_samples(version, source, study_input)
+        db.session.flush()
+
+        if active_limit is not None:
+            chart = results["chart_result"] or {}
+            violations = []
+            for violation in (results["stability_result"] or {}).get("violations", []):
+                index = int(violation["index"])
+                chart_kind = violation["chart_kind"]
+                observed_values = (chart.get(chart_kind) or {}).get("values", [])
+                violations.append({
+                    "chart_kind": chart_kind,
+                    "rule_code": violation["rule"],
+                    "point_index": index,
+                    "observed_value": (
+                        observed_values[index] if index < len(observed_values) else None
+                    ),
+                    "sample_id": (
+                        version.samples[index].id if index < len(version.samples) else None
+                    ),
+                    "source_point_key": (
+                        f"{version.samples[index].source_record_type}:"
+                        f"{version.samples[index].subgroup_key}"
+                        if index < len(version.samples) else None
+                    ),
+                })
+            from .spc_ocap_service import SpcOcapService
+
+            SpcOcapService.sync_events(active_limit.id, version.id, violations)
 
         log_audit(
             actor_id, "analyze", "spc_study", version.id,
@@ -474,12 +689,12 @@ class SpcStudyService:
         _require_permission(actor_id, "spc.manage")
         reason = _require_reason(reason)
         version = _get_version(version_id)
-        if version.status not in {"draft", "submitted"}:
+        if version.status != "draft":
             raise SpcConflict("INVALID_STUDY_STATE", "目前狀態不可確認時間模型")
         candidate = (version.time_model_result or {}).get("candidate")
         if model not in {"A1", "A2"} or model != candidate:
             raise SpcValidationError("TIME_MODEL_MISMATCH", "只能確認系統證據支持的 A1/A2 候選")
-        version.time_model_result = {
+        confirmed_time_model = {
             **(version.time_model_result or {}),
             "model": model,
             "confirmed": True,
@@ -487,15 +702,42 @@ class SpcStudyService:
             "confirmed_at": utc_now().isoformat(),
             "confirmation_reason": reason,
         }
-        version.capability_result = _recalculate_capability(
-            version, version.time_model_result
+        latest = db.session.query(func.max(SpcStudyVersion.version_no)).filter_by(
+            study_id=version.study_id
+        ).scalar()
+        confirmed_capability = _recalculate_capability(version, confirmed_time_model)
+        confirmed = SpcStudyVersion(
+            study_id=version.study_id,
+            version_no=int(latest or 0) + 1,
+            method_version=version.method_version,
+            code_version=version.code_version,
+            data_hash=version.data_hash,
+            specification_snapshot=dict(version.specification_snapshot or {}),
+            chart_result=dict(version.chart_result or {}),
+            stability_result=dict(version.stability_result or {}),
+            distribution_result=dict(version.distribution_result or {}),
+            time_model_result=confirmed_time_model,
+            capability_result=confirmed_capability,
+            applicability_result=dict(version.applicability_result or {}),
+            status="draft",
+            audit_incomplete=version.audit_incomplete,
+            created_by=actor_id,
         )
+        db.session.add(confirmed)
+        db.session.flush()
+        _copy_saved_samples(version, confirmed)
+        version.status = "superseded"
         log_audit(
-            actor_id, "confirm_time_model", "spc_study", version.id,
-            new_val={"model": model, "reason": reason},
+            actor_id, "confirm_time_model", "spc_study", confirmed.id,
+            old_val={"version_id": version.id, "status": "draft"},
+            new_val={
+                "version_id": confirmed.id,
+                "model": model,
+                "reason": reason,
+            },
         )
         db.session.commit()
-        return version
+        return confirmed
 
     @staticmethod
     def approve_and_activate(

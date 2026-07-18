@@ -150,6 +150,12 @@ def _i_mr(subgroups: tuple[SpcSubgroup, ...]) -> SpcChartSet:
         ),
         subgroup_sizes=(1,) * count,
         sigma_within=sigma,
+        variation_source_pairs=(None,) + tuple({
+            "previous_record_ids": list(subgroups[index - 1].record_ids),
+            "current_record_ids": list(subgroups[index].record_ids),
+            "previous_measurement_ids": list(subgroups[index - 1].measurement_ids),
+            "current_measurement_ids": list(subgroups[index].measurement_ids),
+        } for index in range(1, count)),
     )
 
 
@@ -172,4 +178,88 @@ def calculate_chart_set(
     raise SpcChartNotApplicable(
         "INVALID_SUBGROUP_STRUCTURE",
         "子組大小混合了 2 與 3 件以上資料，無法套用同一管制圖",
+    )
+
+
+def calculate_chart_observations(
+    subgroups: Iterable[SpcSubgroup],
+    chart_type: str,
+) -> SpcChartSet:
+    """計算持續監控觀測統計量；不由目前批次估計中心或變異。"""
+
+    groups = tuple(subgroups)
+    _validate_count(groups)
+    sizes = tuple(group.n for group in groups)
+    count = len(groups)
+    placeholders = _repeat(0.0, count)
+
+    if chart_type == "xbar_s":
+        if min(sizes) < 3:
+            raise SpcChartNotApplicable(
+                "INVALID_SUBGROUP_STRUCTURE", "X̄-S 監控的每個子組至少需要三件資料"
+            )
+        location_values = tuple(float(np.mean(group.values)) for group in groups)
+        variation_values = tuple(float(np.std(group.values, ddof=1)) for group in groups)
+        location_statistic, variation_statistic = "xbar", "s"
+        variation_source_pairs = ()
+    elif chart_type == "xbar_r":
+        if set(sizes) != {2}:
+            raise SpcChartNotApplicable(
+                "INVALID_SUBGROUP_STRUCTURE", "X̄-R 監控只接受大小為二的子組"
+            )
+        location_values = tuple(float(np.mean(group.values)) for group in groups)
+        variation_values = tuple(float(np.ptp(group.values)) for group in groups)
+        location_statistic, variation_statistic = "xbar", "r"
+        variation_source_pairs = ()
+    elif chart_type == "i_mr":
+        if set(sizes) != {1}:
+            raise SpcChartNotApplicable(
+                "INVALID_SUBGROUP_STRUCTURE", "I-MR 監控只接受個別值資料"
+            )
+        timestamps = tuple(group.timestamp for group in groups)
+        if any(timestamp is None for timestamp in timestamps):
+            raise SpcChartNotApplicable("INVALID_TIME_ORDER", "個別值管制圖需要完整時間順序")
+        try:
+            ordered = all(
+                timestamps[index] < timestamps[index + 1]
+                for index in range(count - 1)
+            )
+        except TypeError as exc:
+            raise SpcChartNotApplicable("INVALID_TIME_ORDER", "個別值時間格式無法比較") from exc
+        if not ordered:
+            raise SpcChartNotApplicable("INVALID_TIME_ORDER", "個別值時間必須嚴格遞增")
+        location_values = tuple(float(group.values[0]) for group in groups)
+        variation_values = (None,) + tuple(
+            abs(location_values[index] - location_values[index - 1])
+            for index in range(1, count)
+        )
+        location_statistic, variation_statistic = "individual", "mr"
+        variation_source_pairs = (None,) + tuple({
+            "previous_record_ids": list(groups[index - 1].record_ids),
+            "current_record_ids": list(groups[index].record_ids),
+            "previous_measurement_ids": list(groups[index - 1].measurement_ids),
+            "current_measurement_ids": list(groups[index].measurement_ids),
+        } for index in range(1, count))
+    else:
+        raise SpcChartNotApplicable("CHART_TYPE_UNSUPPORTED", "不支援的正式管制圖類型")
+
+    return SpcChartSet(
+        chart_type=chart_type,
+        location=SpcChartSeries(
+            statistic=location_statistic,
+            values=location_values,
+            cl=placeholders,
+            ucl=placeholders,
+            lcl=placeholders,
+        ),
+        variation=SpcChartSeries(
+            statistic=variation_statistic,
+            values=variation_values,
+            cl=placeholders,
+            ucl=placeholders,
+            lcl=placeholders,
+        ),
+        subgroup_sizes=sizes,
+        sigma_within=0.0,
+        variation_source_pairs=variation_source_pairs,
     )

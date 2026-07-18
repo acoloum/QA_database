@@ -53,6 +53,20 @@ const SpcBaselineApprovalModal = ({
   }, [version.samples]);
 
   const chart = version.charts;
+  const limitRows = useMemo(() => {
+    if (!chart) return [];
+    const seen = new Set<number>();
+    return chart.subgroup_sizes.flatMap((size, index) => {
+      if (seen.has(size)) return [];
+      seen.add(size);
+      return [{
+        size,
+        xUcl: chart.location.ucl[index], xCl: chart.location.cl[index],
+        xLcl: chart.location.lcl[index], rUcl: chart.variation.ucl[index],
+        rCl: chart.variation.cl[index], rLcl: chart.variation.lcl[index],
+      }];
+    });
+  }, [chart]);
   const modelAllowed = action !== 'time-model' || candidate === 'A1' || candidate === 'A2';
 
   return (
@@ -85,14 +99,29 @@ const SpcBaselineApprovalModal = ({
           </Col>
           <Col lg={5}>
             <h6 className="spc-section-label">保存界限快照</h6>
-            <div className="spc-limit-grid">
-              <div><span>位置 UCL</span><strong>{firstLimit(chart?.location.ucl)}</strong></div>
-              <div><span>位置 CL</span><strong>{firstLimit(chart?.location.cl)}</strong></div>
-              <div><span>位置 LCL</span><strong>{firstLimit(chart?.location.lcl)}</strong></div>
-              <div><span>變異 UCL</span><strong>{firstLimit(chart?.variation.ucl)}</strong></div>
-              <div><span>變異 CL</span><strong>{firstLimit(chart?.variation.cl)}</strong></div>
-              <div><span>變異 LCL</span><strong>{firstLimit(chart?.variation.lcl)}</strong></div>
-            </div>
+            {limitRows.length > 1 ? (
+              <Table responsive size="sm" className="spc-evidence-table">
+                <thead><tr><th>子組</th><th>位置 UCL／CL／LCL</th><th>變異 UCL／CL／LCL</th></tr></thead>
+                <tbody>
+                  {limitRows.map(row => (
+                    <tr key={row.size}>
+                      <th>n={row.size}</th>
+                      <td>{row.xUcl.toFixed(3)}／{row.xCl.toFixed(3)}／{row.xLcl.toFixed(3)}</td>
+                      <td>{row.rUcl.toFixed(3)}／{row.rCl.toFixed(3)}／{row.rLcl.toFixed(3)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            ) : (
+              <div className="spc-limit-grid">
+                <div><span>位置 UCL</span><strong>{firstLimit(chart?.location.ucl)}</strong></div>
+                <div><span>位置 CL</span><strong>{firstLimit(chart?.location.cl)}</strong></div>
+                <div><span>位置 LCL</span><strong>{firstLimit(chart?.location.lcl)}</strong></div>
+                <div><span>變異 UCL</span><strong>{firstLimit(chart?.variation.ucl)}</strong></div>
+                <div><span>變異 CL</span><strong>{firstLimit(chart?.variation.cl)}</strong></div>
+                <div><span>變異 LCL</span><strong>{firstLimit(chart?.variation.lcl)}</strong></div>
+              </div>
+            )}
             {action === 'time-model' && (
               <Form.Group className="mt-3" controlId="spc-time-model">
                 <Form.Label>時間模型</Form.Label>

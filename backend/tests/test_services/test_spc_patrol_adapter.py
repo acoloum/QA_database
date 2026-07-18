@@ -53,6 +53,8 @@ def test_patrol_adapter_keeps_detail_ids_values_and_exclusion_snapshot(
             "measurement_id": excluded.id,
             "excluded": True,
             "reason": "治具鬆動",
+            "exclusion_user_id": None,
+            "excluded_at": None,
         }
 
 

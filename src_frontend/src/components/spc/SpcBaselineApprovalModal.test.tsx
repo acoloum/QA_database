@@ -6,6 +6,10 @@ import SpcBaselineApprovalModal from './SpcBaselineApprovalModal';
 const version = {
   id: 12,
   study_id: 5,
+  source: 'shipping',
+  study_type: 'retrospective',
+  process_stream_key: 'stream-a',
+  filters: { vendor: 'A廠', material: '6061', field: '外徑' },
   version_no: 3,
   data_hash: '1234567890abcdef'.repeat(4),
   method_version: '2026.1',
@@ -56,5 +60,34 @@ describe('SpcBaselineApprovalModal', () => {
     fireEvent.change(screen.getByLabelText('核准理由'), { target: { value: '基準資料與製程條件已複核' } });
     fireEvent.click(screen.getByRole('button', { name: '核准並生效' }));
     expect(onConfirm).toHaveBeenCalledWith('基準資料與製程條件已複核');
+  });
+
+  it('不等子組時逐一揭露每個 n 對應的核准界限', () => {
+    const unequal = {
+      ...version,
+      charts: {
+        ...version.charts,
+        subgroup_sizes: [3, 5],
+        location: { ...version.charts!.location, ucl: [10.7, 10.5], cl: [10, 10], lcl: [9.3, 9.5] },
+        variation: { ...version.charts!.variation, ucl: [0.8, 0.6], cl: [0.3, 0.25], lcl: [0.02, 0.05] },
+      },
+    } as SpcStudyResult;
+
+    render(
+      <SpcBaselineApprovalModal
+        show
+        action="approve"
+        source="shipping"
+        filters={unequal.filters}
+        version={unequal}
+        onHide={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('n=3')).toBeInTheDocument();
+    expect(screen.getByText('n=5')).toBeInTheDocument();
+    expect(screen.getByText(/10\.700/)).toBeInTheDocument();
+    expect(screen.getByText(/10\.500/)).toBeInTheDocument();
   });
 });

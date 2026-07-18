@@ -40,9 +40,15 @@ SELECT count(*) FROM "SPC界限版本" WHERE "狀態" = 'legacy_imported';
 SELECT count(*) FROM "SPC界限版本"
  WHERE "狀態" = 'legacy_imported'
    AND ("稽核不完整" IS NOT TRUE OR "核准者ID" IS NOT NULL OR "核准時間" IS NOT NULL);
+SELECT count(*) FROM pg_trigger
+ WHERE tgname IN (
+   'trg_spc_study_version_immutable', 'trg_spc_study_sample_immutable',
+   'trg_spc_limit_version_immutable', 'trg_spc_event_immutable',
+   'trg_spc_ocap_delete_protected'
+ ) AND NOT tgisinternal;
 ```
 
-預期：前兩個筆數都等於原 `SPC管制界限` 筆數；第三個筆數為 0。dry-run 完成後確認新表不存在或仍為執行前狀態。
+預期：前兩個筆數都等於原 `SPC管制界限` 筆數；第三個筆數為 0；不可變／刪除防護 trigger 筆數為 5。dry-run 完成後確認新表不存在或仍為執行前狀態。
 
 ## 4. 正式執行
 

@@ -87,6 +87,11 @@ def build_shipping_study_input(args: Mapping[str, Any]) -> SpcStudyInput:
                 "measurement_id": measurement.id,
                 "excluded": bool(measurement.excluded),
                 "reason": measurement.exclusion_reason,
+                "exclusion_user_id": measurement.exclusion_user_id,
+                "excluded_at": (
+                    measurement.excluded_at.isoformat()
+                    if measurement.excluded_at else None
+                ),
             }
             exclusion_snapshot.append(snapshot)
             source_rows.append({

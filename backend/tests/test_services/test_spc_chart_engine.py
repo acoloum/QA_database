@@ -99,6 +99,13 @@ def test_ordered_individual_values_select_i_mr():
     assert result.location.statistic == "individual"
     assert result.variation.statistic == "mr"
     assert result.variation.values[0] is None
+    assert result.variation_source_pairs[0] is None
+    assert result.variation_source_pairs[1] == {
+        "previous_record_ids": [1],
+        "current_record_ids": [2],
+        "previous_measurement_ids": [1],
+        "current_measurement_ids": [11],
+    }
 
 
 def test_mixed_two_and_three_value_subgroups_are_not_applicable():

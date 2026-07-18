@@ -9,6 +9,7 @@ vi.mock('react-chartjs-2', () => ({
 }));
 
 vi.mock('../../utils/spcChartModel', () => ({
+  mergeOngoingStudyForDisplay: (data: unknown) => data,
   buildSpcChartModel: () => ({
     chartData: {
       xBar: {

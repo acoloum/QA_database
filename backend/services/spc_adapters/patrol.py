@@ -65,6 +65,10 @@ def build_patrol_study_input(args: Mapping[str, Any]) -> SpcStudyInput:
                 "measurement_id": detail.id,
                 "excluded": bool(detail.excluded),
                 "reason": detail.exclusion_reason,
+                "exclusion_user_id": detail.exclusion_user_id,
+                "excluded_at": (
+                    detail.excluded_at.isoformat() if detail.excluded_at else None
+                ),
             }
             exclusion_snapshot.append(snapshot)
             source_rows.append({

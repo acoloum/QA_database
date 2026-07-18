@@ -47,12 +47,15 @@ class SpcOcapService:
                 raise SpcValidationError(
                     "SPC_EVENT_INVALID", "失控事件缺少圖別、規則代碼或點序號"
                 )
+            source_point_key = str(
+                violation.get("source_point_key")
+                or f"version:{version.id}:point:{int(point_index)}"
+            )
             event = SpcEvent.query.filter_by(
                 limit_version_id=limit.id,
-                study_version_id=version.id,
+                source_point_key=source_point_key,
                 chart_kind=chart_kind,
                 rule_code=rule_code,
-                point_index=int(point_index),
             ).first()
             if event is None:
                 event = SpcEvent(
@@ -62,13 +65,15 @@ class SpcOcapService:
                     chart_kind=chart_kind,
                     rule_code=rule_code,
                     point_index=int(point_index),
+                    source_point_key=source_point_key,
                     observed_value=violation.get("observed_value"),
                     status="open",
                 )
                 db.session.add(event)
                 db.session.flush()
             events.append(event)
-        db.session.commit()
+        # 事件、研究版本與 audit 必須由最外層應用服務在同一交易提交。
+        db.session.flush()
         return events
 
     @staticmethod
@@ -86,6 +91,22 @@ class SpcOcapService:
         if ocap is None:
             ocap = SpcOcap(event_id=event.id, created_by=actor_id)
             db.session.add(ocap)
+
+        def audit_snapshot(item: SpcOcap) -> dict[str, Any]:
+            return {
+                "event_id": item.event_id,
+                "investigation_6m": item.investigation_6m,
+                "remeasurement": item.remeasurement,
+                "process_adjustment": item.process_adjustment,
+                "product_disposition": item.product_disposition,
+                "owner_id": item.owner_id,
+                "effectiveness": item.effectiveness,
+                "status": item.status,
+                "created_by": item.created_by,
+                "updated_by": item.updated_by,
+            }
+
+        old_snapshot = None if creating else audit_snapshot(ocap)
 
         allowed = (
             "investigation_6m", "remeasurement", "process_adjustment",
@@ -106,16 +127,14 @@ class SpcOcapService:
             event.status = "investigating"
 
         db.session.flush()
+        new_snapshot = audit_snapshot(ocap)
         log_audit(
             actor_id,
             "create_ocap" if creating else "update_ocap",
             "spc_ocap",
             ocap.id,
-            new_val={
-                "event_id": event.id,
-                "status": ocap.status,
-                "owner_id": ocap.owner_id,
-            },
+            old_val=old_snapshot,
+            new_val=new_snapshot,
         )
         db.session.commit()
         return ocap

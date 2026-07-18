@@ -86,9 +86,14 @@ def test_capa_step_update_requires_capa_edit_permission(client, db_session):
 
 @pytest.fixture
 def patrol_roles(db_session):
-    """patrol_editor 具備 patrol.edit；patrol_viewer 僅有 patrol.view。"""
+    """一般巡檢編輯與具 SPC 管理權的編輯角色。"""
     db_session.add(Role(code='patrol_editor', name='巡檢可編輯',
                         permissions={'patrol.edit': True, 'patrol.view': True}))
+    db_session.add(Role(code='patrol_spc_manager', name='巡檢 SPC 管理',
+                        permissions={
+                            'patrol.edit': True, 'patrol.view': True,
+                            'spc.view': True, 'spc.manage': True,
+                        }))
     db_session.add(Role(code='patrol_viewer', name='巡檢唯讀',
                         permissions={'patrol.view': True}))
     db_session.commit()
@@ -113,6 +118,11 @@ def test_patrol_exclusion_route_requires_patrol_edit_permission(client, db_sessi
     editor = _make_user(db_session, 'patrol_editor1', 'patrol_editor')
     resp = client.patch(f'/api/patrol-details/{detail.id}/exclusion',
                          headers=_headers(editor), json={'排除統計': True, '排除原因': '測試'})
+    assert resp.status_code == 403
+
+    manager = _make_user(db_session, 'patrol_spc_manager1', 'patrol_spc_manager')
+    resp = client.patch(f'/api/patrol-details/{detail.id}/exclusion',
+                         headers=_headers(manager), json={'排除統計': True, '排除原因': '測試'})
     assert resp.status_code != 403
 
 

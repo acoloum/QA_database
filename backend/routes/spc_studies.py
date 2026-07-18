@@ -7,7 +7,7 @@ from functools import wraps
 from flask import Blueprint, jsonify, request
 
 from ..extensions import db
-from ..models import SpcOcap
+from ..models import SpcLimitVersion, SpcOcap
 from ..services.spc_errors import SpcServiceError, SpcValidationError
 from ..services.spc_ocap_service import SpcOcapService
 from ..services.spc_study_service import SpcStudyService
@@ -70,6 +70,7 @@ def serialize_event(event):
         "chart_kind": event.chart_kind,
         "rule_code": event.rule_code,
         "point_index": event.point_index,
+        "source_point_key": event.source_point_key,
         "observed_value": event.observed_value,
         "status": event.status,
         "created_at": event.created_at,
@@ -97,9 +98,18 @@ def serialize_limit_version(limit):
 
 
 def serialize_version(version, *, include_samples=False):
+    monitoring_limit_id = (version.time_model_result or {}).get("limit_version_id")
+    monitoring_limit = (
+        db.session.get(SpcLimitVersion, monitoring_limit_id)
+        if monitoring_limit_id else None
+    )
     result = {
         "id": version.id,
         "study_id": version.study_id,
+        "source": version.study.source,
+        "study_type": version.study.study_type,
+        "process_stream_key": version.study.process_stream_key,
+        "filters": version.study.filters or {},
         "version_no": version.version_no,
         "method_version": version.method_version,
         "code_version": version.code_version,
@@ -118,6 +128,9 @@ def serialize_version(version, *, include_samples=False):
         "limit_versions": [
             serialize_limit_version(limit) for limit in version.limit_versions
         ],
+        "monitoring_limit": (
+            serialize_limit_version(monitoring_limit) if monitoring_limit else None
+        ),
     }
     if include_samples:
         result["samples"] = [{
@@ -195,7 +208,12 @@ def analyze_study(current_user):
     filters = body.get("filters") or {}
     if not source:
         raise SpcValidationError("SPC_SOURCE_REQUIRED", "必須指定 SPC 資料來源")
-    version = SpcStudyService.analyze(source, filters, current_user.id)
+    version = SpcStudyService.analyze(
+        source,
+        filters,
+        current_user.id,
+        study_type=body.get("study_type") or "retrospective",
+    )
     return _success(serialize_version(version, include_samples=True))
 
 

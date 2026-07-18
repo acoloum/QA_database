@@ -97,3 +97,4 @@ class SpcChartSet:
     variation: SpcChartSeries
     subgroup_sizes: tuple[int, ...]
     sigma_within: float
+    variation_source_pairs: tuple[Optional[Mapping[str, Any]], ...] = ()

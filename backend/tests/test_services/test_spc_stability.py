@@ -146,3 +146,17 @@ def test_variation_chart_out_of_control_makes_whole_study_unstable():
 def test_two_new_rules_not_in_default_set():
     assert "alternating_14" not in DEFAULT_STABILITY_RULES
     assert "eight_beyond_1s_both" not in DEFAULT_STABILITY_RULES
+
+
+def test_asymmetric_variation_chart_uses_separate_lower_zone_width():
+    result = evaluate_chart_stability(
+        values=[1.0, 1.0, 0.6, 0.6, 1.0],
+        cl=1.0,
+        ucl=2.0,
+        lcl=0.5,
+        chart_kind="variation",
+        enabled_rules=["two_of_three_beyond_2s"],
+    )
+
+    assert result["stable"] is False
+    assert result["violations"][0]["rule"] == "two_of_three_beyond_2s"

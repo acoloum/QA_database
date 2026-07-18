@@ -250,50 +250,6 @@ export const useSetMeasurementExclusion = () => {
     });
 };
 
-// 8. 管制界限凍結（AIAG-VDA SPC 2026 §9.4）
-export interface ControlLimitsKey {
-    vendor: string;
-    material: string;
-    spec: string;
-    field: string;
-}
-
-export const useFreezeLimits = () => {
-    const queryClient = useQueryClient();
-    return useMutation({
-        mutationFn: async (key: ControlLimitsKey & { note?: string }) =>
-            (await api.post('/control-limits', key)).data,
-        onSuccess: () => {
-            toast.success('管制界限已凍結');
-            queryClient.invalidateQueries({ queryKey: ['control-limits'] });
-            queryClient.invalidateQueries({ queryKey: ['shippingStats'] });
-        },
-        onError: (err: Error) => {
-            toast.error(`凍結失敗：${err.message}`);
-        },
-    });
-};
-
-export const useUnfreezeLimits = () => {
-    const queryClient = useQueryClient();
-    return useMutation({
-        mutationFn: async (key: ControlLimitsKey) => {
-            const params = new URLSearchParams({
-                vendor: key.vendor, material: key.material, spec: key.spec, field: key.field,
-            });
-            return (await api.delete(`/control-limits?${params.toString()}`)).data;
-        },
-        onSuccess: () => {
-            toast.success('已解除管制界限凍結');
-            queryClient.invalidateQueries({ queryKey: ['control-limits'] });
-            queryClient.invalidateQueries({ queryKey: ['shippingStats'] });
-        },
-        onError: (err: Error) => {
-            toast.error(`解除失敗：${err.message}`);
-        },
-    });
-};
-
 export const useExportShippingData = () => {
     return useMutation({
         mutationFn: async (params: ShippingSearchParams) => {

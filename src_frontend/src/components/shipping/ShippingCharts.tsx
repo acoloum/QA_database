@@ -12,7 +12,7 @@ import {
     Legend,
     Filler
 } from 'chart.js';
-import { buildSpcChartModel } from '../../utils/spcChartModel';
+import { buildSpcChartModel, mergeOngoingStudyForDisplay } from '../../utils/spcChartModel';
 import SpcDashboardPanel from '../spc/SpcDashboardPanel';
 import SpcStudyPanel from '../spc/SpcStudyPanel';
 import OutlierManagerModal from '../spc/OutlierManagerModal';
@@ -76,9 +76,13 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
         field: statsField, vendor, material, spec,
         start_date: startDate, end_date: endDate,
     }), [statsField, vendor, material, spec, startDate, endDate]);
+    const displayStatsData = useMemo(
+        () => mergeOngoingStudyForDisplay(typedStatsData, studyVersion),
+        [typedStatsData, studyVersion]
+    );
     const spcModel = useMemo(
-        () => buildSpcChartModel(typedStatsData, { showSpecLimits }),
-        [typedStatsData, showSpecLimits]
+        () => buildSpcChartModel(displayStatsData, { showSpecLimits }),
+        [displayStatsData, showSpecLimits]
     );
 
     const handleExportReport = () => {
@@ -89,7 +93,10 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
             spec,
             start_date: startDate,
             end_date: endDate,
-            study_version_id: studyVersion?.id,
+            study_version_id: (
+                studyVersion && studyVersion.process_stream_key === typedStatsData?.process_stream_key
+                    ? studyVersion.id : undefined
+            ),
         });
     };
 

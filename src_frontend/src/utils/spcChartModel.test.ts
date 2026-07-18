@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildSpcChartModel } from './spcChartModel';
+import { buildSpcChartModel, mergeOngoingStudyForDisplay } from './spcChartModel';
 import type { SpcChartData } from '../types';
 
 const statsData: SpcChartData = {
@@ -143,5 +143,81 @@ describe('buildSpcChartModel', () => {
     } as never);
     expect(backendSaysStable.analysis!.violations).toHaveLength(0);
     expect(backendSaysStable.rAnalysis!.violations).toHaveLength(0);
+  });
+
+  it('只有後端接受常態模型時才疊加常態曲線', () => {
+    const unconfirmed = buildSpcChartModel({
+      ...statsData,
+      distribution: {
+        model: null, label: '未確認', params: [], accepted: false,
+        normal_ok: false, unimodal: true, reason_code: 'UNCONFIRMED',
+        candidates: [], fit_method: null, alpha: 0.05,
+      },
+    });
+    const lognormal = buildSpcChartModel({
+      ...statsData,
+      distribution: {
+        model: 'lognormal', label: '對數常態', params: [], accepted: true,
+        normal_ok: false, unimodal: true, reason_code: null,
+        candidates: [], fit_method: 'validated', alpha: 0.05,
+      },
+    });
+
+    expect(unconfirmed.histogramData?.normalCurve).toEqual([]);
+    expect(lognormal.histogramData?.normalCurve).toEqual([]);
+  });
+
+  it('持續監控畫面以正式研究的界限與失控判定覆蓋即時預覽', () => {
+    const preview = {
+      ...statsData,
+      process_stream_key: 'stream-a',
+      data_hash: 'same-hash',
+      charts: {
+        ...statsData.charts!,
+        location: { ...statsData.charts!.location, ucl: [99, 99, 99] },
+      },
+    };
+    const ongoing = {
+      study_type: 'ongoing',
+      process_stream_key: 'stream-a',
+      data_hash: 'same-hash',
+      charts: {
+        ...statsData.charts!,
+        location: { ...statsData.charts!.location, ucl: [11, 11, 11] },
+      },
+      stability: { ...statsData.stability, stable: false },
+      distribution: statsData.distribution,
+      time_model: statsData.time_model,
+      capability: { available: false, reason: 'ongoing_monitoring' },
+      applicability: statsData.applicability,
+    };
+
+    const merged = mergeOngoingStudyForDisplay(preview as never, ongoing as never);
+
+    expect(merged?.charts?.location.ucl).toEqual([11, 11, 11]);
+    expect(merged?.stability?.stable).toBe(false);
+    expect(merged?.labels).toEqual(preview.labels);
+  });
+
+  it('資料雜湊改變時不把舊持續監控點值套到新預覽標籤', () => {
+    const preview = {
+      ...statsData,
+      process_stream_key: 'stream-a',
+      data_hash: 'new-hash',
+    };
+    const ongoing = {
+      study_type: 'ongoing',
+      process_stream_key: 'stream-a',
+      data_hash: 'old-hash',
+      charts: {
+        ...statsData.charts!,
+        location: { ...statsData.charts!.location, values: [99, 99, 99] },
+      },
+    };
+
+    const merged = mergeOngoingStudyForDisplay(preview as never, ongoing as never);
+
+    expect(merged).toBe(preview);
+    expect(merged?.charts?.location.values).toEqual(statsData.charts?.location.values);
   });
 });

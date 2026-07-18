@@ -51,6 +51,7 @@ def get_shipping_measurements(data_id):
 @shipping_bp.route('/api/measurements/<int:measurement_id>/exclusion', methods=['PATCH'])
 @auth_required
 @require_perm('shipping.edit')
+@require_perm('spc.manage')
 def set_measurement_exclusion(measurement_id):
     """標示/解除量測值離群排除（AIAG-VDA SPC 2026 §6.6）"""
     try:
@@ -111,12 +112,10 @@ def unfreeze_control_limits_route():
 
 @shipping_bp.route('/api/spc-report', methods=['GET'])
 @auth_required
+@require_perm('spc.view')
 def export_spc_report():
-    """匯出 SPC 統計分析報告 (Excel)，包含原始數據 + SPC 統計與圖表"""
+    """只由不可變研究版本匯出 SPC 報告，避免混入目前來源資料。"""
     try:
-        from openpyxl import load_workbook
-        from copy import copy
-
         field = request.args.get('field', '外徑')
         filters = {
             'vendor': request.args.get('vendor', ''),
@@ -133,56 +132,9 @@ def export_spc_report():
             actor_id = request.user.get('id') or request.user.get('user_id')
             version = SpcStudyService.analyze('shipping', filters, actor_id)
             version_id = version.id
-
-        # 1. 產生原始數據工作簿
-        raw_output = ShippingService.export_excel(request.args)
-        wb_main = load_workbook(raw_output)
-        # 將預設工作表重新命名為「原始數據」
-        ws_raw = wb_main.active
-        ws_raw.title = '原始數據'
-
-        # 2. 產生 SPC 報告工作簿
-        spc_output = SpcReportService.generate_version_report(version_id)
-        wb_spc = load_workbook(spc_output)
-
-        # 3. 將 SPC 報告的所有工作表複製到主工作簿
-        for sheet_name in wb_spc.sheetnames:
-            ws_src = wb_spc[sheet_name]
-            ws_dst = wb_main.create_sheet(title=sheet_name)
-
-            # 複製欄寬
-            for col_letter, dim in ws_src.column_dimensions.items():
-                ws_dst.column_dimensions[col_letter].width = dim.width
-
-            # 複製列高
-            for row_num, dim in ws_src.row_dimensions.items():
-                ws_dst.row_dimensions[row_num].height = dim.height
-
-            # 複製合併儲存格
-            for merged_range in ws_src.merged_cells.ranges:
-                ws_dst.merge_cells(str(merged_range))
-
-            # 複製儲存格內容與樣式
-            for row in ws_src.iter_rows():
-                for cell in row:
-                    new_cell = ws_dst.cell(row=cell.row, column=cell.column, value=cell.value)
-                    if cell.has_style:
-                        new_cell.font = copy(cell.font)
-                        new_cell.border = copy(cell.border)
-                        new_cell.fill = copy(cell.fill)
-                        new_cell.number_format = cell.number_format
-                        new_cell.protection = copy(cell.protection)
-                        new_cell.alignment = copy(cell.alignment)
-
-            # 複製圖表
-            for chart in ws_src._charts:
-                ws_dst.add_chart(chart)
-
-        # 4. 輸出合併後的工作簿
-        from io import BytesIO
-        output = BytesIO()
-        wb_main.save(output)
-        output.seek(0)
+        output = SpcReportService.generate_version_report(
+            version_id, expected_source='shipping', expected_filters=filters
+        )
 
         filename = f'出貨檢驗_SPC報告_{field}_{filters["material"] or "all"}.xlsx'
         return send_file(
@@ -192,6 +144,11 @@ def export_spc_report():
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
     except Exception as e:
+        from ..services.spc_errors import SpcServiceError
+        if isinstance(e, SpcServiceError):
+            return jsonify({
+                "success": False, "code": e.code, "message": e.message,
+            }), e.status_code
         from flask import current_app
         current_app.logger.exception("Shipping error: %s", str(e))
         return api_error(str(e), 500)

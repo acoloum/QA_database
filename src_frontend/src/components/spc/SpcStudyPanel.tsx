@@ -19,7 +19,7 @@ interface SpcStudyPanelProps {
   preview?: SpcChartData | null;
   version: SpcStudyResult | null;
   studyType?: 'retrospective' | 'ongoing';
-  onVersionChange: (version: SpcStudyResult) => void;
+  onVersionChange: (version: SpcStudyResult | null) => void;
 }
 
 const stabilityBadge = (label: string, stable: boolean | null | undefined) => (
@@ -29,7 +29,7 @@ const stabilityBadge = (label: string, stable: boolean | null | undefined) => (
 );
 
 const SpcStudyPanel = ({
-  source, filters, preview, version, studyType = 'retrospective', onVersionChange,
+  source, filters, preview, version: selectedVersion, studyType = 'retrospective', onVersionChange,
 }: SpcStudyPanelProps) => {
   const { hasPermission } = useAuth();
   const analyze = useAnalyzeSpcStudy();
@@ -41,16 +41,34 @@ const SpcStudyPanel = ({
   const saveOcap = useSaveSpcOcap();
   const { data: studies = [] } = useSpcStudies();
   const matchingStudy = studies.find(study =>
-    study.source === source && study.process_stream_key === preview?.process_stream_key);
+    study.source === source
+    && study.study_type === studyType
+    && study.process_stream_key === preview?.process_stream_key);
   const { data: savedStudy } = useSpcStudy(matchingStudy?.id ?? null);
+  const versionMatchesPreview = !selectedVersion || Boolean(
+    preview?.process_stream_key
+    && selectedVersion.process_stream_key === preview.process_stream_key
+    && (
+      selectedVersion.study_type !== 'ongoing'
+      || Boolean(preview.data_hash && selectedVersion.data_hash === preview.data_hash)
+    )
+  );
+  const version = versionMatchesPreview ? selectedVersion : null;
   const [modalAction, setModalAction] = useState<SpcWorkflowAction | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<SpcEventSummary | null>(null);
 
   useEffect(() => {
+    if (!versionMatchesPreview) {
+      onVersionChange(null);
+      return;
+    }
     if (version || !savedStudy?.versions?.length) return;
-    onVersionChange(savedStudy.versions[savedStudy.versions.length - 1]);
-  }, [onVersionChange, savedStudy, version]);
+    const latest = savedStudy.versions[savedStudy.versions.length - 1];
+    if (preview?.process_stream_key && latest.process_stream_key === preview.process_stream_key) {
+      onVersionChange(latest);
+    }
+  }, [onVersionChange, preview?.process_stream_key, savedStudy, version, versionMatchesPreview]);
 
   const canManage = hasPermission('spc.manage');
   const canApprove = hasPermission('spc.approve');
@@ -62,11 +80,17 @@ const SpcStudyPanel = ({
   const applicability = version?.applicability ?? preview?.applicability;
   const pending = submit.isPending || confirmTimeModel.isPending || approve.isPending
     || reject.isPending || retire.isPending;
-  const activeLimit = version?.limit_versions?.find(limit => limit.status === 'active');
-  const effectiveStudyType = matchingStudy?.study_type ?? studyType;
+  const activeLimit = version?.monitoring_limit
+    ?? version?.limit_versions?.find(limit => limit.status === 'active');
+  const effectiveStudyType = version?.study_type ?? matchingStudy?.study_type ?? studyType;
 
   const handleAnalyze = async () => {
-    const created = await analyze.mutateAsync({ source, filters });
+    const created = await analyze.mutateAsync({ source, filters, study_type: studyType });
+    onVersionChange(created);
+  };
+
+  const handleOngoingAnalyze = async () => {
+    const created = await analyze.mutateAsync({ source, filters, study_type: 'ongoing' });
     onVersionChange(created);
   };
 
@@ -121,13 +145,38 @@ const SpcStudyPanel = ({
         <SpcStudyWorkflowBar
           version={version}
           canView={canView}
-          canManage={canManage}
-          canApprove={canApprove}
+          canManage={canManage && effectiveStudyType === 'retrospective'}
+          canApprove={canApprove && effectiveStudyType === 'retrospective'}
           analyzing={analyze.isPending}
-          onAnalyze={handleAnalyze}
+          onAnalyze={effectiveStudyType === 'ongoing' ? handleOngoingAnalyze : handleAnalyze}
           onAction={setModalAction}
           onShowHistory={() => setShowHistory(true)}
         />
+
+        {canView && activeLimit && effectiveStudyType !== 'ongoing' && (
+          <div className="d-flex justify-content-end mt-2">
+            <Button
+              size="sm"
+              variant="outline-success"
+              disabled={analyze.isPending}
+              onClick={handleOngoingAnalyze}
+            >
+              以正式界限監控目前資料
+            </Button>
+          </div>
+        )}
+
+        {effectiveStudyType === 'ongoing' && (
+          <div className="d-flex justify-content-end mt-2">
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => onVersionChange(null)}
+            >
+              返回回溯基準
+            </Button>
+          </div>
+        )}
 
         {(stability || distribution || timeModel) && (
           <div className="spc-diagnostic-strip mt-3">
@@ -173,7 +222,7 @@ const SpcStudyPanel = ({
           show
           action={modalAction}
           source={source}
-          filters={filters}
+          filters={version.filters}
           version={version}
           pending={pending}
           onHide={() => setModalAction(null)}

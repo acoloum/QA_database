@@ -569,10 +569,14 @@ def test_get_spc_does_not_apply_legacy_frozen_limits(app, db_session):
         # sigma_within=r_cl/d2 唯一的變因，確保下方斷言真正隔離並驗證
         # d2 覆蓋邏輯本身，而非被 r_cl 的差異所混淆
         key = {"material": "6061", "spec": "10*2", "item": "外徑", "position": "前段"}
-        PatrolService.freeze_control_limits(key, {
-            "x_cl": 99.0, "x_ucl": 100.0, "x_lcl": 98.0,
-            "r_cl": 0.2, "r_ucl": 2.0, "r_lcl": 0, "avg_n": 5,
-        })
+        from backend.models import SpcControlLimit
+        db_session.add(SpcControlLimit(
+            source="patrol", vendor="", material=key["material"],
+            spec=key["spec"], field=key["item"], position=key["position"],
+            x_cl=99.0, x_ucl=100.0, x_lcl=98.0,
+            r_cl=0.2, r_ucl=2.0, r_lcl=0, avg_n=5,
+        ))
+        db_session.commit()
 
         frozen_result = PatrolService.get_spc({'item': '外徑', 'pos': '前段', 'mat': '6061', 'spec': '10*2'})
         assert frozen_result['limits_frozen'] is False

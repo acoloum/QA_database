@@ -13,6 +13,7 @@ vi.mock('react-chartjs-2', () => ({
 const buildSpcChartModelMock = vi.fn();
 
 vi.mock('../../utils/spcChartModel', () => ({
+  mergeOngoingStudyForDisplay: (data: unknown) => data,
   buildSpcChartModel: (...args: unknown[]) => buildSpcChartModelMock(...args),
 }));
 

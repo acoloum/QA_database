@@ -31,6 +31,7 @@ export interface SpcChartSet {
   variation: SpcChartSeries;
   subgroup_sizes: number[];
   sigma_within: number;
+  variation_source_pairs?: Array<Record<string, number[]> | null>;
 }
 
 export interface SpcStabilityViolation {
@@ -211,6 +212,7 @@ export interface SpcEventSummary {
   chart_kind: SpcChartKind;
   rule_code: string;
   point_index: number;
+  source_point_key?: string | null;
   observed_value: number | null;
   status: string;
   created_at: string;
@@ -237,6 +239,10 @@ export interface SpcLimitVersionSummary {
 export interface SpcStudyResult {
   id: number;
   study_id: number;
+  source: 'shipping' | 'patrol';
+  study_type: 'retrospective' | 'ongoing';
+  process_stream_key: string;
+  filters: Record<string, unknown>;
   version_no: number;
   method_version: string;
   code_version: string | null;
@@ -248,12 +254,13 @@ export interface SpcStudyResult {
   time_model: SpcTimeModel;
   capability: ProcessCapability;
   applicability: SpcApplicability;
-  status: 'draft' | 'submitted' | 'approved' | 'active' | 'retired' | 'rejected' | 'legacy_imported';
+  status: 'draft' | 'submitted' | 'approved' | 'active' | 'retired' | 'rejected' | 'superseded' | 'legacy_imported';
   audit_incomplete: boolean;
   created_by: number | null;
   created_at: string;
   samples?: SpcStudySample[];
   limit_versions?: SpcLimitVersionSummary[];
+  monitoring_limit?: SpcLimitVersionSummary | null;
 }
 
 export type SpcStudyVersionSummary = Omit<SpcStudyResult, 'samples'>;

@@ -46,6 +46,7 @@ def get_patrol_details_route(main_id):
 @patrol_bp.route('/api/patrol-details/<int:detail_id>/exclusion', methods=['PATCH'])
 @auth_required
 @require_perm('patrol.edit')
+@require_perm('spc.manage')
 def set_patrol_detail_exclusion_route(detail_id):
     """標示/解除巡檢量測明細離群排除（AIAG-VDA SPC 2026 §6.6）"""
     try:
@@ -161,24 +162,28 @@ def patrol_export():
         position = request.args.get('position', '')
         if item:
             from ..services.spc_report import SpcReportService
-            from ..services.spc_study_service import SpcStudyService
+            from ..services.spc_study_service import SpcStudyService, _require_permission
+
+            actor_id = request.user.get('id') or request.user.get('user_id')
+            _require_permission(actor_id, 'spc.view')
 
             version_id = request.args.get('study_version_id', type=int)
+            filters = {
+                'm_id': request.args.get('m_id'),
+                'op_id': request.args.get('op_id'),
+                'cust_id': request.args.get('cust_id'),
+                'mat': request.args.get('mat', request.args.get('material', '')),
+                'spec': request.args.get('spec', ''),
+                'item': item,
+                'pos': position,
+                's_date': request.args.get('s_date', request.args.get('start_date', '')),
+                'e_date': request.args.get('e_date', request.args.get('end_date', '')),
+            }
             if version_id is None:
-                filters = {
-                    'm_id': request.args.get('m_id'),
-                    'op_id': request.args.get('op_id'),
-                    'cust_id': request.args.get('cust_id'),
-                    'mat': request.args.get('mat', request.args.get('material', '')),
-                    'spec': request.args.get('spec', ''),
-                    'item': item,
-                    'pos': position,
-                    's_date': request.args.get('s_date', request.args.get('start_date', '')),
-                    'e_date': request.args.get('e_date', request.args.get('end_date', '')),
-                }
-                actor_id = request.user.get('id') or request.user.get('user_id')
                 version_id = SpcStudyService.analyze('patrol', filters, actor_id).id
-            output = SpcReportService.generate_version_report(version_id)
+            output = SpcReportService.generate_version_report(
+                version_id, expected_source='patrol', expected_filters=filters
+            )
             filename = f'巡檢數據_SPC_{item}_{position or "全段"}.xlsx'
         else:
             output = PatrolService.export_excel(request.args)
@@ -190,6 +195,11 @@ def patrol_export():
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
     except Exception as e:
+        from ..services.spc_errors import SpcServiceError
+        if isinstance(e, SpcServiceError):
+            return jsonify({
+                "success": False, "code": e.code, "message": e.message,
+            }), e.status_code
         return jsonify({"error": str(e)}), 500
 
 @patrol_bp.route('/api/patrol/import', methods=['POST', 'OPTIONS'])

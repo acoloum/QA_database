@@ -69,3 +69,29 @@ def test_report_rebuilds_from_saved_version_after_source_changes(app, db_session
         assert audit["完整篩選條件"]
         assert audit["規格快照"]
         assert audit["每組樣本數"] == "3, 3, 3, 3, 3"
+
+        chart_sheet = before["管制圖數據"]
+        headers = [cell.value for cell in chart_sheet[1]]
+        assert "S_LCL" in headers
+        lcl_column = headers.index("S_LCL") + 1
+        expected_lcls = version.chart_result["variation"]["lcl"]
+        assert [
+            chart_sheet.cell(row=index + 2, column=lcl_column).value
+            for index in range(len(expected_lcls))
+        ] == [round(value, 4) for value in expected_lcls]
+
+
+def test_report_never_recalculates_missing_saved_stability():
+    output = SpcReportService.generate_report({
+        "labels": ["A", "B", "C", "D", "E"],
+        "dates": ["2026-07-01"] * 5,
+        "avgs": [10.0, 10.1, 9.9, 10.0, 10.1],
+        "ranges": [0.2, 0.3, 0.2, 0.25, 0.2],
+        "all_values": [],
+        "x_cl": 10.0, "x_ucl": 10.5, "x_lcl": 9.5,
+        "r_cl": 0.2, "r_ucl": 0.5, "r_lcl": 0.05,
+        "stability": {},
+        "process_capability": {"available": False},
+    }, "外徑", {})
+
+    assert load_workbook(output)["WECO 異常清單"]["A2"].value == "無異常檢出"

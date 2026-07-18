@@ -59,6 +59,8 @@ def test_shipping_adapter_keeps_segmented_measurements_and_exclusion_snapshot(
             front.id, rear.id, excluded.id,
         ]
         assert subgroup.exclusion_snapshot[-1]["excluded"] is True
+        assert "exclusion_user_id" in subgroup.exclusion_snapshot[-1]
+        assert "excluded_at" in subgroup.exclusion_snapshot[-1]
         assert study_input.specification["LSL"] == 9.5
         assert study_input.specification["USL"] == 10.5
 
@@ -113,4 +115,3 @@ def test_shipping_process_stream_uses_every_supported_filter():
     for name in base:
         changed = canonical_process_stream("shipping", {**base, name: f"{base[name]}-不同"})
         assert changed.key != original.key, name
-

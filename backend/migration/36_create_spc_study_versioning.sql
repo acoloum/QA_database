@@ -116,12 +116,25 @@ CREATE TABLE IF NOT EXISTS "SPC事件" (
     "圖別" VARCHAR(20) NOT NULL,
     "規則代碼" VARCHAR(50) NOT NULL,
     "點序號" INTEGER NOT NULL,
+    "來源資料點鍵" VARCHAR(256),
     "觀測值" NUMERIC(18, 8),
     "狀態" VARCHAR(30) NOT NULL DEFAULT 'open',
     "建立時間" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_spc_event_rule_point
-        UNIQUE ("界限版本ID", "研究版本ID", "圖別", "規則代碼", "點序號")
+    CONSTRAINT uq_spc_event_source_rule
+        UNIQUE ("界限版本ID", "來源資料點鍵", "圖別", "規則代碼")
 );
+
+ALTER TABLE "SPC事件" ADD COLUMN IF NOT EXISTS "來源資料點鍵" VARCHAR(256);
+ALTER TABLE "SPC事件" DROP CONSTRAINT IF EXISTS uq_spc_event_rule_point;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'uq_spc_event_source_rule'
+    ) THEN
+        ALTER TABLE "SPC事件" ADD CONSTRAINT uq_spc_event_source_rule
+            UNIQUE ("界限版本ID", "來源資料點鍵", "圖別", "規則代碼");
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS "SPC異常處置" (
     "識別碼" SERIAL PRIMARY KEY,
@@ -151,6 +164,62 @@ CREATE TABLE IF NOT EXISTS "SPC軟體確效執行" (
     "執行者ID" INTEGER REFERENCES "使用者"("識別碼"),
     "執行時間" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 資料庫層防止繞過服務層修改或刪除 SPC 稽核證據；僅開放受控生命週期欄位。
+CREATE OR REPLACE FUNCTION spc_block_immutable_change()
+RETURNS TRIGGER AS $$
+DECLARE
+    old_evidence JSONB;
+    new_evidence JSONB;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'SPC 不可變證據禁止刪除：%', TG_TABLE_NAME;
+    END IF;
+
+    old_evidence := to_jsonb(OLD);
+    new_evidence := to_jsonb(NEW);
+    IF TG_TABLE_NAME = 'SPC研究版本' THEN
+        old_evidence := old_evidence - '狀態';
+        new_evidence := new_evidence - '狀態';
+    ELSIF TG_TABLE_NAME = 'SPC界限版本' THEN
+        old_evidence := old_evidence - '狀態' - '停用者ID' - '停用時間';
+        new_evidence := new_evidence - '狀態' - '停用者ID' - '停用時間';
+    ELSIF TG_TABLE_NAME = 'SPC事件' THEN
+        old_evidence := old_evidence - '狀態';
+        new_evidence := new_evidence - '狀態';
+    END IF;
+
+    IF old_evidence IS DISTINCT FROM new_evidence THEN
+        RAISE EXCEPTION 'SPC 不可變證據禁止原地修改：%', TG_TABLE_NAME;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_spc_study_version_immutable ON "SPC研究版本";
+CREATE TRIGGER trg_spc_study_version_immutable
+    BEFORE UPDATE OR DELETE ON "SPC研究版本"
+    FOR EACH ROW EXECUTE FUNCTION spc_block_immutable_change();
+
+DROP TRIGGER IF EXISTS trg_spc_study_sample_immutable ON "SPC研究樣本";
+CREATE TRIGGER trg_spc_study_sample_immutable
+    BEFORE UPDATE OR DELETE ON "SPC研究樣本"
+    FOR EACH ROW EXECUTE FUNCTION spc_block_immutable_change();
+
+DROP TRIGGER IF EXISTS trg_spc_limit_version_immutable ON "SPC界限版本";
+CREATE TRIGGER trg_spc_limit_version_immutable
+    BEFORE UPDATE OR DELETE ON "SPC界限版本"
+    FOR EACH ROW EXECUTE FUNCTION spc_block_immutable_change();
+
+DROP TRIGGER IF EXISTS trg_spc_event_immutable ON "SPC事件";
+CREATE TRIGGER trg_spc_event_immutable
+    BEFORE UPDATE OR DELETE ON "SPC事件"
+    FOR EACH ROW EXECUTE FUNCTION spc_block_immutable_change();
+
+DROP TRIGGER IF EXISTS trg_spc_ocap_delete_protected ON "SPC異常處置";
+CREATE TRIGGER trg_spc_ocap_delete_protected
+    BEFORE DELETE ON "SPC異常處置"
+    FOR EACH ROW EXECUTE FUNCTION spc_block_immutable_change();
 
 -- 舊界限沒有完整樣本、方法版本及核准軌跡，因此匯入為唯讀且不可直接啟用的版本。
 INSERT INTO "SPC研究" (

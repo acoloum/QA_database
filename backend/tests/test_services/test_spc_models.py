@@ -206,3 +206,55 @@ def test_migration_preserves_legacy_control_limit_table():
     assert 'DELETE FROM "SPC管制界限"' not in normalized
     assert "legacy_imported" in migration
     assert '"稽核不完整"' in migration
+    assert "spc_block_immutable_change" in migration
+    assert 'BEFORE UPDATE OR DELETE ON "SPC研究版本"' in migration
+    assert 'BEFORE UPDATE OR DELETE ON "SPC研究樣本"' in migration
+    assert 'BEFORE UPDATE OR DELETE ON "SPC界限版本"' in migration
+    assert 'BEFORE UPDATE OR DELETE ON "SPC事件"' in migration
+    assert 'BEFORE DELETE ON "SPC異常處置"' in migration
+
+
+def test_saved_spc_calculation_snapshot_rejects_orm_update(app, db_session):
+    with app.app_context():
+        user = _user(db_session)
+        _, version = _study_version(db_session, user)
+        version.chart_result = {"chart_type": "i_mr"}
+
+        with pytest.raises(ValueError, match="不可變"):
+            db_session.commit()
+        db_session.rollback()
+
+
+def test_spc_ocap_rejects_orm_delete(app, db_session):
+    with app.app_context():
+        user = _user(db_session, "ocap-delete-user")
+        study, version = _study_version(db_session, user)
+        limit = SpcLimitVersion(
+            study_version_id=version.id,
+            process_stream_key=study.process_stream_key,
+            characteristic=study.characteristic,
+            revision=1,
+            chart_type="xbar_s",
+            limits={},
+            status="active",
+            created_by=user.id,
+        )
+        db_session.add(limit)
+        db_session.flush()
+        event = SpcEvent(
+            limit_version_id=limit.id,
+            study_version_id=version.id,
+            chart_kind="location",
+            rule_code="beyond_limits",
+            point_index=0,
+        )
+        db_session.add(event)
+        db_session.flush()
+        ocap = SpcOcap(event_id=event.id, created_by=user.id)
+        db_session.add(ocap)
+        db_session.commit()
+
+        db_session.delete(ocap)
+        with pytest.raises(ValueError, match="不可變"):
+            db_session.commit()
+        db_session.rollback()

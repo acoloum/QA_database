@@ -4,10 +4,19 @@ from datetime import date
 
 import pytest
 
-from backend.models import AuditLog, Role, SpcLimitVersion, SpcStudyVersion, User
+import backend.services.spc_study_service as spc_study_module
+from backend.models import (
+    AuditLog,
+    Role,
+    SpcEvent,
+    SpcLimitVersion,
+    SpcStudy,
+    SpcStudyVersion,
+    User,
+)
 from backend.services.spc_contracts import SpcStudyInput, SpcSubgroup
 from backend.services.spc_errors import SpcConflict, SpcForbidden, SpcValidationError
-from backend.services.spc_study_service import ADAPTERS, SpcStudyService
+from backend.services.spc_study_service import ADAPTERS, SpcStudyService, _calculate_results
 
 
 def _role(db_session, code, permissions):
@@ -48,18 +57,44 @@ def _input(data_hash="a" * 64, shift=0.0):
     )
 
 
-def _make_approvable(version):
-    version.time_model_result = {
+def _constant_input(data_hash="d" * 64, value=12.0):
+    result = _input(data_hash)
+    return SpcStudyInput(
+        source=result.source,
+        filters=result.filters,
+        process_stream_key=result.process_stream_key,
+        characteristic=result.characteristic,
+        subgroups=tuple(
+            SpcSubgroup(
+                key=group.key,
+                timestamp=group.timestamp,
+                values=(value, value),
+                record_ids=group.record_ids,
+                measurement_ids=group.measurement_ids,
+                exclusion_snapshot=group.exclusion_snapshot,
+            )
+            for group in result.subgroups
+        ),
+        specification=result.specification,
+        data_hash=data_hash,
+    )
+
+
+def _approvable_results(study_input):
+    results = _calculate_results(study_input)
+    results["time_model_result"] = {
         "candidate": "A1", "model": "A1", "confirmed": True,
         "statistically_controlled": True,
     }
-    version.stability_result = {
+    results["stability_result"] = {
         "evaluated": True, "stable": True,
         "location": {"stable": True, "violations": []},
         "variation": {"stable": True, "violations": []},
     }
-    version.applicability_result = {"applicable": True, "chart_type": "xbar_r"}
-    version.audit_incomplete = False
+    results["applicability_result"] = {
+        "applicable": True, "chart_type": "xbar_r"
+    }
+    return results
 
 
 def test_analyze_adds_immutable_version_and_keeps_full_sample_trace(
@@ -110,9 +145,8 @@ def test_submit_approve_and_activate_writes_audit_and_limit(
         manager = _user(db_session, "manager-flow", "qa_supervisor")
         approver = _user(db_session, "approver-flow", "qc_manager")
         monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: _input())
+        monkeypatch.setattr(spc_study_module, "_calculate_results", _approvable_results)
         version = SpcStudyService.analyze("shipping", {}, manager.id)
-        _make_approvable(version)
-        db_session.commit()
 
         submitted = SpcStudyService.submit(version.id, manager.id, reason="建立正式基準")
         active_limit = SpcStudyService.approve_and_activate(
@@ -131,24 +165,20 @@ def test_submit_approve_and_activate_writes_audit_and_limit(
 @pytest.mark.parametrize(
     ("mutation", "expected_code"),
     [
-        (lambda version: setattr(
-            version, "time_model_result",
-            {**version.time_model_result, "confirmed": False},
-        ),
+        (lambda results: results.update(time_model_result={
+            **results["time_model_result"], "confirmed": False,
+        }),
          "TIME_MODEL_UNCONFIRMED"),
-        (lambda version: setattr(
-            version, "stability_result",
-            {
-                **version.stability_result,
+        (lambda results: results.update(stability_result={
+                **results["stability_result"],
                 "variation": {
-                    **version.stability_result["variation"], "stable": False,
+                    **results["stability_result"]["variation"], "stable": False,
                 },
-            },
-        ),
+            }),
          "PROCESS_UNSTABLE"),
-        (lambda version: setattr(version, "applicability_result", {"applicable": False}),
+        (lambda results: results.update(applicability_result={"applicable": False}),
          "CHART_NOT_APPLICABLE"),
-        (lambda version: setattr(version, "audit_incomplete", True),
+        (lambda results: results.update(audit_incomplete=True),
          "AUDIT_INCOMPLETE"),
     ],
 )
@@ -161,12 +191,13 @@ def test_approval_gate_rejects_unqualified_study(
         manager = _user(db_session, f"manager-{expected_code}", "qa_supervisor")
         approver = _user(db_session, f"approver-{expected_code}", "qc_manager")
         monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: _input())
+        def gated_results(study_input):
+            results = _approvable_results(study_input)
+            mutation(results)
+            return results
+        monkeypatch.setattr(spc_study_module, "_calculate_results", gated_results)
         version = SpcStudyService.analyze("shipping", {}, manager.id)
-        _make_approvable(version)
-        db_session.commit()
         SpcStudyService.submit(version.id, manager.id, reason="送審")
-        mutation(version)
-        db_session.commit()
 
         with pytest.raises(SpcValidationError) as exc:
             SpcStudyService.approve_and_activate(version.id, approver.id, reason="核准")
@@ -180,9 +211,8 @@ def test_manage_permission_cannot_approve(app, db_session, monkeypatch):
         _role(db_session, "qa_supervisor", {"spc.manage": True})
         manager = _user(db_session, "manager-only", "qa_supervisor")
         monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: _input())
+        monkeypatch.setattr(spc_study_module, "_calculate_results", _approvable_results)
         version = SpcStudyService.analyze("shipping", {}, manager.id)
-        _make_approvable(version)
-        db_session.commit()
         SpcStudyService.submit(version.id, manager.id, reason="送審")
 
         with pytest.raises(SpcForbidden) as exc:
@@ -198,28 +228,169 @@ def test_confirm_time_model_recomputes_capability_indices(
         _role(db_session, "qa_supervisor", {"spc.manage": True})
         manager = _user(db_session, "manager-confirm-model", "qa_supervisor")
         monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: _input())
+        def confirmable_results(study_input):
+            results = _approvable_results(study_input)
+            results["time_model_result"] = {
+                "candidate": "A1", "confirmed": False,
+                "statistically_controlled": True,
+            }
+            results["distribution_result"] = {
+                "model": "normal", "label": "常態分布", "params": (10.02, 0.15),
+                "accepted": True, "normal_ok": True, "unimodal": True,
+                "reason_code": None, "candidates": [], "fit_method": "validated_test",
+                "alpha": 0.05,
+            }
+            return results
+        monkeypatch.setattr(spc_study_module, "_calculate_results", confirmable_results)
         version = SpcStudyService.analyze("shipping", {}, manager.id)
-        version.time_model_result = {
-            "candidate": "A1", "confirmed": False,
-            "statistically_controlled": True,
-        }
-        version.stability_result = {
-            "evaluated": True, "stable": True,
-            "location": {"stable": True, "violations": []},
-            "variation": {"stable": True, "violations": []},
-        }
-        version.distribution_result = {
-            "model": "normal", "label": "常態分布", "params": (10.02, 0.15),
-            "accepted": True, "normal_ok": True, "unimodal": True,
-            "reason_code": None, "candidates": [], "fit_method": "validated_test",
-            "alpha": 0.05,
-        }
-        db_session.commit()
 
         confirmed = SpcStudyService.confirm_time_model(
             version.id, manager.id, model="A1", reason="工程與統計證據一致"
         )
 
+        assert confirmed.id != version.id
+        assert confirmed.version_no == 2
+        assert db_session.get(SpcStudyVersion, version.id).time_model_result["confirmed"] is False
+        assert len(confirmed.samples) == len(version.samples)
         assert confirmed.capability_result["cpk"] is not None
         assert confirmed.capability_result["time_model"]["confirmed"] is True
         assert confirmed.capability_result["applicable"] == "capability"
+
+
+def test_ongoing_analysis_uses_active_limits_and_creates_formal_events(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        _role(db_session, "qa_supervisor", {"spc.manage": True, "spc.view": True})
+        manager = _user(db_session, "manager-ongoing", "qa_supervisor")
+        inputs = iter((
+            _input(),
+            _input("b" * 64, shift=2.0),
+            _input("b" * 64, shift=2.0),
+        ))
+        monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: next(inputs))
+
+        baseline = SpcStudyService.analyze("shipping", {}, manager.id)
+        limit = SpcLimitVersion(
+            study_version_id=baseline.id,
+            process_stream_key=baseline.study.process_stream_key,
+            characteristic=baseline.study.characteristic,
+            revision=1,
+            chart_type="xbar_r",
+            limits={
+                "location": {"cl": [10.0] * 5, "ucl": [10.6] * 5, "lcl": [9.4] * 5},
+                "variation": {"cl": [0.4] * 5, "ucl": [1.2] * 5, "lcl": [0.0] * 5},
+                "subgroup_sizes": [2] * 5,
+            },
+            status="active",
+            created_by=manager.id,
+            approved_by=manager.id,
+        )
+        db_session.add(limit)
+        db_session.commit()
+
+        ongoing = SpcStudyService.analyze(
+            "shipping", {}, manager.id, study_type="ongoing"
+        )
+
+        assert ongoing.study.study_type == "ongoing"
+        assert ongoing.status == "active"
+        assert ongoing.study.status == "active"
+        assert ongoing.chart_result["location"]["cl"] == [10.0] * 5
+        assert ongoing.chart_result["location"]["ucl"] == [10.6] * 5
+        assert ongoing.stability_result["location"]["stable"] is False
+        assert SpcEvent.query.filter_by(
+            limit_version_id=limit.id, study_version_id=ongoing.id
+        ).count() >= 1
+        assert all(event.sample_id is not None for event in SpcEvent.query.all())
+
+        first_event_count = SpcEvent.query.count()
+        SpcStudyService.analyze("shipping", {}, manager.id, study_type="ongoing")
+        assert SpcEvent.query.count() == first_event_count
+
+
+def test_ongoing_analysis_preserves_approved_rules_and_accepts_zero_variation(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        _role(db_session, "qa_supervisor", {"spc.manage": True, "spc.view": True})
+        manager = _user(db_session, "manager-rules", "qa_supervisor")
+        inputs = iter((_input(), _constant_input()))
+        monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: next(inputs))
+
+        def baseline_results(study_input):
+            results = _calculate_results(study_input)
+            results["stability_result"]["rules_used"] = ["beyond_limits"]
+            results["stability_result"]["location"]["rules_used"] = ["beyond_limits"]
+            results["stability_result"]["variation"]["rules_used"] = ["beyond_limits"]
+            return results
+
+        monkeypatch.setattr(spc_study_module, "_calculate_results", baseline_results)
+
+        baseline = SpcStudyService.analyze("shipping", {}, manager.id)
+        limit = SpcLimitVersion(
+            study_version_id=baseline.id,
+            process_stream_key=baseline.study.process_stream_key,
+            characteristic=baseline.study.characteristic,
+            revision=1,
+            chart_type="xbar_r",
+            limits={
+                "location": {"cl": [10.0] * 5, "ucl": [10.6] * 5, "lcl": [9.4] * 5},
+                "variation": {"cl": [0.4] * 5, "ucl": [1.2] * 5, "lcl": [0.1] * 5},
+                "subgroup_sizes": [2] * 5,
+            },
+            status="active",
+            created_by=manager.id,
+            approved_by=manager.id,
+        )
+        db_session.add(limit)
+        db_session.commit()
+
+        ongoing = SpcStudyService.analyze(
+            "shipping", {}, manager.id, study_type="ongoing"
+        )
+
+        assert ongoing.chart_result["variation"]["values"] == [0.0] * 5
+        assert ongoing.stability_result["rules_used"] == ["beyond_limits"]
+        assert ongoing.stability_result["variation"]["rules_used"] == ["beyond_limits"]
+
+
+def test_ongoing_analysis_rolls_back_events_when_audit_write_fails(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        _role(db_session, "qa_supervisor", {"spc.manage": True, "spc.view": True})
+        manager = _user(db_session, "manager-atomic", "qa_supervisor")
+        inputs = iter((_input(), _input("e" * 64, shift=2.0)))
+        monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: next(inputs))
+        baseline = SpcStudyService.analyze("shipping", {}, manager.id)
+        limit = SpcLimitVersion(
+            study_version_id=baseline.id,
+            process_stream_key=baseline.study.process_stream_key,
+            characteristic=baseline.study.characteristic,
+            revision=1,
+            chart_type="xbar_r",
+            limits={
+                "location": {"cl": [10.0] * 5, "ucl": [10.6] * 5, "lcl": [9.4] * 5},
+                "variation": {"cl": [0.4] * 5, "ucl": [1.2] * 5, "lcl": [0.0] * 5},
+                "subgroup_sizes": [2] * 5,
+            },
+            status="active",
+            created_by=manager.id,
+            approved_by=manager.id,
+        )
+        db_session.add(limit)
+        db_session.commit()
+        version_count = SpcStudyVersion.query.count()
+
+        monkeypatch.setattr(
+            spc_study_module, "log_audit",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("audit failed")),
+        )
+        with pytest.raises(RuntimeError, match="audit failed"):
+            SpcStudyService.analyze("shipping", {}, manager.id, study_type="ongoing")
+        db_session.rollback()
+
+        assert SpcStudyVersion.query.count() == version_count
+        assert SpcEvent.query.count() == 0
+        assert SpcStudy.query.filter_by(study_type="ongoing").count() == 0

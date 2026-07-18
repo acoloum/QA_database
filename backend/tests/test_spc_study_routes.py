@@ -1,8 +1,10 @@
 """SPC 共用研究 API 契約與權限測試。"""
 
 from datetime import date
+from io import BytesIO
 
 import pytest
+from openpyxl import load_workbook
 
 from backend.models import Role, SpcEvent, SpcLimitVersion, SpcOcap, User
 from backend.services.spc_contracts import SpcStudyInput, SpcSubgroup
@@ -78,6 +80,10 @@ def test_viewer_can_analyze_and_read_study_contract(
     payload = response.get_json()
     assert payload["success"] is True
     version = payload["data"]
+    assert version["source"] == "shipping"
+    assert version["study_type"] == "retrospective"
+    assert version["process_stream_key"] == "api-stream"
+    assert version["filters"]["field"] == "外徑"
     assert version["method_version"] == "2026.1"
     assert version["data_hash"] == "a" * 64
     assert version["charts"]["chart_type"] == "xbar_r"
@@ -194,3 +200,38 @@ def test_study_detail_exposes_limit_event_and_ocap_traceability(
     assert saved_limit["events"][0]["ocap"]["investigation_6m"] == {
         "machine": "壓力波動"
     }
+
+
+def test_spc_report_requires_view_permission(client, db_session, spc_roles):
+    user = _user(db_session, "report-no-spc", "no_spc")
+
+    response = client.get("/api/spc-report", headers=_headers(user))
+
+    assert response.status_code == 403
+
+
+def test_shipping_report_rejects_other_source_and_uses_only_saved_version(
+    client, db_session, spc_roles, monkeypatch
+):
+    viewer = _user(db_session, "report-viewer", "spc_viewer")
+    monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: _input())
+    analyzed = client.post(
+        "/api/spc/studies/analyze", headers=_headers(viewer),
+        json={"source": "shipping", "filters": {"field": "外徑"}},
+    ).get_json()["data"]
+
+    patrol_response = client.get(
+        f"/api/patrol/export?item=外徑&study_version_id={analyzed['id']}",
+        headers=_headers(viewer),
+    )
+    shipping_response = client.get(
+        "/api/spc-report?field=外徑&material=6061&spec=10*1*100"
+        f"&study_version_id={analyzed['id']}",
+        headers=_headers(viewer),
+    )
+
+    assert patrol_response.status_code == 422
+    assert shipping_response.status_code == 200
+    workbook = load_workbook(BytesIO(shipping_response.data))
+    assert "原始數據" not in workbook.sheetnames
+    assert "研究樣本" in workbook.sheetnames

@@ -9,14 +9,12 @@ from typing import Any, Dict, List, Optional
 
 from .spc_contracts import SpcChartSet
 
-# 預設精簡準則集（§9.2.2.1：避免同時套用多項準則）
-# 注意：此清單需與前端 src_frontend/src/utils/spcAnalysis.ts 的 DEFAULT_RULES 保持一致，
-# 避免前後端對「失控」的判定準則產生落差。
+# 預設精簡準則集（§9.2.2.1：避免同時套用多項準則）。本模組是正式判定
+# 的唯一權威；前端 spcAnalysis.ts 僅保留展示與測試工具，不得覆蓋此結果。
 DEFAULT_STABILITY_RULES = ["beyond_limits", "run_9_same_side", "trend_6"]
 
-# 手冊 §9.2.2 列舉的完整準則（Western Electric / Nelson 子集）
-# 需與前端 spcAnalysis.ts 的 analyzeWECO 8 條規則一一對應（含 alternating_14、
-# eight_beyond_1s_both），否則前端的對應規則會因後端 rules_used 從未包含而永遠不會觸發。
+# 手冊 §9.2.2 列舉的完整準則（Western Electric / Nelson 子集）。規則代碼是
+# API 與報表的受控契約；前端只顯示後端回傳的代碼與違規視窗。
 ALL_STABILITY_RULES = [
     "beyond_limits",           # 單點超出管制界限（±3σ）
     "two_of_three_beyond_2s",  # 連續3點中2點位於同側且超出2σ
@@ -77,7 +75,12 @@ def evaluate_chart_stability(
     if numeric_count < 5 or any(upper <= center for upper, center in zip(upper_limits, centers)):
         return result
 
-    sigmas = tuple((upper - center) / 3.0 for upper, center in zip(upper_limits, centers))
+    upper_sigmas = tuple(
+        (upper - center) / 3.0 for upper, center in zip(upper_limits, centers)
+    )
+    lower_sigmas = tuple(
+        (center - lower) / 3.0 for lower, center in zip(lower_limits, centers)
+    )
     violations: List[Dict[str, Any]] = []
     seen: set[tuple[int, str, str]] = set()
 
@@ -114,11 +117,11 @@ def evaluate_chart_stability(
             window = complete_window(start, index + 1)
             if window is not None:
                 above = sum(
-                    point_values[j] > centers[j] + 2 * sigmas[j]
+                    point_values[j] > centers[j] + 2 * upper_sigmas[j]
                     for j in range(start, index + 1)
                 )
                 below = sum(
-                    point_values[j] < centers[j] - 2 * sigmas[j]
+                    point_values[j] < centers[j] - 2 * lower_sigmas[j]
                     for j in range(start, index + 1)
                 )
                 if above >= 2 or below >= 2:
@@ -129,11 +132,11 @@ def evaluate_chart_stability(
             window = complete_window(start, index + 1)
             if window is not None:
                 above = sum(
-                    point_values[j] > centers[j] + sigmas[j]
+                    point_values[j] > centers[j] + upper_sigmas[j]
                     for j in range(start, index + 1)
                 )
                 below = sum(
-                    point_values[j] < centers[j] - sigmas[j]
+                    point_values[j] < centers[j] - lower_sigmas[j]
                     for j in range(start, index + 1)
                 )
                 if above >= 4 or below >= 4:
@@ -161,7 +164,9 @@ def evaluate_chart_stability(
             start = index - 14
             window = complete_window(start, index + 1)
             if window is not None and all(
-                abs(point_values[j] - centers[j]) <= sigmas[j]
+                centers[j] - lower_sigmas[j]
+                <= point_values[j]
+                <= centers[j] + upper_sigmas[j]
                 for j in range(start, index + 1)
             ):
                 add(index, "fifteen_within_1s", start)
@@ -182,7 +187,8 @@ def evaluate_chart_stability(
             window = complete_window(start, index + 1)
             if window is not None:
                 outside_zone_c = all(
-                    abs(point_values[j] - centers[j]) > sigmas[j]
+                    point_values[j] < centers[j] - lower_sigmas[j]
+                    or point_values[j] > centers[j] + upper_sigmas[j]
                     for j in range(start, index + 1)
                 )
                 has_above = any(point_values[j] > centers[j] for j in range(start, index + 1))

@@ -12,7 +12,7 @@ import {
     Legend,
     Filler
 } from 'chart.js';
-import { buildSpcChartModel } from '../../utils/spcChartModel';
+import { buildSpcChartModel, mergeOngoingStudyForDisplay } from '../../utils/spcChartModel';
 import SpcDashboardPanel from '../spc/SpcDashboardPanel';
 import SpcStudyPanel from '../spc/SpcStudyPanel';
 import PatrolOutlierManagerModal from '../spc/PatrolOutlierManagerModal';
@@ -67,7 +67,10 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
             spec,
             item: statsItem,
             pos: statsPos,
-            study_version_id: studyVersion?.id,
+            study_version_id: (
+                studyVersion && studyVersion.process_stream_key === typedStatsData?.process_stream_key
+                    ? studyVersion.id : undefined
+            ),
         });
     };
 
@@ -89,9 +92,13 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
         cust_id: customer, mat: material, spec, s_date: startDate, e_date: endDate,
     }), [statsItem, statsPos, machine, operator, customer, material, spec, startDate, endDate]);
 
+    const displayStatsData = useMemo(
+        () => mergeOngoingStudyForDisplay(typedStatsData, studyVersion),
+        [typedStatsData, studyVersion]
+    );
     const spcModel = useMemo(
-        () => buildSpcChartModel(typedStatsData, { showSpecLimits }),
-        [typedStatsData, showSpecLimits]
+        () => buildSpcChartModel(displayStatsData, { showSpecLimits }),
+        [displayStatsData, showSpecLimits]
     );
 
     // 記錄選單需去重：同一巡檢主檔可能對應多個組別，ids 陣列會重複同一 main_id

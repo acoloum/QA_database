@@ -12,6 +12,7 @@ interface ApiSuccess<T> {
 export interface AnalyzeSpcStudyInput {
   source: 'shipping' | 'patrol';
   filters: Record<string, unknown>;
+  study_type?: 'retrospective' | 'ongoing';
 }
 
 export interface SpcStudyActionInput {

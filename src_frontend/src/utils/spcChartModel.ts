@@ -10,6 +10,7 @@ import type {
   SpcChartType,
   SpcStability,
   SpcStabilityViolation,
+  SpcStudyResult,
   SpcViolation,
 } from '../types';
 import { generateHistogramBins, movingAverage, normalPDF } from './spcAnalysis';
@@ -59,6 +60,31 @@ export interface SpcChartModelOptions {
   /** 現場管制圖不預設顯示規格界限；回溯分析可由使用者開啟。 */
   showSpecLimits?: boolean;
 }
+
+export const mergeOngoingStudyForDisplay = (
+  preview: SpcChartData | null | undefined,
+  version: SpcStudyResult | null | undefined,
+): SpcChartData | null | undefined => {
+  if (
+    !preview || !version || version.study_type !== 'ongoing' || !version.charts
+    || !preview.process_stream_key
+    || version.process_stream_key !== preview.process_stream_key
+    || !preview.data_hash
+    || version.data_hash !== preview.data_hash
+  ) return preview;
+
+  return {
+    ...preview,
+    charts: version.charts,
+    stability: version.stability,
+    distribution: version.distribution,
+    time_model: version.time_model,
+    capability: version.capability,
+    process_capability: version.capability,
+    applicability: version.applicability,
+    study_version: version,
+  };
+};
 
 const CHART_LABELS: Record<SpcChartType, { location: string; variation: string }> = {
   xbar_s: { location: '平均值 X̄', variation: '標準差 S' },
@@ -188,7 +214,11 @@ export const buildSpcChartModel = (
     const totalArea = allValues.length * binWidth;
     histogramData = {
       bins,
-      normalCurve: bins.map(bin => normalPDF(bin.midpoint, allMean, allStdDev) * totalArea),
+      normalCurve: (
+        statsData.distribution?.accepted && statsData.distribution.model === 'normal'
+          ? bins.map(bin => normalPDF(bin.midpoint, allMean, allStdDev) * totalArea)
+          : []
+      ),
       allMean,
       allStdDev,
       usl: processCapability?.usl,

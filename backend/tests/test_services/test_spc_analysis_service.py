@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 
 from backend.services.spc_analysis_service import (
-    calculate_control_limits,
     calculate_cpk_trend,
     calculate_distribution_stats,
     calculate_process_capability,
@@ -25,35 +24,6 @@ def _accepted_normal_distribution(values):
         "alpha": 0.05,
         "n": len(values),
     }
-
-
-def test_calculate_control_limits_uses_baseline_subgroups():
-    result = calculate_control_limits(
-        avgs=[10, 11, 12, 13, 14, 15],
-        ranges=[1, 1.2, 1.1, 1.3, 1.2, 4.0],
-        subgroup_sizes=[5, 5, 5, 5, 5, 5],
-        baseline_limit=5,
-    )
-
-    assert result["baseline_count"] == 5
-    assert result["avg_n"] == 5
-    assert result["x_cl"] == 12
-    assert result["r_cl"] == pytest.approx(1.16)
-    assert result["d2"] == 2.326
-
-
-def test_calculate_control_limits_exposes_point_limits_for_unequal_n():
-    result = calculate_control_limits(
-        avgs=[10.0, 10.1, 9.9, 10.05, 9.95],
-        ranges=[0.2, 0.3, 0.25, 0.2, 0.35],
-        subgroup_sizes=[3, 4, 5, 3, 4],
-    )
-
-    assert result["variable_subgroup_size"] is True
-    assert len(result["x_ucls"]) == 5
-    assert result["x_ucls"][0] != result["x_ucls"][1]
-    assert result["x_ucls"][1] != result["x_ucls"][2]
-    assert result["r_cls"][0] != result["r_cls"][1]
 
 
 def test_process_capability_supports_two_sided_and_ppm():
@@ -235,16 +205,6 @@ def test_calculate_cpk_trend_groups_values_by_month():
     )
 
     assert result == [{"month": "2026-01", "cpk": result[0]["cpk"], "count": 10}]
-
-
-def test_control_limits_lcl_can_be_negative():
-    # 中心線接近 0 時 LCL 不得被箝制為 0（真圓度等特性統計上允許負 LCL）
-    result = calculate_control_limits(
-        avgs=[0.01, 0.02, 0.015, 0.01, 0.02],
-        ranges=[0.03, 0.04, 0.03, 0.04, 0.03],
-        subgroup_sizes=[5, 5, 5, 5, 5],
-    )
-    assert result["x_lcl"] < 0
 
 
 def test_capability_uses_percentile_method_for_non_normal():

@@ -91,6 +91,21 @@ def test_ongoing_event_sync_is_idempotent_and_ocap_keeps_full_record(
         assert ocap.effectiveness == "連續五組恢復穩定"
         assert first[0].status == "closed"
 
+        SpcOcapService.save_ocap(first[0].id, actor.id, {
+            "process_adjustment": "更換模具並調整壓力參數",
+            "effectiveness": "後續十組均維持穩定",
+            "status": "closed",
+        })
+        ocap_logs = AuditLog.query.filter_by(module="spc_ocap").order_by(
+            AuditLog.id
+        ).all()
+        assert ocap_logs[-1].old_value["process_adjustment"] == "更換模具並重新設定參數"
+        assert ocap_logs[-1].new_value["process_adjustment"] == "更換模具並調整壓力參數"
+        assert ocap_logs[-1].old_value["investigation_6m"] == {
+            "machine": ["模具磨耗"], "method": ["換模延遲"]
+        }
+        assert ocap_logs[-1].new_value["effectiveness"] == "後續十組均維持穩定"
+
 
 def test_retrospective_study_does_not_open_formal_event(app, db_session):
     with app.app_context():

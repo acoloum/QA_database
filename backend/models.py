@@ -1,6 +1,7 @@
 
 from datetime import date, datetime, timezone
 from .extensions import db
+from sqlalchemy import event, inspect
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -456,8 +457,8 @@ class SpcEvent(db.Model):
     __tablename__ = 'SPC事件'
     __table_args__ = (
         db.UniqueConstraint(
-            '界限版本ID', '研究版本ID', '圖別', '規則代碼', '點序號',
-            name='uq_spc_event_rule_point',
+            '界限版本ID', '來源資料點鍵', '圖別', '規則代碼',
+            name='uq_spc_event_source_rule',
         ),
     )
 
@@ -474,6 +475,7 @@ class SpcEvent(db.Model):
     chart_kind = db.Column('圖別', db.String(20), nullable=False)
     rule_code = db.Column('規則代碼', db.String(50), nullable=False)
     point_index = db.Column('點序號', db.Integer, nullable=False)
+    source_point_key = db.Column('來源資料點鍵', db.String(256), nullable=True)
     observed_value = db.Column('觀測值', db.Numeric(18, 8), nullable=True)
     status = db.Column('狀態', db.String(30), nullable=False, default='open')
     created_at = db.Column(
@@ -1192,3 +1194,39 @@ class ThermocoupleCalPoint(db.Model):
     __table_args__ = (
         db.Index('idx_thermocouple_cal', '熱電偶ID', '標準溫度'),
     )
+
+
+# SPC 計算證據採 append-only。狀態欄位可依生命週期轉換，但已保存的輸入、
+# 計算結果、界限與事件識別內容不得由 ORM 原地覆寫或刪除。
+_SPC_MUTABLE_FIELDS = {
+    SpcStudyVersion: {"status"},
+    SpcStudySample: set(),
+    SpcLimitVersion: {"status", "retired_by", "retired_at"},
+    SpcEvent: {"status"},
+}
+
+
+def _block_spc_immutable_update(_mapper, _connection, target):
+    state = inspect(target)
+    allowed = _SPC_MUTABLE_FIELDS[type(target)]
+    changed = {
+        attribute.key
+        for attribute in state.mapper.column_attrs
+        if attribute.key not in allowed
+        and state.attrs[attribute.key].history.has_changes()
+    }
+    if changed:
+        names = "、".join(sorted(changed))
+        raise ValueError(f"SPC 不可變證據禁止原地修改：{names}")
+
+
+def _block_spc_immutable_delete(_mapper, _connection, target):
+    raise ValueError(f"SPC 不可變證據禁止刪除：{type(target).__name__}")
+
+
+for _spc_model in _SPC_MUTABLE_FIELDS:
+    event.listen(_spc_model, "before_update", _block_spc_immutable_update)
+    event.listen(_spc_model, "before_delete", _block_spc_immutable_delete)
+
+# OCAP 內容允許由受控服務逐步補充，但既有處置證據不得刪除。
+event.listen(SpcOcap, "before_delete", _block_spc_immutable_delete)

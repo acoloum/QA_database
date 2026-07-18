@@ -7,10 +7,10 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.chart import LineChart, BarChart, Reference
 from openpyxl.chart.layout import Layout, ManualLayout
-from .spc_stability import evaluate_stability, RULE_LABELS
+from .spc_stability import RULE_LABELS
 from ..extensions import db
 from ..models import SpcStudyVersion
-from .spc_errors import SpcNotFound
+from .spc_errors import SpcNotFound, SpcValidationError
 
 
 class SpcReportService:
@@ -144,12 +144,39 @@ class SpcReportService:
         }
 
     @staticmethod
-    def generate_version_report(version_id: int) -> BytesIO:
+    def generate_version_report(
+        version_id: int,
+        *,
+        expected_source: str | None = None,
+        expected_filters: dict | None = None,
+    ) -> BytesIO:
         """由已保存研究版本重建 Excel，不讀取目前來源資料。"""
 
         version = db.session.get(SpcStudyVersion, version_id)
         if version is None:
             raise SpcNotFound("SPC_STUDY_VERSION_NOT_FOUND", "找不到 SPC 研究版本")
+        if expected_source is not None and version.study.source != expected_source:
+            raise SpcValidationError(
+                "SPC_REPORT_SOURCE_MISMATCH", "研究版本不屬於目前匯出頁面"
+            )
+        if expected_filters is not None:
+            def normalize(values):
+                result = {}
+                for key, value in sorted(values.items()):
+                    if value is None:
+                        result[key] = ""
+                    elif key in {"m_id", "op_id", "cust_id"} and str(value).isdigit():
+                        result[key] = int(value)
+                    elif hasattr(value, "isoformat"):
+                        result[key] = value.isoformat()
+                    else:
+                        result[key] = value
+                return result
+            if normalize(version.study.filters or {}) != normalize(expected_filters):
+                raise SpcValidationError(
+                    "SPC_REPORT_FILTER_MISMATCH",
+                    "研究版本的完整篩選條件與目前匯出條件不一致",
+                )
         return SpcReportService.generate_report(
             SpcReportService._stats_from_version(version),
             version.study.characteristic,
@@ -316,6 +343,7 @@ class SpcReportService:
             ("X̄ 管制下限 (LCL)", stats_data.get('x_lcl', 0)),
             (f"{variation_label} 中心線", stats_data.get('r_cl')),
             (f"{variation_label} 管制上限 (UCL)", stats_data.get('r_ucl')),
+            (f"{variation_label} 管制下限 (LCL)", stats_data.get('r_lcl')),
         ]
         for col_idx, h in enumerate(["管制項目", "數值"], 1):
             cell = ws.cell(row=row, column=col_idx, value=h)
@@ -479,6 +507,7 @@ class SpcReportService:
             "序號", "標籤", "日期", "位置統計量",
             f"變異統計量 ({variation_label})", "UCL", "CL", "LCL",
             f"{variation_label}_UCL", f"{variation_label}_CL",
+            f"{variation_label}_LCL",
         ]
         for col_idx, h in enumerate(data_headers, 1):
             cell = ws2.cell(row=1, column=col_idx, value=h)
@@ -500,6 +529,7 @@ class SpcReportService:
         x_lcls = stats_data.get('x_lcls') or [x_lcl] * len(avgs)
         r_ucls = stats_data.get('r_ucls') or [r_ucl] * len(avgs)
         r_cls = stats_data.get('r_cls') or [r_cl] * len(avgs)
+        r_lcls = stats_data.get('r_lcls') or [stats_data.get('r_lcl')] * len(avgs)
 
         # USL/LSL columns if available
         has_spec_limits = pc.get('available') and pc.get('usl') is not None and pc.get('lsl') is not None
@@ -523,6 +553,9 @@ class SpcReportService:
             point_x_lcl = x_lcls[i] if i < len(x_lcls) else x_lcl
             point_r_ucl = r_ucls[i] if i < len(r_ucls) else r_ucl
             point_r_cl = r_cls[i] if i < len(r_cls) else r_cl
+            point_r_lcl = (
+                r_lcls[i] if i < len(r_lcls) else stats_data.get('r_lcl')
+            )
             if (
                 point_x_ucl is not None and point_x_lcl is not None
                 and (avgs[i] > point_x_ucl or avgs[i] < point_x_lcl)
@@ -536,7 +569,10 @@ class SpcReportService:
             cell_range.border = thin_border
             if (
                 i < len(ranges) and ranges[i] is not None
-                and point_r_ucl is not None and ranges[i] > point_r_ucl
+                and (
+                    (point_r_ucl is not None and ranges[i] > point_r_ucl)
+                    or (point_r_lcl is not None and ranges[i] < point_r_lcl)
+                )
             ):
                 cell_range.fill = bad_fill
             # Control limit columns for chart series
@@ -545,10 +581,11 @@ class SpcReportService:
             ws2.cell(row=r, column=8, value=round(point_x_lcl, 4) if point_x_lcl is not None else None)
             ws2.cell(row=r, column=9, value=round(point_r_ucl, 4) if point_r_ucl is not None else None)
             ws2.cell(row=r, column=10, value=round(point_r_cl, 4) if point_r_cl is not None else None)
+            ws2.cell(row=r, column=11, value=round(point_r_lcl, 4) if point_r_lcl is not None else None)
 
             if has_spec_limits:
-                ws2.cell(row=r, column=11, value=round(pc['usl'], 4))
-                ws2.cell(row=r, column=12, value=round(pc['lsl'], 4))
+                ws2.cell(row=r, column=12, value=round(pc['usl'], 4))
+                ws2.cell(row=r, column=13, value=round(pc['lsl'], 4))
 
         for col_idx in range(1, 13):
             ws2.column_dimensions[get_column_letter(col_idx)].width = 15
@@ -596,14 +633,8 @@ class SpcReportService:
         weco_row = 2
         if len(avgs) > 0:
             saved_stability = stats_data.get('stability') or {}
-            x_stability = saved_stability.get('location') or (
-                evaluate_stability(avgs, x_cl, x_ucl, x_lcl)
-                if None not in (x_cl, x_ucl, x_lcl) else {"violations": []}
-            )
-            r_stability = saved_stability.get('variation') or (
-                evaluate_stability(ranges, r_cl, r_ucl, 0)
-                if None not in (r_cl, r_ucl) else {"violations": []}
-            )
+            x_stability = saved_stability.get('location') or {"violations": []}
+            r_stability = saved_stability.get('variation') or {"violations": []}
 
             def _stability_to_rows(stability_result, chart_type, values, point_labels):
                 """將 evaluate_stability 的違規清單轉為報告列（保留原欄位結構）。
@@ -680,8 +711,8 @@ class SpcReportService:
 
             # Add USL/LSL if available
             if has_spec_limits:
-                usl_data = Reference(ws2, min_col=11, min_row=1, max_row=data_count + 1)
-                lsl_data = Reference(ws2, min_col=12, min_row=1, max_row=data_count + 1)
+                usl_data = Reference(ws2, min_col=12, min_row=1, max_row=data_count + 1)
+                lsl_data = Reference(ws2, min_col=13, min_row=1, max_row=data_count + 1)
                 xbar_chart.add_data(usl_data, titles_from_data=True)
                 xbar_chart.add_data(lsl_data, titles_from_data=True)
 
@@ -739,10 +770,12 @@ class SpcReportService:
             r_data = Reference(ws2, min_col=5, min_row=1, max_row=data_count + 1)
             r_ucl_ref = Reference(ws2, min_col=9, min_row=1, max_row=data_count + 1)
             r_cl_ref = Reference(ws2, min_col=10, min_row=1, max_row=data_count + 1)
+            r_lcl_ref = Reference(ws2, min_col=11, min_row=1, max_row=data_count + 1)
 
             r_chart.add_data(r_data, titles_from_data=True)
             r_chart.add_data(r_ucl_ref, titles_from_data=True)
             r_chart.add_data(r_cl_ref, titles_from_data=True)
+            r_chart.add_data(r_lcl_ref, titles_from_data=True)
             r_chart.set_categories(cats)
 
             s_r = r_chart.series[0]
@@ -757,6 +790,11 @@ class SpcReportService:
             s_r_cl = r_chart.series[2]
             s_r_cl.graphicalProperties.line.solidFill = "00B050"
             s_r_cl.graphicalProperties.line.width = 15000
+
+            s_r_lcl = r_chart.series[3]
+            s_r_lcl.graphicalProperties.line.solidFill = "FF0000"
+            s_r_lcl.graphicalProperties.line.dashStyle = "dash"
+            s_r_lcl.graphicalProperties.line.width = 15000
 
             # 調整 R 圖表位置（從 A50 改為 A30，與 X-bar 圖表並排）
             ws_chart.add_chart(r_chart, "A30")
