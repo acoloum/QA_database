@@ -25,3 +25,6 @@ backend/scripts/spc_baseline.json
 # 資料庫備份檔
 backups/
 .superpowers/
+
+# Codex 功能分支隔離工作樹
+.worktrees/
