@@ -29,8 +29,8 @@ def test_freeze_query_and_unfreeze_control_limits(db_session, setup_data):
     assert ShippingService.get_frozen_limits(key) is None
 
 
-def test_get_stats_applies_frozen_limits(db_session, setup_data):
-    """已凍結的管制界限應覆蓋 get_stats 重新計算的結果，且 limits_frozen 標記為 True。"""
+def test_get_stats_ignores_legacy_frozen_limits(db_session, setup_data):
+    """舊界限保留供追溯，但不得覆蓋 2026 共用引擎結果。"""
     payload = {
         '檢驗日期': '2026-07-17', '檢驗人員姓名': 'Test Inspector',
         '廠商中文名稱': 'Test Vendor', '檢驗規格': '10*2', '材質': 'CTRL-MAT',
@@ -50,16 +50,14 @@ def test_get_stats_applies_frozen_limits(db_session, setup_data):
     ShippingService.freeze_control_limits(key, frozen_limits, note="測試凍結")
 
     stats_after = ShippingService.get_stats(key)
-    assert stats_after["limits_frozen"] is True
-    assert stats_after["x_cl"] == 999.0
-    assert stats_after["x_ucl"] == 1000.0
+    assert stats_after["limits_frozen"] is False
+    assert stats_after["x_cl"] == stats_before["x_cl"]
+    assert stats_after["x_ucl"] == stats_before["x_ucl"]
+    assert stats_after["data_hash"] == stats_before["data_hash"]
 
 
-def test_refreezing_an_already_frozen_key_captures_fresh_data(db_session, setup_data):
-    """§9.4 回歸測試：對已凍結的 key 再次執行凍結流程，必須反映「目前」重新計算
-    的數值，而非讀回舊的凍結值（否則等同流程變更後仍讀不到最新資料的靜默失敗）。
-    模擬 freeze_control_limits_route 的實際呼叫方式：
-    ShippingService.get_stats(key, skip_frozen_limits=True)。"""
+def test_source_change_updates_hash_even_when_legacy_limit_exists(db_session, setup_data):
+    """來源資料變更必須改變雜湊；舊界限存在與否不影響即時結果。"""
     key = {"vendor": "Test Vendor", "material": "CTRL-MAT-REFREEZE", "spec": "20*2", "field": "外徑"}
 
     # 建立 5 筆基準資料，外徑量測平均皆為 10.0（構成初始基準期）
@@ -74,15 +72,12 @@ def test_refreezing_an_already_frozen_key_captures_fresh_data(db_session, setup_
             },
         })
 
-    # 第一次凍結：模擬凍結路由（略過既有凍結值，取得依當下資料重新計算的數值）
     stats_first = ShippingService.get_stats(key, skip_frozen_limits=True)
-    assert round(stats_first["x_cl"], 4) == 10.0
-    limits_first = {k: stats_first[k] for k in ("x_cl", "x_ucl", "x_lcl", "r_cl", "r_ucl", "r_lcl")}
-    limits_first["avg_n"] = stats_first["avg_subgroup_size"]
-    ShippingService.freeze_control_limits(key, limits_first, note="第一次凍結")
-
-    frozen_first = ShippingService.get_frozen_limits(key)
-    assert round(frozen_first["x_cl"], 4) == 10.0
+    assert stats_first["applicability"]["applicable"] is False
+    ShippingService.freeze_control_limits(key, {
+        "x_cl": 99.0, "x_ucl": 100.0, "x_lcl": 98.0,
+        "r_cl": 1.0, "r_ucl": 2.0, "r_lcl": 0.0, "avg_n": 2,
+    }, note="舊版資料")
 
     # 新增一筆製程明顯偏移的資料（平均 20.0），代表已記錄在案的製程變更
     ShippingService.save_data({
@@ -95,32 +90,14 @@ def test_refreezing_an_already_frozen_key_captures_fresh_data(db_session, setup_
         },
     })
 
-    # 修正前的臭蟲：一般查詢（未 skip）在 key 已凍結時，仍會讀回舊的凍結值，
-    # 即使底層資料已經改變——這是預期行為（畫面顯示應維持凍結值直到重新凍結）。
-    stats_plain_while_frozen = ShippingService.get_stats(key)
-    assert stats_plain_while_frozen["limits_frozen"] is True
-    assert round(stats_plain_while_frozen["x_cl"], 4) == 10.0
-
-    # 但凍結路由重新凍結時必須拿到「當下依全部 6 筆重新計算」的數值，而非
-    # 讀回步驟一凍結的 10.0（這正是先前造成靜默失敗的臭蟲）
-    expected_x_cl = (10.0 * 5 + 20.0) / 6
-    stats_for_refreeze = ShippingService.get_stats(key, skip_frozen_limits=True)
-    assert round(stats_for_refreeze["x_cl"], 4) == round(expected_x_cl, 4)
-    assert stats_for_refreeze["x_cl"] != frozen_first["x_cl"]
-
-    limits_second = {k: stats_for_refreeze[k] for k in ("x_cl", "x_ucl", "x_lcl", "r_cl", "r_ucl", "r_lcl")}
-    limits_second["avg_n"] = stats_for_refreeze["avg_subgroup_size"]
-    ShippingService.freeze_control_limits(key, limits_second, note="製程變更後重新凍結")
-
-    frozen_second = ShippingService.get_frozen_limits(key)
-    assert round(frozen_second["x_cl"], 4) == round(expected_x_cl, 4)
-    assert frozen_second["x_cl"] != frozen_first["x_cl"]
+    changed = ShippingService.get_stats(key)
+    assert changed["data_hash"] != stats_first["data_hash"]
+    assert changed["limits_frozen"] is False
+    assert changed["x_cl"] != 99.0
 
 
-def test_freeze_then_exclude_keeps_frozen_limits_but_updates_dataset(db_session, setup_data):
-    """凍結管制界限（§9.4）後,再排除離群量測值（§6.6）:
-    已凍結的 x_cl/x_ucl/x_lcl 必須維持不變,但 get_stats 用於穩定性/能力
-    計算的資料集(avgs/all_values/excluded_count)須反映排除後的最新結果。"""
+def test_exclusion_updates_dataset_and_hash_without_applying_legacy_limit(db_session, setup_data):
+    """排除會更新資料集與雜湊，舊界限仍只供追溯。"""
     from backend.models import ShippingMeasurement
 
     key = {"vendor": "Test Vendor", "material": "CTRL-MAT-FREEZE-EXCL", "spec": "10*2", "field": "外徑"}
@@ -153,16 +130,13 @@ def test_freeze_then_exclude_keeps_frozen_limits_but_updates_dataset(db_session,
     assert stats_before["limits_frozen"] is False
     assert 7.9 in stats_before["all_values"]
 
-    # 凍結目前的管制界限
-    limits = {k: stats_before[k] for k in ("x_cl", "x_ucl", "x_lcl", "r_cl", "r_ucl", "r_lcl")}
-    limits["avg_n"] = stats_before["avg_subgroup_size"]
-    ShippingService.freeze_control_limits(key, limits, note="基準期確認")
+    ShippingService.freeze_control_limits(key, {
+        "x_cl": 99.0, "x_ucl": 100.0, "x_lcl": 98.0,
+        "r_cl": 1.0, "r_ucl": 2.0, "r_lcl": 0.0, "avg_n": 2,
+    }, note="舊版資料")
 
     stats_frozen = ShippingService.get_stats(key)
-    assert stats_frozen["limits_frozen"] is True
-    frozen_x_cl, frozen_x_ucl, frozen_x_lcl = (
-        stats_frozen["x_cl"], stats_frozen["x_ucl"], stats_frozen["x_lcl"],
-    )
+    assert stats_frozen["limits_frozen"] is False
     assert stats_frozen["excluded_count"] == 0
 
     # 排除離群量測值（§6.6：不刪除、保留追溯、排除統計）
@@ -171,13 +145,8 @@ def test_freeze_then_exclude_keeps_frozen_limits_but_updates_dataset(db_session,
 
     stats_after = ShippingService.get_stats(key)
 
-    # 凍結界限須維持不變（不受排除影響）
-    assert stats_after["limits_frozen"] is True
-    assert stats_after["x_cl"] == frozen_x_cl
-    assert stats_after["x_ucl"] == frozen_x_ucl
-    assert stats_after["x_lcl"] == frozen_x_lcl
-
-    # 但統計用資料集已反映排除後的最新結果
+    assert stats_after["limits_frozen"] is False
+    assert stats_after["data_hash"] != stats_before["data_hash"]
     assert stats_after["excluded_count"] == 1
     assert 7.9 not in stats_after["all_values"]
     # 第6筆原本平均為(10.0+10.0+7.9)/3，排除離群值後只剩前兩組，平均回到10.0

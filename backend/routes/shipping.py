@@ -79,53 +79,34 @@ def get_control_limits_route():
             "spec": request.args.get('spec', ''),
             "field": request.args.get('field', '外徑'),
         }
-        return jsonify(ShippingService.get_frozen_limits(key) or {})
+        legacy = ShippingService.get_frozen_limits(key)
+        if legacy:
+            legacy.update({"status": "legacy_imported", "audit_incomplete": True})
+        return jsonify(legacy or {})
     except Exception as e:
         return api_error(str(e), 500)
 
 
 @shipping_bp.route('/api/control-limits', methods=['POST'])
 @auth_required
-@require_perm('shipping.edit')
 def freeze_control_limits_route():
-    """凍結目前管制界限（AIAG-VDA SPC 2026 §9.4）"""
-    try:
-        body = request.get_json(silent=True) or {}
-        key = {
-            "vendor": body.get('vendor', ''),
-            "material": body.get('material', ''),
-            "spec": body.get('spec', ''),
-            "field": body.get('field', '外徑'),
-        }
-        # skip_frozen_limits=True：即使此 key 已凍結，也要取得依目前資料重新計算
-        # 的數值，避免「重新凍結」只是把舊的凍結值原封不動寫回去（§9.4）
-        stats = ShippingService.get_stats(key, skip_frozen_limits=True)
-        limits = {k: stats[k] for k in ("x_cl", "x_ucl", "x_lcl", "r_cl", "r_ucl", "r_lcl")}
-        limits["avg_n"] = stats.get("avg_subgroup_size", 5)
-        result = ShippingService.freeze_control_limits(key, limits, note=body.get('note', ''))
-        return jsonify(result)
-    except ValueError as e:
-        return api_error(str(e), 400)
-    except Exception as e:
-        return api_error(str(e), 500)
+    """舊凍結流程已停用；正式界限必須走研究送審與核准。"""
+    return jsonify({
+        "success": False,
+        "code": "LEGACY_SPC_LIMITS_READ_ONLY",
+        "message": "舊 SPC 界限僅供查閱，請改用研究核准流程",
+    }), 410
 
 
 @shipping_bp.route('/api/control-limits', methods=['DELETE'])
 @auth_required
-@require_perm('shipping.edit')
 def unfreeze_control_limits_route():
-    """解除管制界限凍結（AIAG-VDA SPC 2026 §9.4）"""
-    try:
-        key = {
-            "vendor": request.args.get('vendor', ''),
-            "material": request.args.get('material', ''),
-            "spec": request.args.get('spec', ''),
-            "field": request.args.get('field', '外徑'),
-        }
-        ShippingService.unfreeze_control_limits(key)
-        return jsonify({"ok": True})
-    except Exception as e:
-        return api_error(str(e), 500)
+    """舊凍結流程已停用；正式界限必須走研究送審與核准。"""
+    return jsonify({
+        "success": False,
+        "code": "LEGACY_SPC_LIMITS_READ_ONLY",
+        "message": "舊 SPC 界限僅供查閱，請改用研究核准流程",
+    }), 410
 
 
 @shipping_bp.route('/api/spc-report', methods=['GET'])

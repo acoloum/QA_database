@@ -44,6 +44,7 @@ class ShippingService:
             or_(
                 SPCCache.cache_key.like('spc|%'),
                 SPCCache.cache_key.like('spc2|%'),
+                SPCCache.cache_key.like('spc2026|shipping|%'),
             )
         ).delete(synchronize_session=False)
 
@@ -206,6 +207,13 @@ class ShippingService:
 
     @staticmethod
     def get_stats(args: Dict[str, Any], skip_frozen_limits: bool = False) -> Dict[str, Any]:
+        """使用 2026 共用 SPC 引擎產生即時預覽；舊凍結界限不再覆蓋計算。"""
+        from .spc_study_service import SpcStudyService
+
+        return SpcStudyService.preview("shipping", args)
+
+    @staticmethod
+    def _get_stats_legacy(args: Dict[str, Any], skip_frozen_limits: bool = False) -> Dict[str, Any]:
         """獲取出貨檢驗的 SPC 統計數據（含公差界限）
 
         skip_frozen_limits: 內部專用（凍結路由呼叫時使用），略過凍結界限套用，

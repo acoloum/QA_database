@@ -22,6 +22,7 @@ from .routes.capa import capa_bp
 from .routes.vendor_performance import vendor_perf_bp
 from .routes.quality_analytics import quality_analytics_bp
 from .routes.pyrometry import pyrometry_bp
+from .routes.spc_studies import spc_studies_bp
 from .storage import create_storage_backend
 
 app = Flask(__name__)
@@ -75,6 +76,7 @@ app.register_blueprint(capa_bp)
 app.register_blueprint(vendor_perf_bp)
 app.register_blueprint(quality_analytics_bp)
 app.register_blueprint(pyrometry_bp)
+app.register_blueprint(spc_studies_bp)
 
 # ============================================================
 # 前端 SPA 服務（生產：waitress 單一程序同時服務前端與 /api）

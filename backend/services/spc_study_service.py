@@ -1,7 +1,8 @@
 """SPC 不可變研究版本與正式基準的生命週期服務。"""
 
 from dataclasses import asdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
+import json
 from typing import Any, Callable, Mapping
 
 import numpy as np
@@ -12,6 +13,7 @@ from ..extensions import db
 from ..models import (
     Role,
     SpcLimitVersion,
+    SPCCache,
     SpcStudy,
     SpcStudySample,
     SpcStudyVersion,
@@ -56,7 +58,10 @@ def _require_permission(actor_id: int, permission: str) -> User:
     if actor.role == "admin":
         return actor
     role = Role.query.filter_by(code=actor.role).first()
-    if role is None or not role.has_permission(permission):
+    allowed = bool(role and role.has_permission(permission))
+    if role is not None and permission == "spc.view":
+        allowed = allowed or role.has_permission("spc.manage") or role.has_permission("spc.approve")
+    if not allowed:
         code = "SPC_APPROVE_FORBIDDEN" if permission == "spc.approve" else "SPC_MANAGE_FORBIDDEN"
         raise SpcForbidden(code, "權限不足")
     return actor
@@ -77,11 +82,22 @@ def _adapter_input(source: str, filters: Mapping[str, Any]) -> SpcStudyInput:
 
 
 def _chart_result(chart_set: SpcChartSet) -> dict[str, Any]:
-    return asdict(chart_set)
+    def plain(value):
+        if isinstance(value, dict):
+            return {key: plain(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [plain(item) for item in value]
+        return value
+
+    return plain(asdict(chart_set))
 
 
 def _calculate_results(study_input: SpcStudyInput) -> dict[str, Any]:
-    all_values = [value for subgroup in study_input.subgroups for value in subgroup.values]
+    all_values = [
+        value
+        for subgroup in study_input.subgroups
+        for value in (subgroup.distribution_values or subgroup.values)
+    ]
     distribution = assess_distribution(all_values, field=study_input.characteristic)
     try:
         chart_set = calculate_chart_set(study_input.subgroups)
@@ -185,7 +201,9 @@ def _recalculate_capability(
             "capability_reason": "CHART_NOT_APPLICABLE",
         }
     all_values = [
-        float(value) for sample in version.samples for value in (sample.values or [])
+        float(value)
+        for sample in version.samples
+        for value in (sample.distribution_values or sample.values or [])
     ]
     location_values = [
         float(value) for value in (chart.get("location") or {}).get("values", [])
@@ -216,7 +234,7 @@ class SpcStudyService:
 
     @staticmethod
     def analyze(source: str, filters: Mapping[str, Any], actor_id: int) -> SpcStudyVersion:
-        _require_permission(actor_id, "spc.manage")
+        _require_permission(actor_id, "spc.view")
         study_input = _adapter_input(source, filters)
         study = SpcStudy.query.filter_by(
             source=source,
@@ -269,6 +287,9 @@ class SpcStudyService:
                 subgroup_key=subgroup.key,
                 subgroup_order=index,
                 values=list(subgroup.values),
+                distribution_values=list(
+                    subgroup.distribution_values or subgroup.values
+                ),
                 excluded=False,
                 exclusion_snapshot=list(subgroup.exclusion_snapshot),
             ))
@@ -282,6 +303,148 @@ class SpcStudyService:
         )
         db.session.commit()
         return version
+
+    @staticmethod
+    def list_studies() -> list[SpcStudy]:
+        return SpcStudy.query.order_by(SpcStudy.created_at.desc(), SpcStudy.id.desc()).all()
+
+    @staticmethod
+    def get_study(study_id: int) -> SpcStudy:
+        study = db.session.get(SpcStudy, study_id)
+        if study is None:
+            raise SpcNotFound("SPC_STUDY_NOT_FOUND", "找不到 SPC 研究")
+        return study
+
+    @staticmethod
+    def preview(source: str, filters: Mapping[str, Any]) -> dict[str, Any]:
+        """以共用引擎產生即時預覽，並由同一結果映射過渡期舊欄位。"""
+
+        study_input = _adapter_input(source, filters)
+        cache_key = (
+            f"spc2026|{source}|{study_input.process_stream_key}|{study_input.data_hash}"
+        )
+        cached = SPCCache.query.filter_by(cache_key=cache_key).first()
+        if cached is not None:
+            expires_at = cached.expires_at
+            now = datetime.now(timezone.utc)
+            if expires_at.tzinfo is None:
+                # SQLite 會移除時區資訊；欄位內容仍是 UTC，不可改用本地時間比較。
+                now = now.replace(tzinfo=None)
+            if expires_at > now:
+                return cached.result
+            db.session.delete(cached)
+            db.session.flush()
+        results = _calculate_results(study_input)
+        chart = results["chart_result"] or {}
+        location = chart.get("location") or {}
+        variation = chart.get("variation") or {}
+        subgroups = list(study_input.subgroups)
+        all_values = [
+            float(value)
+            for subgroup in subgroups
+            for value in (subgroup.distribution_values or subgroup.values)
+        ]
+
+        def series_values(series: Mapping[str, Any], name: str) -> list[Any]:
+            return list(series.get(name) or [])
+
+        def first(values: list[Any]):
+            return values[0] if values else None
+
+        x_values = series_values(location, "values")
+        x_cls = series_values(location, "cl")
+        x_ucls = series_values(location, "ucl")
+        x_lcls = series_values(location, "lcl")
+        r_values = series_values(variation, "values")
+        r_cls = series_values(variation, "cl")
+        r_ucls = series_values(variation, "ucl")
+        r_lcls = series_values(variation, "lcl")
+        if not chart and subgroups:
+            # 不適用管制圖時仍提供描述性子組統計，但絕不補造管制界限。
+            x_values = [float(np.mean(group.values)) for group in subgroups]
+            r_values = [float(np.ptp(group.values)) for group in subgroups]
+        subgroup_sizes = list(chart.get("subgroup_sizes") or [group.n for group in subgroups])
+        reasons = [asdict(reason) for reason in study_input.reasons]
+        applicability = dict(results["applicability_result"] or {})
+        if not applicability.get("applicable") and applicability.get("reason_code"):
+            reasons.append({
+                "code": applicability["reason_code"],
+                "message": applicability.get("message") or "目前資料不可計算",
+                "details": None,
+            })
+        applicability["reasons"] = reasons
+        stability = results["stability_result"]
+        distribution = results["distribution_result"]
+        capability = results["capability_result"]
+        labels = [group.key for group in subgroups]
+        dates = [_timestamp_text(group.timestamp) or "" for group in subgroups]
+        ids = [str(group.record_ids[0]) if group.record_ids else "" for group in subgroups]
+        preview = {
+            "schema_version": SPC_METHOD_VERSION,
+            "source": source,
+            "filters": dict(study_input.filters),
+            "process_stream_key": study_input.process_stream_key,
+            "characteristic": study_input.characteristic,
+            "data_hash": study_input.data_hash,
+            "charts": chart or None,
+            "stability": stability,
+            "distribution": distribution,
+            "capability": capability,
+            "applicability": applicability,
+            "time_model": results["time_model_result"],
+            "specification": dict(study_input.specification),
+            "study_version": None,
+            "study": {
+                "stability": stability,
+                "distribution": distribution,
+                "capability": capability,
+                "applicability": applicability,
+                "time_model": results["time_model_result"],
+            },
+            # 過渡期舊欄位：全部直接映射自上方同一份結果。
+            "labels": labels,
+            "ids": ids,
+            "dates": dates,
+            "avgs": x_values,
+            "ranges": r_values,
+            "all_values": all_values,
+            "subgroup_sizes": subgroup_sizes,
+            "x_cl": first(x_cls),
+            "x_ucl": first(x_ucls),
+            "x_lcl": first(x_lcls),
+            "r_cl": first(r_cls),
+            "r_ucl": first(r_ucls),
+            "r_lcl": first(r_lcls),
+            "x_cls": x_cls,
+            "x_ucls": x_ucls,
+            "x_lcls": x_lcls,
+            "r_cls": r_cls,
+            "r_ucls": r_ucls,
+            "r_lcls": r_lcls,
+            "avg_subgroup_size": (
+                int(round(float(np.mean(subgroup_sizes)))) if subgroup_sizes else None
+            ),
+            "variable_subgroup_size": len(set(subgroup_sizes)) > 1,
+            "sigma_within": chart.get("sigma_within"),
+            "process_capability": capability,
+            "tolerance": dict(study_input.specification),
+            "characteristic_class": (
+                study_input.specification.get("characteristic_class") or "其他"
+            ),
+            "excluded_count": int(study_input.metadata.get("excluded_count", 0)),
+            "insufficient_data": [],
+            "cpk_trend": [],
+            "limits_frozen": False,
+        }
+        # 統一轉為 JSON 原生型別，確保首次計算與快取讀回的契約完全一致。
+        preview = json.loads(json.dumps(preview, ensure_ascii=False))
+        db.session.add(SPCCache(
+            cache_key=cache_key,
+            result=preview,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        ))
+        db.session.commit()
+        return preview
 
     @staticmethod
     def submit(version_id: int, actor_id: int, *, reason: str) -> SpcStudyVersion:

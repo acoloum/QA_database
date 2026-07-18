@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS "SPC研究樣本" (
     "子組識別鍵" VARCHAR(128) NOT NULL,
     "子組順序" INTEGER NOT NULL,
     "量測值" JSONB NOT NULL,
+    "分布分析值" JSONB NOT NULL DEFAULT '[]'::jsonb,
     "排除統計" BOOLEAN NOT NULL DEFAULT FALSE,
     "排除原因" VARCHAR(200),
     "排除快照" JSONB NOT NULL DEFAULT '[]'::jsonb

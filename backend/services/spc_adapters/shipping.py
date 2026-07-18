@@ -73,9 +73,12 @@ def build_shipping_study_input(args: Mapping[str, Any]) -> SpcStudyInput:
 
     source_rows: list[dict[str, Any]] = []
     subgroups: list[SpcSubgroup] = []
+    excluded_count = 0
+    distribution_values: list[float] = []
     for record in records:
         record_measurements = by_record.get(record.id, [])
         values: list[float] = []
+        subgroup_distribution_values: list[float] = []
         included_measurement_ids: list[int] = []
         exclusion_snapshot: list[dict[str, Any]] = []
         for measurement in record_measurements:
@@ -104,9 +107,21 @@ def build_shipping_study_input(args: Mapping[str, Any]) -> SpcStudyInput:
                 "excluded_at": measurement.excluded_at,
             })
             if value is None or measurement.excluded:
+                if measurement.excluded:
+                    excluded_count += 1
                 continue
             values.append(value)
             included_measurement_ids.append(measurement.id)
+            if characteristic in MIN_MAX_CHARACTERISTICS:
+                distribution_values.extend((
+                    float(measurement.value_min), float(measurement.value_max),
+                ))
+                subgroup_distribution_values.extend((
+                    float(measurement.value_min), float(measurement.value_max),
+                ))
+            else:
+                distribution_values.append(value)
+                subgroup_distribution_values.append(value)
 
         if values:
             subgroups.append(SpcSubgroup(
@@ -116,6 +131,7 @@ def build_shipping_study_input(args: Mapping[str, Any]) -> SpcStudyInput:
                 record_ids=(record.id,),
                 measurement_ids=included_measurement_ids,
                 exclusion_snapshot=exclusion_snapshot,
+                distribution_values=subgroup_distribution_values,
             ))
 
     specification = specification_from_measurement_limits(measurements)
@@ -138,4 +154,8 @@ def build_shipping_study_input(args: Mapping[str, Any]) -> SpcStudyInput:
         specification=specification,
         data_hash=data_hash,
         reasons=reasons,
+        metadata={
+            "excluded_count": excluded_count,
+            "distribution_values": distribution_values,
+        },
     )

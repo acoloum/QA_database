@@ -389,6 +389,7 @@ class SpcStudySample(db.Model):
     subgroup_key = db.Column('子組識別鍵', db.String(128), nullable=False)
     subgroup_order = db.Column('子組順序', db.Integer, nullable=False)
     values = db.Column('量測值', JsonType, nullable=False)
+    distribution_values = db.Column('分布分析值', JsonType, nullable=False, default=list)
     excluded = db.Column('排除統計', db.Boolean, nullable=False, default=False)
     exclusion_reason = db.Column('排除原因', db.String(200), nullable=True)
     exclusion_snapshot = db.Column('排除快照', JsonType, nullable=False, default=list)

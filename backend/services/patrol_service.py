@@ -7,7 +7,7 @@ from typing import List, Dict, Any, Optional, Union
 from sqlalchemy import func, text
 from sqlalchemy.orm import selectinload
 from ..extensions import db
-from ..models import PatrolMain, PatrolDetail, Machine, Operator, Inspector, Vendor
+from ..models import PatrolMain, PatrolDetail, Machine, Operator, Inspector, Vendor, SPCCache
 from .extrusion_tolerance_service import ExtrusionToleranceService
 from .spc_analysis_service import (
     calculate_control_limits,
@@ -33,6 +33,13 @@ from ..utils import (
 )
 
 class PatrolService:
+    @staticmethod
+    def _invalidate_spc_cache() -> None:
+        """巡檢來源異動後移除即時預覽快取；正式研究版本不受影響。"""
+        SPCCache.query.filter(
+            SPCCache.cache_key.like('spc2026|patrol|%')
+        ).delete(synchronize_session=False)
+
     @staticmethod
     def _limits_key_filter(key: Dict[str, str]):
         from ..models import SpcControlLimit
@@ -103,6 +110,13 @@ class PatrolService:
 
     @staticmethod
     def get_spc(args: Dict[str, Any], skip_frozen_limits: bool = False) -> Dict[str, Any]:
+        """使用 2026 共用 SPC 引擎產生即時預覽；舊凍結界限不再覆蓋計算。"""
+        from .spc_study_service import SpcStudyService
+
+        return SpcStudyService.preview("patrol", args)
+
+    @staticmethod
+    def _get_spc_legacy(args: Dict[str, Any], skip_frozen_limits: bool = False) -> Dict[str, Any]:
         """獲取巡檢 SPC 統計數據（含公差界限、製程能力、分佈統計）
 
         skip_frozen_limits: 內部專用（凍結路由呼叫時使用），略過凍結界限套用，
@@ -385,6 +399,7 @@ class PatrolService:
             old_val=old_value,
             new_val=new_value,
         )
+        PatrolService._invalidate_spc_cache()
         db.session.commit()
         return {
             "id": d.id, "排除統計": d.excluded, "排除原因": d.exclusion_reason,
@@ -578,6 +593,7 @@ class PatrolService:
                 new_patrol.customer_id
             )
 
+            PatrolService._invalidate_spc_cache()
             db.session.commit()
             return new_patrol.id
         except Exception as e:
@@ -648,6 +664,7 @@ class PatrolService:
                 patrol.customer_id
             )
 
+            PatrolService._invalidate_spc_cache()
             db.session.commit()
             return True
         except Exception as e:
@@ -665,6 +682,7 @@ class PatrolService:
             patrol = db.session.get(PatrolMain, record_id)
             if patrol:
                 db.session.delete(patrol)
+                PatrolService._invalidate_spc_cache()
                 db.session.commit()
             return True
         except Exception as e:
@@ -1067,6 +1085,7 @@ class PatrolService:
 
                 success_count += 1
             
+            PatrolService._invalidate_spc_cache()
             db.session.commit()
             return success_count
         except Exception as e:

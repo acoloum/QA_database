@@ -116,7 +116,7 @@ def test_patrol_exclusion_route_requires_patrol_edit_permission(client, db_sessi
     assert resp.status_code != 403
 
 
-def test_patrol_control_limits_routes_require_patrol_edit_permission(client, db_session, patrol_roles):
+def test_patrol_legacy_control_limit_writes_are_read_only(client, db_session, patrol_roles):
     from backend.models import PatrolMain, PatrolDetail
     from datetime import date
 
@@ -134,13 +134,14 @@ def test_patrol_control_limits_routes_require_patrol_edit_permission(client, db_
     body = {'material': '6061', 'spec': '10*2', 'item': '外徑', 'position': ''}
 
     resp = client.post('/api/patrol/control-limits', headers=_headers(viewer), json=body)
-    assert resp.status_code == 403
+    assert resp.status_code == 410
+    assert resp.get_json()['code'] == 'LEGACY_SPC_LIMITS_READ_ONLY'
 
     resp = client.delete(
         '/api/patrol/control-limits?material=6061&spec=10*2&item=外徑&position=',
         headers=_headers(viewer),
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 410
 
     # GET（查詢）不受權限限制，僅需登入
     resp = client.get(
@@ -152,10 +153,10 @@ def test_patrol_control_limits_routes_require_patrol_edit_permission(client, db_
     editor = _make_user(db_session, 'patrol_editor2', 'patrol_editor')
 
     resp = client.post('/api/patrol/control-limits', headers=_headers(editor), json=body)
-    assert resp.status_code != 403
+    assert resp.status_code == 410
 
     resp = client.delete(
         '/api/patrol/control-limits?material=6061&spec=10*2&item=外徑&position=',
         headers=_headers(editor),
     )
-    assert resp.status_code != 403
+    assert resp.status_code == 410

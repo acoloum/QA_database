@@ -503,13 +503,40 @@ def test_get_spc_excludes_marked_outlier_from_stats(app, db_session):
 
         result = PatrolService.get_spc({'item': '外徑', 'pos': '前段', 'mat': '6061', 'spec': '10*2'})
         assert result['excluded_count'] == 1
+
+
+def test_patrol_spc_uses_common_2026_contract_and_keeps_legacy_mapping(
+    app, db_session
+):
+    """巡檢即時統計與出貨共用同一管制圖與適用性契約。"""
+    with app.app_context():
+        for index in range(5):
+            main = PatrolMain(
+                date=date(2026, 7, index + 1), material="6061", spec="10*1*100"
+            )
+            db_session.add(main)
+            db_session.flush()
+            db_session.add(PatrolDetail(
+                main_id=main.id, group=1, item="外徑", position="前段",
+                min_val=9.8 + index * 0.01, max_val=10.2 + index * 0.01,
+            ))
+        db_session.commit()
+
+        result = PatrolService.get_spc({
+            "item": "外徑", "pos": "前段", "mat": "6061", "spec": "10*1*100",
+        })
+
+        assert result["schema_version"] == "2026.1"
+        assert result["charts"]["chart_type"] == "xbar_r"
+        assert result["avgs"] == result["charts"]["location"]["values"]
+        assert result["r_ucls"] == result["charts"]["variation"]["ucl"]
+        assert result["process_capability"] == result["capability"]
+        assert result["applicability"]["applicable"] is True
         assert len(result['avgs']) == 5
 
 
-def test_get_spc_applies_frozen_limits(app, db_session):
-    """管制界限凍結後，get_spc 回傳的界限應為凍結值而非重新計算值，
-    且凍結子群體大小（avg_n）不同時，重算後的 d2 須確實傳遞到製程能力指數（Cwk），
-    而非僅止於 x_cl/r_cl 等原始通過值"""
+def test_get_spc_does_not_apply_legacy_frozen_limits(app, db_session):
+    """舊界限資料僅供追溯，不得覆蓋 2026 共用引擎的即時計算。"""
     with app.app_context():
         # 廠商公差：外徑標準值 10.0，公差 ±0.5（雙邊規格，允許 9.5–10.5）
         vt_main = VendorToleranceMain(material='6061', spec='10*2')
@@ -548,22 +575,15 @@ def test_get_spc_applies_frozen_limits(app, db_session):
         })
 
         frozen_result = PatrolService.get_spc({'item': '外徑', 'pos': '前段', 'mat': '6061', 'spec': '10*2'})
-        assert frozen_result['limits_frozen'] is True
-        assert frozen_result['x_cl'] == pytest.approx(99.0)
+        assert frozen_result['limits_frozen'] is False
+        assert frozen_result['x_cl'] != pytest.approx(99.0)
 
         skip_result = PatrolService.get_spc(
             {'item': '外徑', 'pos': '前段', 'mat': '6061', 'spec': '10*2'},
             skip_frozen_limits=True,
         )
-        assert skip_result['x_cl'] != pytest.approx(99.0)
-
-        # r_cl 已固定為 0.2（凍結值與即時重算值相同），故 Cwk 的差異只可能
-        # 來自 d2（2.326 vs 1.128），證明 d2 覆蓋邏輯確實傳遞進製程能力計算，
-        # 而非被 r_cl 的差異所掩蓋（若刪除 d2 覆蓋程式碼，此斷言應會失敗）
-        frozen_cwk = frozen_result['process_capability']['cwk']
-        skip_cwk = skip_result['process_capability']['cwk']
-        assert frozen_cwk is not None and skip_cwk is not None
-        assert frozen_cwk != pytest.approx(skip_cwk)
+        assert skip_result['x_cl'] == pytest.approx(frozen_result['x_cl'])
+        assert skip_result['process_capability'] == frozen_result['process_capability']
 
 
 def test_get_spc_null_value_and_excluded_row_does_not_double_count(app, db_session):

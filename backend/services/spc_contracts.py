@@ -19,6 +19,7 @@ class SpcSubgroup:
     record_ids: Sequence[int] = ()
     measurement_ids: Sequence[int] = ()
     exclusion_snapshot: Sequence[Mapping[str, Any]] = ()
+    distribution_values: Sequence[float] = ()
 
     def __post_init__(self) -> None:
         numeric_values = tuple(float(value) for value in self.values)
@@ -33,6 +34,10 @@ class SpcSubgroup:
             self, "exclusion_snapshot",
             tuple(dict(value) for value in self.exclusion_snapshot),
         )
+        numeric_distribution = tuple(float(value) for value in self.distribution_values)
+        if not all(isfinite(value) for value in numeric_distribution):
+            raise ValueError("分布分析值包含無效數值")
+        object.__setattr__(self, "distribution_values", numeric_distribution)
 
     @property
     def n(self) -> int:
@@ -60,6 +65,7 @@ class SpcStudyInput:
     specification: Mapping[str, Any]
     data_hash: Optional[str] = None
     reasons: Sequence[SpcReason] = ()
+    metadata: Optional[Mapping[str, Any]] = None
 
     def __post_init__(self) -> None:
         if not self.source or not self.characteristic or not self.process_stream_key:
@@ -68,6 +74,7 @@ class SpcStudyInput:
         object.__setattr__(self, "subgroups", tuple(self.subgroups))
         object.__setattr__(self, "specification", dict(self.specification))
         object.__setattr__(self, "reasons", tuple(self.reasons))
+        object.__setattr__(self, "metadata", dict(self.metadata or {}))
 
 
 @dataclass(frozen=True)

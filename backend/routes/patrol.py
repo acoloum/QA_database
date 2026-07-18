@@ -74,56 +74,34 @@ def get_patrol_control_limits_route():
             "item": request.args.get('item', '外徑'),
             "position": request.args.get('position', ''),
         }
-        return jsonify(PatrolService.get_frozen_limits(key) or {})
+        legacy = PatrolService.get_frozen_limits(key)
+        if legacy:
+            legacy.update({"status": "legacy_imported", "audit_incomplete": True})
+        return jsonify(legacy or {})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 @patrol_bp.route('/api/patrol/control-limits', methods=['POST'])
 @auth_required
-@require_perm('patrol.edit')
 def freeze_patrol_control_limits_route():
-    """凍結巡檢目前管制界限（AIAG-VDA SPC 2026 §9.4）"""
-    try:
-        body = request.get_json(silent=True) or {}
-        key = {
-            "material": body.get('material', ''),
-            "spec": body.get('spec', ''),
-            "item": body.get('item', '外徑'),
-            "position": body.get('position', ''),
-        }
-        # skip_frozen_limits=True：即使此 key 已凍結，也要取得依目前資料重新計算
-        # 的數值，避免「重新凍結」只是把舊的凍結值原封不動寫回去（§9.4）
-        stats = PatrolService.get_spc(
-            {'mat': key['material'], 'spec': key['spec'], 'item': key['item'], 'pos': key['position']},
-            skip_frozen_limits=True,
-        )
-        limits = {k: stats[k] for k in ("x_cl", "x_ucl", "x_lcl", "r_cl", "r_ucl", "r_lcl")}
-        limits["avg_n"] = stats.get("avg_subgroup_size", 5)
-        result = PatrolService.freeze_control_limits(key, limits, note=body.get('note', ''))
-        return jsonify(result)
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    """舊凍結流程已停用；正式界限必須走研究送審與核准。"""
+    return jsonify({
+        "success": False,
+        "code": "LEGACY_SPC_LIMITS_READ_ONLY",
+        "message": "舊 SPC 界限僅供查閱，請改用研究核准流程",
+    }), 410
 
 
 @patrol_bp.route('/api/patrol/control-limits', methods=['DELETE'])
 @auth_required
-@require_perm('patrol.edit')
 def unfreeze_patrol_control_limits_route():
-    """解除巡檢管制界限凍結（AIAG-VDA SPC 2026 §9.4）"""
-    try:
-        key = {
-            "material": request.args.get('material', ''),
-            "spec": request.args.get('spec', ''),
-            "item": request.args.get('item', '外徑'),
-            "position": request.args.get('position', ''),
-        }
-        PatrolService.unfreeze_control_limits(key)
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    """舊凍結流程已停用；正式界限必須走研究送審與核准。"""
+    return jsonify({
+        "success": False,
+        "code": "LEGACY_SPC_LIMITS_READ_ONLY",
+        "message": "舊 SPC 界限僅供查閱，請改用研究核准流程",
+    }), 410
 
 
 @patrol_bp.route('/api/patrol/add', methods=['POST', 'OPTIONS'])

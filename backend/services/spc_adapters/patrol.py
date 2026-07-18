@@ -52,9 +52,12 @@ def build_patrol_study_input(args: Mapping[str, Any]) -> SpcStudyInput:
 
     source_rows: list[dict[str, Any]] = []
     subgroups: list[SpcSubgroup] = []
+    excluded_count = 0
+    distribution_values: list[float] = []
     for (main_id, group_no), group_details in grouped.items():
         main = group_details[0].main
         values: list[float] = []
+        subgroup_distribution_values: list[float] = []
         included_measurement_ids: list[int] = []
         exclusion_snapshot: list[dict[str, Any]] = []
         for detail in group_details:
@@ -78,8 +81,15 @@ def build_patrol_study_input(args: Mapping[str, Any]) -> SpcStudyInput:
                 "excluded_at": detail.excluded_at,
             })
             if detail.min_val is None or detail.max_val is None or detail.excluded:
+                if (
+                    detail.min_val is not None and detail.max_val is not None
+                    and detail.excluded
+                ):
+                    excluded_count += 1
                 continue
             values.extend((float(detail.min_val), float(detail.max_val)))
+            distribution_values.extend((float(detail.min_val), float(detail.max_val)))
+            subgroup_distribution_values.extend((float(detail.min_val), float(detail.max_val)))
             included_measurement_ids.append(detail.id)
 
         if values:
@@ -90,6 +100,7 @@ def build_patrol_study_input(args: Mapping[str, Any]) -> SpcStudyInput:
                 record_ids=(main_id,),
                 measurement_ids=included_measurement_ids,
                 exclusion_snapshot=exclusion_snapshot,
+                distribution_values=subgroup_distribution_values,
             ))
 
     specification = resolve_tolerance_specification(
@@ -115,4 +126,8 @@ def build_patrol_study_input(args: Mapping[str, Any]) -> SpcStudyInput:
         specification=specification,
         data_hash=data_hash,
         reasons=reasons,
+        metadata={
+            "excluded_count": excluded_count,
+            "distribution_values": distribution_values,
+        },
     )

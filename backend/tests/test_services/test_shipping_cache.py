@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta, timezone
 
 from backend.extensions import db
-from backend.models import Inspector, SPCCache, Vendor
+from backend.models import Inspector, ShippingData, ShippingMeasurement, SPCCache, Vendor
 from backend.services.shipping_service import ShippingService
 
 
@@ -34,3 +34,40 @@ def test_save_data_invalidates_spc_cache(app, db_session):
         })
 
         assert db.session.query(SPCCache).count() == 0
+
+
+def test_shipping_stats_uses_common_2026_contract_and_keeps_legacy_mapping(
+    app, db_session
+):
+    with app.app_context():
+        for index in range(5):
+            record = ShippingData(
+                date=date(2026, 7, index + 1), material="6061", spec="10*1*100",
+                order_num=f"SO-{index + 1}", group_count=3,
+            )
+            db_session.add(record)
+            db_session.flush()
+            for group in range(1, 4):
+                center = 10 + index * 0.01 + group * 0.005
+                db_session.add(ShippingMeasurement(
+                    shipping_id=record.id, group_num=group, item="外徑", position="",
+                    value_min=center - 0.1, value_max=center + 0.1,
+                    lower_limit=9.5, upper_limit=10.5,
+                ))
+        db_session.commit()
+
+        result = ShippingService.get_stats({
+            "field": "外徑", "material": "6061", "spec": "10*1*100",
+        })
+
+        assert result["schema_version"] == "2026.1"
+        assert result["charts"]["chart_type"] == "xbar_s"
+        assert result["avgs"] == result["charts"]["location"]["values"]
+        assert result["x_ucls"] == result["charts"]["location"]["ucl"]
+        assert result["stability"] == result["study"]["stability"]
+        assert result["process_capability"] == result["capability"]
+        assert result["data_hash"]
+        cached = SPCCache.query.one()
+        assert cached.cache_key == (
+            f"spc2026|shipping|{result['process_stream_key']}|{result['data_hash']}"
+        )
