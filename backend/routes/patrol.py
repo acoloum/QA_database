@@ -54,6 +54,7 @@ def set_patrol_detail_exclusion_route(detail_id):
             detail_id,
             excluded=bool(body.get('排除統計')),
             reason=body.get('排除原因'),
+            actor_id=(request.user.get('id') or request.user.get('user_id')),
         )
         return jsonify(result)
     except ValueError as e:

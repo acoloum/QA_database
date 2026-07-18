@@ -466,7 +466,9 @@ def test_set_patrol_detail_exclusion_round_trips(app, db_session):
         assert result['排除統計'] is True
         assert result['排除原因'] == '量測儀器故障'
 
-        result = PatrolService.set_patrol_detail_exclusion(detail.id, excluded=False, reason='')
+        result = PatrolService.set_patrol_detail_exclusion(
+            detail.id, excluded=False, reason='重測確認原量測有效'
+        )
         assert result['排除統計'] is False
         assert result['排除原因'] is None
 

@@ -2,7 +2,7 @@
 import pandas as pd
 import numpy as np
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Union
 from sqlalchemy import func, text
 from sqlalchemy.orm import selectinload
@@ -28,7 +28,8 @@ from ..utils import (
     format_value,
     validate_excel_shape,
     validate_patrol_data,
-    handle_db_error
+    handle_db_error,
+    log_audit,
 )
 
 class PatrolService:
@@ -340,20 +341,56 @@ class PatrolService:
             "最小值": float(d.min_val) if d.min_val is not None else None,
             "最大值": float(d.max_val) if d.max_val is not None else None,
             "排除統計": d.excluded, "排除原因": d.exclusion_reason,
+            "排除者ID": d.exclusion_user_id,
+            "排除時間": d.excluded_at.isoformat() if d.excluded_at else None,
         } for d in rows]
 
     @staticmethod
-    def set_patrol_detail_exclusion(detail_id: int, excluded: bool, reason: Optional[str]) -> Dict[str, Any]:
+    def set_patrol_detail_exclusion(
+        detail_id: int,
+        excluded: bool,
+        reason: Optional[str],
+        actor_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """標示/解除巡檢量測明細離群排除（§6.6：不刪除、保留追溯、排除統計）"""
         d = db.session.get(PatrolDetail, detail_id)
         if d is None:
             raise ValueError("量測明細不存在")
-        if excluded and not (reason or "").strip():
-            raise ValueError("標示離群值必須填寫原因（§6.6）")
+        normalized_reason = (reason or "").strip()
+        if not normalized_reason:
+            action = "標示離群" if excluded else "恢復統計"
+            raise ValueError(f"{action}必須填寫原因（§6.6）")
+        old_value = {
+            "excluded": bool(d.excluded),
+            "reason": d.exclusion_reason,
+            "actor_id": d.exclusion_user_id,
+            "at": d.excluded_at.isoformat() if d.excluded_at else None,
+        }
         d.excluded = excluded
-        d.exclusion_reason = (reason or "").strip() or None if excluded else None
+        d.exclusion_reason = normalized_reason if excluded else None
+        d.exclusion_user_id = actor_id if excluded else None
+        d.excluded_at = datetime.now(timezone.utc) if excluded else None
+        new_value = {
+            "excluded": bool(d.excluded),
+            "reason": d.exclusion_reason,
+            "actor_id": d.exclusion_user_id,
+            "at": d.excluded_at.isoformat() if d.excluded_at else None,
+            "action_reason": normalized_reason,
+        }
+        log_audit(
+            actor_id,
+            "exclude" if excluded else "restore",
+            "patrol_detail",
+            d.id,
+            old_val=old_value,
+            new_val=new_value,
+        )
         db.session.commit()
-        return {"id": d.id, "排除統計": d.excluded, "排除原因": d.exclusion_reason}
+        return {
+            "id": d.id, "排除統計": d.excluded, "排除原因": d.exclusion_reason,
+            "排除者ID": d.exclusion_user_id,
+            "排除時間": d.excluded_at.isoformat() if d.excluded_at else None,
+        }
 
     @staticmethod
     def get_detail(id: int) -> Optional[Dict[str, Any]]:

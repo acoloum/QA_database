@@ -15,7 +15,8 @@ from ..utils import (
     validate_inspection_data,
     validate_excel_shape,
     handle_db_error,
-    parse_spec_nominals
+    parse_spec_nominals,
+    log_audit,
 )
 
 from .spc_analysis_service import (
@@ -632,18 +633,52 @@ class ShippingService:
             raise e
 
     @staticmethod
-    def set_measurement_exclusion(measurement_id: int, excluded: bool, reason: Optional[str]) -> Dict[str, Any]:
+    def set_measurement_exclusion(
+        measurement_id: int,
+        excluded: bool,
+        reason: Optional[str],
+        actor_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """標示/解除量測值離群排除（§6.6：不刪除、保留追溯、排除統計）"""
         m = db.session.get(ShippingMeasurement, measurement_id)
         if m is None:
             raise ValueError("量測明細不存在")
-        if excluded and not (reason or "").strip():
-            raise ValueError("標示離群值必須填寫原因（§6.6）")
+        normalized_reason = (reason or "").strip()
+        if not normalized_reason:
+            action = "標示離群" if excluded else "恢復統計"
+            raise ValueError(f"{action}必須填寫原因（§6.6）")
+        old_value = {
+            "excluded": bool(m.excluded),
+            "reason": m.exclusion_reason,
+            "actor_id": m.exclusion_user_id,
+            "at": m.excluded_at.isoformat() if m.excluded_at else None,
+        }
         m.excluded = excluded
-        m.exclusion_reason = (reason or "").strip() or None if excluded else None
+        m.exclusion_reason = normalized_reason if excluded else None
+        m.exclusion_user_id = actor_id if excluded else None
+        m.excluded_at = datetime.now(timezone.utc) if excluded else None
+        new_value = {
+            "excluded": bool(m.excluded),
+            "reason": m.exclusion_reason,
+            "actor_id": m.exclusion_user_id,
+            "at": m.excluded_at.isoformat() if m.excluded_at else None,
+            "action_reason": normalized_reason,
+        }
+        log_audit(
+            actor_id,
+            "exclude" if excluded else "restore",
+            "shipping_measurement",
+            m.id,
+            old_val=old_value,
+            new_val=new_value,
+        )
         ShippingService._invalidate_spc_cache()
         db.session.commit()
-        return {"id": m.id, "排除統計": m.excluded, "排除原因": m.exclusion_reason}
+        return {
+            "id": m.id, "排除統計": m.excluded, "排除原因": m.exclusion_reason,
+            "排除者ID": m.exclusion_user_id,
+            "排除時間": m.excluded_at.isoformat() if m.excluded_at else None,
+        }
 
     @staticmethod
     def get_measurements(shipping_id: int) -> List[Dict[str, Any]]:
@@ -657,6 +692,8 @@ class ShippingService:
             "量測最小值": float(m.value_min) if m.value_min is not None else None,
             "量測最大值": float(m.value_max) if m.value_max is not None else None,
             "排除統計": m.excluded, "排除原因": m.exclusion_reason,
+            "排除者ID": m.exclusion_user_id,
+            "排除時間": m.excluded_at.isoformat() if m.excluded_at else None,
         } for m in rows]
 
     @staticmethod
