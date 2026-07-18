@@ -3,9 +3,8 @@ export interface AnalyzedData {
     violations: { label: string; reasons: string[] }[];
 }
 
-// 後端規則 id → 前端規則實作對映；預設集與後端 DEFAULT_STABILITY_RULES 一致。
-// 注意：此清單需與後端 backend/services/spc_stability.py 的 DEFAULT_STABILITY_RULES
-// 保持同步，避免前後端對「失控」的判定準則產生落差。
+// 僅供展示與單元測試使用；正式 SPC 穩定性判定一律以後端研究版本結果為準。
+// 此工具不可用來覆蓋後端回傳的 stability 與 violations。
 export const DEFAULT_RULES = ['beyond_limits', 'run_9_same_side', 'trend_6'];
 
 export function analyzeWECO(
@@ -52,14 +51,10 @@ export function analyzeWECO(
         // Rule 4: 連續14點交替上升下降
         if (enabledRules.includes('alternating_14') && i >= 13) {
             const last14 = data.slice(i - 13, i + 1);
-            let alternating = true;
-            for (let j = 1; j < last14.length; j++) {
-                if ((j % 2 === 0 && last14[j] < last14[j - 1]) ||
-                    (j % 2 !== 0 && last14[j] > last14[j - 1])) {
-                    alternating = false;
-                    break;
-                }
-            }
+            const differences = last14.slice(1).map((value, index) => value - last14[index]);
+            const alternating = differences.every(difference => difference !== 0)
+                && differences.slice(1).every((difference, index) =>
+                    difference * differences[index] < 0);
             if (alternating) reasons.push("Rule 4: 14點交替");
         }
 
@@ -90,11 +85,11 @@ export function analyzeWECO(
         // Rule 8: 連續8點在中心線兩側但都不在1σ内
         if (enabledRules.includes('eight_beyond_1s_both') && i >= 7) {
             const last8 = data.slice(i - 7, i + 1);
-            // The logic in shipping.html was a bit complex, simplifying here to match concept:
-            // "8 points in a row on both sides of centerline with none in Zone C (within 1 sigma)"
-            // Actually Rule 8 is "8 consecutive points on both sides of center line with no points in Zone C"
-            const inZoneC = last8.some(v => v > sigma1_below && v < sigma1_above);
-            if (!inZoneC) reasons.push("Rule 8: 8點在1σ外且兩側");
+            const allOutsideZoneC = last8.every(v => v <= sigma1_below || v >= sigma1_above);
+            const hasAboveCenter = last8.some(v => v > cl);
+            const hasBelowCenter = last8.some(v => v < cl);
+            if (allOutsideZoneC && hasAboveCenter && hasBelowCenter)
+                reasons.push("Rule 8: 8點在1σ外且兩側");
         }
 
         if (reasons.length > 0) {

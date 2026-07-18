@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { downloadResponseBlob } from '../utils/downloadFile';
-import type { PatrolInspection, PatrolCreateInput, PatrolUpdateInput } from '../types';
+import type { PatrolInspection, PatrolCreateInput, PatrolUpdateInput, SpcChartData } from '../types';
 
 export interface PatrolSearchParams {
     page: number;
@@ -27,6 +27,7 @@ export interface PatrolStatsParams {
     spec?: string;
     s_date?: string;
     e_date?: string;
+    study_version_id?: number;
 }
 
 export interface PatrolOptions {
@@ -101,7 +102,7 @@ export const usePatrolStats = (params: PatrolStatsParams) => {
             if (params.s_date) queryParams.append('s_date', params.s_date);
             if (params.e_date) queryParams.append('e_date', params.e_date);
 
-            const res = await api.get(`/patrol/spc?${queryParams.toString()}`);
+            const res = await api.get<SpcChartData>(`/patrol/spc?${queryParams.toString()}`);
             return res.data;
         },
         // Only fetch if item is provided (pos can be empty for "全段")
@@ -123,6 +124,7 @@ export const useExportPatrolSpcReport = () => {
             if (params.spec) queryParams.append('spec', params.spec);
             if (params.s_date) queryParams.append('s_date', params.s_date);
             if (params.e_date) queryParams.append('e_date', params.e_date);
+            if (params.study_version_id) queryParams.append('study_version_id', params.study_version_id.toString());
 
             const res = await api.get(`/patrol/export?${queryParams.toString()}`, { responseType: 'blob' });
             downloadResponseBlob(res.data as BlobPart, `巡檢SPC報告_${params.item}.xlsx`);
@@ -239,6 +241,8 @@ export interface PatrolDetailItem {
     最大值: number | null;
     排除統計: boolean;
     排除原因: string | null;
+    排除者ID: number | null;
+    排除時間: string | null;
 }
 
 export const usePatrolDetails = (mainId: number | null) =>

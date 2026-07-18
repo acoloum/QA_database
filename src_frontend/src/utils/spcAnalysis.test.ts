@@ -36,3 +36,27 @@ describe('analyzeWECO - Rule 6 (four_of_five_beyond_1s)', () => {
         expect(result.violations.some(v => v.reasons.some(r => r.startsWith('Rule 6')))).toBe(true);
     });
 });
+
+describe('analyzeWECO - 展示工具規則 4 與規則 8', () => {
+    it('14 點交替的兩種起始相位都可辨識', () => {
+        const labels = Array.from({ length: 14 }, (_, index) => `P${index}`);
+        const phaseA = [9, 11, 9, 11, 9, 11, 9, 11, 9, 11, 9, 11, 9, 11];
+        const phaseB = [11, 9, 11, 9, 11, 9, 11, 9, 11, 9, 11, 9, 11, 9];
+
+        expect(analyzeWECO(phaseA, 10, 13, 7, labels, ['alternating_14']).statuses[13])
+            .toBe('violation');
+        expect(analyzeWECO(phaseB, 10, 13, 7, labels, ['alternating_14']).statuses[13])
+            .toBe('violation');
+    });
+
+    it('規則 8 必須同時分布在中心線兩側', () => {
+        const labels = Array.from({ length: 8 }, (_, index) => `P${index}`);
+        const oneSide = Array(8).fill(12);
+        const bothSides = [12, 8, 12, 8, 12, 8, 12, 8];
+
+        expect(analyzeWECO(oneSide, 10, 13, 7, labels, ['eight_beyond_1s_both']).statuses[7])
+            .toBeNull();
+        expect(analyzeWECO(bothSides, 10, 13, 7, labels, ['eight_beyond_1s_both']).statuses[7])
+            .toBe('violation');
+    });
+});

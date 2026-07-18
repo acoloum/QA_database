@@ -52,7 +52,8 @@ const ProcessCapabilityCard = ({ processCapability, statsItem }: ProcessCapabili
     const pLabel = `${isCapability ? 'Cp' : 'Pp'}.${method}`;
     const targets = pc.targets;
     const ppmData = pc.ppm || null;
-    const ppmGrade = ppmData ? getPpmGrade(ppmData.total) : null;
+    const ppmGrade = ppmData?.total != null ? getPpmGrade(ppmData.total) : null;
+    const formatOptionalPpm = (value: number | null) => value == null ? '—' : formatPPM(value);
     const quad = quadrantBadge(pc);
 
     return (
@@ -115,11 +116,11 @@ const ProcessCapabilityCard = ({ processCapability, statsItem }: ProcessCapabili
                     <div className="mt-3 pt-3 border-top">
                         <Row className="text-center align-items-center">
                             <Col xs="auto"><strong>PPM 不良率估算</strong></Col>
-                            <Col><span className="text-muted small me-1">超上限</span><strong>{formatPPM(ppmData.upper)}</strong></Col>
-                            <Col><span className="text-muted small me-1">超下限</span><strong>{formatPPM(ppmData.lower)}</strong></Col>
+                            <Col><span className="text-muted small me-1">超上限</span><strong>{formatOptionalPpm(ppmData.upper)}</strong></Col>
+                            <Col><span className="text-muted small me-1">超下限</span><strong>{formatOptionalPpm(ppmData.lower)}</strong></Col>
                             <Col>
                                 <span className="text-muted small me-1">總計</span>
-                                <strong className="h5 mb-0">{formatPPM(ppmData.total)}</strong>
+                                <strong className="h5 mb-0">{formatOptionalPpm(ppmData.total)}</strong>
                                 <span className="text-muted small ms-1">PPM</span>
                             </Col>
                             {ppmGrade && (

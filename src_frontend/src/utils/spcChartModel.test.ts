@@ -3,6 +3,7 @@ import { buildSpcChartModel } from './spcChartModel';
 import type { SpcChartData } from '../types';
 
 const statsData: SpcChartData = {
+  schema_version: '2026.1',
   labels: ['A', 'B', 'C'],
   ids: ['10', '11', '12'],
   dates: ['2026-06-01', '2026-06-02', '2026-06-03'],
@@ -34,6 +35,36 @@ const statsData: SpcChartData = {
     { month: '2026-05', cpk: 1.1, count: 12 },
     { month: '2026-06', cpk: 1.2, count: 18 },
   ],
+  charts: {
+    chart_type: 'xbar_s',
+    subgroup_sizes: [3, 3, 3],
+    sigma_within: 1,
+    location: {
+      statistic: 'xbar', values: [10, 11, 16],
+      cl: [10, 10, 10], ucl: [15, 12, 15], lcl: [5, 8, 5],
+    },
+    variation: {
+      statistic: 's', values: [1, 0.1, 3],
+      cl: [2, 2, 2], ucl: [4, 4, 4], lcl: [0.5, 0.5, 0.5],
+    },
+  },
+  stability: {
+    evaluated: true,
+    stable: false,
+    rules_used: ['beyond_limits'],
+    violations: [
+      { index: 2, window_start: 2, window_end: 2, rule: 'beyond_limits', label: '單點超出管制界限', chart_kind: 'location' },
+      { index: 1, window_start: 1, window_end: 1, rule: 'beyond_limits', label: '單點超出管制界限', chart_kind: 'variation' },
+    ],
+    location: {
+      evaluated: true, stable: false, chart_kind: 'location', rules_used: ['beyond_limits'],
+      violations: [{ index: 2, window_start: 2, window_end: 2, rule: 'beyond_limits', label: '單點超出管制界限', chart_kind: 'location' }],
+    },
+    variation: {
+      evaluated: true, stable: false, chart_kind: 'variation', rules_used: ['beyond_limits'],
+      violations: [{ index: 1, window_start: 1, window_end: 1, rule: 'beyond_limits', label: '單點超出管制界限', chart_kind: 'variation' }],
+    },
+  },
 };
 
 describe('buildSpcChartModel', () => {
@@ -45,7 +76,7 @@ describe('buildSpcChartModel', () => {
     expect(model.statsSummary).toBeNull();
   });
 
-  it('建立 X-bar、R chart、摘要與直方圖資料', () => {
+  it('直接映射後端 X-bar-S、逐點界限、違規與直方圖資料', () => {
     const model = buildSpcChartModel(statsData, { showSpecLimits: true });
 
     expect(model.ids).toEqual(['10', '11', '12']);
@@ -56,6 +87,13 @@ describe('buildSpcChartModel', () => {
       max: '16.000',
     });
     expect(model.analysis?.violations.some(v => v.type === 'xbar')).toBe(true);
+    expect(model.rAnalysis?.violations.some(v => v.type === 'r')).toBe(true);
+    expect(model.chartType).toBe('xbar_s');
+    expect(model.variationLabel).toBe('標準差 S');
+    expect(model.chartData?.xBar.datasets.find(dataset => dataset.label === 'UCL')?.data)
+      .toEqual([15, 12, 15]);
+    expect(model.chartData?.rChart.datasets.find(dataset => dataset.label === 'LCL')?.data)
+      .toEqual([0.5, 0.5, 0.5]);
     expect(model.chartData?.xBar.datasets.some(dataset => dataset.label === 'USL')).toBe(true);
     expect(model.histogramData?.bins.length).toBeGreaterThan(1);
     expect(model.cpkTrend).toHaveLength(2);
@@ -79,7 +117,7 @@ describe('buildSpcChartModel', () => {
     expect(shown.chartData!.xBar.datasets.some(d => d.label === 'USL')).toBe(true);
   });
 
-  it('依後端 rules_used 限縮 WECO 規則', () => {
+  it('不再依前端 WECO 重算覆蓋後端判定', () => {
     const base = {
       labels: Array.from({ length: 9 }, (_, i) => `P${i}`),
       ids: [], dates: [], subgroup_sizes: [], all_values: [],
@@ -90,16 +128,20 @@ describe('buildSpcChartModel', () => {
       tolerance: { found: false }, process_capability: { available: false },
       distribution_stats: {}, cpk_trend: [],
     };
-    const withRule = buildSpcChartModel({
+    const backendSaysStable = buildSpcChartModel({
       ...base,
-      stability: { evaluated: true, stable: false, violations: [], rules_used: ['run_9_same_side'] },
+      charts: {
+        chart_type: 'xbar_r', subgroup_sizes: Array(9).fill(2), sigma_within: 0.1,
+        location: { statistic: 'xbar', values: base.avgs, cl: Array(9).fill(10), ucl: Array(9).fill(10.9), lcl: Array(9).fill(9.1) },
+        variation: { statistic: 'r', values: base.ranges, cl: Array(9).fill(0.2), ucl: Array(9).fill(0.5), lcl: Array(9).fill(0) },
+      },
+      stability: {
+        evaluated: true, stable: true, violations: [], rules_used: ['run_9_same_side'],
+        location: { evaluated: true, stable: true, violations: [], rules_used: ['run_9_same_side'], chart_kind: 'location' },
+        variation: { evaluated: true, stable: true, violations: [], rules_used: ['run_9_same_side'], chart_kind: 'variation' },
+      },
     } as never);
-    expect(withRule.analysis!.violations.length).toBeGreaterThan(0);
-
-    const withoutRule = buildSpcChartModel({
-      ...base,
-      stability: { evaluated: true, stable: true, violations: [], rules_used: ['beyond_limits'] },
-    } as never);
-    expect(withoutRule.analysis!.violations.length).toBe(0);
+    expect(backendSaysStable.analysis!.violations).toHaveLength(0);
+    expect(backendSaysStable.rAnalysis!.violations).toHaveLength(0);
   });
 });

@@ -3,7 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { downloadResponseBlob } from '../utils/downloadFile';
-import type { ShippingInspection, Inspector, Vendor, ToleranceResult, ShippingCreateInput, ShippingUpdateInput } from '../types';
+import type {
+    ShippingInspection, Inspector, Vendor, ToleranceResult, ShippingCreateInput,
+    ShippingUpdateInput, SpcChartData,
+} from '../types';
 
 export interface ShippingSearchParams {
     page: number;
@@ -22,6 +25,7 @@ export interface ShippingStatsParams {
     start_date?: string;
     end_date?: string;
     limit?: number;
+    study_version_id?: number;
 }
 
 // 1. Fetch Lists
@@ -60,7 +64,7 @@ export const useShippingStats = (params: ShippingStatsParams) => {
             if (params.end_date) queryParams.append('end_date', params.end_date);
             if (params.limit) queryParams.append('limit', params.limit.toString());
 
-            const res = await api.get(`/stats?${queryParams.toString()}`);
+            const res = await api.get<SpcChartData>(`/stats?${queryParams.toString()}`);
             return res.data;
         },
         enabled: !!(params.vendor || params.material || params.spec),
@@ -191,6 +195,7 @@ export const useExportSpcReport = () => {
             if (params.spec) queryParams.append('spec', params.spec);
             if (params.start_date) queryParams.append('start_date', params.start_date);
             if (params.end_date) queryParams.append('end_date', params.end_date);
+            if (params.study_version_id) queryParams.append('study_version_id', params.study_version_id.toString());
 
             const res = await api.get(`/spc-report?${queryParams.toString()}`, {
                 responseType: 'blob'
@@ -218,6 +223,8 @@ export interface ShippingMeasurementItem {
     量測最大值: number | null;
     排除統計: boolean;
     排除原因: string | null;
+    排除者ID: number | null;
+    排除時間: string | null;
 }
 
 export const useShippingMeasurements = (shippingId: number | null) =>

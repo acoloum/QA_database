@@ -1,0 +1,72 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import type { PropsWithChildren } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import api from '../services/api';
+import { useAnalyzeSpcStudy, useSubmitSpcStudy } from './useSpcStudies';
+
+vi.mock('../services/api', () => ({
+  default: {
+    get: vi.fn(),
+    post: vi.fn(),
+    patch: vi.fn(),
+  },
+}));
+
+const createWrapper = (queryClient: QueryClient) =>
+  ({ children }: PropsWithChildren) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+
+describe('SPC 研究 hooks', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('分析時傳送來源與目前篩選條件，並拆出標準回應 data', async () => {
+    vi.mocked(api.post).mockResolvedValue({
+      data: { success: true, data: { id: 21, study_id: 7 } },
+    });
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const { result } = renderHook(() => useAnalyzeSpcStudy(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    let returned: unknown;
+    await act(async () => {
+      returned = await result.current.mutateAsync({
+        source: 'shipping',
+        filters: { vendor: 'A廠', field: 'od' },
+      });
+    });
+
+    expect(api.post).toHaveBeenCalledWith('/spc/studies/analyze', {
+      source: 'shipping',
+      filters: { vendor: 'A廠', field: 'od' },
+    });
+    expect(returned).toMatchObject({ id: 21, study_id: 7 });
+  });
+
+  it('送審成功後只使研究清單、單筆與歷程快取失效', async () => {
+    vi.mocked(api.post).mockResolvedValue({
+      data: { success: true, data: { id: 21, study_id: 7, status: 'submitted' } },
+    });
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useSubmitSpcStudy(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({ versionId: 21, studyId: 7, reason: '資料已複核' });
+    });
+    await waitFor(() => expect(invalidateSpy).toHaveBeenCalledTimes(3));
+
+    expect(api.post).toHaveBeenCalledWith('/spc/study-versions/21/submit', {
+      reason: '資料已複核',
+    });
+    expect(invalidateSpy.mock.calls.map(([options]) => options)).toEqual([
+      { queryKey: ['spcStudies'] },
+      { queryKey: ['spcStudy', 7] },
+      { queryKey: ['spcStudyHistory', 7] },
+    ]);
+  });
+});
