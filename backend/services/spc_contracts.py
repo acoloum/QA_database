@@ -18,6 +18,7 @@ class SpcSubgroup:
     values: Sequence[float]
     record_ids: Sequence[int] = ()
     measurement_ids: Sequence[int] = ()
+    exclusion_snapshot: Sequence[Mapping[str, Any]] = ()
 
     def __post_init__(self) -> None:
         numeric_values = tuple(float(value) for value in self.values)
@@ -28,6 +29,10 @@ class SpcSubgroup:
         object.__setattr__(self, "values", numeric_values)
         object.__setattr__(self, "record_ids", tuple(int(value) for value in self.record_ids))
         object.__setattr__(self, "measurement_ids", tuple(int(value) for value in self.measurement_ids))
+        object.__setattr__(
+            self, "exclusion_snapshot",
+            tuple(dict(value) for value in self.exclusion_snapshot),
+        )
 
     @property
     def n(self) -> int:
@@ -54,6 +59,7 @@ class SpcStudyInput:
     subgroups: Sequence[SpcSubgroup]
     specification: Mapping[str, Any]
     data_hash: Optional[str] = None
+    reasons: Sequence[SpcReason] = ()
 
     def __post_init__(self) -> None:
         if not self.source or not self.characteristic or not self.process_stream_key:
@@ -61,6 +67,7 @@ class SpcStudyInput:
         object.__setattr__(self, "filters", dict(self.filters))
         object.__setattr__(self, "subgroups", tuple(self.subgroups))
         object.__setattr__(self, "specification", dict(self.specification))
+        object.__setattr__(self, "reasons", tuple(self.reasons))
 
 
 @dataclass(frozen=True)
