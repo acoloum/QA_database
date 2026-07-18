@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from backend.services.spc_analysis_service import (
@@ -7,6 +8,23 @@ from backend.services.spc_analysis_service import (
     calculate_process_capability,
 )
 from backend.services.spc_stability import evaluate_stability
+
+
+def _accepted_normal_distribution(values):
+    return {
+        "model": "normal",
+        "label": "常態分布",
+        "accepted": True,
+        "normal_ok": True,
+        "unimodal": True,
+        "reason_code": None,
+        "ad_stat": None,
+        "params": (float(np.mean(values)), float(np.std(values, ddof=1))),
+        "candidates": [],
+        "fit_method": "test_fixture",
+        "alpha": 0.05,
+        "n": len(values),
+    }
 
 
 def test_calculate_control_limits_uses_baseline_subgroups():
@@ -40,15 +58,18 @@ def test_calculate_control_limits_exposes_point_limits_for_unequal_n():
 
 def test_process_capability_supports_two_sided_and_ppm():
     avgs = [10, 10.1, 9.9, 10.2, 9.8]
+    values = [9.9, 10.0, 10.1, 10.2, 9.8, 10.0, 10.1, 9.9, 10.2, 9.8]
     stability = {"evaluated": True, "stable": True, "violations": [], "rules_used": []}
     result = calculate_process_capability(
         avgs=avgs,
-        all_values=[9.9, 10.0, 10.1, 10.2, 9.8, 10.0, 10.1, 9.9, 10.2, 9.8],
+        all_values=values,
         r_cl=0.4,
         d2=2.326,
         tolerance_limits={"USL": 11, "LSL": 9},
         include_reason=True,
         stability=stability,
+        time_model={"model": "A1", "confirmed": True},
+        dist=_accepted_normal_distribution(values),
     )
     assert result["available"] is True
     assert result["applicable"] == "capability"   # 穩定 → 報 Cp/Cpk
@@ -62,15 +83,17 @@ def test_process_capability_supports_two_sided_and_ppm():
 
 
 def test_unstable_process_reports_performance_only():
+    values = [9.9, 10.0, 10.1, 10.2, 9.8, 10.0, 10.1, 9.9, 10.2, 9.8]
     stability = {"evaluated": True, "stable": False,
                  "violations": [{"index": 0, "rule": "beyond_limits", "label": "x"}],
                  "rules_used": ["beyond_limits"]}
     result = calculate_process_capability(
         avgs=[10, 10.1, 9.9, 10.2, 9.8],
-        all_values=[9.9, 10.0, 10.1, 10.2, 9.8, 10.0, 10.1, 9.9, 10.2, 9.8],
+        all_values=values,
         r_cl=0.4, d2=2.326,
         tolerance_limits={"USL": 11, "LSL": 9},
         stability=stability,
+        dist=_accepted_normal_distribution(values),
     )
     assert result["applicable"] == "performance"
     assert result["cp"] is None and result["cpk"] is None
@@ -78,12 +101,14 @@ def test_unstable_process_reports_performance_only():
 
 
 def test_no_stability_info_reports_performance_only():
+    values = [9.9, 10.0, 10.1, 10.2, 9.8, 10.0, 10.1, 9.9, 10.2, 9.8]
     result = calculate_process_capability(
         avgs=[10, 10.1, 9.9, 10.2, 9.8],
-        all_values=[9.9, 10.0, 10.1, 10.2, 9.8, 10.0, 10.1, 9.9, 10.2, 9.8],
+        all_values=values,
         r_cl=0.4, d2=2.326,
         tolerance_limits={"USL": 11, "LSL": 9},
         stability=None,
+        dist=_accepted_normal_distribution(values),
     )
     assert result["applicable"] == "performance"
     assert result["cp"] is None
@@ -91,11 +116,13 @@ def test_no_stability_info_reports_performance_only():
 
 def test_upper_one_sided_limits():
     # 同心度等單側上限特性：只計算 PPU/CPU 側（§6.8.2.2）
+    values = [0.02, 0.03, 0.025, 0.02, 0.03, 0.024]
     result = calculate_process_capability(
         avgs=[0.02, 0.03, 0.025, 0.02, 0.03],
-        all_values=[0.02, 0.03, 0.025, 0.02, 0.03, 0.024],
+        all_values=values,
         r_cl=0.01, d2=2.326,
         tolerance_limits={"USL": 0.05, "LSL": 0, "one_sided": "upper"},
+        dist=_accepted_normal_distribution(values),
     )
     assert result["one_sided"] == "upper"
     assert result["ppk"] is not None
@@ -104,12 +131,14 @@ def test_upper_one_sided_limits():
 
 
 def test_targets_and_preliminary_flags():
+    values = [9.9, 10.0, 10.1, 10.2, 9.8, 10.0, 10.1, 9.9, 10.2, 9.8]
     result = calculate_process_capability(
         avgs=[10, 10.1, 9.9, 10.2, 9.8],
-        all_values=[9.9, 10.0, 10.1, 10.2, 9.8, 10.0, 10.1, 9.9, 10.2, 9.8],
+        all_values=values,
         r_cl=0.4, d2=2.326,
         tolerance_limits={"USL": 11, "LSL": 9},
         characteristic_class="主要",
+        dist=_accepted_normal_distribution(values),
     )
     assert result["targets"]["class"] == "主要"
     assert result["targets"]["insufficient_sample"] is True  # 只有 10 筆
@@ -118,12 +147,14 @@ def test_targets_and_preliminary_flags():
 
 
 def test_process_capability_supports_lower_one_sided_limits():
+    values = [60, 61, 62, 63, 64, 65]
     result = calculate_process_capability(
         avgs=[60, 61, 62, 63, 64],
-        all_values=[60, 61, 62, 63, 64, 65],
+        all_values=values,
         r_cl=2.0,
         d2=2.326,
         tolerance_limits={"LSL": 55, "one_sided": "lower"},
+        dist=_accepted_normal_distribution(values),
     )
 
     assert result["available"] is True
@@ -143,14 +174,48 @@ def test_zero_variance_returns_none_capability_indices():
         r_cl=0, d2=2.326,
         tolerance_limits={"USL": 11, "LSL": 9},
     )
-    assert result["available"] is True
+    assert result["available"] is False
+    assert result["reason"] == "distribution_unconfirmed"
     assert result["pp"] is None
     assert result["ppk"] is None
     assert result["cp"] is None
     assert result["cpk"] is None
     assert result["cw"] is None
     assert result["cwk"] is None
-    assert result["ppm"]["total"] == 0.0
+    assert result["ppm"]["total"] is None
+
+
+def test_stable_process_without_confirmed_time_model_is_performance_only():
+    values = [9.9, 10.0, 10.1, 10.2, 9.8, 10.0, 10.1, 9.9, 10.2, 9.8]
+    result = calculate_process_capability(
+        avgs=[10, 10.1, 9.9, 10.2, 9.8],
+        all_values=values,
+        r_cl=0.4,
+        d2=2.326,
+        tolerance_limits={"USL": 11, "LSL": 9},
+        stability={"evaluated": True, "stable": True},
+        dist=_accepted_normal_distribution(values),
+    )
+
+    assert result["applicable"] == "performance"
+    assert result["ppk"] is not None
+    assert result["cpk"] is None
+    assert result["capability_reason"] == "TIME_MODEL_UNCONFIRMED"
+
+
+def test_unconfirmed_distribution_blocks_performance_indices():
+    result = calculate_process_capability(
+        avgs=[10, 10.1, 9.9, 10.2, 9.8],
+        all_values=[9.9, 10.0, 10.1, 10.2, 9.8, 10.0],
+        r_cl=0.4,
+        d2=2.326,
+        tolerance_limits={"USL": 11, "LSL": 9},
+    )
+
+    assert result["available"] is False
+    assert result["reason"] == "distribution_unconfirmed"
+    assert result["ppk"] is None
+    assert result["cpk"] is None
 
 
 def test_distribution_stats_labels_non_normal_data():

@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 from datetime import date
 from sqlalchemy import event
@@ -517,13 +518,15 @@ def test_get_spc_applies_frozen_limits(app, db_session):
             std_val=10.0, tolerance_min=0.5, tolerance_max=0.5
         ))
 
-        for i in range(6):
+        rng = np.random.default_rng(2026)
+        subgroup_means = rng.normal(10.0, 0.15, 30)
+        for i, subgroup_mean in enumerate(subgroup_means):
             patrol = PatrolMain(date=date(2026, 1, i + 1), material='6061', spec='10*2')
             db_session.add(patrol)
             db_session.flush()
             db_session.add(PatrolDetail(
                 main_id=patrol.id, group=1, item='外徑', position='前段',
-                min_val=9.9 + i * 0.05, max_val=10.1 + i * 0.05
+                min_val=float(subgroup_mean - 0.1), max_val=float(subgroup_mean + 0.1)
             ))
         db_session.commit()
 

@@ -1,16 +1,15 @@
-"""統計分布評估 — AIAG-VDA SPC 2026 §6.8.1
+"""AIAG & VDA SPC 2026 分布評估與 G 法分位數工具。"""
 
-- 形狀公差特性（圓度/同心度/直度等）理論分布為摺疊常態（§6.8.1）
-- 其他特性以 Anderson-Darling 檢定常態性；非常態時擇一擬合分布
-- 供 G 法（分位數法）指數計算與依分布之 PPM 估算（§6.8.2.1/6.8.2.3）
-"""
+from math import isfinite
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 from scipy import stats as scipy_stats
 
-# 自然下界為 0 的形狀公差特性
+
 SHAPE_FIELDS = {"同心度", "真圓度", "真直度", "圓度", "平面度", "直線度"}
+MIN_DISTRIBUTION_SAMPLE = 20
+DEFAULT_ALPHA = 0.05
 
 MODEL_LABELS = {
     "normal": "常態分布",
@@ -19,99 +18,168 @@ MODEL_LABELS = {
 }
 
 
-def assess_distribution(all_values: List[float], field: Optional[str] = None) -> Dict[str, Any]:
-    """評估適當的分布模型並擬合參數。"""
-    arr = np.asarray(all_values, dtype=float)
-    result: Dict[str, Any] = {
-        "model": "normal",
-        "label": MODEL_LABELS["normal"],
-        "params": (float(np.mean(arr)) if arr.size else 0.0,
-                   float(np.std(arr, ddof=1)) if arr.size >= 2 else 0.0),
+def _base_result(n: int, alpha: float) -> Dict[str, Any]:
+    return {
+        "model": None,
+        "label": "分布模型未確認",
+        "params": (),
+        "accepted": False,
+        "normal_ok": False,
+        "unimodal": False,
         "ad_stat": None,
-        "normal_ok": True,
-        "n": int(arr.size),
+        "reason_code": "DISTRIBUTION_UNCONFIRMED",
+        "candidates": [],
+        "fit_method": None,
+        "alpha": alpha,
+        "n": n,
     }
-    # 門檻 n=20：AD 檢定在樣本數低於約20時檢定力不足；
-    # 同時作為 foldnorm/lognorm MLE 擬合穩定度下限，故此門檻亦一併套用於下方的形狀公差分支之前。
-    if arr.size < 20 or float(np.std(arr, ddof=1)) == 0:
-        return result  # 樣本太少：以常態近似，不做檢定
 
-    # 形狀公差：直接採摺疊常態（§6.8.1 理論分布），不看 AD 檢定
+
+def _candidate(
+    model: str,
+    params: tuple[float, ...],
+    statistic: float,
+    p_value: float,
+    method: str,
+    alpha: float,
+) -> Dict[str, Any]:
+    accepted = bool(isfinite(p_value) and p_value >= alpha)
+    return {
+        "model": model,
+        "params": params,
+        "statistic": float(statistic),
+        "p_value": float(p_value),
+        "method": method,
+        "accepted": accepted,
+        "reason_code": None if accepted else "GOODNESS_OF_FIT_REJECTED",
+    }
+
+
+def _accept(result: Dict[str, Any], candidate: Dict[str, Any], *, normal_ok: bool) -> Dict[str, Any]:
+    result.update({
+        "model": candidate["model"],
+        "label": MODEL_LABELS[candidate["model"]],
+        "params": candidate["params"],
+        "accepted": True,
+        "normal_ok": normal_ok,
+        "unimodal": True,
+        "reason_code": None,
+        "fit_method": candidate["method"],
+    })
+    return result
+
+
+def assess_distribution(
+    all_values: List[float],
+    field: Optional[str] = None,
+    *,
+    alpha: float = DEFAULT_ALPHA,
+) -> Dict[str, Any]:
+    """評估可接受的分布；沒有候選通過時不回退到常態。"""
+
+    arr = np.asarray(all_values, dtype=float)
+    result = _base_result(int(arr.size), alpha)
+    if arr.size < MIN_DISTRIBUTION_SAMPLE:
+        result["reason_code"] = "INSUFFICIENT_DISTRIBUTION_DATA"
+        return result
+    if not np.all(np.isfinite(arr)) or float(np.std(arr, ddof=1)) <= 0:
+        result["reason_code"] = "DEGENERATE_DISTRIBUTION_DATA"
+        return result
+
     if field in SHAPE_FIELDS:
-        c, loc, scale = scipy_stats.foldnorm.fit(arr, floc=0)
-        result.update({
-            "model": "folded_normal",
-            "label": MODEL_LABELS["folded_normal"],
-            "params": (float(c), 0.0, float(scale)),
-            "normal_ok": False,
-        })
-        return result
+        if np.any(arr < 0):
+            result["reason_code"] = "SHAPE_DISTRIBUTION_NEGATIVE_VALUE"
+            return result
+        params = tuple(float(value) for value in scipy_stats.foldnorm.fit(arr, floc=0))
+        fit = scipy_stats.kstest(arr, scipy_stats.foldnorm.cdf, args=params)
+        folded = _candidate(
+            "folded_normal", params, float(fit.statistic), float(fit.pvalue),
+            "kolmogorov_smirnov", alpha,
+        )
+        result["candidates"].append(folded)
+        return _accept(result, folded, normal_ok=False) if folded["accepted"] else result
 
-    ad = scipy_stats.anderson(arr, dist="norm")
+    mean = float(np.mean(arr))
+    std = float(np.std(arr, ddof=1))
+    ad = scipy_stats.anderson(arr, dist="norm", method="interpolate")
+    normal = _candidate(
+        "normal",
+        (mean, std),
+        float(ad.statistic),
+        float(ad.pvalue),
+        "anderson_darling",
+        alpha,
+    )
     result["ad_stat"] = float(ad.statistic)
-    # 臨界值索引 2 對應顯著水準 5%
-    normal_ok = ad.statistic < ad.critical_values[2]
-    result["normal_ok"] = bool(normal_ok)
-    if normal_ok:
-        return result
+    result["candidates"].append(normal)
+    if normal["accepted"]:
+        return _accept(result, normal, normal_ok=True)
 
-    # 非常態：正值資料嘗試對數常態，以對數概似擇優；否則維持常態近似並標示
     if np.all(arr > 0):
-        s, loc, scale = scipy_stats.lognorm.fit(arr, floc=0)
-        ll_lognorm = float(np.sum(scipy_stats.lognorm.logpdf(arr, s, loc, scale)))
-        mu, sd = float(np.mean(arr)), float(np.std(arr, ddof=1))
-        ll_norm = float(np.sum(scipy_stats.norm.logpdf(arr, mu, sd)))
-        if ll_lognorm > ll_norm:
-            result.update({
-                "model": "lognormal",
-                "label": MODEL_LABELS["lognormal"],
-                "params": (float(s), float(loc), float(scale)),
-            })
+        params = tuple(float(value) for value in scipy_stats.lognorm.fit(arr, floc=0))
+        fit = scipy_stats.kstest(arr, scipy_stats.lognorm.cdf, args=params)
+        lognormal = _candidate(
+            "lognormal", params, float(fit.statistic), float(fit.pvalue),
+            "kolmogorov_smirnov", alpha,
+        )
+        result["candidates"].append(lognormal)
+        if lognormal["accepted"]:
+            return _accept(result, lognormal, normal_ok=False)
+
     return result
 
 
 def _frozen(dist: Dict[str, Any]):
-    model = dist["model"]
-    p = dist["params"]
+    if not dist.get("accepted"):
+        return None
+    model = dist.get("model")
+    params = dist.get("params", ())
     if model == "folded_normal":
-        return scipy_stats.foldnorm(p[0], loc=p[1], scale=p[2])
+        return scipy_stats.foldnorm(params[0], loc=params[1], scale=params[2])
     if model == "lognormal":
-        return scipy_stats.lognorm(p[0], loc=p[1], scale=p[2])
-    return scipy_stats.norm(p[0], p[1])
+        return scipy_stats.lognorm(params[0], loc=params[1], scale=params[2])
+    if model == "normal":
+        return scipy_stats.norm(params[0], params[1])
+    return None
 
 
 def _is_degenerate(dist: Dict[str, Any]) -> bool:
-    """資料不足或尺度參數為0時，分位數/PPM 計算會靜默產生 NaN；此處明確攔截。
-
-    n<20 沿用 assess_distribution 自身的樣本數門檻（見上方註解）。
-    """
-    if dist.get("n", 0) < 20:
+    frozen = _frozen(dist)
+    if frozen is None:
         return True
-    model = dist["model"]
-    p = dist["params"]
-    scale = p[1] if model == "normal" else p[2]
-    return scale == 0
+    params = dist.get("params", ())
+    model = dist.get("model")
+    scale = params[1] if model == "normal" else params[2]
+    return not isfinite(float(scale)) or float(scale) <= 0
 
 
 def dist_quantiles(dist: Dict[str, Any]):
-    """回傳 G 法所需分位數 (X0.135%, X50%, X99.865%)（§6.8.2.1）
+    """回傳 G 法所需的 0.135%、50%、99.865% 分位數。"""
 
-    資料不足或尺度為0（無法擬合）時回傳 (None, None, None)，避免靜默產生 NaN。
-    """
     if _is_degenerate(dist):
         return None, None, None
-    f = _frozen(dist)
-    return float(f.ppf(0.00135)), float(f.ppf(0.5)), float(f.ppf(0.99865))
+    frozen = _frozen(dist)
+    return (
+        float(frozen.ppf(0.00135)),
+        float(frozen.ppf(0.5)),
+        float(frozen.ppf(0.99865)),
+    )
 
 
-def tail_ppm(dist: Dict[str, Any], usl: Optional[float], lsl: Optional[float]) -> Dict[str, Optional[float]]:
-    """依擬合分布估算超規 PPM（§6.8.2.3 Z 法：OOS 比例）
+def tail_ppm(
+    dist: Dict[str, Any],
+    usl: Optional[float],
+    lsl: Optional[float],
+) -> Dict[str, Optional[float]]:
+    """依已確認分布估算規格外 PPM；未確認時明確回傳 None。"""
 
-    資料不足或尺度為0（無法擬合）時回傳全 None，避免靜默產生 NaN。
-    """
     if _is_degenerate(dist):
         return {"upper": None, "lower": None, "total": None}
-    f = _frozen(dist)
-    upper = float(f.sf(usl) * 1_000_000) if usl is not None else 0.0
-    lower = float(f.cdf(lsl) * 1_000_000) if lsl is not None else 0.0
-    return {"upper": round(upper, 1), "lower": round(lower, 1), "total": round(upper + lower, 1)}
+    frozen = _frozen(dist)
+    upper = float(frozen.sf(usl) * 1_000_000) if usl is not None else 0.0
+    lower = float(frozen.cdf(lsl) * 1_000_000) if lsl is not None else 0.0
+    return {
+        "upper": round(upper, 1),
+        "lower": round(lower, 1),
+        "total": round(upper + lower, 1),
+    }

@@ -31,7 +31,8 @@ def test_golden_dataset_outputs_are_stable():
     st = evaluate_stability(avgs, cl["x_cl"], cl["x_ucl"], cl["x_lcl"])
     pc = calculate_process_capability(
         avgs, all_values, cl["r_cl"], cl["d2"],
-        {"USL": 11, "LSL": 9}, stability=st, characteristic_class="主要")
+        {"USL": 11, "LSL": 9}, stability=st, characteristic_class="主要",
+        time_model={"model": "A1", "confirmed": True})
 
     assert cl["x_cl"] == pytest.approx(10.018411004048945, rel=1e-6)
     assert cl["x_ucl"] == pytest.approx(10.401818475000116, rel=1e-6)
@@ -57,7 +58,8 @@ def test_golden_dataset_stable_uses_capability_path():
     st = evaluate_stability(avgs, cl["x_cl"], cl["x_ucl"], cl["x_lcl"])
     pc = calculate_process_capability(
         avgs, all_values, cl["r_cl"], cl["d2"],
-        {"USL": 11, "LSL": 9}, stability=st, characteristic_class="主要")
+        {"USL": 11, "LSL": 9}, stability=st, characteristic_class="主要",
+        time_model={"model": "A1", "confirmed": True})
 
     assert cl["x_cl"] == pytest.approx(10.023738880249919, rel=1e-6)
     assert cl["x_ucl"] == pytest.approx(10.40734957551807, rel=1e-6)

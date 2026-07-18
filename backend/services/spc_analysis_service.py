@@ -112,11 +112,12 @@ def calculate_process_capability(
     confidence: str = "95%",
     field: Optional[str] = None,
     dist: Optional[Dict[str, Any]] = None,
+    time_model: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """計算能力/績效指數 — AIAG-VDA SPC 2026。
 
     - Pp/Ppk 與 Cp/Cpk 公式相同，皆採整體變異（§6.2、§6.8.2.1 常態 G 法）
-    - 僅在穩定性已證明（stability.stable=True）時回報 Cp/Cpk，否則只報 Pp/Ppk
+    - 僅在兩圖穩定且時間模型已確認為 A1/A2 時回報 Cp/Cpk
     - 組內變異（R̄/d2）之指數另列為 Cw/Cwk 參考值，不再命名為 Cp/Cpk
     - 單側規格只計算對應側指數（§6.8.2.2）
     """
@@ -146,6 +147,11 @@ def calculate_process_capability(
     sigma_overall = float(np.std(all_values, ddof=1)) if len(all_values) >= 2 else 0.0
     sigma_within = r_cl / d2 if r_cl > 0 else 0.0
     is_stable = bool(stability and stability.get("stable"))
+    time_model_name = (time_model or {}).get("model") or (time_model or {}).get("candidate")
+    time_model_confirmed = bool(
+        (time_model or {}).get("confirmed") and time_model_name in {"A1", "A2"}
+    )
+    is_capability = is_stable and time_model_confirmed
 
     def _r3(v):
         return round(v, 3) if v is not None else None
@@ -155,10 +161,31 @@ def calculate_process_capability(
     if dist is None:
         dist = assess_distribution(all_values, field=field)
     process_capability_dist = {
-        "model": dist["model"], "label": dist["label"],
-        "normal_ok": dist["normal_ok"], "ad_stat": dist["ad_stat"],
-        "params": dist["params"],
+        "model": dist.get("model"), "label": dist.get("label"),
+        "accepted": bool(dist.get("accepted")),
+        "normal_ok": dist.get("normal_ok"), "ad_stat": dist.get("ad_stat"),
+        "params": dist.get("params", ()),
+        "reason_code": dist.get("reason_code"),
+        "candidates": dist.get("candidates", []),
+        "fit_method": dist.get("fit_method"),
+        "alpha": dist.get("alpha"),
     }
+    if not dist.get("accepted"):
+        process_capability.update({
+            "available": False,
+            "reason": "distribution_unconfirmed",
+            "valid_count": len(all_values),
+            "pp": None, "ppk": None, "ppu": None, "ppl": None,
+            "cp": None, "cpk": None, "cpu": None, "cpl": None,
+            "cw": None, "cwk": None,
+            "applicable": None,
+            "capability_reason": dist.get("reason_code") or "DISTRIBUTION_UNCONFIRMED",
+            "stability_stable": stability.get("stable") if stability else None,
+            "time_model": time_model,
+            "distribution": process_capability_dist,
+            "ppm": {"upper": None, "lower": None, "total": None},
+        })
+        return process_capability
     use_percentile = dist["model"] != "normal"
     q_lo = q_mid = q_hi = None
     if use_percentile:
@@ -207,19 +234,12 @@ def calculate_process_capability(
                 (x_bar - float(lsl)) / (3 * sigma_within),
             )
 
-    # --- PPM（依擬合分布估算尾端超規比例，§6.8.2.3；n<20 等無法擬合情形退回常態 Z 法）---
-    ppm = {"upper": 0.0, "lower": 0.0, "total": 0.0}
-    if sigma_overall > 0:
-        ppm = tail_ppm(dist, usl=float(usl) if usl is not None else None,
-                       lsl=float(lsl) if (lsl is not None and one_sided != "upper") else None)
-        if ppm.get("total") is None:
-            # 樣本不足以擬合分布（n<20）：沿用常態 Z 法，避免小樣本時 PPM 變為 None（回歸既有行為）
-            ppm_upper = ppm_lower = 0.0
-            if usl is not None:
-                ppm_upper = round(float(scipy_stats.norm.sf((float(usl) - x_bar) / sigma_overall) * 1_000_000), 1)
-            if lsl is not None and one_sided != "upper":
-                ppm_lower = round(float(scipy_stats.norm.sf((x_bar - float(lsl)) / sigma_overall) * 1_000_000), 1)
-            ppm = {"upper": ppm_upper, "lower": ppm_lower, "total": round(ppm_upper + ppm_lower, 1)}
+    # --- PPM：只使用已確認分布；不得在樣本或擬合不足時退回常態 Z 法 ---
+    ppm = tail_ppm(
+        dist,
+        usl=float(usl) if usl is not None else None,
+        lsl=float(lsl) if (lsl is not None and one_sided != "upper") else None,
+    )
 
     # --- 目標值（表 8-3～8-5）與達標判定 ---
     targets = resolve_targets(characteristic_class, n_values=len(all_values), confidence=confidence)
@@ -234,14 +254,20 @@ def calculate_process_capability(
         # 績效指數（一律計算）
         "pp": _r3(p_val), "ppk": _r3(pk), "ppu": _r3(pu), "ppl": _r3(pl),
         # 能力指數（僅穩定時回報；數值同績效指數，§6.2）
-        "cp": _r3(p_val) if is_stable else None,
-        "cpk": _r3(pk) if is_stable else None,
-        "cpu": _r3(pu) if is_stable else None,
-        "cpl": _r3(pl) if is_stable else None,
+        "cp": _r3(p_val) if is_capability else None,
+        "cpk": _r3(pk) if is_capability else None,
+        "cpu": _r3(pu) if is_capability else None,
+        "cpl": _r3(pl) if is_capability else None,
         # 組內參考指數
         "cw": _r3(cw), "cwk": _r3(cwk),
-        "applicable": "capability" if is_stable else "performance",
+        "applicable": "capability" if is_capability else "performance",
+        "capability_reason": (
+            None if is_capability
+            else "PROCESS_UNSTABLE" if not is_stable
+            else "TIME_MODEL_UNCONFIRMED"
+        ),
         "stability_stable": stability.get("stable") if stability else None,
+        "time_model": time_model,
         "sigma_within": round(sigma_within, 6),
         "sigma_overall": round(sigma_overall, 6),
         "ppm": ppm,

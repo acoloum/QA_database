@@ -9,6 +9,7 @@ def test_normal_data_detected_as_normal():
     values = rng.normal(10, 0.5, 300).tolist()
     d = assess_distribution(values)
     assert d["model"] == "normal"
+    assert d["accepted"] is True
     assert d["normal_ok"] is True
 
 
@@ -17,6 +18,7 @@ def test_shape_field_uses_folded_normal():
     values = np.abs(rng.normal(0, 0.02, 300)).tolist()
     d = assess_distribution(values, field="真圓度")
     assert d["model"] == "folded_normal"
+    assert d["accepted"] is True
 
 
 def test_quantiles_are_ordered():
@@ -34,6 +36,35 @@ def test_lognormal_data_detected_as_lognormal():
     values = rng.lognormal(1.0, 0.8, 500).tolist()
     d = assess_distribution(values)
     assert d["model"] == "lognormal"
+    assert d["accepted"] is True
+
+
+def test_rejected_normal_without_accepted_alternative_is_unconfirmed():
+    values = (
+        [-5 + (i % 5) * 0.02 for i in range(50)]
+        + [5 + (i % 5) * 0.02 for i in range(50)]
+    )
+
+    d = assess_distribution(values)
+
+    assert d["accepted"] is False
+    assert d["model"] is None
+    assert d["reason_code"] == "DISTRIBUTION_UNCONFIRMED"
+    assert d["candidates"][0]["reason_code"] == "GOODNESS_OF_FIT_REJECTED"
+    assert dist_quantiles(d) == (None, None, None)
+    assert tail_ppm(d, usl=6, lsl=-6) == {
+        "upper": None,
+        "lower": None,
+        "total": None,
+    }
+
+
+def test_small_sample_does_not_fall_back_to_normal():
+    d = assess_distribution([9.9, 10.0, 10.1, 10.0, 9.8, 10.2])
+
+    assert d["accepted"] is False
+    assert d["model"] is None
+    assert d["reason_code"] == "INSUFFICIENT_DISTRIBUTION_DATA"
 
 
 def test_tail_ppm_reflects_spec_distance():
