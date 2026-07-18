@@ -14,13 +14,13 @@ import {
 } from 'chart.js';
 import { buildSpcChartModel } from '../../utils/spcChartModel';
 import SpcDashboardPanel from '../spc/SpcDashboardPanel';
+import SpcStudyPanel from '../spc/SpcStudyPanel';
 import PatrolOutlierManagerModal from '../spc/PatrolOutlierManagerModal';
-import { Badge, Button, Form } from 'react-bootstrap';
+import { Button, Form } from 'react-bootstrap';
 import {
     useExportPatrolSpcReport, usePatrolStats,
-    useFreezePatrolLimits, useUnfreezePatrolLimits,
 } from '../../hooks/usePatrol';
-import type { SpcChartData } from '../../types';
+import type { SpcStudyResult } from '../../types';
 
 // 註冊 ChartJS 元件
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
@@ -53,6 +53,7 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
     const [showSpecLimits, setShowSpecLimits] = useState(false);
     const [outlierTargetId, setOutlierTargetId] = useState<number | null>(null);
     const [selectedRecordId, setSelectedRecordId] = useState('');
+    const [studyVersion, setStudyVersion] = useState<SpcStudyResult | null>(null);
 
     // 匯出 SPC 報告（含原始數據 + SPC 統計與圖表）
     const handleExportSpc = () => {
@@ -65,7 +66,8 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
             mat: material,
             spec,
             item: statsItem,
-            pos: statsPos
+            pos: statsPos,
+            study_version_id: studyVersion?.id,
         });
     };
 
@@ -81,10 +83,11 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
         e_date: endDate
     });
 
-    const typedStatsData = statsData as SpcChartData | null | undefined;
-    const controlLimitsKey = { material, spec, item: statsItem, position: statsPos };
-    const freezeLimits = useFreezePatrolLimits();
-    const unfreezeLimits = useUnfreezePatrolLimits();
+    const typedStatsData = statsData;
+    const studyFilters = useMemo(() => ({
+        item: statsItem, pos: statsPos, m_id: machine, op_id: operator,
+        cust_id: customer, mat: material, spec, s_date: startDate, e_date: endDate,
+    }), [statsItem, statsPos, machine, operator, customer, material, spec, startDate, endDate]);
 
     const spcModel = useMemo(
         () => buildSpcChartModel(typedStatsData, { showSpecLimits }),
@@ -105,8 +108,8 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
 
     return (
         <div className="mt-4">
-            <div className="d-flex align-items-center justify-content-between mb-3">
-                <div className="d-flex align-items-center">
+            <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap mb-3">
+                <div className="d-flex align-items-center flex-wrap gap-2">
                     <h4 className="mb-0 me-3">SPC 監控與分析</h4>
                     <Form.Select
                         className="me-2"
@@ -154,24 +157,19 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
                     >
                         離群值管理
                     </Button>
-                    {typedStatsData?.limits_frozen
-                        ? <Badge bg="info">管制界限已凍結</Badge>
-                        : <Badge bg="light" text="dark">界限逐次重算中</Badge>}
-                    <Button size="sm" variant="outline-primary"
-                        disabled={freezeLimits.isPending || !spcModel.chartData}
-                        onClick={() => freezeLimits.mutate(controlLimitsKey)}>
-                        凍結目前界限
-                    </Button>
-                    <Button size="sm" variant="outline-secondary"
-                        disabled={unfreezeLimits.isPending || !typedStatsData?.limits_frozen}
-                        onClick={() => unfreezeLimits.mutate(controlLimitsKey)}>
-                        解除凍結
-                    </Button>
                     <Button variant="outline-success" onClick={handleExportSpc} disabled={exportSpcReport.isPending}>
                         <i className="bi bi-file-earmark-bar-graph"></i> {exportSpcReport.isPending ? '匯出中...' : '匯出 SPC 報告'}
                     </Button>
                 </div>
             </div>
+
+            <SpcStudyPanel
+                source="patrol"
+                filters={studyFilters}
+                preview={typedStatsData}
+                version={studyVersion}
+                onVersionChange={setStudyVersion}
+            />
 
             <SpcDashboardPanel
                 model={spcModel}

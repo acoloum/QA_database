@@ -36,8 +36,8 @@ const SpcDashboardPanel = ({
   statsItem,
   emptyMessage,
   sampleCount = 0,
-  xBarTitle = 'X̄ 平均值管制圖',
-  rChartTitle = 'R 全距管制圖',
+  xBarTitle,
+  rChartTitle,
   onEditPoint,
   filterXBarLegendLabels = false,
 }: SpcDashboardPanelProps) => {
@@ -58,6 +58,9 @@ const SpcDashboardPanel = ({
   if (!chartData) {
     return <div className="text-center py-5 text-muted">{emptyMessage}</div>;
   }
+
+  const locationChartTitle = xBarTitle ?? `${model.locationLabel} 管制圖`;
+  const variationChartTitle = rChartTitle ?? `${model.variationLabel} 管制圖`;
 
   const allViolations: SpcViolation[] = [
     ...(analysis?.violations || []),
@@ -122,7 +125,7 @@ const SpcDashboardPanel = ({
       <Row className="mb-3">
         <Col md={6}>
           <ControlChartCard
-            title={xBarTitle}
+            title={locationChartTitle}
             data={chartData.xBar}
             ids={ids}
             getViolationReasons={index => findViolationReasons(analysis?.violations, chartData.xBar.labels, index)}
@@ -132,7 +135,7 @@ const SpcDashboardPanel = ({
         </Col>
         <Col md={6}>
           <ControlChartCard
-            title={rChartTitle}
+            title={variationChartTitle}
             data={chartData.rChart}
             ids={ids}
             getViolationReasons={index => findViolationReasons(rAnalysis?.violations, chartData.rChart.labels, index)}

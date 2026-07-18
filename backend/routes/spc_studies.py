@@ -41,6 +41,61 @@ def _applicability(version):
     return result
 
 
+def serialize_ocap(ocap):
+    if ocap is None:
+        return None
+    return _json_value({
+        "id": ocap.id,
+        "event_id": ocap.event_id,
+        "investigation_6m": ocap.investigation_6m,
+        "remeasurement": ocap.remeasurement,
+        "process_adjustment": ocap.process_adjustment,
+        "product_disposition": ocap.product_disposition,
+        "owner_id": ocap.owner_id,
+        "effectiveness": ocap.effectiveness,
+        "status": ocap.status,
+        "created_by": ocap.created_by,
+        "updated_by": ocap.updated_by,
+        "created_at": ocap.created_at,
+        "updated_at": ocap.updated_at,
+    })
+
+
+def serialize_event(event):
+    return _json_value({
+        "id": event.id,
+        "limit_version_id": event.limit_version_id,
+        "study_version_id": event.study_version_id,
+        "sample_id": event.sample_id,
+        "chart_kind": event.chart_kind,
+        "rule_code": event.rule_code,
+        "point_index": event.point_index,
+        "observed_value": event.observed_value,
+        "status": event.status,
+        "created_at": event.created_at,
+        "ocap": serialize_ocap(event.ocap),
+    })
+
+
+def serialize_limit_version(limit):
+    return _json_value({
+        "id": limit.id,
+        "study_version_id": limit.study_version_id,
+        "revision": limit.revision,
+        "chart_type": limit.chart_type,
+        "limits": limit.limits,
+        "status": limit.status,
+        "reason": limit.reason,
+        "audit_incomplete": limit.audit_incomplete,
+        "approved_by": limit.approved_by,
+        "approved_at": limit.approved_at,
+        "effective_at": limit.effective_at,
+        "retired_by": limit.retired_by,
+        "retired_at": limit.retired_at,
+        "events": [serialize_event(event) for event in limit.events],
+    })
+
+
 def serialize_version(version, *, include_samples=False):
     result = {
         "id": version.id,
@@ -60,6 +115,9 @@ def serialize_version(version, *, include_samples=False):
         "audit_incomplete": version.audit_incomplete,
         "created_by": version.created_by,
         "created_at": version.created_at,
+        "limit_versions": [
+            serialize_limit_version(limit) for limit in version.limit_versions
+        ],
     }
     if include_samples:
         result["samples"] = [{
@@ -95,7 +153,10 @@ def serialize_study(study, *, include_versions=False):
         ),
     }
     if include_versions:
-        result["versions"] = [serialize_version(version) for version in study.versions]
+        result["versions"] = [
+            serialize_version(version, include_samples=True)
+            for version in study.versions
+        ]
     return _json_value(result)
 
 

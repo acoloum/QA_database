@@ -20,6 +20,9 @@ vi.mock('../../utils/spcChartModel', () => ({
         datasets: [{ label: '全距', data: [0.1, 0.2] }],
       },
     },
+    chartType: 'xbar_s',
+    locationLabel: '平均值 X̄',
+    variationLabel: '標準差 S',
     ids: [1, 2],
     analysis: { violations: [{ label: '2', type: 'xbar', reasons: ['超出 UCL'] }] },
     rAnalysis: { violations: [] },
@@ -42,6 +45,12 @@ vi.mock('../../utils/spcChartModel', () => ({
   }),
 }));
 
+vi.mock('../spc/SpcStudyPanel', () => ({
+  default: ({ source, filters }: { source: string; filters: Record<string, unknown> }) => (
+    <div data-testid="spc-study-panel">SPC 研究與基準 · {source} · {String(filters.vendor)}</div>
+  ),
+}));
+
 vi.mock('../../hooks/useShipping', () => ({
   useShippingStats: () => ({
     data: {},
@@ -49,8 +58,6 @@ vi.mock('../../hooks/useShipping', () => ({
   useExportSpcReport: () => ({ mutate: vi.fn(), isPending: false }),
   useShippingMeasurements: () => ({ data: [], isLoading: false }),
   useSetMeasurementExclusion: () => ({ mutate: vi.fn(), isPending: false }),
-  useFreezeLimits: () => ({ mutate: vi.fn(), isPending: false }),
-  useUnfreezeLimits: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 describe('ShippingCharts', () => {
@@ -67,7 +74,10 @@ describe('ShippingCharts', () => {
 
     expect(screen.getByText(/偵測到 1 個製程異常數據點/)).toBeInTheDocument();
     expect(screen.getByText('製程能力指標')).toBeInTheDocument();
-    expect(screen.getByText('X̄ 平均值管制圖')).toBeInTheDocument();
-    expect(screen.getByText('R 全距管制圖')).toBeInTheDocument();
+    expect(screen.getByText('平均值 X̄ 管制圖')).toBeInTheDocument();
+    expect(screen.getByText('標準差 S 管制圖')).toBeInTheDocument();
+    expect(screen.getByTestId('spc-study-panel')).toHaveTextContent('shipping · A廠');
+    expect(screen.queryByRole('button', { name: '凍結目前界限' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '解除凍結' })).not.toBeInTheDocument();
   });
 });

@@ -16,7 +16,7 @@ const PatrolOutlierManagerModal = ({ mainId, show, onHide }: PatrolOutlierManage
 
     const toggle = (id: number, currentlyExcluded: boolean) => {
         const reason = reasons[id] ?? '';
-        if (!currentlyExcluded && !reason.trim()) return; // 標示離群必填原因
+        if (!reason.trim()) return; // 排除與恢復都必填原因，確保稽核軌跡可解釋
         setExclusion.mutate({ id, excluded: !currentlyExcluded, reason }, {
             // 成功後清除本地暫存原因，避免下次排除時誤用舊原因造成追溯紀錄錯誤
             onSuccess: () => setReasons(prev => {
@@ -35,7 +35,7 @@ const PatrolOutlierManagerModal = ({ mainId, show, onHide }: PatrolOutlierManage
             <Modal.Body>
                 <Alert variant="info" className="small py-2">
                     依 AIAG-VDA SPC 手冊 §6.6：離群值不得刪除，標示後保留於資料庫供追溯，
-                    但排除於管制圖與能力指數計算之外。標示時必須填寫原因。
+                    但排除於管制圖與能力指數計算之外。排除與恢復都必須填寫原因。
                 </Alert>
                 {isLoading ? <div className="text-center py-3">載入中…</div> : (
                     <Table size="sm" bordered hover>
@@ -57,16 +57,22 @@ const PatrolOutlierManagerModal = ({ mainId, show, onHide }: PatrolOutlierManage
                                             : <Badge bg="success">計入統計</Badge>}
                                     </td>
                                     <td>
-                                        {d.排除統計 ? (d.排除原因 || '') : (
-                                            <Form.Control size="sm" placeholder="離群原因（必填）"
-                                                value={reasons[d.識別碼] ?? ''}
-                                                onChange={e => setReasons(prev => ({ ...prev, [d.識別碼]: e.target.value }))} />
+                                        {d.排除統計 && (
+                                            <div className="small mb-1">
+                                                <strong>目前排除：</strong>{d.排除原因 || '—'}
+                                                <div className="text-muted">
+                                                    操作者 #{d.排除者ID ?? '—'} · {d.排除時間 ? new Date(d.排除時間).toLocaleString('zh-TW') : '時間未記錄'}
+                                                </div>
+                                            </div>
                                         )}
+                                        <Form.Control size="sm" placeholder={d.排除統計 ? '恢復理由（必填）' : '離群原因（必填）'}
+                                            value={reasons[d.識別碼] ?? ''}
+                                            onChange={e => setReasons(prev => ({ ...prev, [d.識別碼]: e.target.value }))} />
                                     </td>
                                     <td className="text-center">
                                         <Button size="sm"
                                             variant={d.排除統計 ? 'outline-success' : 'outline-danger'}
-                                            disabled={setExclusion.isPending || (!d.排除統計 && !(reasons[d.識別碼] ?? '').trim())}
+                                            disabled={setExclusion.isPending || !(reasons[d.識別碼] ?? '').trim()}
                                             onClick={() => toggle(d.識別碼, d.排除統計)}>
                                             {d.排除統計 ? '恢復計入' : '標示離群'}
                                         </Button>

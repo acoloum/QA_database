@@ -57,6 +57,14 @@ export const PERMISSION_GROUPS: { label: string; perms: { key: string; label: st
     ],
   },
   {
+    label: 'SPC 研究與基準',
+    perms: [
+      { key: 'spc.view', label: '檢視與建立候選' },
+      { key: 'spc.manage', label: '送審與 OCAP' },
+      { key: 'spc.approve', label: '核准與停用基準' },
+    ],
+  },
+  {
     label: '爐溫測試 (CQI-9)',
     perms: [
       { key: 'pyrometry.view', label: '查看' },

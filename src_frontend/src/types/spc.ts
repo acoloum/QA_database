@@ -187,6 +187,53 @@ export interface SpcStudySample {
   }>;
 }
 
+export interface SpcOcapRecord {
+  id: number;
+  event_id: number;
+  investigation_6m: Record<string, unknown> | null;
+  remeasurement: Record<string, unknown> | null;
+  process_adjustment: string | null;
+  product_disposition: string | null;
+  owner_id: number | null;
+  effectiveness: string | null;
+  status: string;
+  created_by: number | null;
+  updated_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SpcEventSummary {
+  id: number;
+  limit_version_id: number;
+  study_version_id: number;
+  sample_id: number | null;
+  chart_kind: SpcChartKind;
+  rule_code: string;
+  point_index: number;
+  observed_value: number | null;
+  status: string;
+  created_at: string;
+  ocap: SpcOcapRecord | null;
+}
+
+export interface SpcLimitVersionSummary {
+  id: number;
+  study_version_id: number;
+  revision: number;
+  chart_type: SpcChartType;
+  limits: Record<string, unknown>;
+  status: 'active' | 'retired';
+  reason?: string | null;
+  audit_incomplete?: boolean;
+  approved_by: number | null;
+  approved_at: string | null;
+  effective_at?: string | null;
+  retired_by?: number | null;
+  retired_at?: string | null;
+  events: SpcEventSummary[];
+}
+
 export interface SpcStudyResult {
   id: number;
   study_id: number;
@@ -206,6 +253,7 @@ export interface SpcStudyResult {
   created_by: number | null;
   created_at: string;
   samples?: SpcStudySample[];
+  limit_versions?: SpcLimitVersionSummary[];
 }
 
 export type SpcStudyVersionSummary = Omit<SpcStudyResult, 'samples'>;
@@ -224,7 +272,7 @@ export interface SpcStudySummary {
   created_by: number | null;
   created_at: string;
   latest_version: SpcStudyVersionSummary | null;
-  versions?: SpcStudyVersionSummary[];
+  versions?: SpcStudyResult[];
 }
 
 /** 舊頁面過渡契約；權威資料位於 charts/stability/distribution/capability。 */

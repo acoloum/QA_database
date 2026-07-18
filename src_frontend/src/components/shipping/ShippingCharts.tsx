@@ -14,10 +14,11 @@ import {
 } from 'chart.js';
 import { buildSpcChartModel } from '../../utils/spcChartModel';
 import SpcDashboardPanel from '../spc/SpcDashboardPanel';
+import SpcStudyPanel from '../spc/SpcStudyPanel';
 import OutlierManagerModal from '../spc/OutlierManagerModal';
-import type { SpcChartData } from '../../types';
-import { Badge, Button, Form } from 'react-bootstrap';
-import { useShippingStats, useExportSpcReport, useFreezeLimits, useUnfreezeLimits } from '../../hooks/useShipping';
+import type { SpcStudyResult } from '../../types';
+import { Button, Form } from 'react-bootstrap';
+import { useShippingStats, useExportSpcReport } from '../../hooks/useShipping';
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
@@ -49,6 +50,7 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
     const [outlierTargetId, setOutlierTargetId] = useState<number | null>(null);
     const [selectedRecordId, setSelectedRecordId] = useState('');
     const [showSpecLimits, setShowSpecLimits] = useState(false);
+    const [studyVersion, setStudyVersion] = useState<SpcStudyResult | null>(null);
 
     // 安泰廠商：硬度改標示為洛氏硬度(HRB)，並新增韋伯氏硬度(HW)
     const isAntai = vendor.includes(ANTAI_VENDOR_NAME);
@@ -69,11 +71,11 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
     });
 
     const exportSpcReport = useExportSpcReport();
-    const controlLimitsKey = { vendor, material, spec, field: statsField };
-    const freezeLimits = useFreezeLimits();
-    const unfreezeLimits = useUnfreezeLimits();
-
-    const typedStatsData = statsData as SpcChartData | null | undefined;
+    const typedStatsData = statsData;
+    const studyFilters = useMemo(() => ({
+        field: statsField, vendor, material, spec,
+        start_date: startDate, end_date: endDate,
+    }), [statsField, vendor, material, spec, startDate, endDate]);
     const spcModel = useMemo(
         () => buildSpcChartModel(typedStatsData, { showSpecLimits }),
         [typedStatsData, showSpecLimits]
@@ -86,14 +88,15 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
             material,
             spec,
             start_date: startDate,
-            end_date: endDate
+            end_date: endDate,
+            study_version_id: studyVersion?.id,
         });
     };
 
     return (
         <div className="mt-4">
-            <div className="d-flex align-items-center justify-content-between mb-3">
-                <div className="d-flex align-items-center">
+            <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap mb-3">
+                <div className="d-flex align-items-center flex-wrap gap-2">
                     <h4 className="mb-0 me-3">📊 SPC 監控與分析</h4>
                     <Form.Select
                         style={{ width: 'auto' }}
@@ -135,19 +138,6 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                     >
                         離群值管理
                     </Button>
-                    {typedStatsData?.limits_frozen
-                        ? <Badge bg="info">管制界限已凍結</Badge>
-                        : <Badge bg="light" text="dark">界限逐次重算中</Badge>}
-                    <Button size="sm" variant="outline-primary"
-                        disabled={freezeLimits.isPending || !spcModel.chartData}
-                        onClick={() => freezeLimits.mutate(controlLimitsKey)}>
-                        凍結目前界限
-                    </Button>
-                    <Button size="sm" variant="outline-secondary"
-                        disabled={unfreezeLimits.isPending || !typedStatsData?.limits_frozen}
-                        onClick={() => unfreezeLimits.mutate(controlLimitsKey)}>
-                        解除凍結
-                    </Button>
                     <Button
                         variant="outline-primary"
                         size="sm"
@@ -158,6 +148,14 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                     </Button>
                 </div>
             </div>
+
+            <SpcStudyPanel
+                source="shipping"
+                filters={studyFilters}
+                preview={typedStatsData}
+                version={studyVersion}
+                onVersionChange={setStudyVersion}
+            />
 
             <SpcDashboardPanel
                 model={spcModel}

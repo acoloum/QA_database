@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from backend.models import Role, User
+from backend.models import Role, SpcEvent, SpcLimitVersion, SpcOcap, User
 from backend.services.spc_contracts import SpcStudyInput, SpcSubgroup
 from backend.services.spc_study_service import ADAPTERS
 from backend.utils import generate_token, hash_password
@@ -150,3 +150,47 @@ def test_legacy_limit_write_endpoints_are_gone(client, db_session, spc_roles):
         )
         assert response.status_code == 410
         assert response.get_json()["code"] == "LEGACY_SPC_LIMITS_READ_ONLY"
+
+
+def test_study_detail_exposes_limit_event_and_ocap_traceability(
+    client, db_session, spc_roles, monkeypatch
+):
+    manager = _user(db_session, "trace-manager", "spc_manager")
+    monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: _input())
+    analyzed = client.post(
+        "/api/spc/studies/analyze", headers=_headers(manager),
+        json={"source": "shipping", "filters": {}},
+    ).get_json()["data"]
+
+    limit = SpcLimitVersion(
+        study_version_id=analyzed["id"], process_stream_key="api-stream",
+        characteristic="外徑", revision=1, chart_type="xbar_r",
+        limits={"location": {}, "variation": {}}, status="active",
+        approved_by=manager.id,
+    )
+    db_session.add(limit)
+    db_session.flush()
+    event = SpcEvent(
+        limit_version_id=limit.id, study_version_id=analyzed["id"],
+        chart_kind="variation", rule_code="beyond_limits", point_index=4,
+        observed_value=0.8, status="investigating",
+    )
+    db_session.add(event)
+    db_session.flush()
+    db_session.add(SpcOcap(
+        event_id=event.id, investigation_6m={"machine": "壓力波動"},
+        status="open", created_by=manager.id, updated_by=manager.id,
+    ))
+    db_session.commit()
+
+    detail = client.get(
+        f"/api/spc/studies/{analyzed['study_id']}", headers=_headers(manager)
+    ).get_json()["data"]
+    saved_limit = detail["versions"][0]["limit_versions"][0]
+
+    assert saved_limit["id"] == limit.id
+    assert saved_limit["status"] == "active"
+    assert saved_limit["events"][0]["id"] == event.id
+    assert saved_limit["events"][0]["ocap"]["investigation_6m"] == {
+        "machine": "壓力波動"
+    }

@@ -80,8 +80,8 @@ describe('SpcDashboardPanel', () => {
     expect(screen.getByText('樣本數')).toBeInTheDocument();
     expect(screen.getByText('常態性檢查')).toBeInTheDocument();
     expect(screen.getByTestId('process-capability-card')).toBeInTheDocument();
-    expect(screen.getByText('X̄ 平均值管制圖')).toBeInTheDocument();
-    expect(screen.getByText('R 全距管制圖')).toBeInTheDocument();
+    expect(screen.getByText('平均值 X̄ 管制圖')).toBeInTheDocument();
+    expect(screen.getByText('全距 R 管制圖')).toBeInTheDocument();
     expect(screen.getByText('正常')).toBeInTheDocument();
     expect(screen.getByTestId('cpk-trend-chart')).toBeInTheDocument();
   });

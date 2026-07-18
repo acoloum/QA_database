@@ -27,6 +27,9 @@ const defaultSpcModel = {
       datasets: [{ label: '全距', data: [0.1, 0.2] }],
     },
   },
+  chartType: 'xbar_r',
+  locationLabel: '平均值 X̄',
+  variationLabel: '全距 R',
   ids: ['101', '102'],
   analysis: { violations: [] },
   rAnalysis: { violations: [] },
@@ -48,14 +51,18 @@ const defaultSpcModel = {
   cpkTrend: null,
 };
 
+vi.mock('../spc/SpcStudyPanel', () => ({
+  default: ({ source, filters }: { source: string; filters: Record<string, unknown> }) => (
+    <div data-testid="spc-study-panel">SPC 研究與基準 · {source} · {String(filters.mat)}</div>
+  ),
+}));
+
 vi.mock('../../hooks/usePatrol', async () => {
     const actual = await vi.importActual('../../hooks/usePatrol');
     return {
         ...actual,
         usePatrolStats: vi.fn(),
         useExportPatrolSpcReport: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
-        useFreezePatrolLimits: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
-        useUnfreezePatrolLimits: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
         // PatrolOutlierManagerModal 一律掛載於畫面中（以 show 屬性控制顯示），
         // 故其內部使用的 hooks 也需一併模擬，避免因缺少 QueryClientProvider 而丟出例外
         usePatrolDetails: vi.fn(() => ({ data: [], isLoading: false })),
@@ -84,20 +91,14 @@ describe('PatrolCharts', () => {
         buildSpcChartModelMock.mockReturnValue(defaultSpcModel);
     });
 
-    it('顯示管制界限凍結狀態徽章與操作按鈕', () => {
+    it('顯示共用研究流程並移除舊凍結入口', () => {
         vi.mocked(usePatrolHooks.usePatrolStats).mockReturnValue({
             data: { ...baseStatsData, limits_frozen: true },
         } as never);
         render(<PatrolCharts {...defaultProps} />);
-        expect(screen.getByText('管制界限已凍結')).toBeInTheDocument();
-    });
-
-    it('未凍結時顯示逐次重算徽章', () => {
-        vi.mocked(usePatrolHooks.usePatrolStats).mockReturnValue({
-            data: { ...baseStatsData, limits_frozen: false },
-        } as never);
-        render(<PatrolCharts {...defaultProps} />);
-        expect(screen.getByText('界限逐次重算中')).toBeInTheDocument();
+        expect(screen.getByTestId('spc-study-panel')).toHaveTextContent('patrol · 6061');
+        expect(screen.queryByRole('button', { name: '凍結目前界限' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: '解除凍結' })).not.toBeInTheDocument();
     });
 
     it('離群值管理按鈕於未選擇記錄時停用', () => {

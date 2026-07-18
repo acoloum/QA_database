@@ -1,0 +1,60 @@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import type { SpcStudyResult } from '../../types';
+import SpcBaselineApprovalModal from './SpcBaselineApprovalModal';
+
+const version = {
+  id: 12,
+  study_id: 5,
+  version_no: 3,
+  data_hash: '1234567890abcdef'.repeat(4),
+  method_version: '2026.1',
+  code_version: 'build-77',
+  charts: {
+    chart_type: 'xbar_r',
+    subgroup_sizes: [2, 2],
+    sigma_within: 0.2,
+    location: { statistic: 'xbar', values: [10, 10.1], cl: [10, 10], ucl: [10.5, 10.5], lcl: [9.5, 9.5] },
+    variation: { statistic: 'r', values: [0.2, 0.1], cl: [0.2, 0.2], ucl: [0.5, 0.5], lcl: [0, 0] },
+  },
+  samples: [
+    { id: 1, key: 'A', order: 0, timestamp: '2026-07-01', values: [9.9, 10.1], distribution_values: [9.9, 10.1], record_ids: [101], measurement_ids: [1001, 1002], exclusion_snapshot: [] },
+    { id: 2, key: 'B', order: 1, timestamp: '2026-07-02', values: [10, 10.2], distribution_values: [10, 10.2], record_ids: [102], measurement_ids: [1003, 1004], exclusion_snapshot: [] },
+  ],
+  specification: { found: true, USL: 11, LSL: 9 },
+  stability: { evaluated: true, stable: true, rules_used: [], violations: [] },
+  distribution: { model: 'normal', label: '常態分布', params: [], accepted: true, normal_ok: true, unimodal: true, reason_code: null, candidates: [], fit_method: 'AD', alpha: 0.05 },
+  time_model: { candidate: 'A1', model: 'A1', confirmed: true, statistically_controlled: true },
+  capability: { available: true, cp: 1.5, cpk: 1.4 },
+  applicability: { applicable: true },
+  status: 'submitted', audit_incomplete: false, created_by: 1, created_at: '2026-07-18',
+} as unknown as SpcStudyResult;
+
+describe('SpcBaselineApprovalModal', () => {
+  it('核准前揭露篩選、來源、雜湊、時間範圍、子組與界限，且理由必填', () => {
+    const onConfirm = vi.fn();
+    render(
+      <SpcBaselineApprovalModal
+        show
+        action="approve"
+        source="shipping"
+        filters={{ vendor: 'A廠', material: '6061', field: '外徑' }}
+        version={version}
+        onHide={vi.fn()}
+        onConfirm={onConfirm}
+      />,
+    );
+
+    expect(screen.getByText('A廠')).toBeInTheDocument();
+    expect(screen.getByText('101、102')).toBeInTheDocument();
+    expect(screen.getByText(version.data_hash)).toBeInTheDocument();
+    expect(screen.getByText('2026-07-01 ～ 2026-07-02')).toBeInTheDocument();
+    expect(screen.getByText('2 組／4 筆量測')).toBeInTheDocument();
+    expect(screen.getByText(/10\.500/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '核准並生效' })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('核准理由'), { target: { value: '基準資料與製程條件已複核' } });
+    fireEvent.click(screen.getByRole('button', { name: '核准並生效' }));
+    expect(onConfirm).toHaveBeenCalledWith('基準資料與製程條件已複核');
+  });
+});

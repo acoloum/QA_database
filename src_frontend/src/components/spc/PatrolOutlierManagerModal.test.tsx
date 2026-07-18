@@ -56,4 +56,28 @@ describe('PatrolOutlierManagerModal', () => {
             expect.anything(),
         );
     });
+
+    it('恢復計入前也必須填寫理由，並顯示原排除稽核資訊', () => {
+        vi.mocked(usePatrolHooks.usePatrolDetails).mockReturnValue({
+            data: [{
+                識別碼: 1, 組別: 1, 測量項目: '外徑', 測量位置: '前段',
+                最小值: 9.8, 最大值: 10.2, 排除統計: true, 排除原因: '量具異常',
+                排除者ID: 7, 排除時間: '2026-07-18T08:00:00Z',
+            }],
+            isLoading: false,
+        } as never);
+        renderWithClient(<PatrolOutlierManagerModal mainId={123} show onHide={() => {}} />);
+
+        expect(screen.getByText(/操作者 #7/)).toBeInTheDocument();
+        const button = screen.getByRole('button', { name: '恢復計入' });
+        expect(button).toBeDisabled();
+        fireEvent.change(screen.getByPlaceholderText('恢復理由（必填）'), {
+            target: { value: '量具校驗完成，重測有效' },
+        });
+        fireEvent.click(button);
+        expect(mutate).toHaveBeenCalledWith(
+            { id: 1, excluded: false, reason: '量具校驗完成，重測有效' },
+            expect.anything(),
+        );
+    });
 });

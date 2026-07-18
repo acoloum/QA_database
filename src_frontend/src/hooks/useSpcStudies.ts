@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
-import type { SpcStudyResult, SpcStudySummary, SpcStudyVersionSummary } from '../types';
+import type {
+  SpcLimitVersionSummary, SpcStudyResult, SpcStudySummary, SpcStudyVersionSummary,
+} from '../types';
 
 interface ApiSuccess<T> {
   success: true;
@@ -22,16 +24,6 @@ export interface ConfirmSpcTimeModelInput extends SpcStudyActionInput {
   model: 'A1' | 'A2';
 }
 
-export interface SpcLimitVersion {
-  id: number;
-  study_version_id: number;
-  revision: number;
-  status: 'active' | 'retired';
-  limits: Record<string, unknown>;
-  approved_by: number;
-  approved_at: string;
-}
-
 export interface SpcRetireLimitInput {
   limitId: number;
   studyId: number;
@@ -43,10 +35,10 @@ export interface SpcOcapInput {
   ocapId?: number;
   payload: {
     status?: string;
-    containment?: string;
-    suspected_cause?: string;
-    root_cause?: string;
-    corrective_action?: string;
+    investigation_6m?: Record<string, unknown> | null;
+    remeasurement?: Record<string, unknown> | null;
+    process_adjustment?: string;
+    product_disposition?: string;
     effectiveness?: string;
     owner_id?: number | null;
     due_at?: string | null;
@@ -131,7 +123,7 @@ export const useApproveSpcStudy = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ versionId, reason }: SpcStudyActionInput) => unwrap(
-      await api.post<ApiSuccess<SpcLimitVersion>>(
+      await api.post<ApiSuccess<SpcLimitVersionSummary>>(
         `/spc/study-versions/${versionId}/approve`, { reason },
       ),
     ),
@@ -155,7 +147,7 @@ export const useRetireSpcLimit = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ limitId, reason }: SpcRetireLimitInput) => unwrap(
-      await api.post<ApiSuccess<Pick<SpcLimitVersion, 'id' | 'status'>>>(
+      await api.post<ApiSuccess<Pick<SpcLimitVersionSummary, 'id' | 'status'>>>(
         `/spc/limit-versions/${limitId}/retire`, { reason },
       ),
     ),
