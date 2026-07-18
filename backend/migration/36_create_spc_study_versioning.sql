@@ -66,11 +66,15 @@ CREATE TABLE IF NOT EXISTS "SPC研究樣本" (
     "來源紀錄類型" VARCHAR(50) NOT NULL,
     "來源紀錄ID" INTEGER NOT NULL,
     "來源量測ID" INTEGER,
+    "來源紀錄ID清單" JSONB NOT NULL DEFAULT '[]'::jsonb,
+    "來源量測ID清單" JSONB NOT NULL DEFAULT '[]'::jsonb,
+    "樣本時間" VARCHAR(40),
     "子組識別鍵" VARCHAR(128) NOT NULL,
     "子組順序" INTEGER NOT NULL,
     "量測值" JSONB NOT NULL,
     "排除統計" BOOLEAN NOT NULL DEFAULT FALSE,
-    "排除原因" VARCHAR(200)
+    "排除原因" VARCHAR(200),
+    "排除快照" JSONB NOT NULL DEFAULT '[]'::jsonb
 );
 
 CREATE INDEX IF NOT EXISTS idx_spc_sample_version_order

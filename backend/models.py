@@ -383,11 +383,15 @@ class SpcStudySample(db.Model):
     source_record_type = db.Column('來源紀錄類型', db.String(50), nullable=False)
     source_record_id = db.Column('來源紀錄ID', db.Integer, nullable=False)
     source_measurement_id = db.Column('來源量測ID', db.Integer, nullable=True)
+    source_record_ids = db.Column('來源紀錄ID清單', JsonType, nullable=False, default=list)
+    source_measurement_ids = db.Column('來源量測ID清單', JsonType, nullable=False, default=list)
+    sample_timestamp = db.Column('樣本時間', db.String(40), nullable=True)
     subgroup_key = db.Column('子組識別鍵', db.String(128), nullable=False)
     subgroup_order = db.Column('子組順序', db.Integer, nullable=False)
     values = db.Column('量測值', JsonType, nullable=False)
     excluded = db.Column('排除統計', db.Boolean, nullable=False, default=False)
     exclusion_reason = db.Column('排除原因', db.String(200), nullable=True)
+    exclusion_snapshot = db.Column('排除快照', JsonType, nullable=False, default=list)
 
     version = db.relationship('SpcStudyVersion', back_populates='samples')
 
