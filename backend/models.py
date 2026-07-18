@@ -125,6 +125,10 @@ class PatrolDetail(db.Model):
     # §6.6 離群值：標示無效並保留追溯，不得刪除；排除於統計計算之外
     excluded         = db.Column('排除統計', db.Boolean, default=False, nullable=False)
     exclusion_reason = db.Column('排除原因', db.String(200), nullable=True)
+    exclusion_user_id = db.Column(
+        '排除者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    excluded_at = db.Column('排除時間', db.DateTime(timezone=True), nullable=True)
 
 class ShippingData(db.Model):
     __tablename__ = '出貨檢驗數據'
@@ -240,6 +244,10 @@ class ShippingMeasurement(db.Model):
     # §6.6 離群值：標示無效並保留追溯，不得刪除；排除於統計計算之外
     excluded         = db.Column('排除統計', db.Boolean, default=False, nullable=False)
     exclusion_reason = db.Column('排除原因', db.String(200), nullable=True)
+    exclusion_user_id = db.Column(
+        '排除者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    excluded_at = db.Column('排除時間', db.DateTime(timezone=True), nullable=True)
 
 
 class SPCCache(db.Model):
@@ -281,6 +289,254 @@ class SpcControlLimit(db.Model):
     note       = db.Column('備註', db.String(200))
     created_at = db.Column('建立時間', db.DateTime, default=utc_now)
     updated_at = db.Column('更新時間', db.DateTime, default=utc_now, onupdate=utc_now)
+
+
+class SpcStudy(db.Model):
+    """SPC 研究主檔：保存研究範圍與來源，不覆寫歷史版本。"""
+
+    __tablename__ = 'SPC研究'
+    __table_args__ = (
+        db.Index('idx_spc_study_stream_characteristic', '製程流識別鍵', '品質特性'),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    source = db.Column('資料來源', db.String(20), nullable=False)
+    study_type = db.Column('研究類型', db.String(30), nullable=False)
+    process_stream_key = db.Column('製程流識別鍵', db.String(128), nullable=False)
+    characteristic = db.Column('品質特性', db.String(50), nullable=False)
+    filters = db.Column('篩選條件', JsonType, nullable=False, default=dict)
+    msa_status = db.Column('MSA狀態', db.String(30), nullable=True)
+    sampling_note = db.Column('抽樣說明', db.Text, nullable=True)
+    status = db.Column('狀態', db.String(30), nullable=False, default='draft')
+    legacy_limit_id = db.Column(
+        '舊界限ID', db.Integer, db.ForeignKey('SPC管制界限.識別碼'),
+        nullable=True, unique=True,
+    )
+    created_by = db.Column(
+        '建立者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    created_at = db.Column(
+        '建立時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+    versions = db.relationship(
+        'SpcStudyVersion', back_populates='study', cascade='all, delete-orphan',
+        order_by='SpcStudyVersion.version_no',
+    )
+
+
+class SpcStudyVersion(db.Model):
+    """SPC 不可變研究版本：保存輸入雜湊、方法版本與完整計算快照。"""
+
+    __tablename__ = 'SPC研究版本'
+    __table_args__ = (
+        db.UniqueConstraint('研究ID', '版本號', name='uq_spc_study_version'),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    study_id = db.Column(
+        '研究ID', db.Integer, db.ForeignKey('SPC研究.識別碼'), nullable=False
+    )
+    version_no = db.Column('版本號', db.Integer, nullable=False)
+    method_version = db.Column('方法版本', db.String(30), nullable=False)
+    code_version = db.Column('程式版本', db.String(80), nullable=True)
+    data_hash = db.Column('資料雜湊', db.String(64), nullable=True)
+    specification_snapshot = db.Column('規格快照', JsonType, nullable=True)
+    chart_result = db.Column('管制圖結果', JsonType, nullable=True)
+    stability_result = db.Column('穩定性結果', JsonType, nullable=True)
+    distribution_result = db.Column('分布結果', JsonType, nullable=True)
+    time_model_result = db.Column('時間模型結果', JsonType, nullable=True)
+    capability_result = db.Column('能力結果', JsonType, nullable=True)
+    applicability_result = db.Column('適用性結果', JsonType, nullable=True)
+    status = db.Column('狀態', db.String(30), nullable=False, default='draft')
+    audit_incomplete = db.Column('稽核不完整', db.Boolean, nullable=False, default=False)
+    created_by = db.Column(
+        '建立者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    created_at = db.Column(
+        '建立時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+    study = db.relationship('SpcStudy', back_populates='versions')
+    samples = db.relationship(
+        'SpcStudySample', back_populates='version', cascade='all, delete-orphan',
+        order_by='SpcStudySample.subgroup_order',
+    )
+    limit_versions = db.relationship(
+        'SpcLimitVersion', back_populates='study_version',
+        cascade='all, delete-orphan', order_by='SpcLimitVersion.revision',
+    )
+
+
+class SpcStudySample(db.Model):
+    """研究版本的樣本快照，保留來源、子組與當時的排除狀態。"""
+
+    __tablename__ = 'SPC研究樣本'
+    __table_args__ = (
+        db.Index('idx_spc_sample_version_order', '研究版本ID', '子組順序'),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    version_id = db.Column(
+        '研究版本ID', db.Integer, db.ForeignKey('SPC研究版本.識別碼'), nullable=False
+    )
+    source_record_type = db.Column('來源紀錄類型', db.String(50), nullable=False)
+    source_record_id = db.Column('來源紀錄ID', db.Integer, nullable=False)
+    source_measurement_id = db.Column('來源量測ID', db.Integer, nullable=True)
+    subgroup_key = db.Column('子組識別鍵', db.String(128), nullable=False)
+    subgroup_order = db.Column('子組順序', db.Integer, nullable=False)
+    values = db.Column('量測值', JsonType, nullable=False)
+    excluded = db.Column('排除統計', db.Boolean, nullable=False, default=False)
+    exclusion_reason = db.Column('排除原因', db.String(200), nullable=True)
+
+    version = db.relationship('SpcStudyVersion', back_populates='samples')
+
+
+class SpcLimitVersion(db.Model):
+    """經核准的 SPC 界限版本；同一製程流與特性只能有一個啟用版本。"""
+
+    __tablename__ = 'SPC界限版本'
+    __table_args__ = (
+        db.UniqueConstraint('研究版本ID', '修訂版次', name='uq_spc_limit_revision'),
+        db.Index(
+            'uq_spc_one_active_limit', '製程流識別鍵', '品質特性', unique=True,
+            postgresql_where=db.text('"狀態" = \'active\''),
+            sqlite_where=db.text('"狀態" = \'active\''),
+        ),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    study_version_id = db.Column(
+        '研究版本ID', db.Integer, db.ForeignKey('SPC研究版本.識別碼'), nullable=False
+    )
+    process_stream_key = db.Column('製程流識別鍵', db.String(128), nullable=False)
+    characteristic = db.Column('品質特性', db.String(50), nullable=False)
+    revision = db.Column('修訂版次', db.Integer, nullable=False)
+    chart_type = db.Column('管制圖類型', db.String(20), nullable=False)
+    limits = db.Column('界限內容', JsonType, nullable=False)
+    status = db.Column('狀態', db.String(30), nullable=False, default='draft')
+    note = db.Column('備註', db.Text, nullable=True)
+    reason = db.Column('變更原因', db.Text, nullable=True)
+    legacy_limit_id = db.Column(
+        '舊界限ID', db.Integer, db.ForeignKey('SPC管制界限.識別碼'),
+        nullable=True, unique=True,
+    )
+    audit_incomplete = db.Column('稽核不完整', db.Boolean, nullable=False, default=False)
+    created_by = db.Column(
+        '建立者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    created_at = db.Column(
+        '建立時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    approved_by = db.Column(
+        '核准者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    approved_at = db.Column('核准時間', db.DateTime(timezone=True), nullable=True)
+    effective_at = db.Column('生效時間', db.DateTime(timezone=True), nullable=True)
+    retired_by = db.Column(
+        '停用者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    retired_at = db.Column('停用時間', db.DateTime(timezone=True), nullable=True)
+
+    study_version = db.relationship('SpcStudyVersion', back_populates='limit_versions')
+    events = db.relationship(
+        'SpcEvent', back_populates='limit_version', cascade='all, delete-orphan',
+        order_by='SpcEvent.id',
+    )
+
+
+class SpcEvent(db.Model):
+    """SPC 規則觸發事件，供後續 OCAP 調查與結案追蹤。"""
+
+    __tablename__ = 'SPC事件'
+    __table_args__ = (
+        db.UniqueConstraint(
+            '界限版本ID', '研究版本ID', '圖別', '規則代碼', '點序號',
+            name='uq_spc_event_rule_point',
+        ),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    limit_version_id = db.Column(
+        '界限版本ID', db.Integer, db.ForeignKey('SPC界限版本.識別碼'), nullable=False
+    )
+    study_version_id = db.Column(
+        '研究版本ID', db.Integer, db.ForeignKey('SPC研究版本.識別碼'), nullable=False
+    )
+    sample_id = db.Column(
+        '研究樣本ID', db.Integer, db.ForeignKey('SPC研究樣本.識別碼'), nullable=True
+    )
+    chart_kind = db.Column('圖別', db.String(20), nullable=False)
+    rule_code = db.Column('規則代碼', db.String(50), nullable=False)
+    point_index = db.Column('點序號', db.Integer, nullable=False)
+    observed_value = db.Column('觀測值', db.Numeric(18, 8), nullable=True)
+    status = db.Column('狀態', db.String(30), nullable=False, default='open')
+    created_at = db.Column(
+        '建立時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+    limit_version = db.relationship('SpcLimitVersion', back_populates='events')
+    ocap = db.relationship(
+        'SpcOcap', back_populates='event', uselist=False,
+        cascade='all, delete-orphan',
+    )
+
+
+class SpcOcap(db.Model):
+    """失控反應計畫（OCAP）的調查、處置與效果確認紀錄。"""
+
+    __tablename__ = 'SPC異常處置'
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    event_id = db.Column(
+        '事件ID', db.Integer, db.ForeignKey('SPC事件.識別碼'),
+        nullable=False, unique=True,
+    )
+    investigation_6m = db.Column('6M調查', JsonType, nullable=True)
+    remeasurement = db.Column('重新量測', JsonType, nullable=True)
+    process_adjustment = db.Column('製程調整', db.Text, nullable=True)
+    product_disposition = db.Column('產品處置', db.Text, nullable=True)
+    owner_id = db.Column(
+        '負責人ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    effectiveness = db.Column('效果確認', db.Text, nullable=True)
+    status = db.Column('狀態', db.String(30), nullable=False, default='open')
+    created_by = db.Column(
+        '建立者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    updated_by = db.Column(
+        '更新者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    created_at = db.Column(
+        '建立時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_at = db.Column(
+        '更新時間', db.DateTime(timezone=True), nullable=False,
+        default=utc_now, onupdate=utc_now,
+    )
+
+    event = db.relationship('SpcEvent', back_populates='ocap')
+
+
+class SpcValidationRun(db.Model):
+    """SPC 軟體確效執行結果，保存基準資料與容許誤差以供稽核。"""
+
+    __tablename__ = 'SPC軟體確效執行'
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    dataset_version = db.Column('基準資料版本', db.String(80), nullable=False)
+    method_version = db.Column('方法版本', db.String(30), nullable=False)
+    code_version = db.Column('程式版本', db.String(80), nullable=False)
+    expected = db.Column('預期結果', JsonType, nullable=False)
+    actual = db.Column('實際結果', JsonType, nullable=False)
+    tolerances = db.Column('容許誤差', JsonType, nullable=False)
+    result = db.Column('執行結果', db.String(20), nullable=False)
+    executed_by = db.Column(
+        '執行者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    executed_at = db.Column(
+        '執行時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
 
 
 class VendorToleranceMain(db.Model):
