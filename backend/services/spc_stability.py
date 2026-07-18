@@ -3,7 +3,11 @@
 每增加一條準則會提高誤警率約 10%（§9.2.2.1），
 因此預設僅啟用精簡集，其餘準則以參數啟用。
 """
+from collections.abc import Sequence
+from numbers import Real
 from typing import Any, Dict, List, Optional
+
+from .spc_contracts import SpcChartSet
 
 # 預設精簡準則集（§9.2.2.1：避免同時套用多項準則）
 # 注意：此清單需與前端 src_frontend/src/utils/spcAnalysis.ts 的 DEFAULT_RULES 保持一致，
@@ -36,6 +40,196 @@ RULE_LABELS = {
 }
 
 
+def _limit_array(value: Real | Sequence[float], count: int, name: str) -> tuple[float, ...]:
+    if isinstance(value, Real):
+        return (float(value),) * count
+    result = tuple(float(item) for item in value)
+    if len(result) != count:
+        raise ValueError(f"{name} 長度必須與資料點一致")
+    return result
+
+
+def evaluate_chart_stability(
+    values: Sequence[Optional[float]],
+    cl: Real | Sequence[float],
+    ucl: Real | Sequence[float],
+    lcl: Real | Sequence[float],
+    *,
+    chart_kind: str,
+    enabled_rules: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """依每個資料點實際界限評估單一管制圖。"""
+
+    rules = list(enabled_rules if enabled_rules is not None else DEFAULT_STABILITY_RULES)
+    point_values = tuple(float(value) if value is not None else None for value in values)
+    count = len(point_values)
+    centers = _limit_array(cl, count, "CL")
+    upper_limits = _limit_array(ucl, count, "UCL")
+    lower_limits = _limit_array(lcl, count, "LCL")
+    result: Dict[str, Any] = {
+        "evaluated": False,
+        "stable": None,
+        "violations": [],
+        "rules_used": rules,
+        "chart_kind": chart_kind,
+    }
+    numeric_count = sum(value is not None for value in point_values)
+    if numeric_count < 5 or any(upper <= center for upper, center in zip(upper_limits, centers)):
+        return result
+
+    sigmas = tuple((upper - center) / 3.0 for upper, center in zip(upper_limits, centers))
+    violations: List[Dict[str, Any]] = []
+    seen: set[tuple[int, str, str]] = set()
+
+    def add(index: int, rule: str, window_start: int) -> None:
+        key = (index, rule, chart_kind)
+        if key in seen:
+            return
+        seen.add(key)
+        violations.append({
+            "index": index,
+            "window_start": window_start,
+            "window_end": index,
+            "rule": rule,
+            "label": RULE_LABELS[rule],
+            "chart_kind": chart_kind,
+        })
+
+    def complete_window(start: int, end: int) -> Optional[tuple[float, ...]]:
+        window = point_values[start:end]
+        if any(value is None for value in window):
+            return None
+        return tuple(value for value in window if value is not None)
+
+    for index, value in enumerate(point_values):
+        if value is None:
+            continue
+        if "beyond_limits" in rules and (
+            value > upper_limits[index] or value < lower_limits[index]
+        ):
+            add(index, "beyond_limits", index)
+
+        if "two_of_three_beyond_2s" in rules and index >= 2:
+            start = index - 2
+            window = complete_window(start, index + 1)
+            if window is not None:
+                above = sum(
+                    point_values[j] > centers[j] + 2 * sigmas[j]
+                    for j in range(start, index + 1)
+                )
+                below = sum(
+                    point_values[j] < centers[j] - 2 * sigmas[j]
+                    for j in range(start, index + 1)
+                )
+                if above >= 2 or below >= 2:
+                    add(index, "two_of_three_beyond_2s", start)
+
+        if "four_of_five_beyond_1s" in rules and index >= 4:
+            start = index - 4
+            window = complete_window(start, index + 1)
+            if window is not None:
+                above = sum(
+                    point_values[j] > centers[j] + sigmas[j]
+                    for j in range(start, index + 1)
+                )
+                below = sum(
+                    point_values[j] < centers[j] - sigmas[j]
+                    for j in range(start, index + 1)
+                )
+                if above >= 4 or below >= 4:
+                    add(index, "four_of_five_beyond_1s", start)
+
+        if "run_9_same_side" in rules and index >= 8:
+            start = index - 8
+            window = complete_window(start, index + 1)
+            if window is not None:
+                all_above = all(point_values[j] > centers[j] for j in range(start, index + 1))
+                all_below = all(point_values[j] < centers[j] for j in range(start, index + 1))
+                if all_above or all_below:
+                    add(index, "run_9_same_side", start)
+
+        if "trend_6" in rules and index >= 5:
+            start = index - 5
+            window = complete_window(start, index + 1)
+            if window is not None:
+                increasing = all(window[j] > window[j - 1] for j in range(1, len(window)))
+                decreasing = all(window[j] < window[j - 1] for j in range(1, len(window)))
+                if increasing or decreasing:
+                    add(index, "trend_6", start)
+
+        if "fifteen_within_1s" in rules and index >= 14:
+            start = index - 14
+            window = complete_window(start, index + 1)
+            if window is not None and all(
+                abs(point_values[j] - centers[j]) <= sigmas[j]
+                for j in range(start, index + 1)
+            ):
+                add(index, "fifteen_within_1s", start)
+
+        if "alternating_14" in rules and index >= 13:
+            start = index - 13
+            window = complete_window(start, index + 1)
+            if window is not None:
+                differences = [window[j] - window[j - 1] for j in range(1, len(window))]
+                if all(difference != 0 for difference in differences) and all(
+                    differences[j] * differences[j - 1] < 0
+                    for j in range(1, len(differences))
+                ):
+                    add(index, "alternating_14", start)
+
+        if "eight_beyond_1s_both" in rules and index >= 7:
+            start = index - 7
+            window = complete_window(start, index + 1)
+            if window is not None:
+                outside_zone_c = all(
+                    abs(point_values[j] - centers[j]) > sigmas[j]
+                    for j in range(start, index + 1)
+                )
+                has_above = any(point_values[j] > centers[j] for j in range(start, index + 1))
+                has_below = any(point_values[j] < centers[j] for j in range(start, index + 1))
+                if outside_zone_c and has_above and has_below:
+                    add(index, "eight_beyond_1s_both", start)
+
+    result["evaluated"] = True
+    result["stable"] = not violations
+    result["violations"] = violations
+    return result
+
+
+def evaluate_study_stability(
+    chart_set: SpcChartSet,
+    enabled_rules: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """位置圖與變異圖共同決定研究是否統計受控。"""
+
+    variation = evaluate_chart_stability(
+        chart_set.variation.values,
+        chart_set.variation.cl,
+        chart_set.variation.ucl,
+        chart_set.variation.lcl,
+        chart_kind="variation",
+        enabled_rules=enabled_rules,
+    )
+    location = evaluate_chart_stability(
+        chart_set.location.values,
+        chart_set.location.cl,
+        chart_set.location.ucl,
+        chart_set.location.lcl,
+        chart_kind="location",
+        enabled_rules=enabled_rules,
+    )
+    evaluated = bool(variation["evaluated"] and location["evaluated"])
+    stable = bool(variation["stable"] and location["stable"]) if evaluated else None
+    return {
+        "evaluated": evaluated,
+        "stable": stable,
+        "location": location,
+        "variation": variation,
+        "violations": variation["violations"] + location["violations"],
+        "rules_used": list(enabled_rules if enabled_rules is not None else DEFAULT_STABILITY_RULES),
+    }
+
+
 def evaluate_stability(
     avgs: List[float],
     x_cl: float,
@@ -43,73 +237,13 @@ def evaluate_stability(
     x_lcl: float,
     enabled_rules: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """依啟用的穩定性準則評估製程是否統計受控。
+    """舊 X̄ 純量 API 的相容包裝。"""
 
-    回傳 evaluated=False 表示資料不足無法評估（此時只能報 Pp/Ppk，§6.2）。
-    """
-    rules = enabled_rules if enabled_rules is not None else DEFAULT_STABILITY_RULES
-    result: Dict[str, Any] = {
-        "evaluated": False,
-        "stable": None,
-        "violations": [],
-        "rules_used": list(rules),
-    }
-    if len(avgs) < 5 or x_ucl <= x_cl:
-        return result
-
-    sigma = (x_ucl - x_cl) / 3
-    violations: List[Dict[str, Any]] = []
-
-    def add(idx: int, rule: str) -> None:
-        violations.append({"index": idx, "rule": rule, "label": RULE_LABELS[rule]})
-
-    for i, v in enumerate(avgs):
-        if "beyond_limits" in rules and (v > x_ucl or v < x_lcl):
-            add(i, "beyond_limits")
-        if "two_of_three_beyond_2s" in rules and i >= 2:
-            w = avgs[i - 2:i + 1]
-            above = sum(1 for x in w if x > x_cl + 2 * sigma)
-            below = sum(1 for x in w if x < x_cl - 2 * sigma)
-            if above >= 2 or below >= 2:
-                add(i, "two_of_three_beyond_2s")
-        if "four_of_five_beyond_1s" in rules and i >= 4:
-            w = avgs[i - 4:i + 1]
-            above = sum(1 for x in w if x > x_cl + sigma)
-            below = sum(1 for x in w if x < x_cl - sigma)
-            if above >= 4 or below >= 4:
-                add(i, "four_of_five_beyond_1s")
-        if "run_9_same_side" in rules and i >= 8:
-            w = avgs[i - 8:i + 1]
-            if all(x > x_cl for x in w) or all(x < x_cl for x in w):
-                add(i, "run_9_same_side")
-        if "trend_6" in rules and i >= 5:
-            w = avgs[i - 5:i + 1]
-            inc = all(w[j] > w[j - 1] for j in range(1, 6))
-            dec = all(w[j] < w[j - 1] for j in range(1, 6))
-            if inc or dec:
-                add(i, "trend_6")
-        if "fifteen_within_1s" in rules and i >= 14:
-            w = avgs[i - 14:i + 1]
-            if all(abs(x - x_cl) <= sigma for x in w):
-                add(i, "fifteen_within_1s")
-        if "alternating_14" in rules and i >= 13:
-            w = avgs[i - 13:i + 1]
-            alternating = True
-            for j in range(1, len(w)):
-                if (j % 2 == 0 and w[j] < w[j - 1]) or (j % 2 != 0 and w[j] > w[j - 1]):
-                    alternating = False
-                    break
-            if alternating:
-                add(i, "alternating_14")
-        if "eight_beyond_1s_both" in rules and i >= 7:
-            w = avgs[i - 7:i + 1]
-            # 與前端 analyzeWECO Rule 8 相同的簡化邏輯：僅檢查窗口內是否
-            # 「完全沒有」落在 Zone C（±1σ內）的點，並非嚴格驗證真正交替兩側。
-            in_zone_c = any(x_cl - sigma < x < x_cl + sigma for x in w)
-            if not in_zone_c:
-                add(i, "eight_beyond_1s_both")
-
-    result["evaluated"] = True
-    result["stable"] = len(violations) == 0
-    result["violations"] = violations
-    return result
+    return evaluate_chart_stability(
+        avgs,
+        x_cl,
+        x_ucl,
+        x_lcl,
+        chart_kind="location",
+        enabled_rules=enabled_rules,
+    )
