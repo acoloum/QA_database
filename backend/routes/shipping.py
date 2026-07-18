@@ -122,9 +122,17 @@ def export_spc_report():
             'vendor': request.args.get('vendor', ''),
             'material': request.args.get('material', ''),
             'spec': request.args.get('spec', ''),
+            'field': field,
             'start_date': request.args.get('start_date', ''),
             'end_date': request.args.get('end_date', ''),
         }
+        version_id = request.args.get('study_version_id', type=int)
+        if version_id is None:
+            from ..services.spc_study_service import SpcStudyService
+
+            actor_id = request.user.get('id') or request.user.get('user_id')
+            version = SpcStudyService.analyze('shipping', filters, actor_id)
+            version_id = version.id
 
         # 1. 產生原始數據工作簿
         raw_output = ShippingService.export_excel(request.args)
@@ -134,8 +142,7 @@ def export_spc_report():
         ws_raw.title = '原始數據'
 
         # 2. 產生 SPC 報告工作簿
-        stats_data = ShippingService.get_stats(request.args)
-        spc_output = SpcReportService.generate_report(stats_data, field, filters)
+        spc_output = SpcReportService.generate_version_report(version_id)
         wb_spc = load_workbook(spc_output)
 
         # 3. 將 SPC 報告的所有工作表複製到主工作簿

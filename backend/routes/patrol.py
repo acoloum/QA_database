@@ -156,13 +156,32 @@ def patrol_history():
 @auth_required
 def patrol_export():
     try:
-        output = PatrolService.export_excel(request.args)
         # 動態檔名：包含測量項目與位置資訊
         item = request.args.get('item', '')
         position = request.args.get('position', '')
         if item:
+            from ..services.spc_report import SpcReportService
+            from ..services.spc_study_service import SpcStudyService
+
+            version_id = request.args.get('study_version_id', type=int)
+            if version_id is None:
+                filters = {
+                    'm_id': request.args.get('m_id'),
+                    'op_id': request.args.get('op_id'),
+                    'cust_id': request.args.get('cust_id'),
+                    'mat': request.args.get('mat', request.args.get('material', '')),
+                    'spec': request.args.get('spec', ''),
+                    'item': item,
+                    'pos': position,
+                    's_date': request.args.get('s_date', request.args.get('start_date', '')),
+                    'e_date': request.args.get('e_date', request.args.get('end_date', '')),
+                }
+                actor_id = request.user.get('id') or request.user.get('user_id')
+                version_id = SpcStudyService.analyze('patrol', filters, actor_id).id
+            output = SpcReportService.generate_version_report(version_id)
             filename = f'巡檢數據_SPC_{item}_{position or "全段"}.xlsx'
         else:
+            output = PatrolService.export_excel(request.args)
             filename = '巡檢數據.xlsx'
         return send_file(
             output,

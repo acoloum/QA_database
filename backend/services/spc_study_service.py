@@ -3,6 +3,7 @@
 from dataclasses import asdict
 from datetime import date, datetime, timedelta, timezone
 import json
+import os
 from typing import Any, Callable, Mapping
 
 import numpy as np
@@ -38,6 +39,7 @@ from .spc_time_model import classify_time_model
 
 
 SPC_METHOD_VERSION = "2026.1"
+SPC_CODE_VERSION = os.environ.get("SPC_CODE_VERSION", "2026.1")
 ADAPTERS: dict[str, Callable[[Mapping[str, Any]], SpcStudyInput]] = {
     "shipping": build_shipping_study_input,
     "patrol": build_patrol_study_input,
@@ -262,6 +264,7 @@ class SpcStudyService:
             study_id=study.id,
             version_no=int(latest or 0) + 1,
             method_version=SPC_METHOD_VERSION,
+            code_version=SPC_CODE_VERSION,
             data_hash=study_input.data_hash,
             specification_snapshot=dict(study_input.specification),
             status="draft",

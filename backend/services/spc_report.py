@@ -1,4 +1,5 @@
 import numpy as np
+import json
 from io import BytesIO
 from datetime import datetime
 from openpyxl import Workbook
@@ -7,9 +8,154 @@ from openpyxl.utils import get_column_letter
 from openpyxl.chart import LineChart, BarChart, Reference
 from openpyxl.chart.layout import Layout, ManualLayout
 from .spc_stability import evaluate_stability, RULE_LABELS
+from ..extensions import db
+from ..models import SpcStudyVersion
+from .spc_errors import SpcNotFound
 
 
 class SpcReportService:
+    @staticmethod
+    def _stats_from_version(version: SpcStudyVersion) -> dict:
+        """只使用不可變研究版本與樣本快照建立報表資料。"""
+
+        chart = version.chart_result or {}
+        location = chart.get("location") or {}
+        variation = chart.get("variation") or {}
+        samples = list(version.samples)
+        avgs = list(location.get("values") or [
+            float(np.mean(sample.values)) for sample in samples
+        ])
+        variation_values = list(variation.get("values") or [
+            float(np.ptp(sample.values)) for sample in samples
+        ])
+        x_cls = list(location.get("cl") or [])
+        x_ucls = list(location.get("ucl") or [])
+        x_lcls = list(location.get("lcl") or [])
+        r_cls = list(variation.get("cl") or [])
+        r_ucls = list(variation.get("ucl") or [])
+        r_lcls = list(variation.get("lcl") or [])
+
+        def first(values):
+            return values[0] if values else None
+
+        limits = version.limit_versions[-1] if version.limit_versions else None
+        events = [event for item in version.limit_versions for event in item.events]
+        excluded_count = sum(
+            1
+            for sample in samples
+            for item in (sample.exclusion_snapshot or [])
+            if item.get("excluded")
+        )
+        distribution_values = [
+            float(value)
+            for sample in samples
+            for value in (sample.distribution_values or sample.values or [])
+        ]
+        metadata = {
+            "研究版本ID": version.id,
+            "研究ID": version.study_id,
+            "研究類型": version.study.study_type,
+            "資料來源": version.study.source,
+            "完整篩選條件": json.dumps(
+                version.study.filters or {}, ensure_ascii=False, sort_keys=True
+            ),
+            "規格快照": json.dumps(
+                version.specification_snapshot or {}, ensure_ascii=False, sort_keys=True
+            ),
+            "每組樣本數": ", ".join(
+                str(value) for value in (chart.get("subgroup_sizes") or [
+                    len(sample.values or []) for sample in samples
+                ])
+            ),
+            "圖表選型": chart.get("chart_type"),
+            "時間模型": json.dumps(
+                version.time_model_result or {}, ensure_ascii=False, sort_keys=True
+            ),
+            "分布證據": json.dumps(
+                version.distribution_result or {}, ensure_ascii=False, sort_keys=True
+            ),
+            "穩定性證據": json.dumps(
+                version.stability_result or {}, ensure_ascii=False, sort_keys=True
+            ),
+            "指標適用性": json.dumps(
+                version.capability_result or {}, ensure_ascii=False, sort_keys=True
+            ),
+            "資料雜湊": version.data_hash,
+            "方法版本": version.method_version,
+            "程式版本": version.code_version or "未記錄",
+            "版本狀態": version.status,
+            "稽核不完整": "是" if version.audit_incomplete else "否",
+            "建立者ID": version.created_by,
+            "建立時間": version.created_at.isoformat() if version.created_at else None,
+            "核准界限版次": limits.revision if limits else None,
+            "核准者ID": limits.approved_by if limits else None,
+            "核准時間": (
+                limits.approved_at.isoformat() if limits and limits.approved_at else None
+            ),
+            "OCAP事件數": len(events),
+            "OCAP結案數": sum(1 for event in events if event.status == "closed"),
+        }
+        return {
+            "schema_version": version.method_version,
+            "labels": [sample.subgroup_key for sample in samples],
+            "dates": [sample.sample_timestamp or "" for sample in samples],
+            "ids": [str(sample.source_record_id) for sample in samples],
+            "avgs": avgs,
+            "ranges": variation_values,
+            "all_values": distribution_values,
+            "subgroup_sizes": list(chart.get("subgroup_sizes") or []),
+            "avg_subgroup_size": (
+                int(round(float(np.mean(chart.get("subgroup_sizes")))))
+                if chart.get("subgroup_sizes") else None
+            ),
+            "x_cl": first(x_cls), "x_ucl": first(x_ucls), "x_lcl": first(x_lcls),
+            "r_cl": first(r_cls), "r_ucl": first(r_ucls), "r_lcl": first(r_lcls),
+            "x_cls": x_cls, "x_ucls": x_ucls, "x_lcls": x_lcls,
+            "r_cls": r_cls, "r_ucls": r_ucls, "r_lcls": r_lcls,
+            "charts": chart,
+            "stability": version.stability_result or {},
+            "distribution": version.distribution_result or {},
+            "time_model": version.time_model_result or {},
+            "process_capability": version.capability_result or {},
+            "capability": version.capability_result or {},
+            "applicability": version.applicability_result or {},
+            "tolerance": version.specification_snapshot or {},
+            "excluded_count": excluded_count,
+            "limits_frozen": bool(limits and limits.status == "active"),
+            "study_version": {
+                "id": version.id, "version_no": version.version_no,
+                "status": version.status, "data_hash": version.data_hash,
+            },
+            "version_metadata": metadata,
+            "version_samples": [{
+                "子組順序": sample.subgroup_order,
+                "子組鍵": sample.subgroup_key,
+                "樣本時間": sample.sample_timestamp,
+                "來源紀錄ID": json.dumps(sample.source_record_ids or [], ensure_ascii=False),
+                "來源量測ID": json.dumps(sample.source_measurement_ids or [], ensure_ascii=False),
+                "管制圖量測值": json.dumps(sample.values or [], ensure_ascii=False),
+                "分布分析值": json.dumps(
+                    sample.distribution_values or [], ensure_ascii=False
+                ),
+                "排除快照": json.dumps(
+                    sample.exclusion_snapshot or [], ensure_ascii=False, sort_keys=True
+                ),
+            } for sample in samples],
+        }
+
+    @staticmethod
+    def generate_version_report(version_id: int) -> BytesIO:
+        """由已保存研究版本重建 Excel，不讀取目前來源資料。"""
+
+        version = db.session.get(SpcStudyVersion, version_id)
+        if version is None:
+            raise SpcNotFound("SPC_STUDY_VERSION_NOT_FOUND", "找不到 SPC 研究版本")
+        return SpcReportService.generate_report(
+            SpcReportService._stats_from_version(version),
+            version.study.characteristic,
+            dict(version.study.filters or {}),
+        )
+
     @staticmethod
     def generate_report(stats_data: dict, field: str, filters: dict) -> BytesIO:
         """Generate an SPC report as Excel file with embedded charts"""
@@ -119,8 +265,9 @@ class SpcReportService:
         ws[f'A{row}'].font = Font(name="微軟正黑體", size=12, bold=True)
         row += 1
 
+        version_metadata = stats_data.get('version_metadata') or {}
         study_items = [
-            ("研究類型", "持續製程監控（回顧式管制圖）"),
+            ("研究類型", version_metadata.get("研究類型") or "即時預覽（未保存版本）"),
             ("適用指數", "能力 Cp/Cpk（穩定）" if applicable == "capability"
                         else "績效 Pp/Ppk（不穩定或穩定性未證明）"),
             ("計算方法", f"{pc.get('method', 'G')} 法（分位數法；常態時等同 6s 公式）"),
@@ -135,6 +282,10 @@ class SpcReportService:
             ("子組數", len(stats_data.get('avgs', []))),
             ("排除之離群值筆數", stats_data.get('excluded_count', 0)),
             ("初步值註記", "是（n<125 或子組<25）" if pc.get('preliminary') else "否"),
+            ("圖表選型", version_metadata.get("圖表選型") or (stats_data.get('charts') or {}).get('chart_type')),
+            ("時間模型", (stats_data.get('time_model') or {}).get('model') or (stats_data.get('time_model') or {}).get('candidate')),
+            ("資料雜湊", version_metadata.get("資料雜湊") or stats_data.get('data_hash')),
+            ("方法版本", version_metadata.get("方法版本") or stats_data.get('schema_version')),
         ]
         for name, value in study_items:
             ws.cell(row=row, column=1, value=name).font = normal_font
@@ -152,14 +303,19 @@ class SpcReportService:
         ws[f'A{row}'].font = Font(name="微軟正黑體", size=12, bold=True)
         row += 1
 
+        chart_type = (stats_data.get('charts') or {}).get('chart_type', 'xbar_r')
+        variation_label = {'xbar_s': 'S', 'xbar_r': 'R', 'i_mr': 'MR'}.get(
+            chart_type, '變異'
+        )
         avg_n = stats_data.get('avg_subgroup_size', 5)
         cl_items = [
+            ("管制圖選型", chart_type),
             ("平均子群大小 (n)", avg_n),
             ("X̄ 中心線 (CL)", stats_data.get('x_cl', 0)),
             ("X̄ 管制上限 (UCL)", stats_data.get('x_ucl', 0)),
             ("X̄ 管制下限 (LCL)", stats_data.get('x_lcl', 0)),
-            ("R̄ 中心線", stats_data.get('r_cl', 0)),
-            ("R 管制上限 (UCL)", stats_data.get('r_ucl', 0)),
+            (f"{variation_label} 中心線", stats_data.get('r_cl')),
+            (f"{variation_label} 管制上限 (UCL)", stats_data.get('r_ucl')),
         ]
         for col_idx, h in enumerate(["管制項目", "數值"], 1):
             cell = ws.cell(row=row, column=col_idx, value=h)
@@ -319,7 +475,11 @@ class SpcReportService:
         # --- Sheet 2: Control Chart Data ---
         ws2 = wb.create_sheet(title="管制圖數據")
         # Headers include control limit columns for chart references
-        data_headers = ["序號", "標籤", "日期", "平均值 (X̄)", "全距 (R)", "UCL", "CL", "LCL", "R_UCL", "R̄"]
+        data_headers = [
+            "序號", "標籤", "日期", "位置統計量",
+            f"變異統計量 ({variation_label})", "UCL", "CL", "LCL",
+            f"{variation_label}_UCL", f"{variation_label}_CL",
+        ]
         for col_idx, h in enumerate(data_headers, 1):
             cell = ws2.cell(row=1, column=col_idx, value=h)
             cell.font = header_font
@@ -330,11 +490,16 @@ class SpcReportService:
         labels = stats_data.get('labels', [])
         dates = stats_data.get('dates', [])
         ranges = stats_data.get('ranges', [])
-        x_ucl = stats_data.get('x_ucl', 0)
-        x_cl = stats_data.get('x_cl', 0)
-        x_lcl = stats_data.get('x_lcl', 0)
-        r_ucl = stats_data.get('r_ucl', 0)
-        r_cl = stats_data.get('r_cl', 0)
+        x_ucl = stats_data.get('x_ucl')
+        x_cl = stats_data.get('x_cl')
+        x_lcl = stats_data.get('x_lcl')
+        r_ucl = stats_data.get('r_ucl')
+        r_cl = stats_data.get('r_cl')
+        x_ucls = stats_data.get('x_ucls') or [x_ucl] * len(avgs)
+        x_cls = stats_data.get('x_cls') or [x_cl] * len(avgs)
+        x_lcls = stats_data.get('x_lcls') or [x_lcl] * len(avgs)
+        r_ucls = stats_data.get('r_ucls') or [r_ucl] * len(avgs)
+        r_cls = stats_data.get('r_cls') or [r_cl] * len(avgs)
 
         # USL/LSL columns if available
         has_spec_limits = pc.get('available') and pc.get('usl') is not None and pc.get('lsl') is not None
@@ -353,18 +518,33 @@ class SpcReportService:
             ws2.cell(row=r, column=3, value=dates[i] if i < len(dates) else "").border = thin_border
             cell_avg = ws2.cell(row=r, column=4, value=round(avgs[i], 4))
             cell_avg.border = thin_border
-            if avgs[i] > x_ucl or avgs[i] < x_lcl:
+            point_x_ucl = x_ucls[i] if i < len(x_ucls) else x_ucl
+            point_x_cl = x_cls[i] if i < len(x_cls) else x_cl
+            point_x_lcl = x_lcls[i] if i < len(x_lcls) else x_lcl
+            point_r_ucl = r_ucls[i] if i < len(r_ucls) else r_ucl
+            point_r_cl = r_cls[i] if i < len(r_cls) else r_cl
+            if (
+                point_x_ucl is not None and point_x_lcl is not None
+                and (avgs[i] > point_x_ucl or avgs[i] < point_x_lcl)
+            ):
                 cell_avg.fill = bad_fill
-            cell_range = ws2.cell(row=r, column=5, value=round(ranges[i], 4) if i < len(ranges) else "")
+            range_value = ranges[i] if i < len(ranges) else None
+            cell_range = ws2.cell(
+                row=r, column=5,
+                value=round(range_value, 4) if range_value is not None else None,
+            )
             cell_range.border = thin_border
-            if i < len(ranges) and ranges[i] > r_ucl:
+            if (
+                i < len(ranges) and ranges[i] is not None
+                and point_r_ucl is not None and ranges[i] > point_r_ucl
+            ):
                 cell_range.fill = bad_fill
             # Control limit columns for chart series
-            ws2.cell(row=r, column=6, value=round(x_ucl, 4))
-            ws2.cell(row=r, column=7, value=round(x_cl, 4))
-            ws2.cell(row=r, column=8, value=round(x_lcl, 4))
-            ws2.cell(row=r, column=9, value=round(r_ucl, 4))
-            ws2.cell(row=r, column=10, value=round(r_cl, 4))
+            ws2.cell(row=r, column=6, value=round(point_x_ucl, 4) if point_x_ucl is not None else None)
+            ws2.cell(row=r, column=7, value=round(point_x_cl, 4) if point_x_cl is not None else None)
+            ws2.cell(row=r, column=8, value=round(point_x_lcl, 4) if point_x_lcl is not None else None)
+            ws2.cell(row=r, column=9, value=round(point_r_ucl, 4) if point_r_ucl is not None else None)
+            ws2.cell(row=r, column=10, value=round(point_r_cl, 4) if point_r_cl is not None else None)
 
             if has_spec_limits:
                 ws2.cell(row=r, column=11, value=round(pc['usl'], 4))
@@ -415,8 +595,15 @@ class SpcReportService:
         # Detect WECO violations for the report (統一改用 spc_stability 的穩定性判定引擎，§9.2.2)
         weco_row = 2
         if len(avgs) > 0:
-            x_stability = stats_data.get('stability') or evaluate_stability(avgs, x_cl, x_ucl, x_lcl)
-            r_stability = evaluate_stability(ranges, r_cl, r_ucl, 0)
+            saved_stability = stats_data.get('stability') or {}
+            x_stability = saved_stability.get('location') or (
+                evaluate_stability(avgs, x_cl, x_ucl, x_lcl)
+                if None not in (x_cl, x_ucl, x_lcl) else {"violations": []}
+            )
+            r_stability = saved_stability.get('variation') or (
+                evaluate_stability(ranges, r_cl, r_ucl, 0)
+                if None not in (r_cl, r_ucl) else {"violations": []}
+            )
 
             def _stability_to_rows(stability_result, chart_type, values, point_labels):
                 """將 evaluate_stability 的違規清單轉為報告列（保留原欄位結構）。
@@ -437,7 +624,9 @@ class SpcReportService:
                 return rows
 
             x_violations = _stability_to_rows(x_stability, 'X̄', avgs, labels)
-            r_violations = _stability_to_rows(r_stability, 'R', ranges, labels)
+            r_violations = _stability_to_rows(
+                r_stability, variation_label, ranges, labels
+            )
 
             for v in x_violations + r_violations:
                 ws_weco.cell(row=weco_row, column=1, value=weco_row - 1).border = thin_border
@@ -532,8 +721,8 @@ class SpcReportService:
 
             # --- R Chart ---
             r_chart = LineChart()
-            r_chart.title = f"R 全距管制圖 - {field}"
-            r_chart.y_axis.title = "全距"
+            r_chart.title = f"{variation_label} 變異管制圖 - {field}"
+            r_chart.y_axis.title = variation_label
             r_chart.y_axis.delete = False
             r_chart.x_axis.delete = False
             r_chart.y_axis.tickLblPos = "low"
@@ -601,6 +790,24 @@ class SpcReportService:
 
                 # 調整直方圖位置（從 A100 改為 A55）
                 ws_chart.add_chart(hist_chart, "A55")
+
+        # --- 版本稽核與不可變樣本證據 ---
+        if version_metadata:
+            ws_audit = wb.create_sheet(title="版本稽核")
+            for row_index, (name, value) in enumerate(version_metadata.items(), 1):
+                ws_audit.cell(row=row_index, column=1, value=name)
+                ws_audit.cell(row=row_index, column=2, value=value)
+            ws_audit.column_dimensions['A'].width = 24
+            ws_audit.column_dimensions['B'].width = 100
+
+            ws_samples = wb.create_sheet(title="研究樣本")
+            sample_rows = stats_data.get('version_samples') or []
+            headers = list(sample_rows[0].keys()) if sample_rows else ["無樣本"]
+            for column, header in enumerate(headers, 1):
+                ws_samples.cell(row=1, column=column, value=header)
+            for row_index, sample in enumerate(sample_rows, 2):
+                for column, header in enumerate(headers, 1):
+                    ws_samples.cell(row=row_index, column=column, value=sample.get(header))
 
         output = BytesIO()
         wb.save(output)
