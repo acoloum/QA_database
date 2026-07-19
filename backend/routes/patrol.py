@@ -175,7 +175,9 @@ def patrol_export():
                 'mat': request.args.get('mat', request.args.get('material', '')),
                 'spec': request.args.get('spec', ''),
                 'item': item,
-                'pos': position,
+                # UI 的「全段」代表不限制位置；研究版本與報表驗證必須使用
+                # 同一份 canonical filters，不能將展示文字保存為位置條件。
+                'pos': '' if position == '全段' else position,
                 's_date': request.args.get('s_date', request.args.get('start_date', '')),
                 'e_date': request.args.get('e_date', request.args.get('end_date', '')),
             }

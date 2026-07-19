@@ -56,3 +56,15 @@ git diff --check
 - p 圖容許目前子組 n 改變，但每點都用 frozen p center/alpha 重算 exact count limits；np 圖會拒絕與 baseline n 不符的資料。
 - attribute 的能力指標與 variable 的時間模型不適用，因此版本明確保存 unavailable reason；核准 gate 僅要求 attribute 圖可用且穩定，避免偽造 variable A1/A2 證據。
 - Patrol 路由既有的 actor/permission/source/filter/version 驗證流程負責建立或選取版本；service 不再允許直接以 current data 產 SPC workbook。
+
+## 後續修正：巡檢全段篩選正規化
+
+UI 的 `position=全段` 已在 patrol export 路由轉為 canonical `pos=''`，建立版本與 `generate_version_report(... expected_filters=...)` 共用同一份 filters；維持既有 variable 預設，不自行改用 attribute 或補造 options。
+
+RED：
+
+```powershell
+& 'C:\QC_Database\venv\Scripts\python.exe' -m pytest backend\tests\test_spc_study_routes.py::test_patrol_export_normalizes_full_position_before_creating_version -q
+```
+
+結果：`1 failed`，實際收到 `pos='全段'`。

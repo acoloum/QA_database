@@ -15,7 +15,9 @@ from backend.models import (
     User,
 )
 from backend.services.spc_contracts import SpcStudyInput, SpcSubgroup
+from backend.services.spc_report import SpcReportService
 from backend.services.spc_study_service import ADAPTERS
+from backend.services.spc_study_service import SpcStudyService
 from backend.utils import generate_token, hash_password
 
 
@@ -380,3 +382,33 @@ def test_shipping_report_rejects_other_source_and_uses_only_saved_version(
     workbook = load_workbook(BytesIO(shipping_response.data))
     assert "原始數據" not in workbook.sheetnames
     assert "研究樣本" in workbook.sheetnames
+
+
+def test_patrol_export_normalizes_full_position_before_creating_version(
+    client, db_session, spc_roles, monkeypatch
+):
+    viewer = _user(db_session, "patrol-export-viewer", "spc_viewer")
+    captured = {}
+
+    def analyze(source, filters, actor_id):
+        captured["analyze"] = (source, filters, actor_id)
+        return type("Version", (), {"id": 91})()
+
+    def generate(version_id, *, expected_source, expected_filters):
+        captured["report"] = (version_id, expected_source, expected_filters)
+        return BytesIO(b"versioned patrol report")
+
+    monkeypatch.setattr(SpcStudyService, "analyze", staticmethod(analyze))
+    monkeypatch.setattr(
+        SpcReportService, "generate_version_report", staticmethod(generate)
+    )
+
+    response = client.get(
+        "/api/patrol/export?item=外徑&position=全段&mat=6061&spec=10*1*100",
+        headers=_headers(viewer),
+    )
+
+    assert response.status_code == 200
+    assert captured["analyze"][0] == "patrol"
+    assert captured["analyze"][1]["pos"] == ""
+    assert captured["report"] == (91, "patrol", captured["analyze"][1])
