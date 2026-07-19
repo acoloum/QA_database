@@ -2,6 +2,7 @@
 
 from dataclasses import asdict, replace
 from datetime import date, datetime, timedelta, timezone
+from html import escape
 import hashlib
 import inspect
 import json
@@ -32,6 +33,7 @@ from .spc_adapters.patrol import build_patrol_study_input
 from .spc_adapters.shipping import build_shipping_study_input
 from .spc_adapters.attribute import build_attribute_study_input
 from .spc_analysis_service import calculate_process_capability
+from .spc_machine_performance import calculate_machine_performance
 from .spc_chart_engine import (
     SpcChartNotApplicable,
     calculate_chart_observations,
@@ -75,6 +77,58 @@ ATTRIBUTE_ADAPTERS: dict[str, Callable[..., SpcStudyInput]] = {
     "shipping": build_attribute_study_input,
     "patrol": build_attribute_study_input,
 }
+
+MACHINE_REQUIRED_FILTERS = ("m_id", "mat", "spec", "item", "pos")
+MACHINE_OPTION_KEYS = {"conditions_confirmed", "condition_reason"}
+
+
+def _canonical_machine_filters(
+    source: str, filters: Mapping[str, Any]
+) -> dict[str, Any]:
+    """驗證機器研究的固定製程流，拒絕全段與多值篩選。"""
+
+    if source != "patrol":
+        raise SpcValidationError("MACHINE_SOURCE_UNSUPPORTED", "機器績效研究只接受巡檢資料")
+    if not isinstance(filters, Mapping):
+        raise SpcValidationError("MACHINE_STREAM_NOT_FIXED", "機器研究篩選條件必須是物件")
+    canonical = dict(filters)
+    for name in MACHINE_REQUIRED_FILTERS:
+        value = canonical.get(name)
+        if isinstance(value, (list, tuple, set, dict)):
+            raise SpcValidationError("MACHINE_STREAM_NOT_FIXED", f"機器研究的 {name} 必須是單一值")
+        if name == "m_id":
+            if isinstance(value, bool):
+                raise SpcValidationError("MACHINE_STREAM_NOT_FIXED", "機器研究必須指定單一機台")
+            try:
+                parsed = int(value)
+            except (TypeError, ValueError):
+                raise SpcValidationError("MACHINE_STREAM_NOT_FIXED", "機器研究必須指定單一機台") from None
+            if parsed <= 0 or str(value).strip() != str(parsed):
+                raise SpcValidationError("MACHINE_STREAM_NOT_FIXED", "機器研究必須指定單一機台")
+            canonical[name] = parsed
+            continue
+        text = str(value or "").strip()
+        if not text or text in {"全部", "全段"} or any(token in text for token in (",", "|", ";")):
+            raise SpcValidationError("MACHINE_STREAM_NOT_FIXED", f"機器研究的 {name} 必須是單一且精確的值")
+        canonical[name] = text
+    return canonical
+
+
+def _canonical_machine_options(options: Mapping[str, Any] | None) -> dict[str, Any]:
+    """固定保存研究條件證據，避免未知欄位或真值轉型改變雜湊。"""
+
+    if not isinstance(options, Mapping) or set(options) != MACHINE_OPTION_KEYS:
+        raise SpcValidationError("SPC_ANALYSIS_OPTIONS_INVALID", "機器研究僅接受受控條件確認與理由")
+    confirmed = options.get("conditions_confirmed")
+    if type(confirmed) is not bool:
+        raise SpcValidationError("SPC_ANALYSIS_OPTIONS_INVALID", "conditions_confirmed 必須是布林值")
+    reason = options.get("condition_reason")
+    if not isinstance(reason, str):
+        raise SpcValidationError("SPC_ANALYSIS_OPTIONS_INVALID", "condition_reason 必須是文字")
+    reason = escape(reason.strip(), quote=False)
+    if not 2 <= len(reason) <= 500:
+        raise SpcValidationError("SPC_ANALYSIS_OPTIONS_INVALID", "condition_reason 長度或內容不符合規範")
+    return {"conditions_confirmed": confirmed, "condition_reason": reason}
 def _canonical_attribute_options(options: Mapping[str, Any] | None) -> dict[str, Any]:
     """相容既有 service 私有入口；實作由 adapter 共用模組提供。"""
 
@@ -231,6 +285,8 @@ def _chart_result(chart_set: SpcChartSet) -> dict[str, Any]:
 def _calculate_results(study_input: SpcStudyInput) -> dict[str, Any]:
     if study_input.analysis_family == "attribute":
         return _calculate_attribute_results(study_input)
+    if study_input.analysis_family == "machine":
+        return _calculate_machine_results(study_input)
     all_values = [
         value
         for subgroup in study_input.subgroups
@@ -289,6 +345,50 @@ def _calculate_results(study_input: SpcStudyInput) -> dict[str, Any]:
         "applicability_result": {
             "applicable": True, "reason_code": None,
             "chart_type": chart_set.chart_type,
+        },
+    }
+
+
+def _calculate_machine_results(study_input: SpcStudyInput) -> dict[str, Any]:
+    """機器研究不產生管制圖、持續監控或 OCAP，只保存績效證據。"""
+
+    all_values = [
+        float(value)
+        for subgroup in study_input.subgroups
+        for value in (subgroup.distribution_values or subgroup.values)
+    ]
+    distribution = assess_distribution(all_values, field=study_input.characteristic)
+    capability = calculate_machine_performance(
+        all_values, dict(study_input.specification), distribution,
+        str(study_input.specification.get("characteristic_class") or "其他"),
+    )
+    if study_input.options.get("conditions_confirmed") is not True:
+        capability.update({
+            "available": False,
+            "approvable": False,
+            "reason_code": "MACHINE_CONDITIONS_UNCONFIRMED",
+        })
+    capability["evidence"] = {
+        "source_semantics": study_input.metadata.get("source_semantics"),
+        "operators": list(study_input.metadata.get("operators") or []),
+        "record_ids": list(study_input.metadata.get("record_ids") or []),
+        "detail_ids": list(study_input.metadata.get("detail_ids") or []),
+        "date_span": dict(study_input.metadata.get("date_span") or {}),
+        "conditions_confirmed": study_input.options.get("conditions_confirmed") is True,
+        "condition_reason": study_input.options.get("condition_reason"),
+    }
+    return {
+        "chart_result": None,
+        "stability_result": {
+            "evaluated": False, "stable": None, "reason_code": "MACHINE_PERFORMANCE_RESEARCH",
+        },
+        "distribution_result": distribution,
+        "time_model_result": {
+            "candidate": None, "confirmed": False, "reason_code": "MACHINE_PERFORMANCE_RESEARCH",
+        },
+        "capability_result": capability,
+        "applicability_result": {
+            "applicable": True, "reason_code": None, "research_only": True,
         },
     }
 
@@ -601,6 +701,38 @@ def _assert_approvable(version: SpcStudyVersion) -> None:
         raise SpcValidationError("PROCESS_UNSTABLE", "位置圖與變異圖必須同時穩定")
 
 
+def _assert_research_approvable(version: SpcStudyVersion) -> None:
+    """核准不會建立生產界限的研究結果。"""
+
+    if version.audit_incomplete:
+        raise SpcValidationError("AUDIT_INCOMPLETE", "稽核資料不完整，必須重新建立研究")
+    if version.study.analysis_family != "machine":
+        time_model = version.time_model_result or {}
+        model = time_model.get("model") or time_model.get("candidate")
+        if time_model.get("confirmed") is not True or model not in {
+            "B", "C1", "C2", "C3", "C4", "D",
+        }:
+            raise SpcValidationError(
+                "RESEARCH_APPROVAL_NOT_APPLICABLE", "此研究必須依生產基準流程核准"
+            )
+        return
+    capability = version.capability_result or {}
+    if (version.analysis_options or {}).get("conditions_confirmed") is not True:
+        raise SpcValidationError("MACHINE_CONDITIONS_UNCONFIRMED", "尚未確認機器研究條件")
+    if len([value for sample in version.samples for value in (sample.distribution_values or sample.values or [])]) < 50:
+        raise SpcValidationError("MACHINE_SAMPLE_INSUFFICIENT", "機器研究至少需要 50 個有效觀測值")
+    if not (version.distribution_result or {}).get("accepted"):
+        raise SpcValidationError("DISTRIBUTION_UNCONFIRMED", "分布尚未確認，不能核准機器研究")
+    specification = version.specification_snapshot or {}
+    if not specification.get("found") or specification.get("consistent") is False:
+        raise SpcValidationError("SPECIFICATION_UNCONFIRMED", "規格未確認或已漂移，不能核准機器研究")
+    if not capability.get("available") or not capability.get("approvable"):
+        raise SpcValidationError(
+            capability.get("reason_code") or "MACHINE_RESEARCH_UNAPPROVABLE",
+            "機器研究尚不符合核准資格",
+        )
+
+
 def _recalculate_capability(
     version: SpcStudyVersion, time_model: Mapping[str, Any]
 ) -> dict[str, Any]:
@@ -722,14 +854,15 @@ class SpcStudyService:
                 "SPC_ANALYSIS_OPTIONS_INVALID", "分析選項必須是物件",
             )
         if analysis_family == "machine":
-            raise SpcValidationError(
-                "SPC_ANALYSIS_FAMILY_NOT_IMPLEMENTED",
-                "目前尚未支援 machine 分析族別",
+            if study_type != "retrospective":
+                raise SpcValidationError("MACHINE_STREAM_NOT_FIXED", "機器研究不支援持續監控")
+            filters = _canonical_machine_filters(source, filters)
+            canonical_options = _canonical_machine_options(options)
+        else:
+            canonical_options = (
+                _canonical_attribute_options(options)
+                if analysis_family == "attribute" else options
             )
-        canonical_options = (
-            _canonical_attribute_options(options)
-            if analysis_family == "attribute" else options
-        )
         study_input = _adapter_input(
             source,
             filters,
@@ -1133,6 +1266,8 @@ class SpcStudyService:
         _require_permission(actor_id, "spc.approve")
         reason = _require_reason(reason)
         version = _get_version(version_id)
+        if version.study.analysis_family == "machine":
+            raise SpcValidationError("RESEARCH_APPROVAL_REQUIRED", "機器研究只能使用研究核准流程")
         if version.status != "submitted":
             raise SpcConflict("INVALID_STUDY_STATE", "只有已送審研究可以核准")
         _assert_source_unchanged(version)
@@ -1215,6 +1350,31 @@ class SpcStudyService:
                 "ACTIVE_LIMIT_CONFLICT", "同一製程流已有其他啟用界限，請重新整理"
             ) from exc
         return limit
+
+    @staticmethod
+    def approve_research(
+        version_id: int, actor_id: int, *, reason: str
+    ) -> SpcStudyVersion:
+        """核准固定機台研究，不建立 SPC 生產界限。"""
+
+        _require_permission(actor_id, "spc.approve")
+        reason = _require_reason(reason)
+        version = _get_version(version_id)
+        if version.status == "approved":
+            return version
+        if version.status != "submitted":
+            raise SpcConflict("INVALID_STUDY_STATE", "只有已送審研究可以核准")
+        _assert_source_unchanged(version)
+        _assert_research_approvable(version)
+        version.status = "approved"
+        version.study.status = "approved"
+        log_audit(
+            actor_id, "approve_research", "spc_study", version.id,
+            old_val={"status": "submitted"},
+            new_val={"status": "approved", "reason": reason},
+        )
+        db.session.commit()
+        return version
 
     @staticmethod
     def reject(version_id: int, actor_id: int, *, reason: str) -> SpcStudyVersion:

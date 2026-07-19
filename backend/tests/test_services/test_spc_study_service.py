@@ -156,7 +156,7 @@ def test_analyze_rejects_non_string_analysis_family(
 
 
 @pytest.mark.parametrize("analysis_family", ["machine"])
-def test_analyze_rejects_unimplemented_analysis_family(
+def test_machine_analysis_rejects_non_patrol_source(
     app, db_session, spc_view_user, analysis_family
 ):
     with pytest.raises(SpcValidationError) as error:
@@ -164,7 +164,7 @@ def test_analyze_rejects_unimplemented_analysis_family(
             "shipping", {}, spc_view_user.id, analysis_family=analysis_family
         )
 
-    assert error.value.code == "SPC_ANALYSIS_FAMILY_NOT_IMPLEMENTED"
+    assert error.value.code == "MACHINE_SOURCE_UNSUPPORTED"
 
 
 def test_analyze_snapshots_options_and_includes_them_in_hash(

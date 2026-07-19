@@ -385,6 +385,20 @@ def approve_study(current_user, version_id):
     return _success(serialize_limit_version(limit))
 
 
+@spc_studies_bp.post("/api/spc/study-versions/<int:version_id>/approve-research")
+@auth_required
+@require_permission("spc.approve")
+@_handle_spc_errors
+def approve_research(current_user, version_id):
+    """核准機器等研究結論，不建立生產管制界限。"""
+
+    body = request.get_json(silent=True) or {}
+    version = SpcStudyService.approve_research(
+        version_id, current_user.id, reason=body.get("reason")
+    )
+    return _success(serialize_version(version))
+
+
 @spc_studies_bp.post("/api/spc/study-versions/<int:version_id>/reject")
 @auth_required
 @require_permission("spc.approve")

@@ -16,6 +16,55 @@ from .spc_errors import SpcNotFound, SpcValidationError
 
 class SpcReportService:
     @staticmethod
+    def _generate_machine_report(stats_data: dict, field: str) -> BytesIO:
+        """產製機器研究報表，不混入 Xbar/R、界限或 OCAP 語意。"""
+
+        workbook = Workbook()
+        summary = workbook.active
+        summary.title = "機器績效摘要"
+        capability = stats_data.get("capability") or {}
+        evidence = capability.get("evidence") or {}
+        targets = capability.get("targets") or {}
+        quantiles = capability.get("quantiles") or {}
+        options = (stats_data.get("study_version") or {}).get("options") or {}
+        items = [
+            ("研究類型", "固定機台績效研究（非生產管制基準）"),
+            ("量測特性", field),
+            ("資料來源語意", evidence.get("source_semantics") or "patrol_min_max_observations"),
+            ("研究條件已確認", "是" if evidence.get("conditions_confirmed", options.get("conditions_confirmed")) else "否"),
+            ("條件確認理由", evidence.get("condition_reason", options.get("condition_reason"))),
+            ("樣本數 N", capability.get("n")),
+            ("日期跨度", " ~ ".join(filter(None, (evidence.get("date_span") or {}).values()))),
+            ("操作者 ID", ", ".join(str(value) for value in evidence.get("operators") or [])),
+            ("q0.135%", quantiles.get("q_0_135")),
+            ("q50%", quantiles.get("q_50")),
+            ("q99.865%", quantiles.get("q_99_865")),
+            ("Pm", capability.get("pm")),
+            ("Pmu", capability.get("pmu")),
+            ("Pml", capability.get("pml")),
+            ("Pmk", capability.get("pmk")),
+            ("Pm 目標", targets.get("pm")),
+            ("Pmk 目標", targets.get("pmk")),
+            ("分布已確認", "是" if (stats_data.get("distribution") or {}).get("accepted") else "否"),
+            ("核准狀態", (stats_data.get("study_version") or {}).get("status")),
+            ("限制說明", "本研究不建立 SPC 生產界限、不產生持續監控圖或 OCAP。"),
+            ("資料雜湊", (stats_data.get("study_version") or {}).get("data_hash")),
+        ]
+        for item in items:
+            summary.append(item)
+
+        samples = workbook.create_sheet("研究樣本")
+        rows = stats_data.get("version_samples") or []
+        headers = list(rows[0]) if rows else ["無樣本"]
+        samples.append(headers)
+        for row in rows:
+            samples.append([row.get(header) for header in headers])
+        output = BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        return output
+
+    @staticmethod
     def _generate_attribute_report(stats_data: dict, field: str) -> BytesIO:
         """產製屬性型 p／np 專用報表，避免混入 variable SPC 語意。"""
 
@@ -211,6 +260,7 @@ class SpcReportService:
             "study_version": {
                 "id": version.id, "version_no": version.version_no,
                 "status": version.status, "data_hash": version.data_hash,
+                "options": dict(version.analysis_options or {}),
             },
             "version_metadata": metadata,
             "version_samples": [{
@@ -268,6 +318,10 @@ class SpcReportService:
         stats_data = SpcReportService._stats_from_version(version)
         if version.study.analysis_family == "attribute":
             return SpcReportService._generate_attribute_report(
+                stats_data, version.study.characteristic
+            )
+        if version.study.analysis_family == "machine":
+            return SpcReportService._generate_machine_report(
                 stats_data, version.study.characteristic
             )
         return SpcReportService.generate_report(

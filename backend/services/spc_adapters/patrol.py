@@ -31,6 +31,7 @@ def build_patrol_study_input(
     filters = stream.filters
     characteristic = str(filters["item"])
 
+    is_machine = analysis_family == "machine"
     query = PatrolDetail.query.join(PatrolMain).filter(PatrolDetail.item == characteristic)
     if filters["pos"]:
         query = query.filter(PatrolDetail.position == filters["pos"])
@@ -45,9 +46,15 @@ def build_patrol_study_input(
     if filters["cust_id"] is not None:
         query = query.filter(PatrolMain.customer_id == filters["cust_id"])
     if filters["mat"]:
-        query = query.filter(PatrolMain.material.contains(filters["mat"]))
+        query = query.filter(
+            PatrolMain.material == filters["mat"] if is_machine
+            else PatrolMain.material.contains(filters["mat"])
+        )
     if filters["spec"]:
-        query = query.filter(PatrolMain.spec.contains(filters["spec"]))
+        query = query.filter(
+            PatrolMain.spec == filters["spec"] if is_machine
+            else PatrolMain.spec.contains(filters["spec"])
+        )
     details = query.order_by(
         PatrolMain.date.asc(), PatrolDetail.main_id.asc(), PatrolDetail.group.asc(),
         PatrolDetail.id.asc(),
@@ -61,6 +68,10 @@ def build_patrol_study_input(
     subgroups: list[SpcSubgroup] = []
     excluded_count = 0
     distribution_values: list[float] = []
+    operators: set[int] = set()
+    record_ids: set[int] = set()
+    detail_ids: set[int] = set()
+    observed_dates: list[date] = []
     for (main_id, group_no), group_details in grouped.items():
         main = group_details[0].main
         values: list[float] = []
@@ -81,6 +92,7 @@ def build_patrol_study_input(
             source_rows.append({
                 "record_id": main_id,
                 "date": main.date,
+                "operator_id": main.operator_id,
                 "measurement_id": detail.id,
                 "group_num": group_no,
                 "position": detail.position,
@@ -91,17 +103,26 @@ def build_patrol_study_input(
                 "exclusion_user_id": detail.exclusion_user_id,
                 "excluded_at": detail.excluded_at,
             })
-            if detail.min_val is None or detail.max_val is None or detail.excluded:
-                if (
-                    detail.min_val is not None and detail.max_val is not None
-                    and detail.excluded
-                ):
+            if detail.excluded:
+                if detail.min_val is not None or detail.max_val is not None:
                     excluded_count += 1
                 continue
-            values.extend((float(detail.min_val), float(detail.max_val)))
-            distribution_values.extend((float(detail.min_val), float(detail.max_val)))
-            subgroup_distribution_values.extend((float(detail.min_val), float(detail.max_val)))
+            observations = [
+                float(value) for value in (detail.min_val, detail.max_val)
+                if value is not None
+            ]
+            if not observations:
+                continue
+            values.extend(observations)
+            distribution_values.extend(observations)
+            subgroup_distribution_values.extend(observations)
             included_measurement_ids.append(detail.id)
+            record_ids.add(main_id)
+            detail_ids.add(detail.id)
+            if main.operator_id is not None:
+                operators.add(int(main.operator_id))
+            if main.date is not None:
+                observed_dates.append(main.date)
 
         if values:
             subgroups.append(SpcSubgroup(
@@ -117,7 +138,15 @@ def build_patrol_study_input(
     specification = resolve_tolerance_specification(
         material=str(filters["mat"]), spec=str(filters["spec"]),
         characteristic=characteristic, vendor_id=filters["cust_id"],
+        position=str(filters["pos"]) if is_machine else None,
     )
+    if is_machine:
+        specification["consistent"] = bool(
+            specification.get("found") and (
+                specification.get("LSL") is not None
+                or specification.get("USL") is not None
+            )
+        )
     reasons: list[SpcReason] = []
     if not details:
         reasons.append(SpcReason("NO_DATA", "篩選範圍內沒有可用的巡檢量測明細"))
@@ -145,5 +174,15 @@ def build_patrol_study_input(
         metadata={
             "excluded_count": excluded_count,
             "distribution_values": distribution_values,
+            "source_semantics": (
+                "patrol_min_max_observations" if is_machine else "patrol_subgroup_observations"
+            ),
+            "operators": sorted(operators),
+            "record_ids": sorted(record_ids),
+            "detail_ids": sorted(detail_ids),
+            "date_span": {
+                "start": min(observed_dates).isoformat() if observed_dates else None,
+                "end": max(observed_dates).isoformat() if observed_dates else None,
+            },
         },
     )
