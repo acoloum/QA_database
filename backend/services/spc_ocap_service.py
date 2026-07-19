@@ -3,14 +3,60 @@
 from typing import Any, Mapping, Sequence
 
 from ..extensions import db
-from ..models import SpcEvent, SpcLimitVersion, SpcOcap, SpcStudyVersion
+from ..models import Role, SpcEvent, SpcLimitVersion, SpcOcap, SpcStudyVersion, User
 from ..utils import log_audit
 from .spc_errors import SpcConflict, SpcNotFound, SpcValidationError
 from .spc_study_service import _require_permission
 
 
+OCAP_ASSIGNABLE_ROLE_CODES = ("qa_supervisor", "qc_manager", "admin")
+
+
 class SpcOcapService:
     """建立去重失控事件並保存可稽核的 OCAP。"""
+
+    @staticmethod
+    def list_assignable_users() -> list[dict[str, Any]]:
+        """取得可指派為 OCAP 責任人的啟用使用者。"""
+
+        rows = (
+            db.session.query(User, Role)
+            .join(Role, Role.code == User.role)
+            .filter(
+                User.is_active.is_(True),
+                User.role.in_(OCAP_ASSIGNABLE_ROLE_CODES),
+            )
+            .order_by(Role.name, User.username, User.id)
+            .all()
+        )
+        return [{
+            "id": user.id,
+            "username": user.username,
+            "role": user.role,
+            "role_name": role.name,
+        } for user, role in rows]
+
+    @staticmethod
+    def _validate_owner_change(
+        current_owner_id: int | None, payload: Mapping[str, Any]
+    ) -> None:
+        """驗證新增或更換的 OCAP 責任人符合可指派政策。"""
+
+        if "owner_id" not in payload:
+            return
+        owner_id = payload["owner_id"]
+        if owner_id is None or owner_id == current_owner_id:
+            return
+        owner = db.session.get(User, owner_id)
+        if (
+            owner is None
+            or not owner.is_active
+            or owner.role not in OCAP_ASSIGNABLE_ROLE_CODES
+        ):
+            raise SpcValidationError(
+                "SPC_OCAP_OWNER_NOT_ASSIGNABLE",
+                "責任人必須是啟用中的 QA主管、品管經理或系統管理員",
+            )
 
     @staticmethod
     def sync_events(
@@ -88,6 +134,8 @@ class SpcOcapService:
             raise SpcNotFound("SPC_EVENT_NOT_FOUND", "找不到 SPC 失控事件")
         ocap = SpcOcap.query.filter_by(event_id=event.id).first()
         creating = ocap is None
+        current_owner_id = ocap.owner_id if ocap is not None else None
+        SpcOcapService._validate_owner_change(current_owner_id, payload)
         if ocap is None:
             ocap = SpcOcap(event_id=event.id, created_by=actor_id)
             db.session.add(ocap)

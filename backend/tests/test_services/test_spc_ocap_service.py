@@ -13,6 +13,7 @@ from backend.models import (
     ShippingMeasurement,
     SpcEvent,
     SpcLimitVersion,
+    SpcOcap,
     SpcStudy,
     SpcStudySample,
     SpcStudyVersion,
@@ -20,6 +21,7 @@ from backend.models import (
 )
 from backend.services.patrol_service import PatrolService
 from backend.services.shipping_service import ShippingService
+from backend.services.spc_errors import SpcValidationError
 from backend.services.spc_adapters.shipping import build_shipping_study_input
 from backend.services.spc_ocap_service import SpcOcapService
 
@@ -30,6 +32,20 @@ def _actor(db_session):
     db_session.add_all([role, actor])
     db_session.flush()
     return actor
+
+
+def _role(db_session, code, name, permissions=None):
+    role = Role(code=code, name=name, permissions=permissions or {})
+    db_session.add(role)
+    db_session.flush()
+    return role
+
+
+def _user(db_session, username, role, *, active=True):
+    user = User(username=username, password="hashed", role=role, is_active=active)
+    db_session.add(user)
+    db_session.flush()
+    return user
 
 
 def _study_limit(db_session, actor, *, study_type="ongoing"):
@@ -53,6 +69,79 @@ def _study_limit(db_session, actor, *, study_type="ongoing"):
     db_session.add(limit)
     db_session.commit()
     return study, version, limit
+
+
+def test_assignable_users_only_include_active_quality_roles(app, db_session):
+    with app.app_context():
+        for code, name in (
+            ("qa_supervisor", "QA主管"),
+            ("qc_manager", "品管經理"),
+            ("admin", "系統管理員"),
+            ("inspector", "檢驗員"),
+        ):
+            _role(db_session, code, name)
+        qa = _user(db_session, "qa-active", "qa_supervisor")
+        manager = _user(db_session, "manager-active", "qc_manager")
+        admin = _user(db_session, "admin-active", "admin")
+        _user(db_session, "qa-disabled", "qa_supervisor", active=False)
+        _user(db_session, "inspector-active", "inspector")
+        db_session.commit()
+
+        rows = SpcOcapService.list_assignable_users()
+
+        assert {row["id"] for row in rows} == {qa.id, manager.id, admin.id}
+        assert {tuple(row) for row in rows} == {
+            ("id", "username", "role", "role_name")
+        }
+
+
+def test_new_or_changed_owner_must_be_assignable(app, db_session):
+    with app.app_context():
+        actor = _actor(db_session)
+        _role(db_session, "inspector", "檢驗員")
+        invalid_owner = _user(db_session, "invalid-owner", "inspector")
+        _, version, limit = _study_limit(db_session, actor)
+        event = SpcOcapService.sync_events(limit.id, version.id, [{
+            "chart_kind": "variation", "rule_code": "beyond_limits",
+            "point_index": 1, "observed_value": 0.5,
+        }])[0]
+
+        with pytest.raises(SpcValidationError) as exc:
+            SpcOcapService.save_ocap(event.id, actor.id, {
+                "owner_id": invalid_owner.id, "status": "open",
+            })
+
+        assert exc.value.code == "SPC_OCAP_OWNER_NOT_ASSIGNABLE"
+        assert SpcOcap.query.filter_by(event_id=event.id).first() is None
+        assert AuditLog.query.filter_by(module="spc_ocap").count() == 0
+
+
+def test_unchanged_historical_owner_does_not_block_other_edits(app, db_session):
+    with app.app_context():
+        actor = _actor(db_session)
+        historical_owner = _user(
+            db_session, "historical-owner", actor.role, active=True
+        )
+        _, version, limit = _study_limit(db_session, actor)
+        event = SpcOcapService.sync_events(limit.id, version.id, [{
+            "chart_kind": "variation", "rule_code": "beyond_limits",
+            "point_index": 2, "observed_value": 0.6,
+        }])[0]
+        created = SpcOcapService.save_ocap(event.id, actor.id, {
+            "owner_id": historical_owner.id, "status": "open",
+        })
+        historical_owner.is_active = False
+        db_session.commit()
+
+        updated = SpcOcapService.save_ocap(event.id, actor.id, {
+            "owner_id": historical_owner.id,
+            "process_adjustment": "調整壓力參數",
+            "status": "open",
+        })
+
+        assert updated.id == created.id
+        assert updated.owner_id == historical_owner.id
+        assert updated.process_adjustment == "調整壓力參數"
 
 
 def test_ongoing_event_sync_is_idempotent_and_ocap_keeps_full_record(
