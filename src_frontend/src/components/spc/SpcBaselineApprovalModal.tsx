@@ -53,8 +53,14 @@ const SpcBaselineApprovalModal = ({
   }, [version.samples]);
 
   const chart = version.charts;
+  const attributeChart = chart && (chart.chart_type === 'p' || chart.chart_type === 'np')
+    ? chart as unknown as {
+      chart_type: 'p' | 'np'; values: number[]; cl: number[]; ucl: number[]; lcl: number[];
+      n: number[]; x: number[];
+    }
+    : null;
   const limitRows = useMemo(() => {
-    if (!chart) return [];
+    if (!chart || attributeChart) return [];
     const seen = new Set<number>();
     return chart.subgroup_sizes.flatMap((size, index) => {
       if (seen.has(size)) return [];
@@ -66,7 +72,7 @@ const SpcBaselineApprovalModal = ({
         rCl: chart.variation.cl[index], rLcl: chart.variation.lcl[index],
       }];
     });
-  }, [chart]);
+  }, [attributeChart, chart]);
   const modelAllowed = action !== 'time-model' || candidate === 'A1' || candidate === 'A2';
 
   return (
@@ -99,7 +105,20 @@ const SpcBaselineApprovalModal = ({
           </Col>
           <Col lg={5}>
             <h6 className="spc-section-label">保存界限快照</h6>
-            {limitRows.length > 1 ? (
+            {attributeChart ? (
+              <Table responsive size="sm" className="spc-evidence-table">
+                <thead><tr><th>子組</th><th>x／n</th><th>UCL／CL／LCL</th></tr></thead>
+                <tbody>
+                  {attributeChart.values.map((_value, index) => (
+                    <tr key={index}>
+                      <th>#{index + 1}</th>
+                      <td>{attributeChart.x[index]}／{attributeChart.n[index]}</td>
+                      <td>{attributeChart.ucl[index]?.toFixed(4)}／{attributeChart.cl[index]?.toFixed(4)}／{attributeChart.lcl[index]?.toFixed(4)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            ) : limitRows.length > 1 ? (
               <Table responsive size="sm" className="spc-evidence-table">
                 <thead><tr><th>子組</th><th>位置 UCL／CL／LCL</th><th>變異 UCL／CL／LCL</th></tr></thead>
                 <tbody>

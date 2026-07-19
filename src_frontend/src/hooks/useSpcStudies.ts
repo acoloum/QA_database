@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import type {
   SpcAssignee, SpcEventSummary, SpcLimitVersionSummary, SpcOcapRecord,
-  SpcOcapStatus, SpcStudyHistoryPage, SpcStudyResult, SpcStudySummary,
+  SpcAnalysisFamily, SpcOcapStatus, SpcStudyHistoryPage, SpcStudyResult, SpcStudySummary,
   SpcStudyVersionSummary,
 } from '../types';
 
@@ -15,6 +15,10 @@ export interface AnalyzeSpcStudyInput {
   source: 'shipping' | 'patrol';
   filters: Record<string, unknown>;
   study_type?: 'retrospective' | 'ongoing';
+  /** 未指定時後端維持既有 variable 研究相容行為。 */
+  analysis_family?: SpcAnalysisFamily;
+  /** 屬性研究可傳 interval、chart_type 與受後端驗證的 alpha。 */
+  options?: Record<string, unknown>;
 }
 
 export interface SpcStudyActionInput {

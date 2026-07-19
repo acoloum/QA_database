@@ -90,6 +90,8 @@ const CHART_LABELS: Record<SpcChartType, { location: string; variation: string }
   xbar_s: { location: '平均值 X̄', variation: '標準差 S' },
   xbar_r: { location: '平均值 X̄', variation: '全距 R' },
   i_mr: { location: '個別值 I', variation: '移動全距 MR' },
+  p: { location: '不符合比例 p', variation: '不適用' },
+  np: { location: '不符合單位 np', variation: '不適用' },
 };
 
 const emptySpcChartModel = (): SpcChartModel => ({

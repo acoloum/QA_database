@@ -40,6 +40,7 @@ const Sidebar = () => {
                 { title: '擠壓公差', path: '/extrusion-tolerance', icon: 'fa-compress-alt' },
                 { title: '廠商績效', path: '/vendor-performance', icon: 'fa-chart-line' },
                 { title: '品質分析', path: '/quality-analytics', icon: 'fa-chart-simple' },
+                { title: '進階 SPC', path: '/spc/advanced', icon: 'fa-chart-area' },
             ]
         },
         {

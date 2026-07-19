@@ -48,6 +48,28 @@ describe('SPC 研究 hooks', () => {
     expect(returned).toMatchObject({ id: 21, study_id: 7 });
   });
 
+  it('屬性研究保留 family 與受控 options，不影響既有呼叫格式', async () => {
+    vi.mocked(api.post).mockResolvedValue({
+      data: { success: true, data: { id: 22, study_id: 8 } },
+    });
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const { result } = renderHook(() => useAnalyzeSpcStudy(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        source: 'shipping', filters: { vendor: 'A廠' }, analysis_family: 'attribute',
+        options: { interval: 'day', chart_type: 'p' },
+      });
+    });
+
+    expect(api.post).toHaveBeenCalledWith('/spc/studies/analyze', {
+      source: 'shipping', filters: { vendor: 'A廠' }, analysis_family: 'attribute',
+      options: { interval: 'day', chart_type: 'p' },
+    });
+  });
+
   it('送審成功後只使研究清單、單筆與歷程快取失效', async () => {
     vi.mocked(api.post).mockResolvedValue({
       data: { success: true, data: { id: 21, study_id: 7, status: 'submitted' } },

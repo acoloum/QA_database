@@ -1,4 +1,5 @@
-export type SpcChartType = 'xbar_s' | 'xbar_r' | 'i_mr';
+export type SpcChartType = 'xbar_s' | 'xbar_r' | 'i_mr' | 'p' | 'np';
+export type SpcAnalysisFamily = 'variable' | 'attribute' | 'machine';
 export type SpcChartKind = 'location' | 'variation';
 
 export interface SpcReason {
@@ -32,6 +33,28 @@ export interface SpcChartSet {
   subgroup_sizes: number[];
   sigma_within: number;
   variation_source_pairs?: Array<Record<string, number[]> | null>;
+}
+
+/** 屬性型 p／np 圖的逐子組可追溯計數。 */
+export interface SpcAttributeCount {
+  key: string;
+  inspected: number;
+  nonconforming: number;
+  proportion: number;
+}
+
+/** 後端 2026.2 屬性圖結果；界限必須逐點保留，不可重複套用固定值。 */
+export interface SpcAttributeChartData {
+  chart_type: Extract<SpcChartType, 'p' | 'np'>;
+  values: number[];
+  cl: number[];
+  ucl: number[];
+  lcl: number[];
+  n: number[];
+  x: number[];
+  counts?: SpcAttributeCount[];
+  warnings?: Record<string, boolean>;
+  exclusion_evidence?: Array<Record<string, unknown>>;
 }
 
 export interface SpcStabilityViolation {
@@ -105,6 +128,7 @@ export interface SpcApplicability {
   reason_code?: string | null;
   message?: string;
   reasons?: SpcReason[];
+  eligibility?: Record<string, unknown>;
 }
 
 export interface ProcessCapability {
@@ -250,8 +274,10 @@ export interface SpcStudyResult {
   study_id: number;
   source: 'shipping' | 'patrol';
   study_type: 'retrospective' | 'ongoing';
+  analysis_family?: SpcAnalysisFamily;
   process_stream_key: string;
   filters: Record<string, unknown>;
+  options?: Record<string, unknown>;
   version_no: number;
   method_version: string;
   code_version: string | null;
