@@ -16,6 +16,8 @@ SHIPPING_FILTERS = (
 PATROL_FILTERS = (
     "m_id", "op_id", "cust_id", "mat", "spec", "item", "pos", "s_date", "e_date",
 )
+ATTRIBUTE_SHIPPING_FILTERS = SHIPPING_FILTERS
+ATTRIBUTE_PATROL_FILTERS = PATROL_FILTERS
 ID_FILTERS = {"m_id", "op_id", "cust_id"}
 DATE_FILTERS = {"start_date", "end_date", "s_date", "e_date"}
 
@@ -63,6 +65,37 @@ def normalize_filters(source: str, filters: Mapping[str, Any]) -> dict[str, Any]
         name: _normalize_filter_value(name, filters.get(name, defaults.get(name)))
         for name in names
     }
+
+
+def normalize_attribute_filters(source: str, filters: Mapping[str, Any]) -> dict[str, Any]:
+    """正規化屬性研究來源篩選，避免控制選項混入製程流識別。"""
+
+    if source == "shipping":
+        names = ATTRIBUTE_SHIPPING_FILTERS
+        defaults = {"field": "外徑"}
+    elif source == "patrol":
+        names = ATTRIBUTE_PATROL_FILTERS
+        defaults = {"item": "厚度"}
+    else:
+        raise ValueError(f"不支援的屬性 SPC 資料來源：{source}")
+    return {
+        name: _normalize_filter_value(name, filters.get(name, defaults.get(name)))
+        for name in names
+    }
+
+
+def canonical_attribute_process_stream(
+    source: str, filters: Mapping[str, Any]
+) -> CanonicalProcessStream:
+    """以屬性研究專用篩選建立穩定製程流鍵。"""
+
+    normalized = normalize_attribute_filters(source, filters)
+    digest = hashlib.sha256(canonical_json({
+        "source": source,
+        "analysis_family": "attribute",
+        "filters": normalized,
+    }).encode("utf-8")).hexdigest()
+    return CanonicalProcessStream(source=source, filters=normalized, key=digest)
 
 
 def _json_value(value: Any) -> Any:

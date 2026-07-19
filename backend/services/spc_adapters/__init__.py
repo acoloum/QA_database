@@ -2,5 +2,10 @@
 
 from .patrol import build_patrol_study_input
 from .shipping import build_shipping_study_input
+from .attribute import build_attribute_study_input
 
-__all__ = ["build_patrol_study_input", "build_shipping_study_input"]
+__all__ = [
+    "build_attribute_study_input",
+    "build_patrol_study_input",
+    "build_shipping_study_input",
+]
