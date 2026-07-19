@@ -3,6 +3,8 @@
 from datetime import date
 from io import BytesIO
 
+from sqlalchemy import event as sqlalchemy_event
+
 import pytest
 from openpyxl import load_workbook
 
@@ -17,6 +19,7 @@ from backend.models import (
 from backend.services.spc_contracts import SpcStudyInput, SpcSubgroup
 from backend.services.spc_report import SpcReportService
 from backend.services.spc_study_service import ADAPTERS
+from backend.routes.spc_studies import _serialization_context
 from backend.services.spc_study_service import SpcStudyService
 from backend.utils import generate_token, hash_password
 
@@ -437,3 +440,35 @@ def test_event_detail_returns_attribute_immutable_evidence(
     assert response.status_code == 200
     evidence = response.get_json()["data"]["attribute_evidence"]
     assert evidence == {"x": 2.0, "n": 10.0, "display_value": 0.2, "pearson_residual": 2.5, "subgroup_key": "attribute:day"}
+
+
+def test_event_serialization_context_batches_version_and_sample_queries(app, db_session, spc_roles):
+    """擴增 event 不可造成逐筆 version/sample lookup。"""
+    with app.app_context():
+        viewer = _user(db_session, "batch-event-viewer", "spc_viewer")
+        base_study = SpcStudy(source="shipping", study_type="retrospective", analysis_family="attribute", process_stream_key="batch", characteristic="不符合單位", filters={}, created_by=viewer.id)
+        base = SpcStudyVersion(study=base_study, version_no=1, method_version="2026.2", data_hash="d" * 64, analysis_options={}, status="active", created_by=viewer.id)
+        db_session.add(base); db_session.flush()
+        limit = SpcLimitVersion(study_version_id=base.id, analysis_family="attribute", process_stream_key="batch", characteristic="不符合單位", revision=1, chart_type="p", limits={}, status="active", created_by=viewer.id)
+        db_session.add(limit); db_session.flush()
+        versions = []
+        for number in range(2):
+            study = SpcStudy(source="shipping", study_type="ongoing", analysis_family="attribute", process_stream_key=f"batch-{number}", characteristic="不符合單位", filters={}, created_by=viewer.id)
+            version = SpcStudyVersion(study=study, version_no=1, method_version="2026.2", data_hash=str(number) * 64, analysis_options={}, chart_result={"pearson_residuals": [1.0, 2.0]}, status="active", created_by=viewer.id)
+            db_session.add(version); db_session.flush(); versions.append(version)
+            for point in range(2):
+                sample = __import__("backend.models", fromlist=["SpcStudySample"]).SpcStudySample(version_id=version.id, source_record_type="ShippingData", source_record_id=point + 1, source_record_ids=[point + 1], source_measurement_ids=[], subgroup_key=f"g{point}", subgroup_order=point, values=[point + 1, 10], distribution_values=[])
+                db_session.add(sample); db_session.flush()
+                db_session.add(SpcEvent(limit_version_id=limit.id, study_version_id=version.id, sample_id=sample.id, chart_kind="location", rule_code="beyond_limits", point_index=point, source_point_key=f"{number}-{point}", observed_value=0.1))
+        db_session.commit(); db_session.expire_all()
+        loaded_limit = SpcLimitVersion.query.options(__import__("sqlalchemy.orm", fromlist=["selectinload"]).selectinload(SpcLimitVersion.events)).get(limit.id)
+        count = [0]
+        def listener(_conn, _cursor, statement, *_args):
+            if statement.lstrip().upper().startswith("SELECT"): count[0] += 1
+        sqlalchemy_event.listen(db_session.get_bind(), "before_cursor_execute", listener)
+        try:
+            version_map, sample_map = _serialization_context([], {loaded_limit.id: loaded_limit})
+        finally:
+            sqlalchemy_event.remove(db_session.get_bind(), "before_cursor_execute", listener)
+        assert len(version_map) == 2 and len(sample_map) == 4
+        assert count[0] <= 4

@@ -105,3 +105,5 @@ RED：adapter direct canonical test `1 failed`（只有 interval）；monitor re
 ## 補正：事件明細 immutable evidence
 
 `GET /api/spc/events/<id>` 現在明確 preload event 的 study version/study 與 sample，並將 maps 交給 serializer；attribute response 可重建 x、n、display value、Pearson residual 與 subgroup key。
+
+SQL batch regression：建立 1 limit、2 ongoing versions、4 samples/events 後，以 `before_cursor_execute` 計數 `_serialization_context`；實測 4 SELECT（固定 batch queries），上限 4，未逐 event lookup。
