@@ -557,6 +557,8 @@ git commit -m "功能：新增 SPC OCAP 責任人下拉選單"
 **Files:**
 - Modify: `src_frontend/src/components/spc/SpcStudyPanel.tsx`
 - Modify: `src_frontend/src/components/spc/SpcStudyPanel.test.tsx`
+- Modify: `src_frontend/src/components/spc/SpcOcapOffcanvas.tsx`
+- Modify: `src_frontend/src/components/spc/SpcOcapOffcanvas.test.tsx`
 
 **Interfaces:**
 - Consumes: `useSpcAssignees(enabled)`、`useSaveSpcOcap(studyId)` 與完整 `SpcOcapRecord`。
