@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../services/api';
 import {
   fetchSpcEvent, useAnalyzeSpcStudy, useApproveSpcResearch, useSaveSpcOcap, useSpcAssignees,
-  useSpcStudyHistory, useSubmitSpcStudy,
+  useConfirmSpcTimeModel, useConfirmSpcTransformation, useSpcStudyHistory, useSubmitSpcStudy,
 } from './useSpcStudies';
 
 vi.mock('../services/api', () => ({
@@ -131,6 +131,23 @@ describe('SPC 研究 hooks', () => {
       { queryKey: ['spcStudy', 7] },
       { queryKey: ['spcStudyHistory', 7] },
     ]);
+  });
+
+  it('完整時間模型與轉換確認使用後繼版本端點並使研究快取失效', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { success: true, data: { id: 23, study_id: 7 } } });
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const time = renderHook(() => useConfirmSpcTimeModel(), { wrapper: createWrapper(queryClient) });
+    const transformation = renderHook(() => useConfirmSpcTransformation(), { wrapper: createWrapper(queryClient) });
+
+    await act(async () => {
+      await time.result.current.mutateAsync({ versionId: 21, studyId: 7, model: 'D', reason: '已複核位置與變異變化' });
+      await transformation.result.current.mutateAsync({ versionId: 23, studyId: 7, model: 'johnson_sb', reason: '已複核支撐域與往返證據' });
+    });
+
+    expect(api.post).toHaveBeenNthCalledWith(1, '/spc/study-versions/21/time-model', { model: 'D', reason: '已複核位置與變異變化' });
+    expect(api.post).toHaveBeenNthCalledWith(2, '/spc/study-versions/23/transformation', { model: 'johnson_sb', reason: '已複核支撐域與往返證據' });
+    expect(invalidateSpy).toHaveBeenCalledTimes(6);
   });
 
   it('只在啟用時查詢 SPC 可指派責任人', async () => {

@@ -23,6 +23,20 @@ describe('SpcStudyWorkflowBar 機器研究', () => {
     expect(screen.getByText(/SOURCE_SEMANTICS_UNAUDITABLE/)).toBeInTheDocument();
   });
 
+  it('已確認 B／C／D 的變數研究走研究核准且不提供生產界限生效', () => {
+    const onAction = vi.fn();
+    const researchVersion: SpcStudyResult = {
+      ...machineVersion({ ...machineCapability, approvable: true, reason_code: null }),
+      analysis_family: 'variable', capability: { available: false },
+      time_model: { candidate: 'C3', model: 'C4', system_candidate: 'C3', overridden: true, confirmed: true, statistically_controlled: false },
+    };
+    render(<SpcStudyWorkflowBar version={researchVersion} canView canManage canApprove analyzing={false} onAnalyze={vi.fn()} onAction={onAction} onShowHistory={vi.fn()} />);
+    screen.getByRole('button', { name: '核准研究結果' }).click();
+    expect(onAction).toHaveBeenCalledWith('approve-research');
+    expect(screen.queryByRole('button', { name: '核准生效' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('研究生命週期')).toBeInTheDocument();
+  });
+
   it('只有可核准的已送審機器研究才提供核准入口', () => {
     render(<SpcStudyWorkflowBar version={machineVersion({ ...machineCapability, approvable: true, reason_code: null })} canView canManage canApprove analyzing={false} onAnalyze={vi.fn()} onAction={vi.fn()} onShowHistory={vi.fn()} />);
 

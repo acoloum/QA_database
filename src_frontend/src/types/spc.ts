@@ -103,6 +103,43 @@ export interface SpcDistributionCandidate {
   reason_code: string | null;
 }
 
+export type SpcTransformationModel = 'boxcox' | 'johnson_su' | 'johnson_sb' | 'johnson_sl';
+
+/** 後端轉換引擎保存的完整候選；具名參數不可退化成不具語意的陣列。 */
+export interface SpcTransformationCandidate {
+  model: SpcTransformationModel;
+  label: string;
+  params: Record<string, number>;
+  epsilon: number;
+  fit_method: string | null;
+  ad_statistic: number | null;
+  ad_p_value: number | null;
+  tail_quantiles: number[];
+  monotonic: boolean;
+  roundtrip_relative_error: number | null;
+  accepted: boolean;
+  reason_code: string | null;
+  rank: number | null;
+  fit_error?: string;
+}
+
+export interface SpcTransformationEvidence {
+  available: boolean;
+  reason_code: string | null;
+  n: number;
+  minimum_sample_size: number;
+  alpha: number;
+  fit_bias_note: string;
+}
+
+export interface SpcTransformationDecision extends SpcTransformationCandidate {
+  confirmed: true;
+  confirmed_by: number;
+  confirmed_at: string;
+  confirmation_reason: string;
+  original_model: string | null;
+}
+
 export interface SpcDistributionAssessment {
   model: string | null;
   label: string;
@@ -116,16 +153,150 @@ export interface SpcDistributionAssessment {
   alpha: number;
   n?: number;
   ad_stat?: number | null;
+  scale?: 'original' | 'transformed';
+  original_model?: string | null;
+  original_distribution?: SpcDistributionAssessment;
+  original_characteristic?: string;
+  transformation_candidates?: SpcTransformationCandidate[];
+  transformation_recommendation?: SpcTransformationCandidate | null;
+  transformation_reason_code?: string | null;
+  transformation_evidence?: SpcTransformationEvidence;
+  transformation_decision?: SpcTransformationDecision | null;
+}
+
+export type SpcTimeModelCode = 'A1' | 'A2' | 'B' | 'C1' | 'C2' | 'C3' | 'C4' | 'D';
+
+export interface SpcHolmEvidenceRow {
+  raw_p_value: number;
+  adjusted_p_value: number;
+  threshold: number;
+  reject: boolean;
+  [key: string]: unknown;
+}
+
+export interface SpcTrendEvidence {
+  method: string;
+  indexes: number[];
+  tau: number | null;
+  slope: number | null;
+  detected: boolean;
+}
+
+export interface SpcChangePointEvidence {
+  method: string;
+  min_segment: number;
+  detected: boolean;
+  change_points: number[];
+  windows: SpcHolmEvidenceRow[];
+}
+
+export interface SpcVarianceChangeEvidence {
+  method: string;
+  min_segment: number;
+  detected: boolean;
+  change_indexes: number[];
+  windows: SpcHolmEvidenceRow[];
+}
+
+export interface SpcRandomLocationEvidence {
+  method: string;
+  statistic: number | null;
+  raw_p_value: number;
+  adjusted_p_value: number;
+  threshold: number;
+  statistical_reject: boolean;
+  omega_squared: number;
+  effect_threshold: number;
+  reject: boolean;
+  subgroup_sizes: number[];
+  grand_mean: number;
+  ss_between: number;
+  ss_within: number;
+  df_between: number;
+  df_within: number;
+}
+
+export interface SpcFormalStabilityChartEvidence {
+  evaluated: boolean;
+  stable: boolean | null;
+  rules_used: string[];
+  violations: SpcStabilityViolation[];
+}
+
+export interface SpcFormalStabilityEvidence {
+  evaluated: boolean;
+  stable: boolean | null;
+  rules_used: string[];
+  location: SpcFormalStabilityChartEvidence;
+  variation: SpcFormalStabilityChartEvidence;
+}
+
+export interface SpcInstantaneousDistributionEvidence {
+  available: boolean;
+  accepted: boolean;
+  unimodal: boolean;
+  normal: boolean | null;
+  method?: string;
+  statistic?: number | null;
+  p_value?: number;
+  adjusted_p_value?: number;
+  threshold?: number;
+  residual_scale?: number;
+  sample_count?: number;
+  acceptance_method?: string;
+  reason_code: string | null;
+}
+
+export interface SpcAggregateModalityEvidence {
+  available: boolean;
+  method?: string;
+  grid_points?: number;
+  bandwidth?: number;
+  peak_indexes?: number[];
+  peak_values?: number[];
+  peak_threshold?: number;
+  peak_count?: number;
+  unimodal?: boolean;
+  reason_code?: string;
+}
+
+export interface SpcAggregateNormalityEvidence {
+  available: boolean;
+  method?: string;
+  p_value?: number | null;
+  threshold?: number;
+  normal?: boolean;
+  reason_code?: string;
+}
+
+export interface SpcTimeDiagnosticEvidence {
+  subgroup_count: number;
+  minimum_subgroups?: number;
+  trend?: SpcTrendEvidence;
+  change_points?: SpcChangePointEvidence;
+  variance_change?: SpcVarianceChangeEvidence;
+  random_location?: SpcRandomLocationEvidence;
+  formal_stability?: SpcFormalStabilityEvidence;
+  instantaneous_distribution?: SpcInstantaneousDistributionEvidence;
+  aggregate_modality?: SpcAggregateModalityEvidence;
+  aggregate_normality?: SpcAggregateNormalityEvidence;
+  aggregate_distribution?: SpcDistributionAssessment;
+  multiple_testing?: { method: 'Holm' | string; families: Record<string, SpcHolmEvidenceRow[]> };
+  thresholds?: Record<string, number>;
 }
 
 export interface SpcTimeModel {
-  candidate: 'A1' | 'A2' | 'B' | 'C1' | 'C2' | 'C3' | 'C4' | 'D' | null;
-  candidate_options?: string[];
-  model?: 'A1' | 'A2' | null;
+  candidate: SpcTimeModelCode | null;
+  candidate_options?: SpcTimeModelCode[];
+  model?: SpcTimeModelCode | null;
+  system_candidate?: SpcTimeModelCode;
+  overridden?: boolean;
   confirmed: boolean;
   statistically_controlled: boolean;
+  diagnostic_version?: string;
+  alpha?: number;
   reason_code?: string | null;
-  evidence?: Record<string, unknown>;
+  evidence?: SpcTimeDiagnosticEvidence;
   confirmed_by?: number;
   confirmed_at?: string;
   confirmation_reason?: string;
@@ -169,6 +340,16 @@ export interface ProcessCapability {
   preliminary?: boolean;
   time_model?: SpcTimeModel;
   distribution?: SpcDistributionAssessment;
+  scale?: 'original' | 'transformed';
+  transformed_specification?: ToleranceLimits;
+  original_scale?: {
+    scale: 'original';
+    quantiles: number[];
+    ppm: { upper: number | null; lower: number | null; total: number | null };
+    model: SpcTransformationModel | null;
+    transformed_distribution_params: number[];
+  };
+  transformation_decision?: SpcTransformationDecision;
 }
 
 /** 機器績效研究的後端結果；不與製程 Cp/Cpk 共用欄位。 */
@@ -346,6 +527,10 @@ export interface SpcStudyResult {
   limit_versions?: SpcLimitVersionSummary[];
   monitoring_limit?: SpcLimitVersionSummary | null;
 }
+
+export const isVariableSpcStudyResult = (
+  version: SpcStudyResult | null | undefined,
+): version is SpcStudyResult & { analysis_family: 'variable' } => version?.analysis_family === 'variable';
 
 export type SpcStudyVersionSummary = Omit<SpcStudyResult, 'samples'>;
 

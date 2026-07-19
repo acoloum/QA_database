@@ -3,7 +3,7 @@ import api from '../services/api';
 import type {
   SpcAssignee, SpcEventSummary, SpcLimitVersionSummary, SpcOcapRecord,
   SpcAnalysisFamily, SpcOcapStatus, SpcStudyHistoryPage, SpcStudyResult, SpcStudySummary,
-  SpcStudyVersionSummary,
+  SpcStudyVersionSummary, SpcTimeModelCode, SpcTransformationModel,
 } from '../types';
 
 export interface MachineStudyFilters {
@@ -53,7 +53,11 @@ export interface SpcStudyActionInput {
 }
 
 export interface ConfirmSpcTimeModelInput extends SpcStudyActionInput {
-  model: 'A1' | 'A2';
+  model: SpcTimeModelCode;
+}
+
+export interface ConfirmSpcTransformationInput extends SpcStudyActionInput {
+  model: SpcTransformationModel;
 }
 
 export interface SpcRetireLimitInput {
@@ -169,6 +173,18 @@ export const useApproveSpcStudy = () => {
       ),
     ),
     onSuccess: (_limit, input) => invalidateStudy(queryClient, input.studyId),
+  });
+};
+
+export const useConfirmSpcTransformation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ versionId, model, reason }: ConfirmSpcTransformationInput) => unwrap(
+      await api.post<ApiSuccess<SpcStudyVersionSummary>>(
+        `/spc/study-versions/${versionId}/transformation`, { model, reason },
+      ),
+    ),
+    onSuccess: (_version, input) => invalidateStudy(queryClient, input.studyId),
   });
 };
 

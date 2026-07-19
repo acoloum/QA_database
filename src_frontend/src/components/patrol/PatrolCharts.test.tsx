@@ -100,6 +100,20 @@ describe('PatrolCharts', () => {
         expect(screen.getByTestId('spc-study-panel')).toHaveTextContent('patrol · 6061');
         expect(screen.queryByRole('button', { name: '凍結目前界限' })).not.toBeInTheDocument();
         expect(screen.queryByRole('button', { name: '解除凍結' })).not.toBeInTheDocument();
+        expect(screen.getByRole('link', { name: '進階變數分析' })).toHaveAttribute(
+            'href',
+            '/spc/advanced?family=variable&source=patrol&mat=6061&spec=10*2&item=%E5%A4%96%E5%BE%91&s=2026-01-01&e=2026-01-31',
+        );
+    });
+
+    it('固定機台、材質、規格、項目與位置齊全時提供機器績效入口', () => {
+        vi.mocked(usePatrolHooks.usePatrolStats).mockReturnValue({ data: baseStatsData } as never);
+        render(<PatrolCharts {...defaultProps} machine="7" operator="9" customer="3" statsPos="前段" />);
+        expect(screen.getByRole('link', { name: '進階機器績效' })).toHaveAttribute(
+            'href',
+            '/spc/advanced?family=machine&source=patrol&m_id=7&op_id=9&cust_id=3&mat=6061&spec=10*2&item=%E5%A4%96%E5%BE%91&pos=%E5%89%8D%E6%AE%B5&s=2026-01-01&e=2026-01-31',
+        );
+        expect(screen.queryByRole('link', { name: '進階變數分析' })).not.toBeInTheDocument();
     });
 
     it('離群值管理按鈕於未選擇記錄時停用', () => {

@@ -80,5 +80,17 @@ describe('ShippingCharts', () => {
     expect(screen.getByTestId('spc-study-panel')).toHaveTextContent('shipping · A廠');
     expect(screen.queryByRole('button', { name: '凍結目前界限' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '解除凍結' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '進階變數分析' })).toHaveAttribute(
+      'href',
+      '/spc/advanced?family=variable&source=shipping&vendor=A%E5%BB%A0&material=6061&spec=10&field=%E5%A4%96%E5%BE%91&start_date=2026-06-01&end_date=2026-06-20',
+    );
+  });
+
+  it('深層連結省略空白條件且正確編碼', () => {
+    render(<ShippingCharts vendor="甲＆乙" material="" spec="10/2" startDate="" endDate="" />);
+    expect(screen.getByRole('link', { name: '進階變數分析' })).toHaveAttribute(
+      'href',
+      '/spc/advanced?family=variable&source=shipping&vendor=%E7%94%B2%EF%BC%86%E4%B9%99&spec=10%2F2&field=%E5%A4%96%E5%BE%91',
+    );
   });
 });

@@ -116,4 +116,20 @@ describe('SpcBaselineApprovalModal', () => {
     expect(screen.getByRole('button', { name: '核准研究結果' })).toBeInTheDocument();
     expect(screen.queryByText('位置 UCL')).not.toBeInTheDocument();
   });
+
+  it('B／C／D 變數研究只顯示研究結論，不宣稱界限或 Cp／Cpk', () => {
+    const researchVersion: SpcStudyResult = {
+      ...version, analysis_family: 'variable', status: 'submitted',
+      time_model: { candidate: 'C3', model: 'C4', system_candidate: 'C3', overridden: true, confirmed: true, statistically_controlled: false, confirmed_by: 7, confirmed_at: '2026-07-19T09:00:00Z', confirmation_reason: '已核對批次切換紀錄' },
+    };
+    render(<SpcBaselineApprovalModal show action="approve-research" source="shipping" filters={researchVersion.filters} version={researchVersion} onHide={vi.fn()} onConfirm={vi.fn()} />);
+
+    expect(screen.getAllByText('核准研究結果')).toHaveLength(2);
+    expect(screen.getByText('確認模型').closest('tr')).toHaveTextContent('確認模型C4');
+    expect(screen.getByText('系統候選').closest('tr')).toHaveTextContent('系統候選C3');
+    expect(screen.getByText('已核對批次切換紀錄')).toBeInTheDocument();
+    expect(screen.queryByText('位置 UCL')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Cp|Cpk/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/生效界限/)).not.toBeInTheDocument();
+  });
 });

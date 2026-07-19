@@ -84,6 +84,14 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
         () => buildSpcChartModel(displayStatsData, { showSpecLimits }),
         [displayStatsData, showSpecLimits]
     );
+    const advancedSpcHref = useMemo(() => {
+        const params = new URLSearchParams({ family: 'variable', source: 'shipping' });
+        const values = { vendor, material, spec, field: statsField, start_date: startDate, end_date: endDate };
+        Object.entries(values).forEach(([key, value]) => {
+            if (value.trim()) params.set(key, value.trim());
+        });
+        return `/spc/advanced?${params.toString()}`;
+    }, [vendor, material, spec, statsField, startDate, endDate]);
 
     const handleExportReport = () => {
         exportSpcReport.mutate({
@@ -122,6 +130,9 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                     />
                 </div>
                 <div className="d-flex align-items-center gap-2">
+                    <a href={advancedSpcHref} className="btn btn-outline-info btn-sm">
+                        進階變數分析
+                    </a>
                     <Form.Select
                         size="sm"
                         style={{ width: 'auto' }}

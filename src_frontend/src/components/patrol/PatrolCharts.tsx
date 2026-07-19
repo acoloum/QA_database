@@ -100,6 +100,24 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
         () => buildSpcChartModel(displayStatsData, { showSpecLimits }),
         [displayStatsData, showSpecLimits]
     );
+    const advancedSpcLink = useMemo(() => {
+        const machineReady = [machine, material, spec, statsItem, statsPos]
+            .every(value => value.trim().length > 0);
+        const params = new URLSearchParams({
+            family: machineReady ? 'machine' : 'variable', source: 'patrol',
+        });
+        const values = {
+            m_id: machine, op_id: operator, cust_id: customer, mat: material,
+            spec, item: statsItem, pos: statsPos, s: startDate, e: endDate,
+        };
+        Object.entries(values).forEach(([key, value]) => {
+            if (value.trim()) params.set(key, value.trim());
+        });
+        return {
+            href: `/spc/advanced?${params.toString()}`,
+            label: machineReady ? '進階機器績效' : '進階變數分析',
+        };
+    }, [machine, operator, customer, material, spec, statsItem, statsPos, startDate, endDate]);
 
     // 記錄選單需去重：同一巡檢主檔可能對應多個組別，ids 陣列會重複同一 main_id
     const recordOptions = useMemo(() => {
@@ -144,6 +162,9 @@ const PatrolCharts = ({ machine, operator, customer, material, spec, startDate, 
                     />
                 </div>
                 <div className="d-flex align-items-center gap-2">
+                    <a href={advancedSpcLink.href} className="btn btn-outline-info btn-sm">
+                        {advancedSpcLink.label}
+                    </a>
                     <Form.Select
                         size="sm"
                         style={{ width: 'auto' }}

@@ -5,22 +5,24 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/useAuth';
 import {
   useAnalyzeSpcStudy, useApproveSpcResearch, useApproveSpcStudy, useRejectSpcStudy,
-  useRetireSpcLimit, useSubmitSpcStudy,
+  useConfirmSpcTimeModel, useConfirmSpcTransformation, useRetireSpcLimit, useSubmitSpcStudy,
 } from '../../hooks/useSpcStudies';
-import type { SpcStudyResult } from '../../types';
-import { isMachinePerformanceResult } from '../../types/spc';
+import type { SpcStudyResult, SpcTimeModelCode, SpcTransformationModel } from '../../types';
+import { isMachinePerformanceResult, isVariableSpcStudyResult } from '../../types/spc';
 import AttributeStudyPanel from '../../components/spc/attribute/AttributeStudyPanel';
 import MachineConditionForm from '../../components/spc/machine/MachineConditionForm';
 import {
   buildMachineStudyRequest, type MachineConditionInput, type MachineStudyRequest,
 } from '../../components/spc/machine/machineStudyRequest';
 import MachinePerformancePanel from '../../components/spc/machine/MachinePerformancePanel';
+import TimeDiagnosticPanel from '../../components/spc/diagnostics/TimeDiagnosticPanel';
+import TransformationPanel from '../../components/spc/distribution/TransformationPanel';
 import SpcBaselineApprovalModal, { type SpcWorkflowAction } from '../../components/spc/SpcBaselineApprovalModal';
 import SpcStudyHistoryOffcanvas from '../../components/spc/SpcStudyHistoryOffcanvas';
 import SpcStudyWorkflowBar from '../../components/spc/SpcStudyWorkflowBar';
 
 type Source = 'shipping' | 'patrol';
-type Family = 'attribute' | 'machine';
+type Family = 'variable' | 'attribute' | 'machine';
 type Interval = 'day' | 'week' | 'month';
 type AttributeChartType = 'p' | 'np';
 type FilterKey = 'vendor' | 'material' | 'spec' | 'customer' | 'item' | 'position'
@@ -53,10 +55,16 @@ const safeFilter = (key: FilterKey, value: string | null) => NUMBER_FILTERS.has(
   ? safeInteger(value) : DATE_FILTERS.has(key) ? safeDate(value) : safeText(value);
 
 const parseQuery = (search: URLSearchParams): AdvancedQuery => {
-  const family: Family = search.get('family') === 'machine' ? 'machine' : 'attribute';
+  const requestedFamily = search.get('family');
+  const family: Family = requestedFamily === 'machine' ? 'machine' : requestedFamily === 'variable' ? 'variable' : 'attribute';
   const source = family === 'machine' ? 'patrol' : search.get('source') === 'patrol' ? 'patrol' : 'shipping';
   const filters = FILTER_KEYS.reduce<Record<FilterKey, string>>((result, key) => {
-    result[key] = safeFilter(key, search.get(key));
+    const aliases: Partial<Record<FilterKey, string[]>> = {
+      customer: ['cust_id'], material: ['mat'], position: ['pos'],
+      start_date: [], end_date: [], s_date: ['s'], e_date: ['e'], item: ['field'],
+    };
+    const value = search.get(key) ?? aliases[key]?.map(alias => search.get(alias)).find(item => item != null) ?? null;
+    result[key] = safeFilter(key, value);
     return result;
   }, {} as Record<FilterKey, string>);
   return {
@@ -73,10 +81,25 @@ const queryToSearch = (query: AdvancedQuery) => {
   if (query.family === 'machine') {
     MACHINE_FILTERS.forEach(key => { if (query.filters[key]) params.set(key, query.filters[key]); });
     if (query.conditionsConfirmed) params.set('conditions_confirmed', 'true');
-  } else {
+  } else if (query.family === 'attribute') {
     params.set('interval', query.interval);
     params.set('chart_type', query.chartType);
     ATTRIBUTE_FILTERS.forEach(key => { if (query.filters[key]) params.set(key, query.filters[key]); });
+  } else if (query.source === 'shipping') {
+    const shippingEntries: Array<[string, string]> = [
+      ['vendor', query.filters.vendor], ['material', query.filters.material],
+      ['spec', query.filters.spec], ['field', query.filters.item],
+      ['start_date', query.filters.start_date], ['end_date', query.filters.end_date],
+    ];
+    shippingEntries.forEach(([key, value]) => { if (value) params.set(key, value); });
+  } else {
+    const patrolEntries: Array<[string, string]> = [
+      ['m_id', query.filters.m_id], ['op_id', query.filters.op_id],
+      ['cust_id', query.filters.customer], ['mat', query.filters.material],
+      ['spec', query.filters.spec], ['item', query.filters.item],
+      ['pos', query.filters.position], ['s', query.filters.s_date], ['e', query.filters.e_date],
+    ];
+    patrolEntries.forEach(([key, value]) => { if (value) params.set(key, value); });
   }
   return params.toString();
 };
@@ -110,6 +133,8 @@ const AdvancedSpcPage = () => {
   const submit = useSubmitSpcStudy();
   const approve = useApproveSpcStudy();
   const approveResearch = useApproveSpcResearch();
+  const confirmTimeModel = useConfirmSpcTimeModel();
+  const confirmTransformation = useConfirmSpcTransformation();
   const reject = useRejectSpcStudy();
   const retire = useRetireSpcLimit();
   const canView = hasPermission('spc.view');
@@ -122,6 +147,7 @@ const AdvancedSpcPage = () => {
   const changeFamily = (family: Family) => {
     setResult(null);
     setAction(null);
+    setActionError(null);
     setShowHistory(false);
     setMachineConditionReason({ family: '', value: '' });
     updateQuery(family === 'machine'
@@ -145,10 +171,21 @@ const AdvancedSpcPage = () => {
   const attributeFilters = (): Record<string, unknown> => query.source === 'shipping'
     ? { vendor: query.filters.vendor, material: query.filters.material, spec: query.filters.spec, field: query.filters.item || '外徑', start_date: query.filters.start_date, end_date: query.filters.end_date }
     : { cust_id: query.filters.customer || null, mat: query.filters.material, spec: query.filters.spec, item: query.filters.item || '厚度', pos: query.filters.position, s_date: query.filters.s_date, e_date: query.filters.e_date, m_id: query.filters.m_id || null, op_id: query.filters.op_id || null };
-  const analyzeAttribute = async () => setResult(await analyze.mutateAsync({ source: query.source, filters: attributeFilters(), analysis_family: 'attribute', options: { interval: query.interval, chart_type: query.chartType } }));
+  const variableFilters = (): Record<string, unknown> => query.source === 'shipping'
+    ? { vendor: query.filters.vendor, material: query.filters.material, spec: query.filters.spec, field: query.filters.item, start_date: query.filters.start_date, end_date: query.filters.end_date }
+    : { cust_id: query.filters.customer || null, mat: query.filters.material, spec: query.filters.spec, item: query.filters.item, pos: query.filters.position, s_date: query.filters.s_date, e_date: query.filters.e_date, m_id: query.filters.m_id || null, op_id: query.filters.op_id || null };
+  const analyzeAttribute = async () => {
+    setActionError(null);
+    setResult(await analyze.mutateAsync({ source: query.source, filters: attributeFilters(), analysis_family: 'attribute', options: { interval: query.interval, chart_type: query.chartType } }));
+  };
+  const analyzeVariable = async () => {
+    setActionError(null);
+    setResult(await analyze.mutateAsync({ source: query.source, filters: variableFilters(), analysis_family: 'variable' }));
+  };
   const machineRequest = buildMachineStudyRequest(machineValue);
   const analyzeMachine = async (request: MachineStudyRequest | null = machineRequest) => {
     if (!request || !machineCanManage) return;
+    setActionError(null);
     setResult(await analyze.mutateAsync({ source: 'patrol', analysis_family: 'machine', ...request }));
   };
 
@@ -164,11 +201,12 @@ const AdvancedSpcPage = () => {
     ]);
   };
 
-  const handleAction = async (reason: string) => {
+  const handleAction = async (reason: string, model?: 'A1' | 'A2') => {
     if (!visibleResult || !action) return;
     setActionError(null);
     try {
-      if (action === 'submit') setResult({ ...visibleResult, ...await submit.mutateAsync({ versionId: visibleResult.id, studyId: visibleResult.study_id, reason }), samples: visibleResult.samples });
+      if (action === 'time-model' && model) setResult({ ...visibleResult, ...await confirmTimeModel.mutateAsync({ versionId: visibleResult.id, studyId: visibleResult.study_id, model, reason }), samples: visibleResult.samples });
+      else if (action === 'submit') setResult({ ...visibleResult, ...await submit.mutateAsync({ versionId: visibleResult.id, studyId: visibleResult.study_id, reason }), samples: visibleResult.samples });
       else if (action === 'approve') {
         const limit = await approve.mutateAsync({ versionId: visibleResult.id, studyId: visibleResult.study_id, reason });
         setResult({ ...visibleResult, status: 'active', limit_versions: [{ ...limit, events: limit.events ?? [] }] });
@@ -194,29 +232,73 @@ const AdvancedSpcPage = () => {
     }
   };
 
-  const actionPending = submit.isPending || approve.isPending || approveResearch.isPending || reject.isPending || retire.isPending;
+  const handleSuccessorError = async (error: unknown, studyId: number) => {
+    const parsed = apiError(error);
+    setActionError(parsed);
+    if (parsed.status === 403 || parsed.status === 409) {
+      setResult(null);
+      await refreshWorkflowQueries(studyId);
+    }
+  };
+
+  const confirmDiagnostic = async (model: SpcTimeModelCode, reason: string) => {
+    if (!visibleResult || query.family !== 'variable') return;
+    const current = visibleResult;
+    setActionError(null);
+    try {
+      const successor = await confirmTimeModel.mutateAsync({
+        versionId: current.id, studyId: current.study_id, model, reason,
+      });
+      setResult(value => value?.id === current.id
+        ? { ...value, ...successor, samples: value.samples } : value);
+    } catch (error) {
+      await handleSuccessorError(error, current.study_id);
+    }
+  };
+
+  const confirmDistribution = async (model: SpcTransformationModel, reason: string) => {
+    if (!visibleResult || query.family !== 'variable') return;
+    const current = visibleResult;
+    setActionError(null);
+    try {
+      const successor = await confirmTransformation.mutateAsync({
+        versionId: current.id, studyId: current.study_id, model, reason,
+      });
+      setResult(value => value?.id === current.id
+        ? { ...value, ...successor, samples: value.samples } : value);
+    } catch (error) {
+      await handleSuccessorError(error, current.study_id);
+    }
+  };
+
+  const actionPending = submit.isPending || approve.isPending || approveResearch.isPending || reject.isPending || retire.isPending || confirmTimeModel.isPending || confirmTransformation.isPending;
   const machineResult = visibleResult && isMachinePerformanceResult(visibleResult.capability) ? visibleResult.capability : null;
+  const variableResult = isVariableSpcStudyResult(visibleResult) ? visibleResult : null;
 
   return <div className="container-fluid py-4">
-    <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4"><div><div className="text-uppercase small text-muted">受控分析工作區 · 方法 2026.2</div><h1 className="h3 mb-1">進階 SPC 分析</h1><p className="text-muted mb-0">屬性圖與固定巡檢機台績效研究均保存不可變條件、證據與版本。</p></div><Badge bg="primary">方法版本 2026.2</Badge></div>
+    <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4"><div><div className="text-uppercase small text-muted">受控分析工作區 · 方法 2026.2</div><h1 className="h3 mb-1">進階 SPC 分析</h1><p className="text-muted mb-0">屬性圖、機器績效、時間診斷與分布轉換均保存不可變條件、證據與版本。</p></div><Badge bg="primary">方法版本 2026.2</Badge></div>
     <Card className="mb-3"><Card.Body>
-      <div className="d-flex gap-2 mb-3" role="tablist" aria-label="進階 SPC 工作區"><Button id="advanced-spc-attribute-tab" type="button" role="tab" aria-controls="advanced-spc-workspace" aria-selected={query.family === 'attribute'} variant={query.family === 'attribute' ? 'primary' : 'outline-primary'} onClick={() => changeFamily('attribute')}>屬性管制圖</Button><Button id="advanced-spc-machine-tab" type="button" role="tab" aria-controls="advanced-spc-workspace" aria-selected={query.family === 'machine'} variant={query.family === 'machine' ? 'primary' : 'outline-primary'} onClick={() => changeFamily('machine')}>機器績效</Button></div>
-      <div id="advanced-spc-workspace" role="tabpanel" aria-labelledby={query.family === 'machine' ? 'advanced-spc-machine-tab' : 'advanced-spc-attribute-tab'}>
+      <div className="d-flex gap-2 mb-3 flex-wrap" role="tablist" aria-label="進階 SPC 工作區"><Button id="advanced-spc-variable-tab" type="button" role="tab" aria-controls="advanced-spc-workspace" aria-selected={query.family === 'variable'} variant={query.family === 'variable' ? 'primary' : 'outline-primary'} onClick={() => changeFamily('variable')}>變數診斷與轉換</Button><Button id="advanced-spc-attribute-tab" type="button" role="tab" aria-controls="advanced-spc-workspace" aria-selected={query.family === 'attribute'} variant={query.family === 'attribute' ? 'primary' : 'outline-primary'} onClick={() => changeFamily('attribute')}>屬性管制圖</Button><Button id="advanced-spc-machine-tab" type="button" role="tab" aria-controls="advanced-spc-workspace" aria-selected={query.family === 'machine'} variant={query.family === 'machine' ? 'primary' : 'outline-primary'} onClick={() => changeFamily('machine')}>機器績效</Button></div>
+      <div id="advanced-spc-workspace" role="tabpanel" aria-labelledby={`advanced-spc-${query.family}-tab`}>
       {query.family === 'attribute' ? <Form aria-label="進階 SPC 屬性研究條件"><Row className="g-3">
         <Col md={3}><Form.Label>分析族別</Form.Label><Form.Select aria-label="分析族別" value="attribute" disabled><option value="attribute">屬性分析（p／np）</option></Form.Select></Col>
         <Col md={3}><Form.Label>資料來源</Form.Label><Form.Select aria-label="資料來源" value={query.source} onChange={event => updateQuery({ ...query, source: event.target.value as Source })}><option value="shipping">出貨檢驗</option><option value="patrol">現場巡檢</option></Form.Select></Col>
         <Col md={3}><Form.Label>子組區間</Form.Label><Form.Select aria-label="子組區間" value={query.interval} onChange={event => updateQuery({ ...query, interval: event.target.value as Interval })}><option value="day">每日</option><option value="week">每週</option><option value="month">每月</option></Form.Select></Col>
         <Col md={3}><Form.Label>圖表類型</Form.Label><Form.Select aria-label="圖表類型" value={query.chartType} onChange={event => updateQuery({ ...query, chartType: event.target.value as AttributeChartType })}><option value="p">p 圖（子組大小可變）</option><option value="np">np 圖（固定子組大小）</option></Form.Select></Col>
         {query.source === 'shipping' ? <><Col md={3}><Form.Label>廠商</Form.Label><Form.Control aria-label="廠商" value={query.filters.vendor} onChange={event => setFilter('vendor', event.target.value)} /></Col><Col md={2}><Form.Label>材質</Form.Label><Form.Control aria-label="材質" value={query.filters.material} onChange={event => setFilter('material', event.target.value)} /></Col><Col md={2}><Form.Label>規格</Form.Label><Form.Control aria-label="規格" value={query.filters.spec} onChange={event => setFilter('spec', event.target.value)} /></Col><Col md={2}><Form.Label>檢驗特性</Form.Label><Form.Control aria-label="檢驗特性" value={query.filters.item} onChange={event => setFilter('item', event.target.value)} /></Col><Col md={3}><Form.Label>開始日期</Form.Label><Form.Control aria-label="開始日期" type="date" value={query.filters.start_date} onChange={event => setFilter('start_date', event.target.value)} /></Col><Col md={3}><Form.Label>結束日期</Form.Label><Form.Control aria-label="結束日期" type="date" value={query.filters.end_date} onChange={event => setFilter('end_date', event.target.value)} /></Col></> : <><Col md={2}><Form.Label>客戶 ID</Form.Label><Form.Control aria-label="客戶 ID" inputMode="numeric" value={query.filters.customer} onChange={event => setFilter('customer', event.target.value)} /></Col><Col md={2}><Form.Label>機台 ID</Form.Label><Form.Control aria-label="機台 ID" inputMode="numeric" value={query.filters.m_id} onChange={event => setFilter('m_id', event.target.value)} /></Col><Col md={2}><Form.Label>操作員 ID</Form.Label><Form.Control aria-label="操作員 ID" inputMode="numeric" value={query.filters.op_id} onChange={event => setFilter('op_id', event.target.value)} /></Col><Col md={2}><Form.Label>材質</Form.Label><Form.Control aria-label="材質" value={query.filters.material} onChange={event => setFilter('material', event.target.value)} /></Col><Col md={2}><Form.Label>規格</Form.Label><Form.Control aria-label="規格" value={query.filters.spec} onChange={event => setFilter('spec', event.target.value)} /></Col><Col md={2}><Form.Label>項目</Form.Label><Form.Control aria-label="項目" value={query.filters.item} onChange={event => setFilter('item', event.target.value)} /></Col><Col md={3}><Form.Label>位置</Form.Label><Form.Control aria-label="位置" value={query.filters.position} onChange={event => setFilter('position', event.target.value)} /></Col><Col md={3}><Form.Label>開始日期</Form.Label><Form.Control aria-label="開始日期" type="date" value={query.filters.s_date} onChange={event => setFilter('s_date', event.target.value)} /></Col><Col md={3}><Form.Label>結束日期</Form.Label><Form.Control aria-label="結束日期" type="date" value={query.filters.e_date} onChange={event => setFilter('e_date', event.target.value)} /></Col></>}
-      </Row><div className="d-flex justify-content-end mt-3"><Button type="button" onClick={() => void analyzeAttribute()} disabled={!canView || analyze.isPending}>{analyze.isPending ? '分析中…' : '建立屬性研究'}</Button></div></Form> : <><div className="mb-3"><Form.Label>分析族別</Form.Label><Form.Select aria-label="分析族別" value="machine" disabled><option value="machine">機器績效（Pm／Pmk）</option></Form.Select><Form.Text>資料來源固定為現場巡檢；出貨資料不可用於機器績效研究。</Form.Text></div><MachineConditionForm value={machineValue} onChange={setMachineValue} onAnalyze={request => void analyzeMachine(request)} disabled={!machineCanManage || analyze.isPending} disabledReason={!machineCanManage ? '機器研究需要 SPC 管理權限。' : analyze.isPending ? '分析執行中。' : undefined} /></>}
+      </Row><div className="d-flex justify-content-end mt-3"><Button type="button" onClick={() => void analyzeAttribute()} disabled={!canView || analyze.isPending}>{analyze.isPending ? '分析中…' : '建立屬性研究'}</Button></div></Form> : query.family === 'variable' ? <Form aria-label="進階 SPC 變數研究條件"><Row className="g-3">
+        <Col md={3}><Form.Label>分析族別</Form.Label><Form.Select aria-label="分析族別" value="variable" disabled><option value="variable">變數分析（時間／分布）</option></Form.Select></Col>
+        <Col md={3}><Form.Label>資料來源</Form.Label><Form.Select aria-label="資料來源" value={query.source} onChange={event => updateQuery({ ...query, source: event.target.value as Source })}><option value="shipping">出貨檢驗</option><option value="patrol">現場巡檢</option></Form.Select></Col>
+        {query.source === 'shipping' ? <><Col md={3}><Form.Label>廠商</Form.Label><Form.Control aria-label="廠商" value={query.filters.vendor} onChange={event => setFilter('vendor', event.target.value)} /></Col><Col md={2}><Form.Label>材質</Form.Label><Form.Control aria-label="材質" value={query.filters.material} onChange={event => setFilter('material', event.target.value)} /></Col><Col md={2}><Form.Label>規格</Form.Label><Form.Control aria-label="規格" value={query.filters.spec} onChange={event => setFilter('spec', event.target.value)} /></Col><Col md={2}><Form.Label>檢驗特性</Form.Label><Form.Control aria-label="檢驗特性" value={query.filters.item} onChange={event => setFilter('item', event.target.value)} /></Col><Col md={3}><Form.Label>開始日期</Form.Label><Form.Control aria-label="開始日期" type="date" value={query.filters.start_date} onChange={event => setFilter('start_date', event.target.value)} /></Col><Col md={3}><Form.Label>結束日期</Form.Label><Form.Control aria-label="結束日期" type="date" value={query.filters.end_date} onChange={event => setFilter('end_date', event.target.value)} /></Col></> : <><Col md={2}><Form.Label>客戶 ID</Form.Label><Form.Control aria-label="客戶 ID" inputMode="numeric" value={query.filters.customer} onChange={event => setFilter('customer', event.target.value)} /></Col><Col md={2}><Form.Label>機台 ID</Form.Label><Form.Control aria-label="機台 ID" inputMode="numeric" value={query.filters.m_id} onChange={event => setFilter('m_id', event.target.value)} /></Col><Col md={2}><Form.Label>操作員 ID</Form.Label><Form.Control aria-label="操作員 ID" inputMode="numeric" value={query.filters.op_id} onChange={event => setFilter('op_id', event.target.value)} /></Col><Col md={2}><Form.Label>材質</Form.Label><Form.Control aria-label="材質" value={query.filters.material} onChange={event => setFilter('material', event.target.value)} /></Col><Col md={2}><Form.Label>規格</Form.Label><Form.Control aria-label="規格" value={query.filters.spec} onChange={event => setFilter('spec', event.target.value)} /></Col><Col md={2}><Form.Label>項目</Form.Label><Form.Control aria-label="項目" value={query.filters.item} onChange={event => setFilter('item', event.target.value)} /></Col><Col md={3}><Form.Label>位置</Form.Label><Form.Control aria-label="位置" value={query.filters.position} onChange={event => setFilter('position', event.target.value)} /></Col><Col md={3}><Form.Label>開始日期</Form.Label><Form.Control aria-label="開始日期" type="date" value={query.filters.s_date} onChange={event => setFilter('s_date', event.target.value)} /></Col><Col md={3}><Form.Label>結束日期</Form.Label><Form.Control aria-label="結束日期" type="date" value={query.filters.e_date} onChange={event => setFilter('e_date', event.target.value)} /></Col></>}
+      </Row><div className="d-flex justify-content-end mt-3"><Button type="button" onClick={() => void analyzeVariable()} disabled={!canView || analyze.isPending}>{analyze.isPending ? '分析中…' : '建立變數研究'}</Button></div></Form> : <><div className="mb-3"><Form.Label>分析族別</Form.Label><Form.Select aria-label="分析族別" value="machine" disabled><option value="machine">機器績效（Pm／Pmk）</option></Form.Select><Form.Text>資料來源固定為現場巡檢；出貨資料不可用於機器績效研究。</Form.Text></div><MachineConditionForm value={machineValue} onChange={setMachineValue} onAnalyze={request => void analyzeMachine(request)} disabled={!machineCanManage || analyze.isPending} disabledReason={!machineCanManage ? '機器研究需要 SPC 管理權限。' : analyze.isPending ? '分析執行中。' : undefined} /></>}
       {!canView && <Alert variant="warning" className="mt-3 mb-0">目前帳號沒有 SPC 檢視權限，無法送出分析。</Alert>}
       {analyze.isError && <Alert variant="danger" className="mt-3 mb-0">API 驗證或分析失敗：{apiError(analyze.error).message}</Alert>}
       </div>
     </Card.Body></Card>
     {actionError && <Alert variant="danger" className="mb-3" role="alert" aria-live="assertive"><strong>{actionError.status === 403 ? '權限不足：' : actionError.status === 409 ? '研究狀態已變更：' : '流程操作失敗：'}</strong>{actionError.code ? `${actionError.code}；` : ''}{actionError.message}{(actionError.status === 403 || actionError.status === 409) && <div>請重新分析或開啟版本歷程後再操作。</div>}</Alert>}
-    {visibleResult && <Card className="mb-3"><Card.Body><SpcStudyWorkflowBar version={visibleResult} canView={canView} canManage={canManage} canApprove={canApprove} analyzing={analyze.isPending} canAnalyze={query.family !== 'machine' || (machineCanManage && machineRequest != null)} analyzeDisabledReason={query.family === 'machine' && machineRequest == null ? '重建候選前必須重新完成固定機台與受控條件。' : undefined} onAnalyze={() => void (query.family === 'machine' ? analyzeMachine() : analyzeAttribute())} onAction={setAction} onShowHistory={() => setShowHistory(true)} /></Card.Body></Card>}
-    {query.family === 'machine' ? <MachinePerformancePanel result={machineResult} /> : <AttributeStudyPanel result={visibleResult} />}
-    {visibleResult && action && <SpcBaselineApprovalModal show action={action} source={visibleResult.source} filters={visibleResult.filters} version={visibleResult} pending={actionPending} onHide={() => setAction(null)} onConfirm={reason => void handleAction(reason)} />}
+    {visibleResult && <Card className="mb-3"><Card.Body><SpcStudyWorkflowBar version={visibleResult} canView={canView} canManage={canManage} canApprove={canApprove} analyzing={analyze.isPending} canAnalyze={query.family !== 'machine' || (machineCanManage && machineRequest != null)} analyzeDisabledReason={query.family === 'machine' && machineRequest == null ? '重建候選前必須重新完成固定機台與受控條件。' : undefined} onAnalyze={() => void (query.family === 'machine' ? analyzeMachine() : query.family === 'variable' ? analyzeVariable() : analyzeAttribute())} onAction={setAction} onShowHistory={() => setShowHistory(true)} /></Card.Body></Card>}
+    {query.family === 'machine' ? <MachinePerformancePanel result={machineResult} /> : query.family === 'variable' ? variableResult && <><TimeDiagnosticPanel version={variableResult} canApprove={canApprove} pending={confirmTimeModel.isPending} onConfirm={(model, reason) => void confirmDiagnostic(model, reason)} /><TransformationPanel version={variableResult} canApprove={canApprove} pending={confirmTransformation.isPending} onConfirm={(model, reason) => void confirmDistribution(model, reason)} /></> : <AttributeStudyPanel result={visibleResult} />}
+    {visibleResult && action && <SpcBaselineApprovalModal show action={action} source={visibleResult.source} filters={visibleResult.filters} version={visibleResult} pending={actionPending} onHide={() => setAction(null)} onConfirm={(reason, model) => void handleAction(reason, model)} />}
     {visibleResult && showHistory && <SpcStudyHistoryOffcanvas show studyId={visibleResult.study_id} onHide={() => setShowHistory(false)} />}
   </div>;
 };

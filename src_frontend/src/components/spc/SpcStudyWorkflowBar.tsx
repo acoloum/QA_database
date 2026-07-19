@@ -39,10 +39,14 @@ const SpcStudyWorkflowBar = ({
   version, canView, canManage, canApprove, analyzing = false, canAnalyze = true, analyzeDisabledReason,
   onAnalyze, onAction, onShowHistory,
 }: SpcStudyWorkflowBarProps) => {
-  const research = version?.analysis_family === 'machine';
+  const confirmedModel = version?.time_model.model;
+  const research = version?.analysis_family === 'machine'
+    || (version?.analysis_family === 'variable' && version.time_model.confirmed
+      && confirmedModel != null && !['A1', 'A2'].includes(confirmedModel));
   const machineCapability = version && isMachinePerformanceResult(version.capability)
     ? version.capability : null;
-  const machineApprovable = Boolean(machineCapability?.approvable);
+  const researchApprovable = version?.analysis_family === 'machine'
+    ? Boolean(machineCapability?.approvable) : research;
   const stages = research ? researchStages : baselineStages;
   const current = stageIndex(version?.status, research);
   const candidate = version?.time_model.candidate;
@@ -52,7 +56,7 @@ const SpcStudyWorkflowBar = ({
 
   return (
     <div className="spc-workflow">
-      <div className="spc-lifecycle" aria-label={research ? '機器研究生命週期' : 'SPC 基準生命週期'}>
+      <div className="spc-lifecycle" aria-label={research ? '研究生命週期' : 'SPC 基準生命週期'}>
         {stages.map((stage, index) => (
           <div key={stage.status} className={`spc-stage ${index <= current ? 'is-complete' : ''} ${index === current ? 'is-current' : ''}`}>
             <span className="spc-stage-dot">{index < current ? '✓' : index + 1}</span>
@@ -61,7 +65,7 @@ const SpcStudyWorkflowBar = ({
         ))}
         {version?.status === 'rejected' && <Badge bg="danger">已退回</Badge>}
         {version?.status === 'retired' && <Badge bg="secondary">已停用</Badge>}
-        {research && version?.status === 'submitted' && !machineApprovable && (
+        {version?.analysis_family === 'machine' && version.status === 'submitted' && !researchApprovable && (
           <Badge bg="warning" text="dark">目前不可核准：{machineCapability?.reason_code ?? '研究資格未完成'}</Badge>
         )}
       </div>
@@ -83,7 +87,7 @@ const SpcStudyWorkflowBar = ({
         {canManage && version?.status === 'draft' && (
           <Button size="sm" variant="primary" onClick={() => onAction('submit')}>送審</Button>
         )}
-        {canApprove && version?.status === 'submitted' && (!research || machineApprovable) && (
+        {canApprove && version?.status === 'submitted' && (!research || researchApprovable) && (
           <>
             <Button size="sm" variant="outline-danger" onClick={() => onAction('reject')}>退回</Button>
             <Button size="sm" variant="success" onClick={() => onAction(research ? 'approve-research' : 'approve')}>{research ? '核准研究結果' : '核准生效'}</Button>
