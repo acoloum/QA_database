@@ -169,7 +169,10 @@ export const useSaveSpcOcap = (studyId: number | null) => {
     ),
     onSuccess: () => {
       if (studyId != null) {
-        queryClient.invalidateQueries({ queryKey: ['spcStudy', studyId] });
+        queryClient.invalidateQueries({
+          queryKey: ['spcStudy', studyId],
+          refetchType: 'none',
+        });
       }
     },
   });

@@ -334,6 +334,7 @@ const SpcStudyPanel = ({
                 setSelectedEvent(null);
 
                 const refreshed = await refetchStudy();
+                if (!refreshed.isSuccess) return;
                 if (!isCurrentVersion(
                   savedContext.studyId,
                   savedContext.versionId,

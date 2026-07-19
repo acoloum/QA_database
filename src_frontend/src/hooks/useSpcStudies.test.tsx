@@ -121,7 +121,10 @@ describe('SPC 研究 hooks', () => {
     });
 
     expect(returned).toEqual(ocap);
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['spcStudy', 9] });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['spcStudy', 9],
+      refetchType: 'none',
+    });
     expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['spcEvents'] });
     expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['spcOcap', 81] });
   });
