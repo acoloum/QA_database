@@ -273,15 +273,17 @@ def _classify_patrol_record(
 def build_attribute_study_input(
     source: str,
     filters: Mapping[str, Any],
-    interval: str,
+    interval: str | None = None,
     *,
+    options: Mapping[str, Any] | None = None,
     input_contract_version: str = SPC_INPUT_CONTRACT_VERSION,
 ) -> SpcStudyInput:
     """建立可追溯的 p／np 屬性研究輸入，不將未知資料視為良品。"""
 
     canonical_filters = normalize_attribute_filters(source, filters)
     stream = canonical_attribute_process_stream(source, canonical_filters)
-    normalized_interval = str(interval).strip().lower()
+    canonical_options = dict(options or {"interval": interval or "day"})
+    normalized_interval = str(canonical_options["interval"]).strip().lower()
     if normalized_interval not in ATTRIBUTE_INTERVALS:
         raise ValueError("屬性資料分組僅支援 day、week、month")
 
@@ -300,7 +302,6 @@ def build_attribute_study_input(
     elif not eligible_rows:
         reasons.append(SpcReason("ALL_CLASSIFICATIONS_UNKNOWN", "沒有可判定的不符合單位資料"))
 
-    options = {"interval": normalized_interval}
     specification = {
         "found": bool(eligible_rows),
         "source": "measurement_and_specification_snapshot",
@@ -311,7 +312,7 @@ def build_attribute_study_input(
         source_rows=source_rows,
         specification=specification,
         analysis_family="attribute",
-        options=options,
+        options=canonical_options,
         input_contract_version=input_contract_version,
     )
     return SpcStudyInput(
@@ -322,7 +323,7 @@ def build_attribute_study_input(
         subgroups=subgroups,
         specification=specification,
         analysis_family="attribute",
-        options=options,
+        options=canonical_options,
         data_hash=data_hash,
         reasons=reasons,
         metadata={

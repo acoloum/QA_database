@@ -4,6 +4,7 @@ from dataclasses import asdict, replace
 from datetime import date, datetime, timedelta, timezone
 import inspect
 import json
+import math
 import os
 from typing import Any, Callable, Mapping
 
@@ -66,6 +67,35 @@ ADAPTERS: dict[str, Callable[[Mapping[str, Any]], SpcStudyInput]] = {
     "shipping": build_shipping_study_input,
     "patrol": build_patrol_study_input,
 }
+ATTRIBUTE_ADAPTERS: dict[str, Callable[..., SpcStudyInput]] = {
+    "shipping": build_attribute_study_input,
+    "patrol": build_attribute_study_input,
+}
+ATTRIBUTE_OPTION_DEFAULTS = {"interval": "day", "chart_type": "p", "alpha": 0.0027}
+ATTRIBUTE_OPTION_KEYS = frozenset(ATTRIBUTE_OPTION_DEFAULTS)
+
+
+def _canonical_attribute_options(options: Mapping[str, Any] | None) -> dict[str, Any]:
+    """驗證並補齊屬性分析選項，作為 hash、版本與引擎的唯一輸入。"""
+
+    if options is None:
+        return dict(ATTRIBUTE_OPTION_DEFAULTS)
+    if not isinstance(options, Mapping):
+        raise SpcValidationError("SPC_ANALYSIS_OPTIONS_INVALID", "分析選項必須是物件")
+    unknown = sorted(set(options) - ATTRIBUTE_OPTION_KEYS)
+    if unknown:
+        raise SpcValidationError("SPC_ATTRIBUTE_OPTION_UNKNOWN", "屬性分析選項包含未知欄位")
+    result = dict(ATTRIBUTE_OPTION_DEFAULTS)
+    result.update(options)
+    if type(result["interval"]) is not str or result["interval"] not in {"day", "week", "month"}:
+        raise SpcValidationError("SPC_ATTRIBUTE_INTERVAL_INVALID", "interval 僅支援 day、week、month")
+    if type(result["chart_type"]) is not str or result["chart_type"] not in {"p", "np"}:
+        raise SpcValidationError("SPC_ATTRIBUTE_CHART_TYPE_INVALID", "chart_type 僅支援 p、np")
+    alpha = result["alpha"]
+    if type(alpha) not in {int, float} or not math.isfinite(alpha) or not 0 < alpha < 1:
+        raise SpcValidationError("SPC_ATTRIBUTE_ALPHA_INVALID", "alpha 必須是介於 0 與 1 的有限數值")
+    result["alpha"] = float(alpha)
+    return result
 
 
 def _upsert_preview_cache(
@@ -131,6 +161,18 @@ def _adapter_input(
     options: Mapping[str, Any] | None = None,
     input_contract_version: str = SPC_INPUT_CONTRACT_VERSION,
 ) -> SpcStudyInput:
+    if analysis_family == "attribute":
+        canonical_options = _canonical_attribute_options(options)
+        adapter = ATTRIBUTE_ADAPTERS.get(source)
+        if adapter is None:
+            raise SpcValidationError("SPC_SOURCE_UNSUPPORTED", f"不支援的 SPC 資料來源：{source}")
+        study_input = adapter(
+            source, filters, options=canonical_options,
+            input_contract_version=input_contract_version,
+        )
+        return replace(
+            study_input, analysis_family="attribute", options=canonical_options,
+        )
     adapter = ADAPTERS.get(source)
     if adapter is None:
         raise SpcValidationError("SPC_SOURCE_UNSUPPORTED", f"不支援的 SPC 資料來源：{source}")
@@ -150,11 +192,6 @@ def _adapter_input(
         )
         if supports_context else adapter(filters)
     )
-    if analysis_family == "attribute" and study_input.analysis_family != "attribute":
-        interval = str((options or {}).get("interval") or "day").lower()
-        study_input = build_attribute_study_input(
-            source, filters, interval, input_contract_version=input_contract_version
-        )
     return replace(
         study_input,
         analysis_family=analysis_family,
@@ -258,8 +295,8 @@ def _attribute_not_applicable(study_input: SpcStudyInput, exc: SpcChartNotApplic
 def _calculate_attribute_results(study_input: SpcStudyInput) -> dict[str, Any]:
     """建立屬性基準研究；完整保存精確界限與分類證據。"""
 
-    requested_chart = str(study_input.options.get("chart_type") or "p").lower()
-    alpha = float(study_input.options.get("alpha") or 0.0027)
+    requested_chart = str(study_input.options["chart_type"])
+    alpha = float(study_input.options["alpha"])
     try:
         chart = calculate_attribute_chart(
             tuple(study_input.subgroups), requested_chart, alpha=alpha
@@ -445,9 +482,17 @@ def _calculate_attribute_ongoing_results(
     requested = str(study_input.options.get("chart_type") or active_limit.chart_type).lower()
     if requested != active_limit.chart_type:
         raise SpcValidationError("SPC_CHART_TYPE_MISMATCH", "目前圖表選型與核准界限不一致")
-    frozen_interval = saved.get("interval")
-    if frozen_interval and study_input.options.get("interval") != frozen_interval:
-        raise SpcValidationError("SPC_INTERVAL_MISMATCH", "目前時間區間與核准屬性基準不一致")
+    frozen_options = _canonical_attribute_options(saved.get("options") or {
+        "interval": saved.get("interval", "day"),
+        "chart_type": active_limit.chart_type,
+        "alpha": alpha,
+    })
+    if dict(study_input.options) != frozen_options:
+        raise SpcValidationError(
+            "SPC_ATTRIBUTE_OPTIONS_MISMATCH",
+            "目前 attribute options 必須與核准界限的受控選項一致",
+        )
+    frozen_interval = frozen_options["interval"]
     try:
         chart = calculate_attribute_observations(
             tuple(study_input.subgroups), requested, center=center, alpha=alpha,
@@ -456,7 +501,7 @@ def _calculate_attribute_ongoing_results(
     except SpcChartNotApplicable as exc:
         raise SpcValidationError(exc.code, str(exc)) from exc
     chart["exact_alpha"] = alpha
-    chart["interval"] = frozen_interval or study_input.options.get("interval") or "day"
+    chart["interval"] = frozen_interval
     chart["warnings"] = {
         "sample_size_variation": chart.get("sample_size_variation_warning", False),
         "classification_excluded_records": int(study_input.metadata.get("excluded_record_count", 0)),
@@ -663,11 +708,15 @@ class SpcStudyService:
                 "SPC_ANALYSIS_FAMILY_NOT_IMPLEMENTED",
                 "目前尚未支援 machine 分析族別",
             )
+        canonical_options = (
+            _canonical_attribute_options(options)
+            if analysis_family == "attribute" else options
+        )
         study_input = _adapter_input(
             source,
             filters,
             analysis_family=analysis_family,
-            options=options,
+            options=canonical_options,
         )
         active_limit = None
         if study_type == "ongoing":
@@ -682,6 +731,24 @@ class SpcStudyService:
                     "SPC_ACTIVE_LIMIT_REQUIRED",
                     "持續 SPC 必須先有同一製程流與特性的生效核准界限",
                 )
+            if analysis_family == "attribute":
+                saved = dict(active_limit.limits or {})
+                frozen_options = _canonical_attribute_options(saved.get("options") or {
+                    "interval": saved.get("interval", "day"),
+                    "chart_type": active_limit.chart_type,
+                    "alpha": saved.get("alpha", 0.0027),
+                })
+                if options is None:
+                    canonical_options = frozen_options
+                    study_input = _adapter_input(
+                        source, filters, analysis_family="attribute",
+                        options=canonical_options,
+                    )
+                elif canonical_options != frozen_options:
+                    raise SpcValidationError(
+                        "SPC_ATTRIBUTE_OPTIONS_MISMATCH",
+                        "目前 attribute options 必須與核准界限的受控選項一致",
+                    )
         results = (
             _calculate_ongoing_results(study_input, active_limit)
             if active_limit is not None
@@ -747,7 +814,10 @@ class SpcStudyService:
             for violation in (results["stability_result"] or {}).get("violations", []):
                 index = int(violation["index"])
                 chart_kind = violation["chart_kind"]
-                observed_values = (chart.get(chart_kind) or {}).get("values", [])
+                if analysis_family == "attribute":
+                    observed_values = chart.get("values", [])
+                else:
+                    observed_values = (chart.get(chart_kind) or {}).get("values", [])
                 violations.append({
                     "chart_kind": chart_kind,
                     "rule_code": violation["rule"],
@@ -1069,6 +1139,7 @@ class SpcStudyService:
                 "center": chart["center"],
                 "alpha": chart["exact_alpha"],
                 "interval": chart.get("interval"),
+                "options": dict(version.analysis_options or {}),
                 "baseline_n": (
                     chart.get("n", [None])[0] if chart.get("chart_type") == "np" else None
                 ),

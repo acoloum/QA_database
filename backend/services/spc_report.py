@@ -9,11 +9,77 @@ from openpyxl.chart import LineChart, BarChart, Reference
 from openpyxl.chart.layout import Layout, ManualLayout
 from .spc_stability import RULE_LABELS
 from ..extensions import db
-from ..models import SpcStudyVersion
+from ..models import SpcLimitVersion, SpcStudyVersion
 from .spc_errors import SpcNotFound, SpcValidationError
 
 
 class SpcReportService:
+    @staticmethod
+    def _generate_attribute_report(stats_data: dict, field: str) -> BytesIO:
+        """產製屬性型 p／np 專用報表，避免混入 variable SPC 語意。"""
+
+        workbook = Workbook()
+        summary = workbook.active
+        summary.title = "屬性 SPC 摘要"
+        chart = stats_data.get("charts") or {}
+        chart_type = chart.get("chart_type") or "p"
+        display_label = "不符合比例 (p)" if chart_type == "p" else "不符合數 (np)"
+        summary.append([f"屬性 SPC {chart_type} 圖報告 - {field}"])
+        summary.append(["圖表類型", chart_type])
+        summary.append(["統計量", display_label])
+        summary.append(["時間區間", chart.get("interval")])
+        summary.append(["精確 alpha", chart.get("exact_alpha")])
+        summary.append(["能力評估", "不適用：屬性圖不產生能力指標"])
+        summary.append(["分布評估", "不適用：屬性計數不進行連續量測分布擬合"])
+        summary.append(["時間模型", "不適用：屬性圖不使用 variable 時間模型"])
+        summary.append(["變異圖", "不適用：屬性圖以 Pearson residual 規則輔助判定"])
+
+        data = workbook.create_sheet("屬性管制圖數據")
+        headers = ["序號", "子組", "日期", display_label, "受檢數(n)", "不符合數(x)", "精確 UCL", "中心線", "精確 LCL", "Pearson residual"]
+        data.append(headers)
+        labels = stats_data.get("labels") or []
+        dates = stats_data.get("dates") or []
+        values = stats_data.get("avgs") or []
+        counts = stats_data.get("attribute_counts") or {}
+        ns = counts.get("n") or []
+        xs = counts.get("x") or []
+        residuals = chart.get("pearson_residuals") or []
+        for index, value in enumerate(values):
+            data.append([
+                index + 1, labels[index] if index < len(labels) else "",
+                dates[index] if index < len(dates) else "", value,
+                ns[index] if index < len(ns) else None,
+                xs[index] if index < len(xs) else None,
+                (stats_data.get("x_ucls") or [None])[index] if index < len(stats_data.get("x_ucls") or []) else None,
+                (stats_data.get("x_cls") or [None])[index] if index < len(stats_data.get("x_cls") or []) else None,
+                (stats_data.get("x_lcls") or [None])[index] if index < len(stats_data.get("x_lcls") or []) else None,
+                residuals[index] if index < len(residuals) else None,
+            ])
+
+        chart_sheet = workbook.create_sheet("圖表")
+        if values:
+            line = LineChart()
+            line.title = f"{chart_type} 圖 - {field}"
+            line.y_axis.title = display_label
+            line.add_data(Reference(data, min_col=4, max_col=4, min_row=1, max_row=len(values) + 1), titles_from_data=True)
+            line.add_data(Reference(data, min_col=7, max_col=9, min_row=1, max_row=len(values) + 1), titles_from_data=True)
+            line.set_categories(Reference(data, min_col=1, min_row=2, max_row=len(values) + 1))
+            chart_sheet.add_chart(line, "A1")
+
+        audit = workbook.create_sheet("版本稽核")
+        for name, value in (stats_data.get("version_metadata") or {}).items():
+            audit.append([name, value])
+        samples = workbook.create_sheet("研究樣本")
+        rows = stats_data.get("version_samples") or []
+        headers = list(rows[0]) if rows else ["無樣本"]
+        samples.append(headers)
+        for row in rows:
+            samples.append([row.get(header) for header in headers])
+        output = BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        return output
+
     @staticmethod
     def _stats_from_version(version: SpcStudyVersion) -> dict:
         """只使用不可變研究版本與樣本快照建立報表資料。"""
@@ -39,8 +105,12 @@ class SpcReportService:
         def first(values):
             return values[0] if values else None
 
-        limits = version.limit_versions[-1] if version.limit_versions else None
-        events = [event for item in version.limit_versions for event in item.events]
+        monitoring_limit_id = (version.time_model_result or {}).get("limit_version_id")
+        limits = (
+            db.session.get(SpcLimitVersion, monitoring_limit_id)
+            if monitoring_limit_id else (version.limit_versions[-1] if version.limit_versions else None)
+        )
+        events = list(limits.events) if limits is not None else []
         excluded_count = sum(
             1
             for sample in samples
@@ -65,7 +135,7 @@ class SpcReportService:
                 version.specification_snapshot or {}, ensure_ascii=False, sort_keys=True
             ),
             "每組樣本數": ", ".join(
-                str(value) for value in (chart.get("subgroup_sizes") or [
+                str(value) for value in ((chart.get("n") if is_attribute else chart.get("subgroup_sizes")) or [
                     len(sample.values or []) for sample in samples
                 ])
             ),
@@ -93,6 +163,8 @@ class SpcReportService:
             "建立者ID": version.created_by,
             "建立時間": version.created_at.isoformat() if version.created_at else None,
             "核准界限版次": limits.revision if limits else None,
+            "監控所用界限版本 ID": monitoring_limit_id,
+            "界限已凍結": "是" if limits and limits.status == "active" else "否",
             "核准界限內容": json.dumps(limits.limits or {}, ensure_ascii=False, sort_keys=True) if limits else None,
             "核准者ID": limits.approved_by if limits else None,
             "核准時間": (
@@ -111,8 +183,8 @@ class SpcReportService:
             "all_values": distribution_values,
             "subgroup_sizes": list(chart.get("n") if is_attribute else chart.get("subgroup_sizes") or []),
             "avg_subgroup_size": (
-                int(round(float(np.mean(chart.get("subgroup_sizes")))))
-                if chart.get("subgroup_sizes") else None
+                float(np.mean(chart.get("n") if is_attribute else chart.get("subgroup_sizes")))
+                if (chart.get("n") if is_attribute else chart.get("subgroup_sizes")) else None
             ),
             "x_cl": first(x_cls), "x_ucl": first(x_ucls), "x_lcl": first(x_lcls),
             "r_cl": first(r_cls), "r_ucl": first(r_ucls), "r_lcl": first(r_lcls),
@@ -189,8 +261,13 @@ class SpcReportService:
                     "SPC_REPORT_FILTER_MISMATCH",
                     "研究版本的完整篩選條件與目前匯出條件不一致",
                 )
+        stats_data = SpcReportService._stats_from_version(version)
+        if version.study.analysis_family == "attribute":
+            return SpcReportService._generate_attribute_report(
+                stats_data, version.study.characteristic
+            )
         return SpcReportService.generate_report(
-            SpcReportService._stats_from_version(version),
+            stats_data,
             version.study.characteristic,
             dict(version.study.filters or {}),
         )

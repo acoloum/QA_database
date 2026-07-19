@@ -7,7 +7,7 @@ from functools import wraps
 from flask import Blueprint, jsonify, request
 
 from ..extensions import db
-from ..models import SpcLimitVersion, SpcOcap
+from ..models import SpcLimitVersion, SpcOcap, SpcStudySample, SpcStudyVersion
 from ..services.spc_errors import SpcServiceError, SpcValidationError
 from ..services.spc_ocap_service import SpcOcapService
 from ..services.spc_study_service import SpcStudyService
@@ -62,6 +62,22 @@ def serialize_ocap(ocap):
 
 
 def serialize_event(event):
+    attribute_evidence = None
+    version = db.session.get(SpcStudyVersion, event.study_version_id)
+    if version is not None and version.study.analysis_family == "attribute":
+        sample = db.session.get(SpcStudySample, event.sample_id) if event.sample_id else None
+        values = list(sample.values or []) if sample is not None else []
+        residuals = (version.chart_result or {}).get("pearson_residuals") or []
+        attribute_evidence = {
+            "x": values[0] if values else None,
+            "n": values[1] if len(values) > 1 else None,
+            "display_value": event.observed_value,
+            "pearson_residual": (
+                residuals[event.point_index]
+                if event.point_index < len(residuals) else None
+            ),
+            "subgroup_key": sample.subgroup_key if sample is not None else None,
+        }
     return _json_value({
         "id": event.id,
         "limit_version_id": event.limit_version_id,
@@ -72,6 +88,7 @@ def serialize_event(event):
         "point_index": event.point_index,
         "source_point_key": event.source_point_key,
         "observed_value": event.observed_value,
+        "attribute_evidence": attribute_evidence,
         "status": event.status,
         "created_at": event.created_at,
         "ocap": serialize_ocap(event.ocap),

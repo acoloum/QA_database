@@ -61,6 +61,29 @@ def test_shipping_attribute_adapter_groups_day_week_and_month_and_preserves_coun
         assert by_month.filters["field"] == "外徑"
 
 
+def test_attribute_adapter_hashes_the_complete_canonical_options(app, db_session):
+    with app.app_context():
+        _shipping_record(db_session, date(2026, 7, 1), is_ng=True)
+        db_session.commit()
+        filters = {"material": "6061", "spec": "10*1*100", "field": "外徑"}
+        p_default = build_attribute_study_input(
+            "shipping", filters,
+            options={"interval": "day", "chart_type": "p", "alpha": 0.0027},
+        )
+        p_alpha = build_attribute_study_input(
+            "shipping", filters,
+            options={"interval": "day", "chart_type": "p", "alpha": 0.01},
+        )
+        np_chart = build_attribute_study_input(
+            "shipping", filters,
+            options={"interval": "day", "chart_type": "np", "alpha": 0.0027},
+        )
+
+        assert p_default.options["alpha"] == 0.0027
+        assert p_default.data_hash != p_alpha.data_hash
+        assert p_default.data_hash != np_chart.data_hash
+
+
 def test_shipping_attribute_adapter_excludes_unknown_classification_with_snapshot(
     app, db_session
 ):

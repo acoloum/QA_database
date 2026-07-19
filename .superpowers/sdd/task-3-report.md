@@ -68,3 +68,21 @@ RED：
 ```
 
 結果：`1 failed`，實際收到 `pos='全段'`。
+
+## 審查修正：canonical options、監控證據與屬性報表
+
+- attribute 選項統一為 `{interval, chart_type, alpha}`，預設為 `day/p/0.0027`；未知鍵、非物件、無效 interval/chart，以及 bool、字串、NaN、Inf 或不在 `(0, 1)` 的 alpha 都會拒絕。
+- canonical options 同時供 adapter、資料雜湊、不可變版本與計算引擎使用。ongoing 省略 options 時，繼承 frozen limit options；顯式 options 任何 drift 都回 `SPC_ATTRIBUTE_OPTIONS_MISMATCH`。
+- ongoing 版本報表由 `time_model_result.limit_version_id` 讀取實際核准界限與事件，版本稽核表明列監控界限 ID、limits、核准資訊、OCAP 與凍結狀態。
+- attribute report 改為 p／np 專用 workbook，保留 x/n、逐點精確界限、Pearson residual 與單一圖表；continuous-variable 的能力、分布、時間模型與變異項目明確標示不適用與原因。
+- attribute OCAP event 的 `observed_value` 保存 p 比例或 np count，`sample_id` 指向 immutable `[x, n]`，再由 `study_version_id + point_index` 重建 Pearson residual；`source_point_key` 保持原本穩定 identity。
+
+RED：canonical options 初始測試因尚未提供 canonical helper/attribute adapter registry 而 ImportError；ongoing inherit 測試為 `1 failed`，省略 options 被 day 預設導致 interval mismatch；ongoing report evidence 測試為 `1 failed`，缺少監控界限 ID metadata；attribute OCAP 測試為 `1 failed`，observed value 為 null。
+
+GREEN：
+
+```powershell
+& 'C:\QC_Database\venv\Scripts\python.exe' -m pytest backend\tests\test_services\test_spc_attribute_adapter.py backend\tests\test_services\test_spc_attribute_study.py backend\tests\test_spc_study_routes.py backend\tests\test_services\test_spc_report_versioning.py -q
+```
+
+結果：`29 passed in 6.03s`。
