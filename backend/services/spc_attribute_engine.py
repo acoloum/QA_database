@@ -27,15 +27,15 @@ class AttributeSubgroup:
         object.__setattr__(self, "record_ids", tuple(int(value) for value in self.record_ids))
 
 
-def _exact_limits(n: int, p_bar: float, alpha: float) -> tuple[int, int]:
+def _exact_limits(n: int, p_bar: float, alpha: float) -> tuple[int | None, int]:
     """依二項累積機率不等式求取離散管制界限。"""
 
     cdf = scipy_stats.binom.cdf(np.arange(n + 1), n, p_bar)
     lower_candidates = np.flatnonzero(cdf <= alpha / 2.0)
     upper_candidates = np.flatnonzero(cdf >= 1.0 - alpha / 2.0)
-    lower = int(lower_candidates[-1]) if lower_candidates.size else 0
+    lower = int(lower_candidates[-1]) if lower_candidates.size else None
     upper = int(upper_candidates[0]) if upper_candidates.size else n
-    return max(0, lower), min(n, upper)
+    return (max(0, lower) if lower is not None else None), min(n, upper)
 
 
 def _sample_size_metadata(sizes: tuple[int, ...]) -> dict[str, float | bool]:
@@ -93,13 +93,27 @@ def calculate_attribute_chart(
     if requested_chart == "p":
         values = [count / size for size, count in zip(sizes, counts)]
         cl = [p_bar] * len(groups)
-        lcl = [lower / size for size, (lower, _upper) in zip(sizes, exact_counts)]
+        lcl = [
+            lower / size if lower is not None else 0.0
+            for size, (lower, _upper) in zip(sizes, exact_counts)
+        ]
         ucl = [upper / size for size, (_lower, upper) in zip(sizes, exact_counts)]
     else:
         values = list(counts)
         cl = [sizes[0] * p_bar] * len(groups)
-        lcl = [float(lower) for lower, _upper in exact_counts]
+        lcl = [float(lower) if lower is not None else 0.0 for lower, _upper in exact_counts]
         ucl = [float(upper) for _lower, upper in exact_counts]
+
+    lower_counts = [lower for lower, _upper in exact_counts]
+    upper_counts = [upper for _lower, upper in exact_counts]
+    ooc_flags = [
+        {
+            "lower": lower is not None and count <= lower,
+            "upper": count > upper,
+            "out_of_control": (lower is not None and count <= lower) or count > upper,
+        }
+        for count, (lower, upper) in zip(counts, exact_counts)
+    ]
 
     return {
         "chart_type": requested_chart,
@@ -114,5 +128,12 @@ def calculate_attribute_chart(
         "total_inspected": total_inspected,
         "total_nonconforming": total_nonconforming,
         "pearson_residuals": pearson_residuals,
+        "lower_counts": lower_counts,
+        "upper_counts": upper_counts,
+        "boundary_semantics": {
+            "lower": "x <= lower_count（lower_count 為 null 時不判定下界訊號）",
+            "upper": "x > upper_count",
+        },
+        "ooc_flags": ooc_flags,
         **metadata,
     }

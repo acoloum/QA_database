@@ -24,7 +24,7 @@ def _shipping_record(db_session, record_date, *, is_ng, has_specification=True):
         lower_limit=9.5 if has_specification else None,
         upper_limit=10.5 if has_specification else None,
         value_min=9.8,
-        value_max=10.0,
+        value_max=10.7 if is_ng else 10.0,
         is_ng=bool(is_ng),
     ))
     return record
@@ -114,3 +114,113 @@ def test_patrol_attribute_adapter_excludes_record_when_tolerance_cannot_be_resol
             "eligible": False,
             "reason_code": "ATTRIBUTE_CLASSIFICATION_UNKNOWN",
         }]
+
+
+def test_shipping_attribute_classifies_selected_measurements_not_main_is_ng(
+    app, db_session
+):
+    with app.app_context():
+        actual_ng = _shipping_record(db_session, date(2026, 7, 1), is_ng=False)
+        actual_good = _shipping_record(db_session, date(2026, 7, 2), is_ng=True)
+        db_session.flush()
+        actual_ng.measurements[0].value_max = 10.7
+        actual_good.measurements[0].value_max = 10.0
+        db_session.commit()
+
+        study_input = build_attribute_study_input("shipping", {"field": "外徑"}, "day")
+
+        assert [(group.record_ids, group.nonconforming) for group in study_input.subgroups] == [
+            ((actual_ng.id,), 1), ((actual_good.id,), 0),
+        ]
+        assert study_input.metadata["classification_algorithm"] == "attribute-measurement-v2"
+        assert study_input.metadata["main_is_ng_mismatch_record_ids"] == [
+            actual_ng.id, actual_good.id,
+        ]
+
+
+def test_shipping_attribute_excludes_record_when_any_selected_measurement_lacks_value(
+    app, db_session
+):
+    with app.app_context():
+        record = _shipping_record(db_session, date(2026, 7, 1), is_ng=False)
+        db_session.flush()
+        db_session.add(ShippingMeasurement(
+            shipping_id=record.id,
+            group_num=2,
+            item="外徑",
+            position="後段",
+            lower_limit=9.5,
+            upper_limit=10.5,
+            value_min=9.9,
+            value_max=None,
+        ))
+        db_session.commit()
+
+        study_input = build_attribute_study_input("shipping", {"field": "外徑"}, "day")
+
+        assert study_input.subgroups == ()
+        assert study_input.metadata["classification_snapshot"] == [{
+            "record_id": record.id,
+            "eligible": False,
+            "reason_code": "ATTRIBUTE_CLASSIFICATION_UNKNOWN",
+        }]
+
+
+def test_patrol_attribute_resolves_each_position_and_ignores_main_is_ng(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        main = PatrolMain(
+            date=date(2026, 7, 3), material="6063", spec="20*2*100", is_ng=False
+        )
+        db_session.add(main)
+        db_session.flush()
+        db_session.add_all([
+            PatrolDetail(
+                main_id=main.id, group=1, item="厚度", position="前段",
+                min_val=1.9, max_val=2.0,
+            ),
+            PatrolDetail(
+                main_id=main.id, group=1, item="厚度", position="後段",
+                min_val=1.9, max_val=2.1,
+            ),
+        ])
+        db_session.commit()
+        calls = []
+
+        def resolver(*, position, **_kwargs):
+            calls.append(position)
+            return {
+                "found": True,
+                "LSL": 1.5,
+                "USL": 2.0 if position == "後段" else 2.5,
+            }
+
+        monkeypatch.setattr(
+            "backend.services.spc_adapters.attribute.resolve_tolerance_specification",
+            resolver,
+        )
+
+        study_input = build_attribute_study_input(
+            "patrol", {"mat": "6063", "spec": "20*2*100", "item": "厚度"}, "day"
+        )
+
+        assert study_input.subgroups[0].nonconforming == 1
+        assert calls == ["前段", "後段"]
+        assert study_input.metadata["main_is_ng_mismatch_record_ids"] == [main.id]
+
+
+def test_attribute_adapter_uses_iso_year_for_cross_year_week_and_hashes_interval(
+    app, db_session
+):
+    with app.app_context():
+        _shipping_record(db_session, date(2026, 12, 31), is_ng=False)
+        _shipping_record(db_session, date(2027, 1, 1), is_ng=False)
+        db_session.commit()
+
+        weekly = build_attribute_study_input("shipping", {"field": "外徑"}, "week")
+        monthly = build_attribute_study_input("shipping", {"field": "外徑"}, "month")
+
+        assert weekly.subgroups[0].key == "attribute:2026-W53"
+        assert weekly.subgroups[0].inspected == 2
+        assert weekly.data_hash != monthly.data_hash

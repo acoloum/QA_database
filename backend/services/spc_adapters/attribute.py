@@ -4,6 +4,8 @@ from collections import OrderedDict, defaultdict
 from datetime import date
 from typing import Any, Mapping
 
+from sqlalchemy.orm import selectinload
+
 from ...models import PatrolDetail, PatrolMain, ShippingData, ShippingMeasurement, Vendor
 from ..spc_attribute_engine import AttributeSubgroup
 from ..spc_contracts import SpcReason, SpcStudyInput
@@ -18,6 +20,8 @@ from .common import (
 
 ATTRIBUTE_CHARACTERISTIC = "不符合單位"
 ATTRIBUTE_INTERVALS = {"day", "week", "month"}
+ATTRIBUTE_CLASSIFICATION_ALGORITHM = "attribute-measurement-v2"
+MIN_MAX_CHARACTERISTICS = {"外徑", "內徑", "厚度"}
 
 
 def _date_bound(value: str) -> date | None:
@@ -79,23 +83,20 @@ def _shipping_input(filters: Mapping[str, Any]) -> tuple[list[dict[str, Any]], l
     source_rows: list[dict[str, Any]] = []
     snapshots: list[dict[str, Any]] = []
     for record in records:
-        evidence = [
-            measurement for measurement in measurements_by_record[record.id]
-            if not measurement.excluded
-            and (measurement.lower_limit is not None or measurement.upper_limit is not None)
-        ]
-        eligible = record.date is not None and record.is_ng is not None and bool(evidence)
+        measurements_for_record = measurements_by_record[record.id]
+        eligible, calculated_is_ng, evidence = _classify_shipping_record(
+            measurements_for_record, str(filters["field"])
+        )
+        eligible = record.date is not None and eligible
         source_rows.append({
             "record_id": record.id,
             "date": record.date,
-            "is_ng": record.is_ng,
+            "is_ng": calculated_is_ng,
+            "main_is_ng": record.is_ng,
             "eligible": eligible,
-            "evidence": [{
-                "measurement_id": item.id,
-                "lower_limit": item.lower_limit,
-                "upper_limit": item.upper_limit,
-                "excluded": bool(item.excluded),
-            } for item in measurements_by_record[record.id]],
+            "classification_source": "shipping_measurement_snapshot",
+            "classification_algorithm": ATTRIBUTE_CLASSIFICATION_ALGORITHM,
+            "evidence": evidence,
         })
         if not eligible:
             snapshots.append({
@@ -106,8 +107,60 @@ def _shipping_input(filters: Mapping[str, Any]) -> tuple[list[dict[str, Any]], l
     return source_rows, snapshots
 
 
+def _shipping_measurement_values(
+    measurement: ShippingMeasurement, characteristic: str
+) -> tuple[float, ...] | None:
+    if characteristic in MIN_MAX_CHARACTERISTICS:
+        if measurement.value_min is None or measurement.value_max is None:
+            return None
+        return float(measurement.value_min), float(measurement.value_max)
+    if measurement.value_single is None:
+        return None
+    return (float(measurement.value_single),)
+
+
+def _outside_limits(values: tuple[float, ...], lsl: Any, usl: Any) -> bool:
+    return any(
+        (lsl is not None and value < float(lsl))
+        or (usl is not None and value > float(usl))
+        for value in values
+    )
+
+
+def _classify_shipping_record(
+    measurements: list[ShippingMeasurement], characteristic: str
+) -> tuple[bool, bool | None, list[dict[str, Any]]]:
+    """僅以選定特性量測與當時規格快照判定出貨不符合單位。"""
+
+    applicable = [item for item in measurements if not item.excluded]
+    evidence: list[dict[str, Any]] = []
+    if not applicable:
+        return False, None, evidence
+    classifications: list[bool] = []
+    for item in applicable:
+        values = _shipping_measurement_values(item, characteristic)
+        complete = values is not None and (
+            item.lower_limit is not None or item.upper_limit is not None
+        )
+        is_ng = _outside_limits(values, item.lower_limit, item.upper_limit) if complete else None
+        evidence.append({
+            "measurement_id": item.id,
+            "values": list(values) if values is not None else None,
+            "lower_limit": item.lower_limit,
+            "upper_limit": item.upper_limit,
+            "excluded": False,
+            "is_ng": is_ng,
+        })
+        if is_ng is None:
+            return False, None, evidence
+        classifications.append(is_ng)
+    return True, any(classifications), evidence
+
+
 def _patrol_records(filters: Mapping[str, Any]) -> list[PatrolMain]:
-    query = PatrolMain.query.join(PatrolDetail).filter(PatrolDetail.item == filters["item"])
+    query = PatrolMain.query.options(selectinload(PatrolMain.details)).join(PatrolDetail).filter(
+        PatrolDetail.item == filters["item"]
+    )
     if filters["pos"]:
         query = query.filter(PatrolDetail.position == filters["pos"])
     if filters["s_date"]:
@@ -131,40 +184,26 @@ def _patrol_input(filters: Mapping[str, Any]) -> tuple[list[dict[str, Any]], lis
     records = _patrol_records(filters)
     source_rows: list[dict[str, Any]] = []
     snapshots: list[dict[str, Any]] = []
+    tolerance_cache: dict[tuple[str, str, int | None, str, str], dict[str, Any]] = {}
     for record in records:
-        details = [
+        details = sorted((
             detail for detail in record.details
             if detail.item == filters["item"]
             and (not filters["pos"] or detail.position == filters["pos"])
-        ]
-        evidence = [
-            detail for detail in details
-            if not detail.excluded and detail.min_val is not None and detail.max_val is not None
-        ]
-        tolerance = resolve_tolerance_specification(
-            material=str(record.material or ""),
-            spec=str(record.spec or ""),
-            characteristic=str(filters["item"]),
-            vendor_id=record.customer_id,
+        ), key=lambda detail: detail.id)
+        eligible, calculated_is_ng, evidence = _classify_patrol_record(
+            record, details, str(filters["item"]), tolerance_cache
         )
-        eligible = (
-            record.date is not None
-            and record.is_ng is not None
-            and bool(evidence)
-            and bool(tolerance.get("found"))
-        )
+        eligible = record.date is not None and eligible
         source_rows.append({
             "record_id": record.id,
             "date": record.date,
-            "is_ng": record.is_ng,
+            "is_ng": calculated_is_ng,
+            "main_is_ng": record.is_ng,
             "eligible": eligible,
-            "tolerance": tolerance,
-            "evidence": [{
-                "measurement_id": item.id,
-                "min_val": item.min_val,
-                "max_val": item.max_val,
-                "excluded": bool(item.excluded),
-            } for item in details],
+            "classification_source": "patrol_measurement_with_position_tolerance",
+            "classification_algorithm": ATTRIBUTE_CLASSIFICATION_ALGORITHM,
+            "evidence": evidence,
         })
         if not eligible:
             snapshots.append({
@@ -173,6 +212,62 @@ def _patrol_input(filters: Mapping[str, Any]) -> tuple[list[dict[str, Any]], lis
                 "reason_code": "ATTRIBUTE_CLASSIFICATION_UNKNOWN",
             })
     return source_rows, snapshots
+
+
+def _patrol_tolerance(
+    record: PatrolMain,
+    characteristic: str,
+    position: str,
+    cache: dict[tuple[str, str, int | None, str, str], dict[str, Any]],
+) -> dict[str, Any]:
+    key = (
+        str(record.material or ""), str(record.spec or ""), record.customer_id,
+        characteristic, position,
+    )
+    if key not in cache:
+        cache[key] = resolve_tolerance_specification(
+            material=key[0], spec=key[1], characteristic=characteristic,
+            vendor_id=record.customer_id, position=position,
+        )
+    return cache[key]
+
+
+def _classify_patrol_record(
+    record: PatrolMain,
+    details: list[PatrolDetail],
+    characteristic: str,
+    tolerance_cache: dict[tuple[str, str, int | None, str, str], dict[str, Any]],
+) -> tuple[bool, bool | None, list[dict[str, Any]]]:
+    """按每筆巡檢位置的公差快照重算不符合單位。"""
+
+    applicable = [item for item in details if not item.excluded]
+    evidence: list[dict[str, Any]] = []
+    if not applicable:
+        return False, None, evidence
+    classifications: list[bool] = []
+    for item in applicable:
+        position = str(item.position or "")
+        tolerance = _patrol_tolerance(record, characteristic, position, tolerance_cache)
+        values = (
+            (float(item.min_val), float(item.max_val))
+            if item.min_val is not None and item.max_val is not None else None
+        )
+        complete = values is not None and bool(tolerance.get("found"))
+        is_ng = _outside_limits(values, tolerance.get("LSL"), tolerance.get("USL")) if complete else None
+        evidence.append({
+            "measurement_id": item.id,
+            "position": position,
+            "values": list(values) if values is not None else None,
+            "tolerance_id": tolerance.get("tolerance_id"),
+            "LSL": tolerance.get("LSL"),
+            "USL": tolerance.get("USL"),
+            "excluded": False,
+            "is_ng": is_ng,
+        })
+        if is_ng is None:
+            return False, None, evidence
+        classifications.append(is_ng)
+    return True, any(classifications), evidence
 
 
 def build_attribute_study_input(
@@ -208,7 +303,7 @@ def build_attribute_study_input(
     options = {"interval": normalized_interval}
     specification = {
         "found": bool(eligible_rows),
-        "source": "saved_inspection_outcome_with_specification_evidence",
+        "source": "measurement_and_specification_snapshot",
     }
     data_hash = calculate_study_data_hash(
         source=source,
@@ -231,7 +326,20 @@ def build_attribute_study_input(
         data_hash=data_hash,
         reasons=reasons,
         metadata={
+            "classification_source": "measurement_and_specification_snapshot",
+            "classification_algorithm": ATTRIBUTE_CLASSIFICATION_ALGORITHM,
             "classification_snapshot": snapshots,
+            "classification_evidence": [{
+                "record_id": row["record_id"],
+                "eligible": row["eligible"],
+                "calculated_is_ng": row["is_ng"],
+                "measurement_ids": [item["measurement_id"] for item in row["evidence"]],
+            } for row in source_rows],
+            "main_is_ng_mismatch_record_ids": [
+                row["record_id"] for row in source_rows
+                if row["eligible"] and row["main_is_ng"] is not None
+                and bool(row["main_is_ng"]) != bool(row["is_ng"])
+            ],
             "eligible_record_count": len(eligible_rows),
             "excluded_record_count": len(snapshots),
         },

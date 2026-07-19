@@ -175,6 +175,7 @@ def specification_from_measurement_limits(rows: Sequence[Any]) -> dict[str, Any]
 
 def resolve_tolerance_specification(
     *, material: str, spec: str, characteristic: str, vendor_id: int | None,
+    position: str | None = None,
 ) -> dict[str, Any]:
     """以現有公差主檔解析巡檢規格快照。找不到時明確回傳未確認。"""
 
@@ -199,8 +200,11 @@ def resolve_tolerance_specification(
     }
     match_names = aliases.get(characteristic, {characteristic})
     nominal = parse_spec_nominals(spec).get(characteristic)
+    normalized_position = None if position is None else str(position)
     for detail in result.get("tolerances", []):
         if detail.get("項目") not in match_names:
+            continue
+        if normalized_position is not None and str(detail.get("位置") or "") != normalized_position:
             continue
         dim_min = detail.get("尺寸下限")
         dim_max = detail.get("尺寸上限")

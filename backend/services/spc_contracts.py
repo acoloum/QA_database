@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import date, datetime
 from math import isfinite
-from typing import Any, Literal, Mapping, Optional, Sequence, Union
+from typing import Any, Literal, Mapping, Optional, Protocol, Sequence, Union
 
 
 Timestamp = Optional[Union[date, datetime, str]]
@@ -45,6 +45,19 @@ class SpcSubgroup:
         return len(self.values)
 
 
+class AttributeSubgroupContract(Protocol):
+    """屬性型子組的結構契約，避免共用契約循環匯入計算引擎。"""
+
+    key: str
+    timestamp: Timestamp
+    inspected: int
+    nonconforming: int
+    record_ids: Sequence[int]
+
+
+SpcInputSubgroup = Union[SpcSubgroup, AttributeSubgroupContract]
+
+
 @dataclass(frozen=True)
 class SpcReason:
     """機器可讀原因碼及繁體中文說明。"""
@@ -62,7 +75,7 @@ class SpcStudyInput:
     filters: Mapping[str, Any]
     process_stream_key: str
     characteristic: str
-    subgroups: Sequence[SpcSubgroup]
+    subgroups: Sequence[SpcInputSubgroup]
     specification: Mapping[str, Any]
     analysis_family: AnalysisFamily = "variable"
     options: Optional[Mapping[str, Any]] = None

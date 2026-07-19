@@ -9,6 +9,7 @@ from backend.services.spc_attribute_engine import (
     SpcChartNotApplicable,
     calculate_attribute_chart,
 )
+from backend.services.spc_contracts import SpcStudyInput
 
 
 def test_p_chart_uses_weighted_center_and_point_specific_exact_limits():
@@ -52,3 +53,32 @@ def test_zero_defect_baseline_is_not_turned_into_limits():
         )
 
     assert error.value.code == "ZERO_DEFECT_BASELINE"
+
+
+def test_exact_count_boundaries_preserve_discrete_signal_semantics():
+    groups = tuple(
+        AttributeSubgroup(f"g{index}", None, 10, count, (index,))
+        for index, count in enumerate((4, 5, 0, 0, 0, 0, 0, 0, 0, 0), start=1)
+    )
+
+    result = calculate_attribute_chart(groups, "np")
+
+    assert result["lower_counts"] == [None] * 10
+    assert result["upper_counts"] == [4] * 10
+    assert result["ooc_flags"][0] == {
+        "lower": False, "upper": False, "out_of_control": False,
+    }
+    assert result["ooc_flags"][1] == {
+        "lower": False, "upper": True, "out_of_control": True,
+    }
+    assert result["ooc_flags"][2]["lower"] is False
+    assert result["boundary_semantics"] == {
+        "lower": "x <= lower_count（lower_count 為 null 時不判定下界訊號）",
+        "upper": "x > upper_count",
+    }
+
+
+def test_study_input_contract_accepts_attribute_subgroup_protocol():
+    annotation = SpcStudyInput.__annotations__["subgroups"]
+
+    assert "AttributeSubgroupContract" in str(annotation)
