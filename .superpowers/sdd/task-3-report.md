@@ -95,3 +95,9 @@ GREEN：
 - attribute event source key 現含 subgroup key 與排序 record membership 的 SHA-256 digest；display value 仍在 observed_value，x/n/residual 仍由 immutable sample/chart 關聯取得。
 
 RED：adapter direct canonical test `1 failed`（只有 interval）；monitor resolver test ImportError（resolver 尚未存在）；membership test `1 failed`（變更 membership 仍被舊 source key dedup）。
+
+## 最終審查修正：路由批次序列化
+
+- `serialize_event` 改由 list/detail 建立的 version/sample maps 取得 immutable evidence，不再逐 event `session.get`。
+- monitoring limits prefetch 後即以共用 ownership validator 驗證；缺失或 cross family/source/stream/characteristic pointer 回相同 SPC validation error。
+- list/detail 會用一次批次版本查詢與一次批次 sample 查詢涵蓋 monitoring events，包括 baseline detail 指向其他 ongoing version 的事件。

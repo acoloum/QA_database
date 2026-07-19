@@ -11,7 +11,7 @@ from ..extensions import db
 from ..models import SpcLimitVersion, SpcOcap, SpcStudySample, SpcStudyVersion
 from ..services.spc_errors import SpcServiceError, SpcValidationError
 from ..services.spc_ocap_service import SpcOcapService
-from ..services.spc_study_service import SpcStudyService
+from ..services.spc_study_service import SpcStudyService, _validate_monitoring_limit_ownership
 from ..utils import auth_required, require_permission
 
 
@@ -62,11 +62,11 @@ def serialize_ocap(ocap):
     })
 
 
-def serialize_event(event):
+def serialize_event(event, *, versions_by_id=None, samples_by_id=None):
     attribute_evidence = None
-    version = db.session.get(SpcStudyVersion, event.study_version_id)
+    version = (versions_by_id or {}).get(event.study_version_id)
     if version is not None and version.study.analysis_family == "attribute":
-        sample = db.session.get(SpcStudySample, event.sample_id) if event.sample_id else None
+        sample = (samples_by_id or {}).get(event.sample_id) if event.sample_id else None
         values = list(sample.values or []) if sample is not None else []
         residuals = (version.chart_result or {}).get("pearson_residuals") or []
         attribute_evidence = {
@@ -96,7 +96,7 @@ def serialize_event(event):
     })
 
 
-def serialize_limit_version(limit):
+def serialize_limit_version(limit, *, versions_by_id=None, samples_by_id=None):
     return _json_value({
         "id": limit.id,
         "study_version_id": limit.study_version_id,
@@ -112,7 +112,7 @@ def serialize_limit_version(limit):
         "effective_at": limit.effective_at,
         "retired_by": limit.retired_by,
         "retired_at": limit.retired_at,
-        "events": [serialize_event(event) for event in limit.events],
+        "events": [serialize_event(event, versions_by_id=versions_by_id, samples_by_id=samples_by_id) for event in limit.events],
     })
 
 
@@ -130,11 +130,36 @@ def _prefetch_monitoring_limits(versions):
         selectinload(SpcLimitVersion.events),
         selectinload(SpcLimitVersion.study_version).selectinload(SpcStudyVersion.study),
     ).filter(SpcLimitVersion.id.in_(ids)).all()
-    return {limit.id: limit for limit in limits}
+    result = {limit.id: limit for limit in limits}
+    for version in versions:
+        limit_id = (version.time_model_result or {}).get("limit_version_id")
+        if limit_id:
+            limit = result.get(limit_id)
+            if limit is None:
+                raise SpcValidationError("SPC_MONITORING_LIMIT_NOT_FOUND", "監控版本引用的界限不存在")
+            _validate_monitoring_limit_ownership(version, limit)
+    return result
+
+
+def _serialization_context(versions, monitoring_limits):
+    """批次建立 event serialization maps，避免每個 event 再查 version/sample。"""
+
+    event_versions = {version.id: version for version in versions}
+    events = [event for limit in monitoring_limits.values() for event in limit.events]
+    missing_version_ids = {event.study_version_id for event in events} - set(event_versions)
+    if missing_version_ids:
+        loaded = SpcStudyVersion.query.options(selectinload(SpcStudyVersion.study)).filter(
+            SpcStudyVersion.id.in_(missing_version_ids)
+        ).all()
+        event_versions.update({version.id: version for version in loaded})
+    sample_ids = {event.sample_id for event in events if event.sample_id is not None}
+    samples = SpcStudySample.query.filter(SpcStudySample.id.in_(sample_ids)).all() if sample_ids else []
+    return event_versions, {sample.id: sample for sample in samples}
 
 
 def serialize_version(
-    version, *, include_samples=False, include_relations=True, monitoring_limits=None
+    version, *, include_samples=False, include_relations=True, monitoring_limits=None,
+    event_versions=None, event_samples=None,
 ):
     monitoring_limit = None
     if include_relations:
@@ -172,10 +197,10 @@ def serialize_version(
     }
     if include_relations:
         result["limit_versions"] = [
-            serialize_limit_version(limit) for limit in version.limit_versions
+            serialize_limit_version(limit, versions_by_id=event_versions, samples_by_id=event_samples) for limit in version.limit_versions
         ]
         result["monitoring_limit"] = (
-            serialize_limit_version(monitoring_limit) if monitoring_limit else None
+            serialize_limit_version(monitoring_limit, versions_by_id=event_versions, samples_by_id=event_samples) if monitoring_limit else None
         )
     if include_samples:
         result["samples"] = [{
@@ -192,7 +217,7 @@ def serialize_version(
     return _json_value(result)
 
 
-def serialize_study(study, *, include_versions=False, monitoring_limits=None):
+def serialize_study(study, *, include_versions=False, monitoring_limits=None, event_versions=None, event_samples=None):
     result = {
         "id": study.id,
         "source": study.source,
@@ -208,12 +233,12 @@ def serialize_study(study, *, include_versions=False, monitoring_limits=None):
         "created_by": study.created_by,
         "created_at": study.created_at,
         "latest_version": (
-            serialize_version(study.versions[-1], monitoring_limits=monitoring_limits) if study.versions else None
+            serialize_version(study.versions[-1], monitoring_limits=monitoring_limits, event_versions=event_versions, event_samples=event_samples) if study.versions else None
         ),
     }
     if include_versions:
         result["versions"] = [
-            serialize_version(version, include_samples=True, monitoring_limits=monitoring_limits)
+            serialize_version(version, include_samples=True, monitoring_limits=monitoring_limits, event_versions=event_versions, event_samples=event_samples)
             for version in study.versions
         ]
     return _json_value(result)
@@ -281,7 +306,9 @@ def list_studies(current_user):
     limits = _prefetch_monitoring_limits([
         version for study in studies for version in study.versions
     ])
-    return _success([serialize_study(study, monitoring_limits=limits) for study in studies])
+    versions = [version for study in studies for version in study.versions]
+    event_versions, event_samples = _serialization_context(versions, limits)
+    return _success([serialize_study(study, monitoring_limits=limits, event_versions=event_versions, event_samples=event_samples) for study in studies])
 
 
 @spc_studies_bp.get("/api/spc/studies/<int:study_id>")
@@ -291,7 +318,8 @@ def list_studies(current_user):
 def get_study(current_user, study_id):
     study = SpcStudyService.get_study(study_id)
     limits = _prefetch_monitoring_limits(study.versions)
-    return _success(serialize_study(study, include_versions=True, monitoring_limits=limits))
+    event_versions, event_samples = _serialization_context(study.versions, limits)
+    return _success(serialize_study(study, include_versions=True, monitoring_limits=limits, event_versions=event_versions, event_samples=event_samples))
 
 
 @spc_studies_bp.get("/api/spc/studies/<int:study_id>/history")

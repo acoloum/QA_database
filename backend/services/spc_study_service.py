@@ -150,6 +150,15 @@ def _resolve_monitoring_limit(version: SpcStudyVersion) -> SpcLimitVersion | Non
     )
     if limit is None:
         raise SpcValidationError("SPC_MONITORING_LIMIT_NOT_FOUND", "監控版本引用的界限不存在")
+    _validate_monitoring_limit_ownership(version, limit)
+    return limit
+
+
+def _validate_monitoring_limit_ownership(
+    version: SpcStudyVersion, limit: SpcLimitVersion
+) -> None:
+    """驗證已 eager load 的 immutable monitoring limit ownership，不進行查詢。"""
+
     baseline_study = limit.study_version.study
     current_study = version.study
     if (
@@ -160,7 +169,6 @@ def _resolve_monitoring_limit(version: SpcStudyVersion) -> SpcLimitVersion | Non
         or baseline_study.analysis_family != current_study.analysis_family
     ):
         raise SpcValidationError("SPC_MONITORING_LIMIT_MISMATCH", "監控界限與研究版本的不可變範圍不一致")
-    return limit
 
 
 def _adapter_input(
