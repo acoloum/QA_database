@@ -420,7 +420,16 @@ def list_ocap_assignees(current_user):
 @require_permission("spc.view")
 @_handle_spc_errors
 def get_spc_event(current_user, event_id):
-    return _success(serialize_event(SpcOcapService.get_event(event_id)))
+    event = SpcOcapService.get_event(event_id)
+    version = SpcStudyVersion.query.options(
+        selectinload(SpcStudyVersion.study)
+    ).filter_by(id=event.study_version_id).first()
+    sample = db.session.get(SpcStudySample, event.sample_id) if event.sample_id else None
+    return _success(serialize_event(
+        event,
+        versions_by_id={version.id: version} if version is not None else {},
+        samples_by_id={sample.id: sample} if sample is not None else {},
+    ))
 
 
 @spc_studies_bp.post("/api/spc/events/<int:event_id>/ocap")

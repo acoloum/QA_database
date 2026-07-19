@@ -101,3 +101,7 @@ RED：adapter direct canonical test `1 failed`（只有 interval）；monitor re
 - `serialize_event` 改由 list/detail 建立的 version/sample maps 取得 immutable evidence，不再逐 event `session.get`。
 - monitoring limits prefetch 後即以共用 ownership validator 驗證；缺失或 cross family/source/stream/characteristic pointer 回相同 SPC validation error。
 - list/detail 會用一次批次版本查詢與一次批次 sample 查詢涵蓋 monitoring events，包括 baseline detail 指向其他 ongoing version 的事件。
+
+## 補正：事件明細 immutable evidence
+
+`GET /api/spc/events/<id>` 現在明確 preload event 的 study version/study 與 sample，並將 maps 交給 serializer；attribute response 可重建 x、n、display value、Pearson residual 與 subgroup key。

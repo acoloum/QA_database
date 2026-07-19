@@ -412,3 +412,28 @@ def test_patrol_export_normalizes_full_position_before_creating_version(
     assert captured["analyze"][0] == "patrol"
     assert captured["analyze"][1]["pos"] == ""
     assert captured["report"] == (91, "patrol", captured["analyze"][1])
+
+
+def test_event_detail_returns_attribute_immutable_evidence(
+    client, db_session, spc_roles
+):
+    viewer = _user(db_session, "attribute-event-viewer", "spc_viewer")
+    baseline_study = SpcStudy(source="shipping", study_type="retrospective", analysis_family="attribute", process_stream_key="attr-event", characteristic="不符合單位", filters={}, created_by=viewer.id)
+    baseline = SpcStudyVersion(study=baseline_study, version_no=1, method_version="2026.2", data_hash="a" * 64, analysis_options={}, status="active", created_by=viewer.id)
+    ongoing_study = SpcStudy(source="shipping", study_type="ongoing", analysis_family="attribute", process_stream_key="attr-event", characteristic="不符合單位", filters={}, created_by=viewer.id)
+    ongoing = SpcStudyVersion(study=ongoing_study, version_no=1, method_version="2026.2", data_hash="b" * 64, analysis_options={}, chart_result={"pearson_residuals": [2.5]}, status="active", created_by=viewer.id)
+    db_session.add_all([baseline, ongoing])
+    db_session.flush()
+    sample = __import__("backend.models", fromlist=["SpcStudySample"]).SpcStudySample(version_id=ongoing.id, source_record_type="ShippingData", source_record_id=1, source_record_ids=[1, 2], source_measurement_ids=[], subgroup_key="attribute:day", subgroup_order=0, values=[2.0, 10.0], distribution_values=[])
+    limit = SpcLimitVersion(study_version_id=baseline.id, analysis_family="attribute", process_stream_key="attr-event", characteristic="不符合單位", revision=1, chart_type="p", limits={}, status="active", created_by=viewer.id)
+    db_session.add_all([sample, limit])
+    db_session.flush()
+    event = SpcEvent(limit_version_id=limit.id, study_version_id=ongoing.id, sample_id=sample.id, chart_kind="location", rule_code="beyond_limits", point_index=0, source_point_key="ShippingData:attribute:day", observed_value=0.2)
+    db_session.add(event)
+    db_session.commit()
+
+    response = client.get(f"/api/spc/events/{event.id}", headers=_headers(viewer))
+
+    assert response.status_code == 200
+    evidence = response.get_json()["data"]["attribute_evidence"]
+    assert evidence == {"x": 2.0, "n": 10.0, "display_value": 0.2, "pearson_residual": 2.5, "subgroup_key": "attribute:day"}
