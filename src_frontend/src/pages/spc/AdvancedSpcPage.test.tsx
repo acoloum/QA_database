@@ -196,6 +196,19 @@ describe('AdvancedSpcPage', () => {
     expect(alert).toHaveAttribute('aria-live', 'assertive');
     expect(alert).toHaveTextContent(heading);
     expect(alert).toHaveTextContent(code);
-    expect(screen.getByText('核准快照廠商：保存廠商')).toBeInTheDocument();
+    expect(screen.queryByText('核准快照廠商：保存廠商')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '開啟送審' })).not.toBeInTheDocument();
+    expect(screen.getByText('請重新分析或開啟版本歷程後再操作。')).toBeInTheDocument();
+  });
+
+  it('雙向切換工作區會清空未保存的機器條件理由', () => {
+    authMock.mockReturnValue({ hasPermission: () => true });
+    renderPage('/spc/advanced?family=machine&m_id=7&material=6061&spec=10x1&item=外徑&position=A&conditions_confirmed=true');
+    fireEvent.change(screen.getByLabelText('研究條件確認理由'), { target: { value: '本次瀏覽器暫存理由' } });
+
+    fireEvent.click(screen.getByRole('tab', { name: '屬性管制圖' }));
+    fireEvent.click(screen.getByRole('tab', { name: '機器績效' }));
+
+    expect(screen.getByLabelText('研究條件確認理由')).toHaveValue('');
   });
 });

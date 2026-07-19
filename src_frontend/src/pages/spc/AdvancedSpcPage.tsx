@@ -123,6 +123,7 @@ const AdvancedSpcPage = () => {
     setResult(null);
     setAction(null);
     setShowHistory(false);
+    setMachineConditionReason({ family: '', value: '' });
     updateQuery(family === 'machine'
       ? { ...query, family, source: 'patrol', filters: FILTER_KEYS.reduce((value, key) => ({ ...value, [key]: '' }), {} as Record<FilterKey, string>), conditionsConfirmed: false }
       : { ...query, family, source: 'shipping', filters: FILTER_KEYS.reduce((value, key) => ({ ...value, [key]: '' }), {} as Record<FilterKey, string>), conditionsConfirmed: false });
@@ -183,7 +184,12 @@ const AdvancedSpcPage = () => {
     } catch (error) {
       const parsed = apiError(error);
       setActionError(parsed);
-      if (parsed.status === 403 || parsed.status === 409) await refreshWorkflowQueries(visibleResult.study_id);
+      if (parsed.status === 403 || parsed.status === 409) {
+        const studyId = visibleResult.study_id;
+        setAction(null);
+        setResult(null);
+        await refreshWorkflowQueries(studyId);
+      }
       return;
     }
   };
@@ -207,7 +213,7 @@ const AdvancedSpcPage = () => {
       {analyze.isError && <Alert variant="danger" className="mt-3 mb-0">API 驗證或分析失敗：{apiError(analyze.error).message}</Alert>}
       </div>
     </Card.Body></Card>
-    {actionError && <Alert variant="danger" className="mb-3" role="alert" aria-live="assertive"><strong>{actionError.status === 403 ? '權限不足：' : actionError.status === 409 ? '研究狀態已變更：' : '流程操作失敗：'}</strong>{actionError.code ? `${actionError.code}；` : ''}{actionError.message}</Alert>}
+    {actionError && <Alert variant="danger" className="mb-3" role="alert" aria-live="assertive"><strong>{actionError.status === 403 ? '權限不足：' : actionError.status === 409 ? '研究狀態已變更：' : '流程操作失敗：'}</strong>{actionError.code ? `${actionError.code}；` : ''}{actionError.message}{(actionError.status === 403 || actionError.status === 409) && <div>請重新分析或開啟版本歷程後再操作。</div>}</Alert>}
     {visibleResult && <Card className="mb-3"><Card.Body><SpcStudyWorkflowBar version={visibleResult} canView={canView} canManage={canManage} canApprove={canApprove} analyzing={analyze.isPending} canAnalyze={query.family !== 'machine' || (machineCanManage && machineRequest != null)} analyzeDisabledReason={query.family === 'machine' && machineRequest == null ? '重建候選前必須重新完成固定機台與受控條件。' : undefined} onAnalyze={() => void (query.family === 'machine' ? analyzeMachine() : analyzeAttribute())} onAction={setAction} onShowHistory={() => setShowHistory(true)} /></Card.Body></Card>}
     {query.family === 'machine' ? <MachinePerformancePanel result={machineResult} /> : <AttributeStudyPanel result={visibleResult} />}
     {visibleResult && action && <SpcBaselineApprovalModal show action={action} source={visibleResult.source} filters={visibleResult.filters} version={visibleResult} pending={actionPending} onHide={() => setAction(null)} onConfirm={reason => void handleAction(reason)} />}

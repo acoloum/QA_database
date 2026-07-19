@@ -853,24 +853,30 @@ class SpcStudyService:
         analysis_family: str = "variable",
         options: Mapping[str, Any] | None = None,
     ) -> SpcStudyVersion:
-        if study_type not in {"retrospective", "ongoing"}:
-            raise SpcValidationError("SPC_STUDY_TYPE_INVALID", "研究類型不受支援")
         if not isinstance(analysis_family, str) or analysis_family not in ANALYSIS_FAMILIES:
             raise SpcValidationError(
                 "SPC_ANALYSIS_FAMILY_INVALID",
                 "分析族別僅支援 variable、attribute 或 machine",
             )
-        if options is not None and not isinstance(options, Mapping):
-            raise SpcValidationError(
-                "SPC_ANALYSIS_OPTIONS_INVALID", "分析選項必須是物件",
-            )
         if analysis_family == "machine":
+            # 先只確認資料來源，再檢查管理權限，避免未授權者透過
+            # 篩選條件或 options 的驗證訊息探測機器研究的請求契約。
+            if source != "patrol":
+                raise SpcValidationError(
+                    "MACHINE_SOURCE_UNSUPPORTED", "機器績效研究只接受巡檢資料"
+                )
+            _require_permission(actor_id, "spc.manage")
             if study_type != "retrospective":
                 raise SpcValidationError("MACHINE_STREAM_NOT_FIXED", "機器研究不支援持續監控")
             filters = _canonical_machine_filters(source, filters)
             canonical_options = _canonical_machine_options(options)
-            _require_permission(actor_id, "spc.manage")
         else:
+            if study_type not in {"retrospective", "ongoing"}:
+                raise SpcValidationError("SPC_STUDY_TYPE_INVALID", "研究類型不受支援")
+            if options is not None and not isinstance(options, Mapping):
+                raise SpcValidationError(
+                    "SPC_ANALYSIS_OPTIONS_INVALID", "分析選項必須是物件",
+                )
             _require_permission(actor_id, "spc.view")
             canonical_options = (
                 _canonical_attribute_options(options)

@@ -262,7 +262,9 @@ def _handle_spc_errors(function):
             if error.details is not None:
                 payload["details"] = _json_value(error.details)
             status_code = (
-                400 if error.code == "SPC_ANALYSIS_FAMILY_INVALID"
+                400 if error.code in {
+                    "SPC_ANALYSIS_FAMILY_INVALID", "MACHINE_STREAM_NOT_FIXED",
+                }
                 else error.status_code
             )
             return jsonify(payload), status_code
