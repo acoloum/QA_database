@@ -3,7 +3,9 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import type { PropsWithChildren } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../services/api';
-import { useAnalyzeSpcStudy, useSubmitSpcStudy } from './useSpcStudies';
+import {
+  useAnalyzeSpcStudy, useSaveSpcOcap, useSpcAssignees, useSubmitSpcStudy,
+} from './useSpcStudies';
 
 vi.mock('../services/api', () => ({
   default: {
@@ -68,5 +70,49 @@ describe('SPC 研究 hooks', () => {
       { queryKey: ['spcStudy', 7] },
       { queryKey: ['spcStudyHistory', 7] },
     ]);
+  });
+
+  it('只在啟用時查詢 SPC 可指派責任人', async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: { success: true, data: [{
+        id: 8, username: 'qa-user', role: 'qa_supervisor', role_name: 'QA主管',
+      }] },
+    });
+    const queryClient = new QueryClient();
+    const { result } = renderHook(() => useSpcAssignees(true), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(api.get).toHaveBeenCalledWith('/spc/assignees');
+    expect(result.current.data?.[0].role_name).toBe('QA主管');
+  });
+
+  it('儲存 OCAP 後回傳完整資料並失效化實際研究快取', async () => {
+    const ocap = {
+      id: 3, event_id: 81, investigation_6m: { summary: '模具磨耗' },
+      remeasurement: null, process_adjustment: '更換模具',
+      product_disposition: null, owner_id: 8, effectiveness: null,
+      status: 'open', created_by: 1, updated_by: 1,
+      created_at: '2026-07-19T01:00:00Z', updated_at: '2026-07-19T01:00:00Z',
+    };
+    vi.mocked(api.patch).mockResolvedValue({ data: { success: true, data: ocap } });
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useSaveSpcOcap(9), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    let returned: unknown;
+    await act(async () => {
+      returned = await result.current.mutateAsync({
+        eventId: 81, ocapId: 3, payload: { process_adjustment: '更換模具' },
+      });
+    });
+
+    expect(returned).toEqual(ocap);
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['spcStudy', 9] });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['spcEvents'] });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['spcOcap', 81] });
   });
 });

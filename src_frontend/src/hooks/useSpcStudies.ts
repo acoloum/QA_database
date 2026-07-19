@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import type {
-  SpcLimitVersionSummary, SpcStudyResult, SpcStudySummary, SpcStudyVersionSummary,
+  SpcAssignee, SpcLimitVersionSummary, SpcOcapRecord, SpcStudyResult, SpcStudySummary,
+  SpcStudyVersionSummary,
 } from '../types';
 
 interface ApiSuccess<T> {
@@ -46,12 +47,6 @@ export interface SpcOcapInput {
   };
 }
 
-export interface SpcOcapSummary {
-  id: number;
-  event_id: number;
-  status: string;
-}
-
 const unwrap = <T,>(response: { data: ApiSuccess<T> }): T => response.data.data;
 
 const invalidateStudy = (
@@ -84,6 +79,14 @@ export const useSpcStudyHistory = (studyId: number | null) => useQuery({
     await api.get<ApiSuccess<SpcStudyVersionSummary[]>>(`/spc/studies/${studyId}/history`),
   ),
   enabled: studyId != null,
+});
+
+export const useSpcAssignees = (enabled = true) => useQuery({
+  queryKey: ['spcAssignees'],
+  queryFn: async () => unwrap(
+    await api.get<ApiSuccess<SpcAssignee[]>>('/spc/assignees'),
+  ),
+  enabled,
 });
 
 export const useAnalyzeSpcStudy = () => {
@@ -156,17 +159,18 @@ export const useRetireSpcLimit = () => {
   });
 };
 
-export const useSaveSpcOcap = () => {
+export const useSaveSpcOcap = (studyId: number | null) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ eventId, ocapId, payload }: SpcOcapInput) => unwrap(
       ocapId == null
-        ? await api.post<ApiSuccess<SpcOcapSummary>>(`/spc/events/${eventId}/ocap`, payload)
-        : await api.patch<ApiSuccess<SpcOcapSummary>>(`/spc/ocap/${ocapId}`, payload),
+        ? await api.post<ApiSuccess<SpcOcapRecord>>(`/spc/events/${eventId}/ocap`, payload)
+        : await api.patch<ApiSuccess<SpcOcapRecord>>(`/spc/ocap/${ocapId}`, payload),
     ),
-    onSuccess: (_ocap, input) => {
-      queryClient.invalidateQueries({ queryKey: ['spcEvents'] });
-      queryClient.invalidateQueries({ queryKey: ['spcOcap', input.eventId] });
+    onSuccess: () => {
+      if (studyId != null) {
+        queryClient.invalidateQueries({ queryKey: ['spcStudy', studyId] });
+      }
     },
   });
 };

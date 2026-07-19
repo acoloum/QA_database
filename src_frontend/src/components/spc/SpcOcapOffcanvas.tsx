@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Alert, Button, Col, Form, Offcanvas, Row } from 'react-bootstrap';
 import type { SpcOcapInput } from '../../hooks/useSpcStudies';
-import type { SpcOcapRecord } from '../../types';
+import type { SpcAssignee, SpcOcapRecord } from '../../types';
 
 interface SpcOcapOffcanvasProps {
   show: boolean;
@@ -11,10 +11,14 @@ interface SpcOcapOffcanvasProps {
   onHide: () => void;
   onSave: (input: SpcOcapInput) => void;
   pending?: boolean;
+  assignees?: SpcAssignee[];
+  assigneesLoading?: boolean;
+  assigneesError?: boolean;
 }
 
 const SpcOcapOffcanvas = ({
   show, eventId, ocapId, initialValue, onHide, onSave, pending = false,
+  assignees = [], assigneesLoading = false, assigneesError = false,
 }: SpcOcapOffcanvasProps) => {
   const [investigation, setInvestigation] = useState(() => String(initialValue?.investigation_6m?.summary ?? ''));
   const [remeasurement, setRemeasurement] = useState(() => String(initialValue?.remeasurement?.result ?? ''));
@@ -23,6 +27,9 @@ const SpcOcapOffcanvas = ({
   const [ownerId, setOwnerId] = useState(() => initialValue?.owner_id == null ? '' : String(initialValue.owner_id));
   const [effectiveness, setEffectiveness] = useState(() => initialValue?.effectiveness ?? '');
   const [closed, setClosed] = useState(() => initialValue?.status === 'closed');
+
+  const historicalOwner = ownerId !== ''
+    && !assignees.some(assignee => String(assignee.id) === ownerId);
 
   const input: SpcOcapInput = {
     eventId,
@@ -82,8 +89,28 @@ const SpcOcapOffcanvas = ({
             </Col>
           </Row>
           <Form.Group className="mb-3" controlId="ocap-owner">
-            <Form.Label>責任人 ID</Form.Label>
-            <Form.Control type="number" min={1} value={ownerId} onChange={event => setOwnerId(event.target.value)} />
+            <Form.Label>責任人</Form.Label>
+            <Form.Select
+              value={ownerId}
+              disabled={assigneesLoading}
+              onChange={event => setOwnerId(event.target.value)}
+            >
+              <option value="">未指派</option>
+              {historicalOwner && (
+                <option value={ownerId} disabled>
+                  原責任人 ID：{ownerId}（目前不可指派）
+                </option>
+              )}
+              {assignees.map(assignee => (
+                <option key={assignee.id} value={assignee.id}>
+                  {assignee.username}（{assignee.role_name}）
+                </option>
+              ))}
+            </Form.Select>
+            {assigneesLoading && <Form.Text>正在載入責任人清單…</Form.Text>}
+            {assigneesError && (
+              <Form.Text className="text-danger">責任人清單載入失敗，請稍後再試。</Form.Text>
+            )}
           </Form.Group>
           <Form.Group className="mb-3" controlId="ocap-effectiveness">
             <Form.Label>有效性確認</Form.Label>

@@ -204,6 +204,13 @@ export interface SpcOcapRecord {
   updated_at: string;
 }
 
+export interface SpcAssignee {
+  id: number;
+  username: string;
+  role: 'qa_supervisor' | 'qc_manager' | 'admin';
+  role_name: string;
+}
+
 export interface SpcEventSummary {
   id: number;
   limit_version_id: number;
