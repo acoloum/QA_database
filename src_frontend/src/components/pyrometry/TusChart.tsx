@@ -11,6 +11,7 @@ import {
 import annotationPlugin from 'chartjs-plugin-annotation';
 import { Line } from 'react-chartjs-2';
 import { sortChannels } from './channelSort';
+import { channelLineColor } from './tusChartColors';
 
 ChartJS.register(
   CategoryScale, LinearScale, PointElement, LineElement,
@@ -27,16 +28,6 @@ interface TusChartProps {
   標題?: string;
   excludedChannels?: string[];
 }
-
-const COLORS = [
-  '#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4',
-  '#42d4f4', '#f032e6', '#bfef45', '#fabed4', '#469990',
-  '#dcbeff', '#9a6324',
-];
-
-export const EXCLUDED_COLOR = '#adb5bd';
-export const channelLineColor = (index: number, excluded: boolean): string =>
-  excluded ? EXCLUDED_COLOR : COLORS[index % COLORS.length];
 
 const TusChart = ({ 時間, 數值, 設定溫度, 公差, startIdx, endIdx, 標題, excludedChannels = [] }: TusChartProps) => {
   const channels = sortChannels(Object.keys(數值));

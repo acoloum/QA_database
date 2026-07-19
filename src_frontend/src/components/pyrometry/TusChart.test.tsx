@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { channelLineColor, EXCLUDED_COLOR } from './TusChart';
+import { channelLineColor, EXCLUDED_COLOR } from './tusChartColors';
 
 describe('channelLineColor', () => {
   it('returns grey for excluded channels', () => {
