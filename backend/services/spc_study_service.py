@@ -2,9 +2,9 @@
 
 from dataclasses import asdict, replace
 from datetime import date, datetime, timedelta, timezone
+import hashlib
 import inspect
 import json
-import math
 import os
 from typing import Any, Callable, Mapping
 
@@ -49,6 +49,10 @@ from .spc_attribute_engine import (
     calculate_attribute_observations,
 )
 from .spc_adapters.common import SPC_INPUT_CONTRACT_VERSION
+from .spc_attribute_options import (
+    ATTRIBUTE_OPTION_DEFAULTS,
+    canonical_attribute_options,
+)
 from .spc_distribution import assess_distribution
 from .spc_errors import (
     SpcConflict,
@@ -71,31 +75,10 @@ ATTRIBUTE_ADAPTERS: dict[str, Callable[..., SpcStudyInput]] = {
     "shipping": build_attribute_study_input,
     "patrol": build_attribute_study_input,
 }
-ATTRIBUTE_OPTION_DEFAULTS = {"interval": "day", "chart_type": "p", "alpha": 0.0027}
-ATTRIBUTE_OPTION_KEYS = frozenset(ATTRIBUTE_OPTION_DEFAULTS)
-
-
 def _canonical_attribute_options(options: Mapping[str, Any] | None) -> dict[str, Any]:
-    """驗證並補齊屬性分析選項，作為 hash、版本與引擎的唯一輸入。"""
+    """相容既有 service 私有入口；實作由 adapter 共用模組提供。"""
 
-    if options is None:
-        return dict(ATTRIBUTE_OPTION_DEFAULTS)
-    if not isinstance(options, Mapping):
-        raise SpcValidationError("SPC_ANALYSIS_OPTIONS_INVALID", "分析選項必須是物件")
-    unknown = sorted(set(options) - ATTRIBUTE_OPTION_KEYS)
-    if unknown:
-        raise SpcValidationError("SPC_ATTRIBUTE_OPTION_UNKNOWN", "屬性分析選項包含未知欄位")
-    result = dict(ATTRIBUTE_OPTION_DEFAULTS)
-    result.update(options)
-    if type(result["interval"]) is not str or result["interval"] not in {"day", "week", "month"}:
-        raise SpcValidationError("SPC_ATTRIBUTE_INTERVAL_INVALID", "interval 僅支援 day、week、month")
-    if type(result["chart_type"]) is not str or result["chart_type"] not in {"p", "np"}:
-        raise SpcValidationError("SPC_ATTRIBUTE_CHART_TYPE_INVALID", "chart_type 僅支援 p、np")
-    alpha = result["alpha"]
-    if type(alpha) not in {int, float} or not math.isfinite(alpha) or not 0 < alpha < 1:
-        raise SpcValidationError("SPC_ATTRIBUTE_ALPHA_INVALID", "alpha 必須是介於 0 與 1 的有限數值")
-    result["alpha"] = float(alpha)
-    return result
+    return canonical_attribute_options(options)
 
 
 def _upsert_preview_cache(
@@ -151,6 +134,33 @@ def _get_version(version_id: int) -> SpcStudyVersion:
     if version is None:
         raise SpcNotFound("SPC_STUDY_VERSION_NOT_FOUND", "找不到 SPC 研究版本")
     return version
+
+
+def _resolve_monitoring_limit(version: SpcStudyVersion) -> SpcLimitVersion | None:
+    """依 immutable monitoring reference 取得並驗證歷史界限，不依目前 active 狀態猜測。"""
+
+    limit_id = (version.time_model_result or {}).get("limit_version_id")
+    if not limit_id:
+        return None
+    limit = (
+        SpcLimitVersion.query.options(
+            selectinload(SpcLimitVersion.events),
+            selectinload(SpcLimitVersion.study_version).selectinload(SpcStudyVersion.study),
+        ).filter_by(id=limit_id).first()
+    )
+    if limit is None:
+        raise SpcValidationError("SPC_MONITORING_LIMIT_NOT_FOUND", "監控版本引用的界限不存在")
+    baseline_study = limit.study_version.study
+    current_study = version.study
+    if (
+        limit.analysis_family != current_study.analysis_family
+        or limit.process_stream_key != current_study.process_stream_key
+        or limit.characteristic != current_study.characteristic
+        or baseline_study.source != current_study.source
+        or baseline_study.analysis_family != current_study.analysis_family
+    ):
+        raise SpcValidationError("SPC_MONITORING_LIMIT_MISMATCH", "監控界限與研究版本的不可變範圍不一致")
+    return limit
 
 
 def _adapter_input(
@@ -829,8 +839,14 @@ class SpcStudyService:
                         version.samples[index].id if index < len(version.samples) else None
                     ),
                     "source_point_key": (
-                        f"{version.samples[index].source_record_type}:"
-                        f"{version.samples[index].subgroup_key}"
+                        (
+                            f"{version.samples[index].source_record_type}:"
+                            f"{version.samples[index].subgroup_key}:"
+                            f"{hashlib.sha256(json.dumps(sorted(version.samples[index].source_record_ids or [])).encode('utf-8')).hexdigest()[:24]}"
+                        ) if analysis_family == "attribute" else (
+                            f"{version.samples[index].source_record_type}:"
+                            f"{version.samples[index].subgroup_key}"
+                        )
                         if index < len(version.samples) else None
                     ),
                 })
@@ -857,7 +873,10 @@ class SpcStudyService:
 
     @staticmethod
     def list_studies() -> list[SpcStudy]:
-        return SpcStudy.query.order_by(SpcStudy.created_at.desc(), SpcStudy.id.desc()).all()
+        return SpcStudy.query.options(
+            selectinload(SpcStudy.versions).selectinload(SpcStudyVersion.limit_versions)
+            .selectinload(SpcLimitVersion.events),
+        ).order_by(SpcStudy.created_at.desc(), SpcStudy.id.desc()).all()
 
     @staticmethod
     def get_study(study_id: int) -> SpcStudy:

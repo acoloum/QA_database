@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from ...models import PatrolDetail, PatrolMain, ShippingData, ShippingMeasurement, Vendor
 from ..spc_attribute_engine import AttributeSubgroup
+from ..spc_attribute_options import canonical_attribute_options
 from ..spc_contracts import SpcReason, SpcStudyInput
 from .common import (
     SPC_INPUT_CONTRACT_VERSION,
@@ -282,7 +283,9 @@ def build_attribute_study_input(
 
     canonical_filters = normalize_attribute_filters(source, filters)
     stream = canonical_attribute_process_stream(source, canonical_filters)
-    canonical_options = dict(options or {"interval": interval or "day"})
+    canonical_options = canonical_attribute_options(
+        options, legacy_interval=interval
+    )
     normalized_interval = str(canonical_options["interval"]).strip().lower()
     if normalized_interval not in ATTRIBUTE_INTERVALS:
         raise ValueError("屬性資料分組僅支援 day、week、month")

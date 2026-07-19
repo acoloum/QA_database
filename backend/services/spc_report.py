@@ -9,7 +9,8 @@ from openpyxl.chart import LineChart, BarChart, Reference
 from openpyxl.chart.layout import Layout, ManualLayout
 from .spc_stability import RULE_LABELS
 from ..extensions import db
-from ..models import SpcLimitVersion, SpcStudyVersion
+from ..models import SpcStudyVersion
+from .spc_study_service import _resolve_monitoring_limit
 from .spc_errors import SpcNotFound, SpcValidationError
 
 
@@ -107,7 +108,7 @@ class SpcReportService:
 
         monitoring_limit_id = (version.time_model_result or {}).get("limit_version_id")
         limits = (
-            db.session.get(SpcLimitVersion, monitoring_limit_id)
+            _resolve_monitoring_limit(version)
             if monitoring_limit_id else (version.limit_versions[-1] if version.limit_versions else None)
         )
         events = list(limits.events) if limits is not None else []
@@ -164,7 +165,8 @@ class SpcReportService:
             "建立時間": version.created_at.isoformat() if version.created_at else None,
             "核准界限版次": limits.revision if limits else None,
             "監控所用界限版本 ID": monitoring_limit_id,
-            "界限已凍結": "是" if limits and limits.status == "active" else "否",
+            "界限已凍結": "是" if limits is not None else "否",
+            "界限目前狀態": limits.status if limits else None,
             "核准界限內容": json.dumps(limits.limits or {}, ensure_ascii=False, sort_keys=True) if limits else None,
             "核准者ID": limits.approved_by if limits else None,
             "核准時間": (
@@ -203,7 +205,9 @@ class SpcReportService:
             "applicability": version.applicability_result or {},
             "tolerance": version.specification_snapshot or {},
             "excluded_count": excluded_count,
-            "limits_frozen": bool(limits and limits.status == "active"),
+            "limits_frozen": bool(limits and monitoring_limit_id) or bool(
+                not monitoring_limit_id and limits is not None
+            ),
             "study_version": {
                 "id": version.id, "version_no": version.version_no,
                 "status": version.status, "data_hash": version.data_hash,

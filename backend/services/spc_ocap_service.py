@@ -127,8 +127,10 @@ class SpcOcapService:
         if version.study.study_type != "ongoing":
             return []
         if (
-            limit.process_stream_key != version.study.process_stream_key
+            limit.analysis_family != version.study.analysis_family
+            or limit.process_stream_key != version.study.process_stream_key
             or limit.characteristic != version.study.characteristic
+            or limit.study_version.study.source != version.study.source
         ):
             raise SpcValidationError(
                 "SPC_STREAM_MISMATCH", "監控研究與界限版本不屬於同一製程流"

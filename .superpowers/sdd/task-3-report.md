@@ -86,3 +86,12 @@ GREEN：
 ```
 
 結果：`29 passed in 6.03s`。
+
+## 第二輪審查修正
+
+- 新增 `spc_attribute_options.py`，adapter 與 service 共用 strict canonical options；legacy positional interval 同樣輸出完整 defaults 並納入 hash。
+- 新增 immutable monitoring limit resolver，依 ongoing version 的 `limit_version_id` 以 eager load 取得 limit、baseline study 與 events，並驗證 family/stream/characteristic/source。
+- route list/detail 預先批次取得 monitoring limits，避免 version serializer 對每筆 ongoing version 發出查詢。
+- attribute event source key 現含 subgroup key 與排序 record membership 的 SHA-256 digest；display value 仍在 observed_value，x/n/residual 仍由 immutable sample/chart 關聯取得。
+
+RED：adapter direct canonical test `1 failed`（只有 interval）；monitor resolver test ImportError（resolver 尚未存在）；membership test `1 failed`（變更 membership 仍被舊 source key dedup）。

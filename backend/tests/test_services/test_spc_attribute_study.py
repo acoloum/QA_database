@@ -16,6 +16,7 @@ from backend.services.spc_study_service import (
     ATTRIBUTE_ADAPTERS,
     SpcStudyService,
     _canonical_attribute_options,
+    _resolve_monitoring_limit,
 )
 
 
@@ -37,7 +38,8 @@ def _admin(db_session):
 
 
 def _attribute_input(
-    *, counts=(3, 4, 2, 3, 5), inspected=100, options=None, data_hash="a" * 64
+    *, counts=(3, 4, 2, 3, 5), inspected=100, record_start=1,
+    options=None, data_hash="a" * 64
 ):
     return SpcStudyInput(
         source="shipping",
@@ -51,7 +53,8 @@ def _attribute_input(
         subgroups=tuple(
             AttributeSubgroup(
                 key=f"attribute:{index}", timestamp=date(2026, 7, index + 1),
-                inspected=inspected, nonconforming=count, record_ids=(index + 1,),
+                inspected=inspected, nonconforming=count,
+                record_ids=(record_start + index,),
             )
             for index, count in enumerate(counts)
         ),
@@ -89,6 +92,20 @@ def test_attribute_options_are_canonical_and_reject_invalid_values():
     ):
         with pytest.raises(Exception):
             _canonical_attribute_options(options)
+
+
+def test_monitoring_limit_resolver_rejects_missing_immutable_reference(app, db_session):
+    with app.app_context():
+        actor = _viewer(db_session)
+        version = SpcStudyService.analyze(
+            "shipping", {"field": "外徑"}, actor.id,
+            analysis_family="attribute",
+        )
+        version.time_model_result = {"limit_version_id": 99999}
+        with db_session.no_autoflush:
+            with pytest.raises(SpcValidationError) as error:
+                _resolve_monitoring_limit(version)
+        assert error.value.code == "SPC_MONITORING_LIMIT_NOT_FOUND"
 
 
 def test_attribute_analysis_persists_family_counts_and_exact_limits(
@@ -275,6 +292,51 @@ def test_attribute_approval_freezes_canonical_options(app, db_session, monkeypat
         assert limit.analysis_family == "attribute"
         assert limit.limits["options"] == options
         assert limit.limits["alpha"] == 0.01
+
+
+def test_attribute_event_identity_uses_immutable_subgroup_membership(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        actor = _viewer(db_session)
+        monkeypatch.setitem(ATTRIBUTE_ADAPTERS, "shipping", _attribute_adapter)
+        options = {"interval": "day", "chart_type": "p", "alpha": 0.0027}
+        baseline = SpcStudyService.analyze(
+            "shipping", {"field": "外徑"}, actor.id,
+            analysis_family="attribute", options=options,
+        )
+        limit = SpcLimitVersion(
+            study_version_id=baseline.id, analysis_family="attribute",
+            process_stream_key=baseline.study.process_stream_key,
+            characteristic=baseline.study.characteristic, revision=1, chart_type="p",
+            limits={"center": baseline.chart_result["center"], "alpha": 0.0027,
+                    "interval": "day", "options": options,
+                    "rules_used": ["beyond_limits"]},
+            status="active", created_by=actor.id, approved_by=actor.id,
+        )
+        db_session.add(limit)
+        db_session.commit()
+        same = _attribute_input(counts=(20, 3, 4, 3, 5), options=options, data_hash="b" * 64)
+        changed = _attribute_input(
+            counts=(20, 3, 4, 3, 5), record_start=100,
+            options=options, data_hash="c" * 64,
+        )
+        inputs = iter((same, same, changed))
+        monkeypatch.setitem(
+            ATTRIBUTE_ADAPTERS, "shipping",
+            lambda _source, _filters, *, options, input_contract_version: next(inputs),
+        )
+
+        first = SpcStudyService.analyze("shipping", {"field": "外徑"}, actor.id, study_type="ongoing", analysis_family="attribute", options=options)
+        first_event = SpcEvent.query.filter_by(study_version_id=first.id).first()
+        SpcStudyService.analyze("shipping", {"field": "外徑"}, actor.id, study_type="ongoing", analysis_family="attribute", options=options)
+        assert SpcEvent.query.count() == 1
+        third = SpcStudyService.analyze("shipping", {"field": "外徑"}, actor.id, study_type="ongoing", analysis_family="attribute", options=options)
+        third_event = SpcEvent.query.filter_by(study_version_id=third.id).first()
+
+        assert third_event is not None
+        assert third_event.source_point_key != first_event.source_point_key
+        assert SpcEvent.query.count() == 2
 
 
 def test_attribute_report_includes_immutable_counts_and_method_metadata(

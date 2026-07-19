@@ -5,6 +5,7 @@ from decimal import Decimal
 from functools import wraps
 
 from flask import Blueprint, jsonify, request
+from sqlalchemy.orm import selectinload
 
 from ..extensions import db
 from ..models import SpcLimitVersion, SpcOcap, SpcStudySample, SpcStudyVersion
@@ -115,14 +116,35 @@ def serialize_limit_version(limit):
     })
 
 
-def serialize_version(version, *, include_samples=False, include_relations=True):
+def _prefetch_monitoring_limits(versions):
+    """批次取得 ongoing 版本引用的 immutable limits，避免 serializer N+1。"""
+
+    ids = {
+        (version.time_model_result or {}).get("limit_version_id")
+        for version in versions
+    }
+    ids.discard(None)
+    if not ids:
+        return {}
+    limits = SpcLimitVersion.query.options(
+        selectinload(SpcLimitVersion.events),
+        selectinload(SpcLimitVersion.study_version).selectinload(SpcStudyVersion.study),
+    ).filter(SpcLimitVersion.id.in_(ids)).all()
+    return {limit.id: limit for limit in limits}
+
+
+def serialize_version(
+    version, *, include_samples=False, include_relations=True, monitoring_limits=None
+):
     monitoring_limit = None
     if include_relations:
         monitoring_limit_id = (version.time_model_result or {}).get("limit_version_id")
         monitoring_limit = (
-            db.session.get(SpcLimitVersion, monitoring_limit_id)
+            (monitoring_limits or {}).get(monitoring_limit_id)
             if monitoring_limit_id else None
         )
+        if monitoring_limit_id and monitoring_limit is None and monitoring_limits is None:
+            monitoring_limit = db.session.get(SpcLimitVersion, monitoring_limit_id)
     result = {
         "id": version.id,
         "study_id": version.study_id,
@@ -170,7 +192,7 @@ def serialize_version(version, *, include_samples=False, include_relations=True)
     return _json_value(result)
 
 
-def serialize_study(study, *, include_versions=False):
+def serialize_study(study, *, include_versions=False, monitoring_limits=None):
     result = {
         "id": study.id,
         "source": study.source,
@@ -186,12 +208,12 @@ def serialize_study(study, *, include_versions=False):
         "created_by": study.created_by,
         "created_at": study.created_at,
         "latest_version": (
-            serialize_version(study.versions[-1]) if study.versions else None
+            serialize_version(study.versions[-1], monitoring_limits=monitoring_limits) if study.versions else None
         ),
     }
     if include_versions:
         result["versions"] = [
-            serialize_version(version, include_samples=True)
+            serialize_version(version, include_samples=True, monitoring_limits=monitoring_limits)
             for version in study.versions
         ]
     return _json_value(result)
@@ -255,7 +277,11 @@ def analyze_study(current_user):
 @require_permission("spc.view")
 @_handle_spc_errors
 def list_studies(current_user):
-    return _success([serialize_study(study) for study in SpcStudyService.list_studies()])
+    studies = SpcStudyService.list_studies()
+    limits = _prefetch_monitoring_limits([
+        version for study in studies for version in study.versions
+    ])
+    return _success([serialize_study(study, monitoring_limits=limits) for study in studies])
 
 
 @spc_studies_bp.get("/api/spc/studies/<int:study_id>")
@@ -263,7 +289,9 @@ def list_studies(current_user):
 @require_permission("spc.view")
 @_handle_spc_errors
 def get_study(current_user, study_id):
-    return _success(serialize_study(SpcStudyService.get_study(study_id), include_versions=True))
+    study = SpcStudyService.get_study(study_id)
+    limits = _prefetch_monitoring_limits(study.versions)
+    return _success(serialize_study(study, include_versions=True, monitoring_limits=limits))
 
 
 @spc_studies_bp.get("/api/spc/studies/<int:study_id>/history")

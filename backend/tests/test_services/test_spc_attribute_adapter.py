@@ -2,8 +2,11 @@
 
 from datetime import date
 
+import pytest
+
 from backend.models import PatrolDetail, PatrolMain, ShippingData, ShippingMeasurement
 from backend.services.spc_adapters.attribute import build_attribute_study_input
+from backend.services.spc_errors import SpcValidationError
 
 
 def _shipping_record(db_session, record_date, *, is_ng, has_specification=True):
@@ -57,7 +60,9 @@ def test_shipping_attribute_adapter_groups_day_week_and_month_and_preserves_coun
         ]
         assert by_month.characteristic == "不符合單位"
         assert by_month.analysis_family == "attribute"
-        assert by_month.options == {"interval": "month"}
+        assert by_month.options == {
+            "interval": "month", "chart_type": "p", "alpha": 0.0027,
+        }
         assert by_month.filters["field"] == "外徑"
 
 
@@ -82,6 +87,25 @@ def test_attribute_adapter_hashes_the_complete_canonical_options(app, db_session
         assert p_default.options["alpha"] == 0.0027
         assert p_default.data_hash != p_alpha.data_hash
         assert p_default.data_hash != np_chart.data_hash
+
+
+def test_attribute_adapter_canonicalizes_defaults_and_rejects_raw_invalid_options(
+    app, db_session
+):
+    with app.app_context():
+        _shipping_record(db_session, date(2026, 7, 1), is_ng=True)
+        db_session.commit()
+        filters = {"material": "6061", "spec": "10*1*100", "field": "外徑"}
+        legacy = build_attribute_study_input("shipping", filters, "day")
+        defaulted = build_attribute_study_input("shipping", filters)
+
+        assert legacy.options == {"interval": "day", "chart_type": "p", "alpha": 0.0027}
+        assert defaulted.options == legacy.options
+        for options in ({"alpha": "0.01"}, {"alpha": True}, {"unknown": 1}, None):
+            if options is None:
+                continue
+            with pytest.raises(SpcValidationError):
+                build_attribute_study_input("shipping", filters, options=options)
 
 
 def test_shipping_attribute_adapter_excludes_unknown_classification_with_snapshot(
