@@ -39,6 +39,12 @@ def _user(db_session, username, role):
     return user
 
 
+@pytest.fixture
+def spc_view_user(db_session):
+    _role(db_session, "spc_viewer", {"spc.view": True})
+    return _user(db_session, "spc-view-user", "spc_viewer")
+
+
 def _input(data_hash="a" * 64, shift=0.0):
     subgroups = tuple(
         SpcSubgroup(
@@ -125,6 +131,15 @@ def test_analyze_adds_immutable_version_and_keeps_full_sample_trace(
         assert first.samples[0].source_record_ids == [1]
         assert first.samples[0].source_measurement_ids == [100]
         assert first.samples[0].exclusion_snapshot[0]["excluded"] is False
+
+
+def test_analyze_rejects_unknown_analysis_family(app, db_session, spc_view_user):
+    with pytest.raises(SpcValidationError) as error:
+        SpcStudyService.analyze(
+            "shipping", {}, spc_view_user.id, analysis_family="unknown"
+        )
+
+    assert error.value.code == "SPC_ANALYSIS_FAMILY_INVALID"
 
 
 def test_preview_cache_upsert_updates_existing_key_atomically(app, db_session):

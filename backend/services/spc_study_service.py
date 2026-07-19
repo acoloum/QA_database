@@ -1,6 +1,6 @@
 """SPC 不可變研究版本與正式基準的生命週期服務。"""
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import date, datetime, timedelta, timezone
 import json
 import os
@@ -34,7 +34,13 @@ from .spc_chart_engine import (
     calculate_chart_observations,
     calculate_chart_set,
 )
-from .spc_contracts import SpcChartSeries, SpcChartSet, SpcStudyInput, SpcSubgroup
+from .spc_contracts import (
+    AnalysisFamily,
+    SpcChartSeries,
+    SpcChartSet,
+    SpcStudyInput,
+    SpcSubgroup,
+)
 from .spc_distribution import assess_distribution
 from .spc_errors import (
     SpcConflict,
@@ -46,8 +52,9 @@ from .spc_stability import evaluate_study_stability
 from .spc_time_model import classify_time_model
 
 
-SPC_METHOD_VERSION = "2026.1"
+SPC_METHOD_VERSION = "2026.2"
 SPC_CODE_VERSION = os.environ.get("SPC_CODE_VERSION", "2026.1")
+ANALYSIS_FAMILIES = {"variable", "attribute", "machine"}
 ADAPTERS: dict[str, Callable[[Mapping[str, Any]], SpcStudyInput]] = {
     "shipping": build_shipping_study_input,
     "patrol": build_patrol_study_input,
@@ -109,11 +116,21 @@ def _get_version(version_id: int) -> SpcStudyVersion:
     return version
 
 
-def _adapter_input(source: str, filters: Mapping[str, Any]) -> SpcStudyInput:
+def _adapter_input(
+    source: str,
+    filters: Mapping[str, Any],
+    *,
+    analysis_family: AnalysisFamily = "variable",
+    options: Mapping[str, Any] | None = None,
+) -> SpcStudyInput:
     adapter = ADAPTERS.get(source)
     if adapter is None:
         raise SpcValidationError("SPC_SOURCE_UNSUPPORTED", f"不支援的 SPC 資料來源：{source}")
-    return adapter(filters)
+    return replace(
+        adapter(filters),
+        analysis_family=analysis_family,
+        options=dict(options or {}),
+    )
 
 
 def _chart_result(chart_set: SpcChartSet) -> dict[str, Any]:
@@ -325,7 +342,11 @@ def _timestamp_text(value: date | datetime | str | None) -> str | None:
 
 
 def _assert_source_unchanged(version: SpcStudyVersion) -> SpcStudyInput:
-    current = _adapter_input(version.study.source, version.study.filters)
+    current = _adapter_input(
+        version.study.source,
+        version.study.filters,
+        analysis_family=version.study.analysis_family,
+    )
     if current.data_hash != version.data_hash:
         raise SpcConflict(
             "STUDY_DATA_CHANGED",
@@ -449,16 +470,32 @@ class SpcStudyService:
         source: str,
         filters: Mapping[str, Any],
         actor_id: int,
-        *,
         study_type: str = "retrospective",
+        analysis_family: str = "variable",
+        options: Mapping[str, Any] | None = None,
     ) -> SpcStudyVersion:
         _require_permission(actor_id, "spc.view")
         if study_type not in {"retrospective", "ongoing"}:
             raise SpcValidationError("SPC_STUDY_TYPE_INVALID", "研究類型不受支援")
-        study_input = _adapter_input(source, filters)
+        if analysis_family not in ANALYSIS_FAMILIES:
+            raise SpcValidationError(
+                "SPC_ANALYSIS_FAMILY_INVALID",
+                "分析族別僅支援 variable、attribute 或 machine",
+            )
+        if options is not None and not isinstance(options, Mapping):
+            raise SpcValidationError(
+                "SPC_ANALYSIS_OPTIONS_INVALID", "分析選項必須是物件",
+            )
+        study_input = _adapter_input(
+            source,
+            filters,
+            analysis_family=analysis_family,
+            options=options,
+        )
         active_limit = None
         if study_type == "ongoing":
             active_limit = SpcLimitVersion.query.filter_by(
+                analysis_family=analysis_family,
                 process_stream_key=study_input.process_stream_key,
                 characteristic=study_input.characteristic,
                 status="active",
@@ -476,6 +513,7 @@ class SpcStudyService:
         identity = {
             "source": source,
             "study_type": study_type,
+            "analysis_family": analysis_family,
             "process_stream_key": study_input.process_stream_key,
             "characteristic": study_input.characteristic,
         }
@@ -828,6 +866,7 @@ class SpcStudyService:
         active = (
             SpcLimitVersion.query
             .filter_by(
+                analysis_family=version.study.analysis_family,
                 process_stream_key=version.study.process_stream_key,
                 characteristic=version.study.characteristic,
                 status="active",
@@ -841,12 +880,14 @@ class SpcStudyService:
             active.retired_at = now
 
         revision = db.session.query(func.max(SpcLimitVersion.revision)).filter_by(
+            analysis_family=version.study.analysis_family,
             process_stream_key=version.study.process_stream_key,
             characteristic=version.study.characteristic,
         ).scalar()
         chart = version.chart_result or {}
         limit = SpcLimitVersion(
             study_version_id=version.id,
+            analysis_family=version.study.analysis_family,
             process_stream_key=version.study.process_stream_key,
             characteristic=version.study.characteristic,
             revision=int(revision or 0) + 1,

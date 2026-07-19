@@ -82,6 +82,7 @@ def serialize_limit_version(limit):
     return _json_value({
         "id": limit.id,
         "study_version_id": limit.study_version_id,
+        "analysis_family": limit.analysis_family,
         "revision": limit.revision,
         "chart_type": limit.chart_type,
         "limits": limit.limits,
@@ -110,6 +111,7 @@ def serialize_version(version, *, include_samples=False, include_relations=True)
         "study_id": version.study_id,
         "source": version.study.source,
         "study_type": version.study.study_type,
+        "analysis_family": version.study.analysis_family,
         "process_stream_key": version.study.process_stream_key,
         "filters": version.study.filters or {},
         "version_no": version.version_no,
@@ -155,6 +157,7 @@ def serialize_study(study, *, include_versions=False):
         "id": study.id,
         "source": study.source,
         "study_type": study.study_type,
+        "analysis_family": study.analysis_family,
         "process_stream_key": study.process_stream_key,
         "characteristic": study.characteristic,
         "filters": study.filters,
@@ -216,6 +219,8 @@ def analyze_study(current_user):
         filters,
         current_user.id,
         study_type=body.get("study_type") or "retrospective",
+        analysis_family=body.get("analysis_family") or "variable",
+        options=body.get("options"),
     )
     return _success(serialize_version(version, include_samples=True))
 

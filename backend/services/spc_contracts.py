@@ -3,10 +3,11 @@
 from dataclasses import dataclass
 from datetime import date, datetime
 from math import isfinite
-from typing import Any, Mapping, Optional, Sequence, Union
+from typing import Any, Literal, Mapping, Optional, Sequence, Union
 
 
 Timestamp = Optional[Union[date, datetime, str]]
+AnalysisFamily = Literal["variable", "attribute", "machine"]
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,8 @@ class SpcStudyInput:
     characteristic: str
     subgroups: Sequence[SpcSubgroup]
     specification: Mapping[str, Any]
+    analysis_family: AnalysisFamily = "variable"
+    options: Optional[Mapping[str, Any]] = None
     data_hash: Optional[str] = None
     reasons: Sequence[SpcReason] = ()
     metadata: Optional[Mapping[str, Any]] = None
@@ -73,6 +76,7 @@ class SpcStudyInput:
         object.__setattr__(self, "filters", dict(self.filters))
         object.__setattr__(self, "subgroups", tuple(self.subgroups))
         object.__setattr__(self, "specification", dict(self.specification))
+        object.__setattr__(self, "options", dict(self.options or {}))
         object.__setattr__(self, "reasons", tuple(self.reasons))
         object.__setattr__(self, "metadata", dict(self.metadata or {}))
 

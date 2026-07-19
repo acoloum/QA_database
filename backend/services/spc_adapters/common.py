@@ -8,7 +8,7 @@ import json
 from typing import Any, Mapping, Sequence
 
 
-SPC_INPUT_CONTRACT_VERSION = "2026.1"
+SPC_INPUT_CONTRACT_VERSION = "2026.2"
 
 SHIPPING_FILTERS = (
     "vendor", "material", "spec", "field", "start_date", "end_date",
@@ -102,7 +102,8 @@ def canonical_process_stream(
 
 def calculate_study_data_hash(
     *, source: str, filters: Mapping[str, Any], source_rows: Sequence[Mapping[str, Any]],
-    specification: Mapping[str, Any],
+    specification: Mapping[str, Any], analysis_family: str = "variable",
+    options: Mapping[str, Any] | None = None,
 ) -> str:
     """雜湊完整研究輸入；查詢回傳順序不同仍產生相同結果。"""
 
@@ -113,6 +114,8 @@ def calculate_study_data_hash(
         "contract_version": SPC_INPUT_CONTRACT_VERSION,
         "source": source,
         "filters": dict(filters),
+        "analysis_family": analysis_family,
+        "options": dict(options or {}),
         "source_rows": sorted_rows,
         "specification": dict(specification),
     }

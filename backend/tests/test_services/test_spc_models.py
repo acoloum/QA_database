@@ -168,6 +168,23 @@ def test_study_identity_is_unique(app, db_session):
         db_session.rollback()
 
 
+def test_spc_study_identity_includes_analysis_family(app, db_session):
+    variable = SpcStudy(
+        source="shipping", study_type="retrospective", analysis_family="variable",
+        process_stream_key="same-stream", characteristic="不符合單位", filters={},
+    )
+    attribute = SpcStudy(
+        source="shipping", study_type="retrospective", analysis_family="attribute",
+        process_stream_key="same-stream", characteristic="不符合單位", filters={},
+    )
+    db_session.add_all([variable, attribute])
+    db_session.commit()
+
+    assert {item.analysis_family for item in SpcStudy.query.all()} == {
+        "variable", "attribute"
+    }
+
+
 @pytest.mark.parametrize(
     ("model_factory", "invalid_status"),
     [

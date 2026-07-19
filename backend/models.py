@@ -298,15 +298,19 @@ class SpcStudy(db.Model):
     __tablename__ = 'SPC研究'
     __table_args__ = (
         db.UniqueConstraint(
-            '資料來源', '研究類型', '製程流識別鍵', '品質特性',
+            '資料來源', '研究類型', '分析族別', '製程流識別鍵', '品質特性',
             name='uq_spc_study_identity',
         ),
-        db.Index('idx_spc_study_stream_characteristic', '製程流識別鍵', '品質特性'),
+        db.Index(
+            'idx_spc_study_stream_characteristic',
+            '分析族別', '製程流識別鍵', '品質特性',
+        ),
     )
 
     id = db.Column('識別碼', db.Integer, primary_key=True)
     source = db.Column('資料來源', db.String(20), nullable=False)
     study_type = db.Column('研究類型', db.String(30), nullable=False)
+    analysis_family = db.Column('分析族別', db.String(20), nullable=False, default='variable')
     process_stream_key = db.Column('製程流識別鍵', db.String(128), nullable=False)
     characteristic = db.Column('品質特性', db.String(50), nullable=False)
     filters = db.Column('篩選條件', JsonType, nullable=False, default=dict)
@@ -409,7 +413,8 @@ class SpcLimitVersion(db.Model):
     __table_args__ = (
         db.UniqueConstraint('研究版本ID', '修訂版次', name='uq_spc_limit_revision'),
         db.Index(
-            'uq_spc_one_active_limit', '製程流識別鍵', '品質特性', unique=True,
+            'uq_spc_one_active_limit',
+            '分析族別', '製程流識別鍵', '品質特性', unique=True,
             postgresql_where=db.text('"狀態" = \'active\''),
             sqlite_where=db.text('"狀態" = \'active\''),
         ),
@@ -419,6 +424,7 @@ class SpcLimitVersion(db.Model):
     study_version_id = db.Column(
         '研究版本ID', db.Integer, db.ForeignKey('SPC研究版本.識別碼'), nullable=False
     )
+    analysis_family = db.Column('分析族別', db.String(20), nullable=False, default='variable')
     process_stream_key = db.Column('製程流識別鍵', db.String(128), nullable=False)
     characteristic = db.Column('品質特性', db.String(50), nullable=False)
     revision = db.Column('修訂版次', db.Integer, nullable=False)
