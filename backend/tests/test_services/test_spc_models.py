@@ -27,10 +27,13 @@ def _user(db_session, username="spc-user"):
     return user
 
 
-def _study_version(db_session, user, *, stream="stream-1", version_no=1):
+def _study_version(
+    db_session, user, *, stream="stream-1", version_no=1,
+    study_type="retrospective"
+):
     study = SpcStudy(
         source="shipping",
-        study_type="retrospective",
+        study_type=study_type,
         process_stream_key=stream,
         characteristic="外徑",
         filters={"field": "外徑", "start_date": "2026-07-01"},
@@ -145,12 +148,80 @@ def test_study_version_number_is_unique_within_study(app, db_session):
         db_session.rollback()
 
 
+def test_study_identity_is_unique(app, db_session):
+    with app.app_context():
+        user = _user(db_session, "spc-identity-user")
+        _study_version(db_session, user, stream="same-study-stream")
+        duplicate = SpcStudy(
+            source="shipping",
+            study_type="retrospective",
+            process_stream_key="same-study-stream",
+            characteristic="外徑",
+            filters={"field": "外徑"},
+            status="draft",
+            created_by=user.id,
+        )
+        db_session.add(duplicate)
+
+        with pytest.raises(IntegrityError):
+            db_session.commit()
+        db_session.rollback()
+
+
+@pytest.mark.parametrize(
+    ("model_factory", "invalid_status"),
+    [
+        ("event", "unknown"),
+        ("ocap", "investigating"),
+    ],
+)
+def test_spc_event_and_ocap_status_have_database_constraints(
+    app, db_session, model_factory, invalid_status
+):
+    with app.app_context():
+        user = _user(db_session, f"status-{model_factory}")
+        study, version = _study_version(
+            db_session, user, stream=f"status-stream-{model_factory}"
+        )
+        limit = SpcLimitVersion(
+            study_version_id=version.id,
+            process_stream_key=study.process_stream_key,
+            characteristic=study.characteristic,
+            revision=1,
+            chart_type="xbar_s",
+            limits={},
+            status="active",
+            created_by=user.id,
+        )
+        db_session.add(limit)
+        db_session.flush()
+        event = SpcEvent(
+            limit_version_id=limit.id,
+            study_version_id=version.id,
+            chart_kind="location",
+            rule_code="beyond_limits",
+            point_index=0,
+            status=invalid_status if model_factory == "event" else "open",
+        )
+        db_session.add(event)
+        if model_factory == "ocap":
+            db_session.flush()
+            db_session.add(
+                SpcOcap(event_id=event.id, status=invalid_status, created_by=user.id)
+            )
+
+        with pytest.raises(IntegrityError):
+            db_session.commit()
+        db_session.rollback()
+
+
 def test_only_one_active_limit_per_process_stream_and_characteristic(app, db_session):
     with app.app_context():
         user = _user(db_session)
         _, first_version = _study_version(db_session, user, stream="same-stream")
         _, second_version = _study_version(
-            db_session, user, stream="same-stream", version_no=1
+            db_session, user, stream="same-stream", version_no=1,
+            study_type="ongoing"
         )
         db_session.add_all([
             SpcLimitVersion(
@@ -212,6 +283,21 @@ def test_migration_preserves_legacy_control_limit_table():
     assert 'BEFORE UPDATE OR DELETE ON "SPC界限版本"' in migration
     assert 'BEFORE UPDATE OR DELETE ON "SPC事件"' in migration
     assert 'BEFORE DELETE ON "SPC異常處置"' in migration
+
+
+def test_spc_hardening_migration_adds_named_constraints_without_deleting_evidence():
+    migration = Path(
+        "backend/migration/37_harden_spc_concurrency_and_status.sql"
+    ).read_text(encoding="utf-8")
+    normalized = migration.upper()
+
+    assert "uq_spc_study_identity" in migration
+    assert "ck_spc_ocap_status" in migration
+    assert "ck_spc_event_status" in migration
+    assert "PG_CONSTRAINT" in normalized
+    assert 'DELETE FROM "SPC研究"' not in normalized
+    assert 'DELETE FROM "SPC事件"' not in normalized
+    assert 'DELETE FROM "SPC異常處置"' not in normalized
 
 
 def test_saved_spc_calculation_snapshot_rejects_orm_update(app, db_session):

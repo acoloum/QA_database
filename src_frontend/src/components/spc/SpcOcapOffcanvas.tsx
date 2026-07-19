@@ -29,8 +29,10 @@ const SpcOcapOffcanvas = ({
   const [effectiveness, setEffectiveness] = useState(() => initialValue?.effectiveness ?? '');
   const [closed, setClosed] = useState(() => initialValue?.status === 'closed');
 
-  const historicalOwner = ownerId !== ''
+  const ownerMissingFromList = ownerId !== ''
     && !assignees.some(assignee => String(assignee.id) === ownerId);
+  const unavailableOwnerConfirmed = ownerMissingFromList
+    && !assigneesLoading && !assigneesError;
 
   const input: SpcOcapInput = {
     eventId,
@@ -108,9 +110,11 @@ const SpcOcapOffcanvas = ({
               onChange={event => setOwnerId(event.target.value)}
             >
               <option value="">未指派</option>
-              {historicalOwner && (
+              {ownerMissingFromList && (
                 <option value={ownerId} disabled>
-                  原責任人 ID：{ownerId}（目前不可指派）
+                  原責任人 ID：{ownerId}（{unavailableOwnerConfirmed
+                    ? '目前不可指派'
+                    : '無法確認指派狀態'}）
                 </option>
               )}
               {assignees.map(assignee => (

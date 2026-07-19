@@ -2,13 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert, Badge, Button, Card } from 'react-bootstrap';
 import { useAuth } from '../../context/useAuth';
 import {
-  useAnalyzeSpcStudy, useApproveSpcStudy, useConfirmSpcTimeModel,
+  fetchSpcEvent, useAnalyzeSpcStudy, useApproveSpcStudy, useConfirmSpcTimeModel,
   useRejectSpcStudy, useRetireSpcLimit, useSaveSpcOcap, useSpcAssignees,
   useSpcStudies, useSpcStudy, useSubmitSpcStudy,
 } from '../../hooks/useSpcStudies';
 import type {
-  SpcChartData, SpcEventSummary, SpcLimitVersionSummary, SpcOcapRecord, SpcStudyResult,
+  SpcChartData, SpcEventSummary, SpcStudyResult,
 } from '../../types';
+import { replaceEvent, replaceEventOcap } from '../../utils/spcEventState';
 import SpcBaselineApprovalModal, { type SpcWorkflowAction } from './SpcBaselineApprovalModal';
 import SpcStudyHistoryOffcanvas from './SpcStudyHistoryOffcanvas';
 import SpcStudyWorkflowBar from './SpcStudyWorkflowBar';
@@ -29,33 +30,6 @@ const stabilityBadge = (label: string, stable: boolean | null | undefined) => (
     {label}{stable === true ? '穩定' : stable === false ? '失控' : '未判定'}
   </Badge>
 );
-
-const replaceLimitEventOcap = (
-  limit: SpcLimitVersionSummary,
-  eventId: number,
-  ocap: SpcOcapRecord,
-): SpcLimitVersionSummary => ({
-  ...limit,
-  events: limit.events?.map(event => (
-    event.id === eventId
-      ? { ...event, ocap, status: ocap.status === 'closed' ? 'closed' : 'investigating' }
-      : event
-  )),
-});
-
-// eslint-disable-next-line react-refresh/only-export-components -- 供事件同步邏輯單獨測試與重用
-export const replaceEventOcap = (
-  version: SpcStudyResult,
-  eventId: number,
-  ocap: SpcOcapRecord,
-): SpcStudyResult => ({
-  ...version,
-  monitoring_limit: version.monitoring_limit
-    ? replaceLimitEventOcap(version.monitoring_limit, eventId, ocap)
-    : version.monitoring_limit,
-  limit_versions: version.limit_versions?.map(limit =>
-    replaceLimitEventOcap(limit, eventId, ocap)),
-});
 
 const SpcStudyPanel = ({
   source, filters, preview, version: selectedVersion, studyType = 'retrospective', onVersionChange,
@@ -82,7 +56,7 @@ const SpcStudyPanel = ({
   );
   const version = versionMatchesPreview ? selectedVersion : null;
   const detailStudyId = version?.study_id ?? matchingStudy?.id ?? null;
-  const { data: savedStudy, refetch: refetchStudy } = useSpcStudy(detailStudyId);
+  const { data: savedStudy } = useSpcStudy(detailStudyId);
   const [modalAction, setModalAction] = useState<SpcWorkflowAction | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<SpcEventSummary | null>(null);
@@ -115,7 +89,7 @@ const SpcStudyPanel = ({
   }, [onVersionChange, preview?.process_stream_key, savedStudy, version, versionMatchesPreview]);
 
   const canManage = hasPermission('spc.manage');
-  const saveOcap = useSaveSpcOcap(version?.study_id ?? null);
+  const saveOcap = useSaveSpcOcap();
   const assignees = useSpcAssignees(Boolean(selectedEvent && canManage));
   const canApprove = hasPermission('spc.approve');
   const canView = hasPermission('spc.view') || canManage || canApprove;
@@ -330,20 +304,25 @@ const SpcStudyPanel = ({
                   )
                 ) return;
 
-                onVersionChange(replaceEventOcap(savedVersion, savedContext.eventId, ocap));
+                const localVersion = replaceEventOcap(
+                  savedVersion, savedContext.eventId, ocap,
+                );
+                onVersionChange(localVersion);
                 setSelectedEvent(null);
 
-                const refreshed = await refetchStudy();
-                if (!refreshed.isSuccess) return;
+                let serverEvent: SpcEventSummary;
+                try {
+                  serverEvent = await fetchSpcEvent(savedContext.eventId);
+                } catch {
+                  return;
+                }
                 if (!isCurrentVersion(
                   savedContext.studyId,
                   savedContext.versionId,
                   savedContext.processStreamKey,
                 )) return;
-                const serverVersion = refreshed.data?.versions?.find(
-                  item => item.id === savedContext.versionId,
-                );
-                if (serverVersion) onVersionChange(serverVersion);
+                if (serverEvent.id !== savedContext.eventId) return;
+                onVersionChange(replaceEvent(localVersion, serverEvent));
               },
             });
           }}

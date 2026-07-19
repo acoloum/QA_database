@@ -97,12 +97,14 @@ def serialize_limit_version(limit):
     })
 
 
-def serialize_version(version, *, include_samples=False):
-    monitoring_limit_id = (version.time_model_result or {}).get("limit_version_id")
-    monitoring_limit = (
-        db.session.get(SpcLimitVersion, monitoring_limit_id)
-        if monitoring_limit_id else None
-    )
+def serialize_version(version, *, include_samples=False, include_relations=True):
+    monitoring_limit = None
+    if include_relations:
+        monitoring_limit_id = (version.time_model_result or {}).get("limit_version_id")
+        monitoring_limit = (
+            db.session.get(SpcLimitVersion, monitoring_limit_id)
+            if monitoring_limit_id else None
+        )
     result = {
         "id": version.id,
         "study_id": version.study_id,
@@ -125,13 +127,14 @@ def serialize_version(version, *, include_samples=False):
         "audit_incomplete": version.audit_incomplete,
         "created_by": version.created_by,
         "created_at": version.created_at,
-        "limit_versions": [
-            serialize_limit_version(limit) for limit in version.limit_versions
-        ],
-        "monitoring_limit": (
-            serialize_limit_version(monitoring_limit) if monitoring_limit else None
-        ),
     }
+    if include_relations:
+        result["limit_versions"] = [
+            serialize_limit_version(limit) for limit in version.limit_versions
+        ]
+        result["monitoring_limit"] = (
+            serialize_limit_version(monitoring_limit) if monitoring_limit else None
+        )
     if include_samples:
         result["samples"] = [{
             "id": sample.id,
@@ -238,8 +241,26 @@ def get_study(current_user, study_id):
 @require_permission("spc.view")
 @_handle_spc_errors
 def get_study_history(current_user, study_id):
-    study = SpcStudyService.get_study(study_id)
-    return _success([serialize_version(version) for version in study.versions])
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 20, type=int)
+    if page < 1 or per_page < 1 or per_page > 100:
+        raise SpcValidationError(
+            "SPC_HISTORY_PAGINATION_INVALID",
+            "頁碼必須大於 0，且每頁筆數必須介於 1 到 100",
+        )
+    pagination = SpcStudyService.get_study_history(
+        study_id, page=page, per_page=per_page
+    )
+    return _success({
+        "items": [
+            serialize_version(version, include_relations=False)
+            for version in pagination.items
+        ],
+        "total": pagination.total,
+        "page": pagination.page,
+        "per_page": pagination.per_page,
+        "pages": pagination.pages,
+    })
 
 
 @spc_studies_bp.post("/api/spc/study-versions/<int:version_id>/submit")
@@ -313,13 +334,24 @@ def list_ocap_assignees(current_user):
     return _success(SpcOcapService.list_assignable_users())
 
 
+@spc_studies_bp.get("/api/spc/events/<int:event_id>")
+@auth_required
+@require_permission("spc.view")
+@_handle_spc_errors
+def get_spc_event(current_user, event_id):
+    return _success(serialize_event(SpcOcapService.get_event(event_id)))
+
+
 @spc_studies_bp.post("/api/spc/events/<int:event_id>/ocap")
 @auth_required
 @require_permission("spc.manage")
 @_handle_spc_errors
 def create_ocap(current_user, event_id):
+    payload = request.get_json(silent=True)
+    if payload is None:
+        payload = {}
     ocap = SpcOcapService.save_ocap(
-        event_id, current_user.id, request.get_json(silent=True) or {}
+        event_id, current_user.id, payload
     )
     return _success(serialize_ocap(ocap))
 
@@ -332,7 +364,10 @@ def update_ocap(current_user, ocap_id):
     ocap = db.session.get(SpcOcap, ocap_id)
     if ocap is None:
         raise SpcValidationError("SPC_OCAP_NOT_FOUND", "找不到 OCAP")
+    payload = request.get_json(silent=True)
+    if payload is None:
+        payload = {}
     updated = SpcOcapService.save_ocap(
-        ocap.event_id, current_user.id, request.get_json(silent=True) or {}
+        ocap.event_id, current_user.id, payload
     )
     return _success(serialize_ocap(updated))

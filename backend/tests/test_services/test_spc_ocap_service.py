@@ -3,6 +3,7 @@
 from datetime import date
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from backend.models import (
     AuditLog,
@@ -21,7 +22,7 @@ from backend.models import (
 )
 from backend.services.patrol_service import PatrolService
 from backend.services.shipping_service import ShippingService
-from backend.services.spc_errors import SpcValidationError
+from backend.services.spc_errors import SpcConflict, SpcValidationError
 from backend.services.spc_adapters.shipping import build_shipping_study_input
 from backend.services.spc_ocap_service import SpcOcapService
 
@@ -32,6 +33,29 @@ def _actor(db_session):
     db_session.add_all([role, actor])
     db_session.flush()
     return actor
+
+
+def test_save_ocap_translates_flush_integrity_error(app, db_session, monkeypatch):
+    """首次寫入若於 flush 發生唯一鍵衝突，應回傳穩定的衝突契約。"""
+
+    with app.app_context():
+        actor = _actor(db_session)
+        _, version, limit = _study_limit(db_session, actor)
+        event = SpcOcapService.sync_events(limit.id, version.id, [{
+            "chart_kind": "variation",
+            "rule_code": "beyond_limits",
+            "point_index": 12,
+        }])[0]
+        db_session.commit()
+
+        def fail_flush(*_args, **_kwargs):
+            raise IntegrityError("INSERT INTO spc_ocaps", {}, Exception("duplicate"))
+
+        monkeypatch.setattr(db_session, "flush", fail_flush)
+        with pytest.raises(SpcConflict) as exc:
+            SpcOcapService.save_ocap(event.id, actor.id, {"status": "open"})
+
+        assert exc.value.code == "SPC_OCAP_WRITE_CONFLICT"
 
 
 def _role(db_session, code, name, permissions=None):
@@ -112,6 +136,38 @@ def test_new_or_changed_owner_must_be_assignable(app, db_session):
             })
 
         assert exc.value.code == "SPC_OCAP_OWNER_NOT_ASSIGNABLE"
+        assert SpcOcap.query.filter_by(event_id=event.id).first() is None
+        assert AuditLog.query.filter_by(module="spc_ocap").count() == 0
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_code"),
+    [
+        ([], "SPC_OCAP_PAYLOAD_INVALID"),
+        ({"status": "unknown"}, "SPC_OCAP_STATUS_INVALID"),
+        ({"owner_id": True}, "SPC_OCAP_OWNER_INVALID"),
+        ({"investigation_6m": "不是物件"}, "SPC_OCAP_FIELD_INVALID"),
+        ({"process_adjustment": {"unexpected": True}}, "SPC_OCAP_FIELD_INVALID"),
+        ({"due_at": "2026-07-31"}, "SPC_OCAP_FIELD_UNKNOWN"),
+    ],
+)
+def test_ocap_payload_rejects_invalid_shapes_before_writing_audit(
+    app, db_session, payload, expected_code
+):
+    with app.app_context():
+        actor = _actor(db_session)
+        _, version, limit = _study_limit(db_session, actor)
+        event = SpcOcapService.sync_events(limit.id, version.id, [{
+            "chart_kind": "variation",
+            "rule_code": "beyond_limits",
+            "point_index": 9,
+            "observed_value": 0.9,
+        }])[0]
+
+        with pytest.raises(SpcValidationError) as exc:
+            SpcOcapService.save_ocap(event.id, actor.id, payload)
+
+        assert exc.value.code == expected_code
         assert SpcOcap.query.filter_by(event_id=event.id).first() is None
         assert AuditLog.query.filter_by(module="spc_ocap").count() == 0
 

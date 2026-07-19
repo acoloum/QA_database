@@ -1,4 +1,5 @@
-import { Alert, Badge, Offcanvas, Spinner, Table } from 'react-bootstrap';
+import { useState } from 'react';
+import { Alert, Badge, Button, Offcanvas, Spinner, Table } from 'react-bootstrap';
 import { useSpcStudyHistory } from '../../hooks/useSpcStudies';
 
 interface SpcStudyHistoryOffcanvasProps {
@@ -17,7 +18,10 @@ const statusColor = (status: string) => ({
 }[status] ?? 'light');
 
 const SpcStudyHistoryOffcanvas = ({ show, studyId, onHide }: SpcStudyHistoryOffcanvasProps) => {
-  const { data: versions = [], isLoading } = useSpcStudyHistory(show ? studyId : null);
+  const [pagination, setPagination] = useState({ studyId, page: 1 });
+  const page = pagination.studyId === studyId ? pagination.page : 1;
+  const { data, isLoading } = useSpcStudyHistory(show ? studyId : null, page);
+  const versions = data?.items ?? [];
   return (
     <Offcanvas show={show} onHide={onHide} placement="end" className="spc-history-canvas">
       <Offcanvas.Header closeButton>
@@ -35,7 +39,7 @@ const SpcStudyHistoryOffcanvas = ({ show, studyId, onHide }: SpcStudyHistoryOffc
             <Table responsive hover size="sm" className="align-middle">
               <thead><tr><th>版本</th><th>狀態</th><th>模型</th><th>建立時間</th></tr></thead>
               <tbody>
-                {[...versions].reverse().map(version => (
+                {versions.map(version => (
                   <tr key={version.id}>
                     <td>
                       <strong>v{version.version_no}</strong>
@@ -49,6 +53,32 @@ const SpcStudyHistoryOffcanvas = ({ show, studyId, onHide }: SpcStudyHistoryOffc
               </tbody>
             </Table>
             {versions.length === 0 && <div className="text-center text-muted py-5">尚無保存版本。</div>}
+            {(data?.pages ?? 0) > 1 && (
+              <div className="d-flex justify-content-between align-items-center mt-3">
+                <Button
+                  size="sm"
+                  variant="outline-secondary"
+                  disabled={page <= 1}
+                  onClick={() => setPagination({
+                    studyId,
+                    page: Math.max(1, page - 1),
+                  })}
+                >
+                  上一頁
+                </Button>
+                <span className="small text-muted">
+                  第 {data?.page ?? page} / {data?.pages ?? 1} 頁
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline-secondary"
+                  disabled={page >= (data?.pages ?? 1)}
+                  onClick={() => setPagination({ studyId, page: page + 1 })}
+                >
+                  下一頁
+                </Button>
+              </div>
+            )}
           </>
         )}
       </Offcanvas.Body>

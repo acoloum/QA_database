@@ -297,6 +297,10 @@ class SpcStudy(db.Model):
 
     __tablename__ = 'SPC研究'
     __table_args__ = (
+        db.UniqueConstraint(
+            '資料來源', '研究類型', '製程流識別鍵', '品質特性',
+            name='uq_spc_study_identity',
+        ),
         db.Index('idx_spc_study_stream_characteristic', '製程流識別鍵', '品質特性'),
     )
 
@@ -460,6 +464,10 @@ class SpcEvent(db.Model):
             '界限版本ID', '來源資料點鍵', '圖別', '規則代碼',
             name='uq_spc_event_source_rule',
         ),
+        db.CheckConstraint(
+            '"狀態" IN (\'open\', \'investigating\', \'closed\')',
+            name='ck_spc_event_status',
+        ),
     )
 
     id = db.Column('識別碼', db.Integer, primary_key=True)
@@ -493,6 +501,12 @@ class SpcOcap(db.Model):
     """失控反應計畫（OCAP）的調查、處置與效果確認紀錄。"""
 
     __tablename__ = 'SPC異常處置'
+    __table_args__ = (
+        db.CheckConstraint(
+            '"狀態" IN (\'open\', \'closed\')',
+            name='ck_spc_ocap_status',
+        ),
+    )
 
     id = db.Column('識別碼', db.Integer, primary_key=True)
     event_id = db.Column(

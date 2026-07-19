@@ -10,6 +10,7 @@ const saveOcapState = vi.hoisted(() => ({ isPending: false, isError: false }));
 const assigneesState = vi.hoisted(() => ({
   data: [{ id: 8, username: 'qa-user', role: 'qa_supervisor', role_name: 'QA主管' }],
 }));
+const fetchSpcEventMock = vi.hoisted(() => vi.fn());
 const refetchStudyMock = vi.hoisted(() => vi.fn());
 const useSpcStudyMock = vi.hoisted(() => vi.fn((_id: number | null) => ({
   data: null,
@@ -35,6 +36,7 @@ vi.mock('../../context/useAuth', () => ({
 }));
 
 vi.mock('../../hooks/useSpcStudies', () => ({
+  fetchSpcEvent: (eventId: number) => fetchSpcEventMock(eventId),
   useAnalyzeSpcStudy: () => ({ mutateAsync: analyzeMock, isPending: false }),
   useSubmitSpcStudy: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useConfirmSpcTimeModel: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -173,12 +175,14 @@ describe('SpcStudyPanel', () => {
     vi.clearAllMocks();
     saveOcapMock.mockReset();
     resetSaveOcapMock.mockReset();
+    fetchSpcEventMock.mockReset();
     refetchStudyMock.mockReset();
     useSpcStudyMock.mockReset();
     saveOcapState.isPending = false;
     saveOcapState.isError = false;
     studiesState.value = [];
     refetchStudyMock.mockResolvedValue({ data: null });
+    fetchSpcEventMock.mockResolvedValue(createOcapEvent(81));
     useSpcStudyMock.mockImplementation(() => ({
       data: null,
       refetch: refetchStudyMock,
@@ -330,7 +334,7 @@ describe('SpcStudyPanel', () => {
     expect(onVersionChange).toHaveBeenCalledWith(null);
   });
 
-  it('OCAP 儲存後先本地更新結案狀態，再 refetch 持續研究回補伺服器版本', async () => {
+  it('OCAP 儲存後先本地更新，再以輕量事件 API 校正伺服器狀態', async () => {
     const ongoing = createOngoingVersion();
     const oldOcap = ongoing.monitoring_limit?.events[0].ocap;
     const newOcap = {
@@ -346,20 +350,7 @@ describe('SpcStudyPanel', () => {
       status: 'closed',
       ocap: serverOcap,
     };
-    const serverLimit = {
-      ...ongoing.monitoring_limit,
-      events: [serverEvent],
-    };
-    const serverVersion = {
-      ...ongoing,
-      monitoring_limit: serverLimit,
-      limit_versions: [serverLimit],
-    } as SpcStudyResult;
-    refetchStudyMock.mockResolvedValue({
-      isSuccess: true,
-      isError: false,
-      data: { versions: [serverVersion] },
-    });
+    fetchSpcEventMock.mockResolvedValue(serverEvent);
     const onVersionChange = vi.fn();
     saveOcapMock.mockImplementation((_input, options) => {
       void options.onSuccess(newOcap);
@@ -382,28 +373,27 @@ describe('SpcStudyPanel', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: '儲存 OCAP' }));
 
-    await waitFor(() => expect(refetchStudyMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchSpcEventMock).toHaveBeenCalledWith(81));
+    expect(refetchStudyMock).not.toHaveBeenCalled();
     await waitFor(() => expect(onVersionChange).toHaveBeenCalledTimes(2));
     const localVersion = onVersionChange.mock.calls[0][0] as SpcStudyResult;
     expect(localVersion.monitoring_limit?.events[0].status).toBe('closed');
     expect(localVersion.limit_versions?.[0].events[0].status).toBe('closed');
     expect(localVersion.monitoring_limit?.events[0].ocap?.process_adjustment).toBe('新調整');
     expect(ongoing.monitoring_limit?.events[0].status).toBe('investigating');
-    expect(onVersionChange.mock.calls[1][0]).toBe(serverVersion);
+    const reconciledVersion = onVersionChange.mock.calls[1][0] as SpcStudyResult;
+    expect(reconciledVersion.monitoring_limit?.events[0]).toEqual(serverEvent);
+    expect(reconciledVersion.limit_versions?.[0].events[0]).toEqual(serverEvent);
   });
 
-  it('refetch 失敗且帶舊快取時只保留本地 OCAP 成功結果', async () => {
+  it('輕量事件校正失敗時只保留本地 OCAP 成功結果', async () => {
     const ongoing = createOngoingVersion();
     const newOcap = {
       ...ongoing.monitoring_limit?.events[0].ocap,
       process_adjustment: '新調整',
       updated_at: '2026-07-19T02:00:00Z',
     };
-    refetchStudyMock.mockResolvedValue({
-      isSuccess: false,
-      isError: true,
-      data: { versions: [ongoing] },
-    });
+    fetchSpcEventMock.mockRejectedValue(new Error('event refresh failed'));
     const onVersionChange = vi.fn();
     saveOcapMock.mockImplementation((_input, options) => {
       void options.onSuccess(newOcap);
@@ -421,7 +411,8 @@ describe('SpcStudyPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /事件 #81/ }));
     fireEvent.click(screen.getByRole('button', { name: '儲存 OCAP' }));
 
-    await waitFor(() => expect(refetchStudyMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchSpcEventMock).toHaveBeenCalledTimes(1));
+    expect(refetchStudyMock).not.toHaveBeenCalled();
     await waitFor(() => expect(onVersionChange).toHaveBeenCalledTimes(1));
     const localVersion = onVersionChange.mock.calls[0][0] as SpcStudyResult;
     expect(localVersion.monitoring_limit?.events[0].ocap?.process_adjustment).toBe('新調整');
@@ -468,6 +459,7 @@ describe('SpcStudyPanel', () => {
 
     expect(onVersionChange).not.toHaveBeenCalled();
     expect(screen.getByText('失控反應計畫 · 事件 #82')).toBeInTheDocument();
+    expect(fetchSpcEventMock).not.toHaveBeenCalled();
   });
 
   it('儲存 A 期間切換研究版本後，A 的延遲成功不回寫舊版本', async () => {
@@ -512,7 +504,7 @@ describe('SpcStudyPanel', () => {
     });
 
     expect(onVersionChange).not.toHaveBeenCalled();
-    expect(refetchStudyMock).not.toHaveBeenCalled();
+    expect(fetchSpcEventMock).not.toHaveBeenCalled();
   });
 
   it('關閉失敗的 OCAP 後 reset，重新開啟不顯示前一筆錯誤', () => {

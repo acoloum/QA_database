@@ -4,7 +4,8 @@ import type { PropsWithChildren } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../services/api';
 import {
-  useAnalyzeSpcStudy, useSaveSpcOcap, useSpcAssignees, useSubmitSpcStudy,
+  fetchSpcEvent, useAnalyzeSpcStudy, useSaveSpcOcap, useSpcAssignees,
+  useSpcStudyHistory, useSubmitSpcStudy,
 } from './useSpcStudies';
 
 vi.mock('../services/api', () => ({
@@ -98,7 +99,38 @@ describe('SPC 研究 hooks', () => {
     expect(api.get).not.toHaveBeenCalled();
   });
 
-  it('儲存 OCAP 後回傳完整資料並失效化實際研究快取', async () => {
+  it('研究歷程以頁碼與每頁筆數精準查詢', async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      data: {
+        success: true,
+        data: { items: [], total: 0, page: 2, per_page: 20, pages: 0 },
+      },
+    });
+    const queryClient = new QueryClient();
+    const { result } = renderHook(() => useSpcStudyHistory(9, 2), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(api.get).toHaveBeenCalledWith('/spc/studies/9/history', {
+      params: { page: 2, per_page: 20 },
+    });
+    expect(result.current.data?.page).toBe(2);
+  });
+
+  it('OCAP 儲存後可用輕量事件 API 校正狀態', async () => {
+    const event = { id: 81, status: 'closed', ocap: { id: 3 } };
+    vi.mocked(api.get).mockResolvedValue({
+      data: { success: true, data: event },
+    });
+
+    const returned = await fetchSpcEvent(81);
+
+    expect(api.get).toHaveBeenCalledWith('/spc/events/81');
+    expect(returned).toEqual(event);
+  });
+
+  it('儲存 OCAP 後回傳完整資料但不觸發整份研究重抓', async () => {
     const ocap = {
       id: 3, event_id: 81, investigation_6m: { summary: '模具磨耗' },
       remeasurement: null, process_adjustment: '更換模具',
@@ -109,7 +141,7 @@ describe('SPC 研究 hooks', () => {
     vi.mocked(api.patch).mockResolvedValue({ data: { success: true, data: ocap } });
     const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
-    const { result } = renderHook(() => useSaveSpcOcap(9), {
+    const { result } = renderHook(() => useSaveSpcOcap(), {
       wrapper: createWrapper(queryClient),
     });
 
@@ -121,10 +153,7 @@ describe('SPC 研究 hooks', () => {
     });
 
     expect(returned).toEqual(ocap);
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: ['spcStudy', 9],
-      refetchType: 'none',
-    });
+    expect(invalidateSpy).not.toHaveBeenCalled();
     expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['spcEvents'] });
     expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['spcOcap', 81] });
   });

@@ -8,11 +8,15 @@ from typing import Any, Callable, Mapping
 
 import numpy as np
 from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 
 from ..extensions import db
 from ..models import (
     Role,
+    SpcEvent,
     SpcLimitVersion,
     SPCCache,
     SpcStudy,
@@ -48,6 +52,31 @@ ADAPTERS: dict[str, Callable[[Mapping[str, Any]], SpcStudyInput]] = {
     "shipping": build_shipping_study_input,
     "patrol": build_patrol_study_input,
 }
+
+
+def _upsert_preview_cache(
+    cache_key: str, result: Mapping[str, Any], expires_at: datetime
+) -> None:
+    """以資料庫原子 upsert 保存預覽，避免相同 cache key 競態。"""
+
+    table = SPCCache.__table__
+    values = {
+        "快取鍵": cache_key,
+        "計算結果": dict(result),
+        "過期時間": expires_at,
+    }
+    dialect_name = db.session.get_bind().dialect.name
+    insert_factory = (
+        postgresql_insert if dialect_name == "postgresql" else sqlite_insert
+    )
+    statement = insert_factory(table).values(values).on_conflict_do_update(
+        index_elements=[table.c["快取鍵"]],
+        set_={
+            "計算結果": dict(result),
+            "過期時間": expires_at,
+        },
+    )
+    db.session.execute(statement)
 
 
 def _require_reason(reason: str | None) -> str:
@@ -439,35 +468,46 @@ class SpcStudyService:
                     "SPC_ACTIVE_LIMIT_REQUIRED",
                     "持續 SPC 必須先有同一製程流與特性的生效核准界限",
                 )
-        study = SpcStudy.query.filter_by(
-            source=source,
-            study_type=study_type,
-            process_stream_key=study_input.process_stream_key,
-            characteristic=study_input.characteristic,
-        ).first()
-        if study is None:
-            study = SpcStudy(
-                source=source,
-                study_type=study_type,
-                process_stream_key=study_input.process_stream_key,
-                characteristic=study_input.characteristic,
-                filters=dict(study_input.filters),
-                status="active" if study_type == "ongoing" else "draft",
-                created_by=actor_id,
-            )
-            db.session.add(study)
-            db.session.flush()
-        elif study_type == "ongoing":
-            study.status = "active"
-
-        latest = db.session.query(func.max(SpcStudyVersion.version_no)).filter_by(
-            study_id=study.id
-        ).scalar()
         results = (
             _calculate_ongoing_results(study_input, active_limit)
             if active_limit is not None
             else _calculate_results(study_input)
         )
+        identity = {
+            "source": source,
+            "study_type": study_type,
+            "process_stream_key": study_input.process_stream_key,
+            "characteristic": study_input.characteristic,
+        }
+        study = SpcStudy.query.filter_by(**identity).first()
+        if study is None:
+            study = SpcStudy(
+                **identity,
+                filters=dict(study_input.filters),
+                status="active" if study_type == "ongoing" else "draft",
+                created_by=actor_id,
+            )
+            if db.session.get_bind().dialect.name == "postgresql":
+                try:
+                    with db.session.begin_nested():
+                        db.session.add(study)
+                        db.session.flush()
+                except IntegrityError:
+                    study = SpcStudy.query.filter_by(**identity).one()
+            else:
+                db.session.add(study)
+                db.session.flush()
+        elif study_type == "ongoing":
+            study.status = "active"
+
+        study = (
+            SpcStudy.query.filter_by(id=study.id)
+            .with_for_update()
+            .one()
+        )
+        latest = db.session.query(func.max(SpcStudyVersion.version_no)).filter_by(
+            study_id=study.id
+        ).scalar()
         version = SpcStudyVersion(
             study_id=study.id,
             version_no=int(latest or 0) + 1,
@@ -519,7 +559,14 @@ class SpcStudyService:
                 "data_hash": version.data_hash,
             },
         )
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError as exc:
+            db.session.rollback()
+            raise SpcConflict(
+                "SPC_ANALYSIS_WRITE_CONFLICT",
+                "同一製程流正在建立其他研究版本，請重新執行分析",
+            ) from exc
         return version
 
     @staticmethod
@@ -528,10 +575,38 @@ class SpcStudyService:
 
     @staticmethod
     def get_study(study_id: int) -> SpcStudy:
-        study = db.session.get(SpcStudy, study_id)
+        study = (
+            SpcStudy.query
+            .options(
+                selectinload(SpcStudy.versions).selectinload(
+                    SpcStudyVersion.samples
+                ),
+                selectinload(SpcStudy.versions)
+                .selectinload(SpcStudyVersion.limit_versions)
+                .selectinload(SpcLimitVersion.events)
+                .selectinload(SpcEvent.ocap),
+            )
+            .filter_by(id=study_id)
+            .first()
+        )
         if study is None:
             raise SpcNotFound("SPC_STUDY_NOT_FOUND", "找不到 SPC 研究")
         return study
+
+    @staticmethod
+    def get_study_history(
+        study_id: int, *, page: int = 1, per_page: int = 20
+    ):
+        """以新到舊順序分頁讀取研究版本摘要。"""
+
+        if db.session.get(SpcStudy, study_id) is None:
+            raise SpcNotFound("SPC_STUDY_NOT_FOUND", "找不到 SPC 研究")
+        return (
+            SpcStudyVersion.query
+            .filter_by(study_id=study_id)
+            .order_by(SpcStudyVersion.version_no.desc())
+            .paginate(page=page, per_page=per_page, error_out=False)
+        )
 
     @staticmethod
     def preview(source: str, filters: Mapping[str, Any]) -> dict[str, Any]:
@@ -550,8 +625,6 @@ class SpcStudyService:
                 now = now.replace(tzinfo=None)
             if expires_at > now:
                 return cached.result
-            db.session.delete(cached)
-            db.session.flush()
         results = _calculate_results(study_input)
         chart = results["chart_result"] or {}
         location = chart.get("location") or {}
@@ -656,11 +729,11 @@ class SpcStudyService:
         }
         # 統一轉為 JSON 原生型別，確保首次計算與快取讀回的契約完全一致。
         preview = json.loads(json.dumps(preview, ensure_ascii=False))
-        db.session.add(SPCCache(
-            cache_key=cache_key,
-            result=preview,
-            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
-        ))
+        _upsert_preview_cache(
+            cache_key,
+            preview,
+            datetime.now(timezone.utc) + timedelta(hours=1),
+        )
         db.session.commit()
         return preview
 

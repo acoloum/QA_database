@@ -6,7 +6,14 @@ from io import BytesIO
 import pytest
 from openpyxl import load_workbook
 
-from backend.models import Role, SpcEvent, SpcLimitVersion, User
+from backend.models import (
+    Role,
+    SpcEvent,
+    SpcLimitVersion,
+    SpcStudy,
+    SpcStudyVersion,
+    User,
+)
 from backend.services.spc_contracts import SpcStudyInput, SpcSubgroup
 from backend.services.spc_study_service import ADAPTERS
 from backend.utils import generate_token, hash_password
@@ -103,7 +110,11 @@ def test_viewer_can_analyze_and_read_study_contract(
     )
     assert listing.status_code == detail.status_code == history.status_code == 200
     assert listing.get_json()["data"][0]["id"] == version["study_id"]
-    assert history.get_json()["data"][0]["version_no"] == 1
+    history_data = history.get_json()["data"]
+    assert history_data["items"][0]["version_no"] == 1
+    assert history_data["page"] == 1
+    assert history_data["per_page"] == 20
+    assert history_data["total"] == 1
 
 
 def test_analyze_requires_spc_view_permission(client, db_session, spc_roles):
@@ -247,6 +258,78 @@ def test_study_detail_exposes_limit_event_and_ocap_traceability(
     assert saved_limit["events"][0]["ocap"]["investigation_6m"] == {
         "summary": "壓力波動"
     }
+
+    event_response = client.get(
+        f"/api/spc/events/{event.id}", headers=_headers(manager)
+    )
+    assert event_response.status_code == 200
+    event_data = event_response.get_json()["data"]
+    assert event_data["id"] == event.id
+    assert event_data["ocap"]["id"] == created_data["id"]
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_code"),
+    [
+        ([], "SPC_OCAP_PAYLOAD_INVALID"),
+        ({"status": "unknown"}, "SPC_OCAP_STATUS_INVALID"),
+        ({"owner_id": True}, "SPC_OCAP_OWNER_INVALID"),
+    ],
+)
+def test_ocap_route_returns_stable_validation_contract(
+    client, db_session, spc_roles, payload, expected_code
+):
+    manager = _user(db_session, f"payload-{expected_code}", "spc_manager")
+    study = SpcStudy(
+        source="shipping",
+        study_type="ongoing",
+        process_stream_key=f"route-{expected_code}",
+        characteristic="外徑",
+        filters={},
+        status="active",
+        created_by=manager.id,
+    )
+    db_session.add(study)
+    db_session.flush()
+    version = SpcStudyVersion(
+        study_id=study.id,
+        version_no=1,
+        method_version="2026.1",
+        status="active",
+        created_by=manager.id,
+    )
+    db_session.add(version)
+    db_session.flush()
+    limit = SpcLimitVersion(
+        study_version_id=version.id,
+        process_stream_key=study.process_stream_key,
+        characteristic=study.characteristic,
+        revision=1,
+        chart_type="xbar_s",
+        limits={},
+        status="active",
+        created_by=manager.id,
+    )
+    db_session.add(limit)
+    db_session.flush()
+    event = SpcEvent(
+        limit_version_id=limit.id,
+        study_version_id=version.id,
+        chart_kind="location",
+        rule_code="beyond_limits",
+        point_index=0,
+    )
+    db_session.add(event)
+    db_session.commit()
+
+    response = client.post(
+        f"/api/spc/events/{event.id}/ocap",
+        headers=_headers(manager),
+        json=payload,
+    )
+
+    assert response.status_code == 422
+    assert response.get_json()["code"] == expected_code
 
 
 def test_spc_report_requires_view_permission(client, db_session, spc_roles):

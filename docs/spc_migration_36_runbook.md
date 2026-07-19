@@ -2,6 +2,8 @@
 
 適用檔案：`backend/migration/36_create_spc_study_versioning.sql`。此 migration 保留舊 `SPC管制界限`，將其匯入為唯讀 `legacy_imported`，不得補造樣本雜湊、核准人或核准時間。
 
+完成 migration 36 後，接續套用 `backend/migration/37_harden_spc_concurrency_and_status.sql`。migration 37 會先檢查重複研究自然鍵及非法事件／OCAP 狀態；若發現問題會中止，不會自動合併、修改或刪除稽核證據。
+
 ## 1. 上線前備份
 
 ```powershell
@@ -30,6 +32,12 @@ SELECT count(*) AS patrol_excluded FROM "巡檢子檔" WHERE "排除統計" IS T
 Copy-Item backend\migration\36_create_spc_study_versioning.sql $env:TEMP\spc36-dry-run.sql
 # 僅編輯暫存副本：最後 COMMIT 改為 ROLLBACK
 psql -v ON_ERROR_STOP=1 -h $env:DB_HOST -p $env:DB_PORT -U $env:DB_USER -d $env:DB_NAME -f $env:TEMP\spc36-dry-run.sql
+```
+
+migration 37 本身不含交易包裝，dry-run 請由 `psql` 明確包在交易中：
+
+```powershell
+psql -v ON_ERROR_STOP=1 -h $env:DB_HOST -p $env:DB_PORT -U $env:DB_USER -d $env:DB_NAME -c "BEGIN" -f backend/migration/37_harden_spc_concurrency_and_status.sql -c "ROLLBACK"
 ```
 
 在 rollback 前的同一交易中檢查下列條件；可把查詢插入暫存副本的 `ROLLBACK` 前：

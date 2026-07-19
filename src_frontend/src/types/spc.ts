@@ -188,6 +188,8 @@ export interface SpcStudySample {
   }>;
 }
 
+export type SpcOcapStatus = 'open' | 'closed';
+
 export interface SpcOcapRecord {
   id: number;
   event_id: number;
@@ -197,7 +199,7 @@ export interface SpcOcapRecord {
   product_disposition: string | null;
   owner_id: number | null;
   effectiveness: string | null;
-  status: string;
+  status: SpcOcapStatus;
   created_by: number | null;
   updated_by: number | null;
   created_at: string;
@@ -221,7 +223,7 @@ export interface SpcEventSummary {
   point_index: number;
   source_point_key?: string | null;
   observed_value: number | null;
-  status: string;
+  status: 'open' | 'investigating' | 'closed';
   created_at: string;
   ocap: SpcOcapRecord | null;
 }
@@ -287,6 +289,14 @@ export interface SpcStudySummary {
   created_at: string;
   latest_version: SpcStudyVersionSummary | null;
   versions?: SpcStudyResult[];
+}
+
+export interface SpcStudyHistoryPage {
+  items: SpcStudyVersionSummary[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
 }
 
 /** 舊頁面過渡契約；權威資料位於 charts/stability/distribution/capability。 */

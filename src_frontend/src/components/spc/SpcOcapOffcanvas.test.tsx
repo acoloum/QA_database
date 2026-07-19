@@ -77,6 +77,24 @@ describe('SpcOcapOffcanvas', () => {
     expect(screen.getByLabelText('責任人')).toHaveValue('77');
   });
 
+  it('責任人清單載入失敗時不把現有責任人誤判為不可指派', () => {
+    render(
+      <SpcOcapOffcanvas
+        show
+        eventId={81}
+        assigneesError
+        initialValue={{ owner_id: 77 } as never}
+        onHide={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('option', {
+      name: '原責任人 ID：77（無法確認指派狀態）',
+    })).toBeInTheDocument();
+    expect(screen.queryByText(/目前不可指派/)).not.toBeInTheDocument();
+  });
+
   it('儲存失敗時顯示提示並保留目前輸入', () => {
     const onSave = vi.fn();
     const view = render(

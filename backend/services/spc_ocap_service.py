@@ -2,6 +2,8 @@
 
 from typing import Any, Mapping, Sequence
 
+from sqlalchemy.exc import IntegrityError
+
 from ..extensions import db
 from ..models import Role, SpcEvent, SpcLimitVersion, SpcOcap, SpcStudyVersion, User
 from ..utils import log_audit
@@ -10,6 +12,14 @@ from .spc_study_service import _require_permission
 
 
 OCAP_ASSIGNABLE_ROLE_CODES = ("qa_supervisor", "qc_manager", "admin")
+OCAP_ALLOWED_STATUSES = frozenset(("open", "closed"))
+OCAP_JSON_FIELDS = frozenset(("investigation_6m", "remeasurement"))
+OCAP_TEXT_FIELDS = frozenset((
+    "process_adjustment", "product_disposition", "effectiveness",
+))
+OCAP_ALLOWED_FIELDS = OCAP_JSON_FIELDS | OCAP_TEXT_FIELDS | {
+    "owner_id", "status",
+}
 
 
 class SpcOcapService:
@@ -35,6 +45,46 @@ class SpcOcapService:
             "role": user.role,
             "role_name": role.name,
         } for user, role in rows]
+
+    @staticmethod
+    def validate_payload(payload: Any) -> Mapping[str, Any]:
+        """驗證 OCAP API 契約，避免錯型資料污染稽核紀錄。"""
+
+        if not isinstance(payload, Mapping):
+            raise SpcValidationError(
+                "SPC_OCAP_PAYLOAD_INVALID", "OCAP 請求本文必須是 JSON 物件"
+            )
+        unknown = sorted(set(payload) - OCAP_ALLOWED_FIELDS)
+        if unknown:
+            raise SpcValidationError(
+                "SPC_OCAP_FIELD_UNKNOWN",
+                f"OCAP 包含不支援欄位：{', '.join(str(name) for name in unknown)}",
+            )
+        if "status" in payload and payload["status"] not in OCAP_ALLOWED_STATUSES:
+            raise SpcValidationError(
+                "SPC_OCAP_STATUS_INVALID", "OCAP 狀態只允許 open 或 closed"
+            )
+        if "owner_id" in payload:
+            owner_id = payload["owner_id"]
+            if owner_id is not None and type(owner_id) is not int:
+                raise SpcValidationError(
+                    "SPC_OCAP_OWNER_INVALID", "OCAP 責任人必須是整數使用者 ID 或 null"
+                )
+        for name in OCAP_JSON_FIELDS:
+            if name in payload and payload[name] is not None and not isinstance(
+                payload[name], Mapping
+            ):
+                raise SpcValidationError(
+                    "SPC_OCAP_FIELD_INVALID", f"OCAP 欄位 {name} 必須是 JSON 物件或 null"
+                )
+        for name in OCAP_TEXT_FIELDS:
+            if name in payload and payload[name] is not None and not isinstance(
+                payload[name], str
+            ):
+                raise SpcValidationError(
+                    "SPC_OCAP_FIELD_INVALID", f"OCAP 欄位 {name} 必須是文字或 null"
+                )
+        return payload
 
     @staticmethod
     def _validate_owner_change(
@@ -129,7 +179,12 @@ class SpcOcapService:
         """新增或更新 OCAP，保留調查、處置、責任與有效性確認。"""
 
         _require_permission(actor_id, "spc.manage")
-        event = db.session.get(SpcEvent, event_id)
+        payload = SpcOcapService.validate_payload(payload)
+        event = (
+            SpcEvent.query.filter_by(id=event_id)
+            .with_for_update()
+            .first()
+        )
         if event is None:
             raise SpcNotFound("SPC_EVENT_NOT_FOUND", "找不到 SPC 失控事件")
         ocap = SpcOcap.query.filter_by(event_id=event.id).first()
@@ -174,15 +229,31 @@ class SpcOcapService:
         else:
             event.status = "investigating"
 
-        db.session.flush()
-        new_snapshot = audit_snapshot(ocap)
-        log_audit(
-            actor_id,
-            "create_ocap" if creating else "update_ocap",
-            "spc_ocap",
-            ocap.id,
-            old_val=old_snapshot,
-            new_val=new_snapshot,
-        )
-        db.session.commit()
+        try:
+            db.session.flush()
+            new_snapshot = audit_snapshot(ocap)
+            log_audit(
+                actor_id,
+                "create_ocap" if creating else "update_ocap",
+                "spc_ocap",
+                ocap.id,
+                old_val=old_snapshot,
+                new_val=new_snapshot,
+            )
+            db.session.commit()
+        except IntegrityError as exc:
+            db.session.rollback()
+            raise SpcConflict(
+                "SPC_OCAP_WRITE_CONFLICT",
+                "同一事件的 OCAP 已被其他使用者更新，請重新整理後再試",
+            ) from exc
         return ocap
+
+    @staticmethod
+    def get_event(event_id: int) -> SpcEvent:
+        """取得單一 SPC 事件，供 OCAP 儲存後輕量校正。"""
+
+        event = db.session.get(SpcEvent, event_id)
+        if event is None:
+            raise SpcNotFound("SPC_EVENT_NOT_FOUND", "找不到 SPC 失控事件")
+        return event

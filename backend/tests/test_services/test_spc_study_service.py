@@ -1,6 +1,6 @@
 """SPC 研究分析與核准生命週期測試。"""
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -10,13 +10,19 @@ from backend.models import (
     Role,
     SpcEvent,
     SpcLimitVersion,
+    SPCCache,
     SpcStudy,
     SpcStudyVersion,
     User,
 )
 from backend.services.spc_contracts import SpcStudyInput, SpcSubgroup
 from backend.services.spc_errors import SpcConflict, SpcForbidden, SpcValidationError
-from backend.services.spc_study_service import ADAPTERS, SpcStudyService, _calculate_results
+from backend.services.spc_study_service import (
+    ADAPTERS,
+    SpcStudyService,
+    _calculate_results,
+    _upsert_preview_cache,
+)
 
 
 def _role(db_session, code, permissions):
@@ -119,6 +125,21 @@ def test_analyze_adds_immutable_version_and_keeps_full_sample_trace(
         assert first.samples[0].source_record_ids == [1]
         assert first.samples[0].source_measurement_ids == [100]
         assert first.samples[0].exclusion_snapshot[0]["excluded"] is False
+
+
+def test_preview_cache_upsert_updates_existing_key_atomically(app, db_session):
+    with app.app_context():
+        first_expiry = datetime.now(timezone.utc) + timedelta(minutes=10)
+        second_expiry = first_expiry + timedelta(minutes=10)
+
+        _upsert_preview_cache("same-key", {"revision": 1}, first_expiry)
+        _upsert_preview_cache("same-key", {"revision": 2}, second_expiry)
+        db_session.commit()
+
+        rows = SPCCache.query.filter_by(cache_key="same-key").all()
+        assert len(rows) == 1
+        assert rows[0].result == {"revision": 2}
+        assert rows[0].expires_at.replace(tzinfo=timezone.utc) == second_expiry
 
 
 def test_submit_rejects_changed_source_data(app, db_session, monkeypatch):
