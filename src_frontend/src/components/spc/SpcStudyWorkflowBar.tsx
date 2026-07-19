@@ -1,5 +1,6 @@
 import { Badge, Button } from 'react-bootstrap';
 import type { SpcStudyResult } from '../../types';
+import { isMachinePerformanceResult } from '../../types/spc';
 import type { SpcWorkflowAction } from './SpcBaselineApprovalModal';
 
 interface SpcStudyWorkflowBarProps {
@@ -8,6 +9,8 @@ interface SpcStudyWorkflowBarProps {
   canManage: boolean;
   canApprove: boolean;
   analyzing?: boolean;
+  canAnalyze?: boolean;
+  analyzeDisabledReason?: string;
   onAnalyze: () => void;
   onAction: (action: SpcWorkflowAction) => void;
   onShowHistory: () => void;
@@ -33,10 +36,13 @@ const stageIndex = (status: SpcStudyResult['status'] | undefined, research: bool
 };
 
 const SpcStudyWorkflowBar = ({
-  version, canView, canManage, canApprove, analyzing = false,
+  version, canView, canManage, canApprove, analyzing = false, canAnalyze = true, analyzeDisabledReason,
   onAnalyze, onAction, onShowHistory,
 }: SpcStudyWorkflowBarProps) => {
   const research = version?.analysis_family === 'machine';
+  const machineCapability = version && isMachinePerformanceResult(version.capability)
+    ? version.capability : null;
+  const machineApprovable = Boolean(machineCapability?.approvable);
   const stages = research ? researchStages : baselineStages;
   const current = stageIndex(version?.status, research);
   const candidate = version?.time_model.candidate;
@@ -55,13 +61,19 @@ const SpcStudyWorkflowBar = ({
         ))}
         {version?.status === 'rejected' && <Badge bg="danger">已退回</Badge>}
         {version?.status === 'retired' && <Badge bg="secondary">已停用</Badge>}
+        {research && version?.status === 'submitted' && !machineApprovable && (
+          <Badge bg="warning" text="dark">目前不可核准：{machineCapability?.reason_code ?? '研究資格未完成'}</Badge>
+        )}
       </div>
       <div className="d-flex gap-2 flex-wrap justify-content-end">
         <Button size="sm" variant="outline-secondary" onClick={onShowHistory} disabled={!version}>版本歷程</Button>
-        {canView && (
-          <Button size="sm" variant="outline-primary" onClick={onAnalyze} disabled={analyzing}>
+        {(research ? canManage : canView) && (
+          <span title={!canAnalyze ? analyzeDisabledReason : undefined}>
+          <Button size="sm" variant="outline-primary" onClick={onAnalyze} disabled={analyzing || !canAnalyze} aria-describedby={!canAnalyze && analyzeDisabledReason ? 'spc-rebuild-disabled-reason' : undefined}>
             {analyzing ? '建立中…' : version ? '重建候選' : '建立候選'}
           </Button>
+          {!canAnalyze && analyzeDisabledReason && <span id="spc-rebuild-disabled-reason" className="visually-hidden">{analyzeDisabledReason}</span>}
+          </span>
         )}
         {!research && canManage && canConfirmTimeModel && (
           <Button size="sm" variant="outline-primary" onClick={() => onAction('time-model')}>
@@ -71,7 +83,7 @@ const SpcStudyWorkflowBar = ({
         {canManage && version?.status === 'draft' && (
           <Button size="sm" variant="primary" onClick={() => onAction('submit')}>送審</Button>
         )}
-        {canApprove && version?.status === 'submitted' && (
+        {canApprove && version?.status === 'submitted' && (!research || machineApprovable) && (
           <>
             <Button size="sm" variant="outline-danger" onClick={() => onAction('reject')}>退回</Button>
             <Button size="sm" variant="success" onClick={() => onAction(research ? 'approve-research' : 'approve')}>{research ? '核准研究結果' : '核准生效'}</Button>

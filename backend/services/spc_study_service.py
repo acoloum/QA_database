@@ -853,7 +853,6 @@ class SpcStudyService:
         analysis_family: str = "variable",
         options: Mapping[str, Any] | None = None,
     ) -> SpcStudyVersion:
-        _require_permission(actor_id, "spc.view")
         if study_type not in {"retrospective", "ongoing"}:
             raise SpcValidationError("SPC_STUDY_TYPE_INVALID", "研究類型不受支援")
         if not isinstance(analysis_family, str) or analysis_family not in ANALYSIS_FAMILIES:
@@ -870,7 +869,9 @@ class SpcStudyService:
                 raise SpcValidationError("MACHINE_STREAM_NOT_FIXED", "機器研究不支援持續監控")
             filters = _canonical_machine_filters(source, filters)
             canonical_options = _canonical_machine_options(options)
+            _require_permission(actor_id, "spc.manage")
         else:
+            _require_permission(actor_id, "spc.view")
             canonical_options = (
                 _canonical_attribute_options(options)
                 if analysis_family == "attribute" else options

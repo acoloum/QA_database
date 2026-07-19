@@ -1,40 +1,28 @@
 import { Button, Col, Form, Row } from 'react-bootstrap';
-import type { MachineStudyFilters, MachineStudyOptions } from '../../../hooks/useSpcStudies';
-
-export interface MachineConditionInput {
-  m_id: string;
-  mat: string;
-  spec: string;
-  item: string;
-  pos: string;
-  conditions_confirmed: boolean;
-  condition_reason: string;
-}
+import {
+  buildMachineStudyRequest, hasFixedMachineStream, hasValidMachineConditions,
+  type MachineConditionInput, type MachineStudyRequest,
+} from './machineStudyRequest';
 
 interface MachineConditionFormProps {
   value: MachineConditionInput;
   onChange: (next: MachineConditionInput) => void;
-  onAnalyze: (request: { filters: MachineStudyFilters; options: MachineStudyOptions }) => void;
+  onAnalyze: (request: MachineStudyRequest) => void;
   disabled: boolean;
   disabledReason?: string;
 }
 
-const trim = (value: string) => value.trim();
-const validMachineId = (value: string) => /^[1-9]\d*$/.test(value);
-const validReason = (value: string) => trim(value).length >= 2 && trim(value).length <= 500;
-
 const MachineConditionForm = ({ value, onChange, onAnalyze, disabled, disabledReason }: MachineConditionFormProps) => {
-  const streamFixed = validMachineId(value.m_id)
-    && [value.mat, value.spec, value.item, value.pos].every(item => Boolean(trim(item)));
-  const conditionValid = value.conditions_confirmed && validReason(value.condition_reason);
+  const request = buildMachineStudyRequest(value);
+  const streamFixed = hasFixedMachineStream(value);
   const requirementReason = !streamFixed
     ? '必須鎖定單一機台、材質、規格、項目與位置。'
     : !value.conditions_confirmed
       ? '必須確認研究條件已受控。'
-      : !validReason(value.condition_reason)
+      : !hasValidMachineConditions(value)
         ? '研究條件理由必須為 2 至 500 個字元。'
         : disabledReason ?? '';
-  const canAnalyze = streamFixed && conditionValid && !disabled;
+  const canAnalyze = request != null && !disabled;
 
   const update = <K extends keyof MachineConditionInput>(key: K, next: MachineConditionInput[K]) =>
     onChange({ ...value, [key]: next });
@@ -51,10 +39,7 @@ const MachineConditionForm = ({ value, onChange, onAnalyze, disabled, disabledRe
     </Row>
     <div className="d-flex justify-content-end align-items-center gap-2 mt-3">
       {requirementReason && <span id="machine-analysis-disabled-reason" className="small text-muted" role="status">{requirementReason}</span>}
-      <Button type="button" onClick={() => onAnalyze({
-        filters: { m_id: Number(value.m_id), mat: trim(value.mat), spec: trim(value.spec), item: trim(value.item), pos: trim(value.pos) },
-        options: { conditions_confirmed: true, condition_reason: trim(value.condition_reason) },
-      })} disabled={!canAnalyze} aria-describedby={!canAnalyze ? 'machine-analysis-disabled-reason' : undefined}>分析機器績效</Button>
+      <Button type="button" onClick={() => { if (request) onAnalyze(request); }} disabled={!canAnalyze} aria-describedby={!canAnalyze ? 'machine-analysis-disabled-reason' : undefined}>分析機器績效</Button>
     </div>
   </Form>;
 };

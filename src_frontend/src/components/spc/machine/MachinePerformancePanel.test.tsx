@@ -1,8 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import MachineConditionForm, { type MachineConditionInput } from './MachineConditionForm';
+import MachineConditionForm from './MachineConditionForm';
 import MachinePerformancePanel from './MachinePerformancePanel';
+import type { MachineConditionInput } from './machineStudyRequest';
 
 const preliminaryResult = {
   available: false,
@@ -71,5 +72,12 @@ describe('MachinePerformancePanel', () => {
     expect(screen.getByText('2026-07-01 ～ 2026-07-02')).toBeInTheDocument();
     expect(screen.queryByText('正式達標')).not.toBeInTheDocument();
     expect(screen.queryByText('可核准研究結果')).not.toBeInTheDocument();
+  });
+
+  it('數值達目標但不可核准時不宣告正式達標，明示資格或證據尚未完成', () => {
+    render(<MachinePerformancePanel result={{ ...preliminaryResult, available: true, preliminary: false, approvable: false, reason_code: 'SOURCE_SEMANTICS_UNAUDITABLE' }} />);
+
+    expect(screen.queryByText(/正式達標：/)).not.toBeInTheDocument();
+    expect(screen.getByText('數值達目標，但證據/資格未完成。')).toBeInTheDocument();
   });
 });

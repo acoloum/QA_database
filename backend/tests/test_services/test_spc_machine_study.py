@@ -8,7 +8,7 @@ import pytest
 
 from backend.models import AuditLog, Role, SpcLimitVersion, SpcStudyVersion, User
 from backend.services.spc_contracts import SpcStudyInput, SpcSubgroup
-from backend.services.spc_errors import SpcConflict, SpcValidationError
+from backend.services.spc_errors import SpcConflict, SpcForbidden, SpcValidationError
 from backend.services.spc_study_service import ADAPTERS, SpcStudyService
 from backend.utils import hash_password
 from backend.utils import generate_token
@@ -86,6 +86,23 @@ def test_machine_analysis_requires_patrol_and_complete_exact_filters(app, db_ses
             )
 
         assert exc.value.code == "MACHINE_SOURCE_UNSUPPORTED"
+
+
+def test_machine_analysis_requires_manage_but_variable_analysis_keeps_view_permission(
+    app, db_session
+):
+    with app.app_context():
+        db_session.add(Role(code="spc_viewer", name="SPC檢視", permissions={"spc.view": True}))
+        db_session.commit()
+        viewer = _user(db_session, "machine-manage-required", "spc_viewer")
+
+        with pytest.raises(SpcForbidden) as exc:
+            SpcStudyService.analyze(
+                "patrol", _machine_input().filters, viewer.id,
+                analysis_family="machine", options=_machine_input().options,
+            )
+
+        assert exc.value.code == "SPC_MANAGE_FORBIDDEN"
 
 
 def test_machine_research_approval_api_requires_approval_permission(client, app, db_session, monkeypatch):

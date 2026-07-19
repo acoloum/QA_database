@@ -60,7 +60,7 @@ def test_shipping_stats_uses_common_2026_contract_and_keeps_legacy_mapping(
             "field": "外徑", "material": "6061", "spec": "10*1*100",
         })
 
-        assert result["schema_version"] == "2026.1"
+        assert result["schema_version"] == "2026.2"
         assert result["charts"]["chart_type"] == "xbar_s"
         assert result["avgs"] == result["charts"]["location"]["values"]
         assert result["x_ucls"] == result["charts"]["location"]["ucl"]

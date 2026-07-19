@@ -146,6 +146,21 @@ def test_analyze_requires_spc_view_permission(client, db_session, spc_roles):
     assert response.status_code == 403
 
 
+def test_machine_analyze_route_requires_spc_manage_permission(client, db_session, spc_roles):
+    viewer = _user(db_session, "machine-route-viewer", "spc_viewer")
+    response = client.post(
+        "/api/spc/studies/analyze", headers=_headers(viewer),
+        json={
+            "source": "patrol", "analysis_family": "machine",
+            "filters": {"m_id": 1, "mat": "6061", "spec": "10x1", "item": "外徑", "pos": "A"},
+            "options": {"conditions_confirmed": True, "condition_reason": "已確認固定研究條件"},
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.get_json()["code"] == "SPC_MANAGE_FORBIDDEN"
+
+
 def test_spc_assignees_require_manage_and_expose_minimal_active_quality_users(
     client, db_session, spc_roles
 ):

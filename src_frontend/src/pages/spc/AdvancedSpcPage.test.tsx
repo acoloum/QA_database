@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const authMock = vi.hoisted(() => vi.fn());
 const analyzeMock = vi.hoisted(() => vi.fn());
 const approveResearchMock = vi.hoisted(() => vi.fn());
+const submitMock = vi.hoisted(() => vi.fn());
 
 const savedAttributeVersion = {
   id: 51, study_id: 9, source: 'shipping', study_type: 'retrospective', analysis_family: 'attribute',
@@ -20,15 +21,15 @@ const savedAttributeVersion = {
 vi.mock('../../context/useAuth', () => ({ useAuth: () => authMock() }));
 vi.mock('../../hooks/useSpcStudies', () => ({
   useAnalyzeSpcStudy: () => ({ mutateAsync: analyzeMock, isPending: false, isError: false }),
-  useSubmitSpcStudy: () => ({ isPending: false }), useApproveSpcStudy: () => ({ isPending: false }),
+  useSubmitSpcStudy: () => ({ mutateAsync: submitMock, isPending: false }), useApproveSpcStudy: () => ({ isPending: false }),
   useApproveSpcResearch: () => ({ mutateAsync: approveResearchMock, isPending: false }),
   useRejectSpcStudy: () => ({ isPending: false }), useRetireSpcLimit: () => ({ isPending: false }),
 }));
 vi.mock('../../components/spc/SpcStudyWorkflowBar', () => ({
-  default: (props: { onAction: (action: 'submit' | 'approve-research') => void }) => <><button onClick={() => props.onAction('submit')}>開啟送審</button><button onClick={() => props.onAction('approve-research')}>開啟研究核准</button></>,
+  default: (props: { onAction: (action: 'submit' | 'approve-research') => void; onAnalyze: () => void }) => <><button onClick={() => props.onAction('submit')}>開啟送審</button><button onClick={() => props.onAction('approve-research')}>開啟研究核准</button><button onClick={props.onAnalyze}>重建候選</button></>,
 }));
 vi.mock('../../components/spc/SpcBaselineApprovalModal', () => ({
-  default: (props: { filters: Record<string, unknown> }) => <div>核准快照廠商：{String(props.filters.vendor)}</div>,
+  default: (props: { filters: Record<string, unknown>; onConfirm: (reason: string) => void }) => <div>核准快照廠商：{String(props.filters.vendor)}<button onClick={() => props.onConfirm('已完成研究複核')}>確認流程</button></div>,
 }));
 vi.mock('../../components/spc/SpcStudyHistoryOffcanvas', () => ({ default: () => null }));
 
@@ -43,6 +44,7 @@ const renderPage = (entry: string) => render(
 describe('AdvancedSpcPage', () => {
   beforeEach(() => {
     analyzeMock.mockReset();
+    submitMock.mockReset();
     authMock.mockReset();
   });
 
@@ -128,9 +130,11 @@ describe('AdvancedSpcPage', () => {
   it('machine 工作區只送出 Task5 固定巡檢流與嚴格 options', async () => {
     authMock.mockReturnValue({ hasPermission: () => true });
     analyzeMock.mockResolvedValue({ ...savedAttributeVersion, source: 'patrol', analysis_family: 'machine', filters: { m_id: 7, mat: '6061', spec: '10x1', item: '外徑', pos: 'A' }, options: { conditions_confirmed: true, condition_reason: '已確認機台設定與治具狀態' } });
-    renderPage('/spc/advanced?family=machine&source=shipping&m_id=7&material=6061&spec=10x1&item=外徑&position=A&conditions_confirmed=true&condition_reason=已確認機台設定與治具狀態&vendor=不得送出');
+    renderPage('/spc/advanced?family=machine&source=shipping&m_id=7&material=6061&spec=10x1&item=外徑&position=A&conditions_confirmed=true&condition_reason=不得保留在網址&vendor=不得送出');
 
     expect(screen.queryByLabelText('資料來源')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('研究條件確認理由')).toHaveValue('');
+    fireEvent.change(screen.getByLabelText('研究條件確認理由'), { target: { value: '已確認機台設定與治具狀態' } });
     fireEvent.click(screen.getByRole('button', { name: '分析機器績效' }));
 
     await screen.findByRole('button', { name: '開啟送審' });
@@ -149,5 +153,49 @@ describe('AdvancedSpcPage', () => {
 
     expect(screen.getByLabelText('機台 ID')).toHaveValue('');
     expect(screen.getByLabelText('材質')).toHaveValue('');
+  });
+
+  it('只有 SPC 管理權限可分析機器研究，屬性研究仍保留檢視權限入口', () => {
+    authMock.mockReturnValue({ hasPermission: (permission: string) => permission === 'spc.view' });
+    renderPage('/spc/advanced?family=machine&m_id=7&material=6061&spec=10x1&item=外徑&position=A&conditions_confirmed=true');
+
+    fireEvent.change(screen.getByLabelText('研究條件確認理由'), { target: { value: '已確認機台設定與治具狀態' } });
+    expect(screen.getByRole('button', { name: '分析機器績效' })).toBeDisabled();
+    expect(screen.getByText('機器研究需要 SPC 管理權限。')).toBeInTheDocument();
+  });
+
+  it('機器條件失效時重建候選不會送出空白或 0 機台 request', async () => {
+    authMock.mockReturnValue({ hasPermission: () => true });
+    analyzeMock.mockResolvedValue({ ...savedAttributeVersion, source: 'patrol', analysis_family: 'machine', filters: { m_id: 7 }, options: {} });
+    renderPage('/spc/advanced?family=machine&m_id=7&material=6061&spec=10x1&item=外徑&position=A&conditions_confirmed=true');
+    fireEvent.change(screen.getByLabelText('研究條件確認理由'), { target: { value: '已確認機台設定與治具狀態' } });
+    fireEvent.click(screen.getByRole('button', { name: '分析機器績效' }));
+    await screen.findByRole('button', { name: '重建候選' });
+    fireEvent.change(screen.getByLabelText('機台 ID'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: '重建候選' }));
+
+    expect(analyzeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [403, 'SPC_APPROVE_FORBIDDEN', '權限不足：'],
+    [409, 'INVALID_STUDY_STATE', '研究狀態已變更：'],
+  ])('流程操作遇到 %s 時保留 modal 並以可即時讀取的錯誤提示', async (status, code, heading) => {
+    authMock.mockReturnValue({ hasPermission: () => true });
+    analyzeMock.mockResolvedValue(savedAttributeVersion);
+    submitMock.mockRejectedValue({ response: { status, data: { code, message: '請重新整理後再操作' } } });
+    renderPage('/spc/advanced?source=shipping&vendor=甲');
+    fireEvent.click(screen.getByRole('button', { name: '建立屬性研究' }));
+    await screen.findByRole('button', { name: '開啟送審' });
+    fireEvent.click(screen.getByRole('button', { name: '開啟送審' }));
+    fireEvent.click(screen.getByRole('button', { name: '確認流程' }));
+
+    await waitFor(() => expect(screen.getAllByRole('alert').some(item => item.textContent?.includes(code))).toBe(true));
+    const alert = screen.getAllByRole('alert').find(item => item.textContent?.includes(code));
+    if (!alert) throw new Error('未找到流程錯誤提示');
+    expect(alert).toHaveAttribute('aria-live', 'assertive');
+    expect(alert).toHaveTextContent(heading);
+    expect(alert).toHaveTextContent(code);
+    expect(screen.getByText('核准快照廠商：保存廠商')).toBeInTheDocument();
   });
 });
