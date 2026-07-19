@@ -431,7 +431,7 @@ def test_random_location_requires_confirmed_unimodal_aggregate_distribution():
     chart, groups, _distribution_result, stability = _golden_dataset("C1")
     unavailable = {
         "accepted": False,
-        "normal_ok": False,
+        "normal_ok": None,
         "unimodal": False,
         "reason_code": "GOODNESS_OF_FIT_REJECTED",
     }
@@ -443,3 +443,50 @@ def test_random_location_requires_confirmed_unimodal_aggregate_distribution():
     assert result["evidence"]["random_location"]["reject"] is True
     assert result["candidate"] is None
     assert result["reason_code"] == "TIME_DIAGNOSTIC_DISTRIBUTION_UNAVAILABLE"
+
+
+def test_student_t_random_location_is_c2_without_accepted_alternative_distribution():
+    rng = np.random.default_rng(73)
+    group_means = rng.standard_t(df=3, size=40) * 1.4
+    matrix = np.asarray([
+        mean + rng.normal(0.0, 0.18, size=6) for mean in group_means
+    ])
+    groups = _sampled_groups(matrix)
+    chart = _controlled_chart(groups)
+    stability = evaluate_study_stability(chart)
+    distribution = _raw_distribution(groups)
+
+    assert distribution["candidates"][0]["model"] == "normal"
+    assert distribution["candidates"][0]["accepted"] is False
+    assert distribution["accepted"] is False
+
+    result = diagnose_time_model(
+        chart, groups, distribution, stability=stability
+    )
+
+    assert result["evidence"]["random_location"]["reject"] is True
+    assert result["evidence"]["aggregate_modality"]["unimodal"] is True
+    assert result["candidate"] == "C2"
+    assert result["reason_code"] is None
+
+
+@pytest.mark.parametrize("series_name", ("location", "variation"))
+def test_chart_non_none_values_must_be_finite(series_name):
+    groups = _subgroups([10.0] * 25, [1.0] * 25)
+    chart = _chart([10.0] * 25, [1.0] * 25)
+    source = getattr(chart, series_name)
+    values = list(source.values)
+    values[12] = float("nan")
+    changed = SpcChartSeries(
+        source.statistic, tuple(values), source.cl, source.ucl, source.lcl
+    )
+    invalid = SpcChartSet(
+        chart_type=chart.chart_type,
+        location=changed if series_name == "location" else chart.location,
+        variation=changed if series_name == "variation" else chart.variation,
+        subgroup_sizes=chart.subgroup_sizes,
+        sigma_within=chart.sigma_within,
+    )
+
+    with pytest.raises(ValueError, match="有限"):
+        diagnose_time_model(invalid, groups, _raw_distribution(groups))

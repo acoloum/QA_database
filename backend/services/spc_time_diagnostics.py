@@ -280,14 +280,48 @@ def _formal_stability_evidence(stability: Mapping[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _aggregate_distribution_available(
-    distribution: Mapping[str, Any], modality: Mapping[str, Any]
-) -> bool:
-    return bool(
-        distribution.get("accepted")
-        and modality.get("available")
-        and modality.get("unimodal")
+def _aggregate_normality(
+    distribution: Mapping[str, Any], modality: Mapping[str, Any], alpha: float
+) -> tuple[bool | None, dict[str, Any]]:
+    """辨識合成分布常態性；替代分布不必通過才可判 C2。"""
+
+    if not modality.get("available") or not modality.get("unimodal"):
+        return None, {
+            "available": False,
+            "reason_code": "AGGREGATE_MODALITY_UNAVAILABLE",
+        }
+    normal_candidate = next(
+        (
+            item for item in distribution.get("candidates", [])
+            if item.get("model") == "normal"
+        ),
+        None,
     )
+    if normal_candidate is not None:
+        p_value = normal_candidate.get("p_value", normal_candidate.get("raw_p_value"))
+        if p_value is not None and isfinite(float(p_value)):
+            threshold = float(distribution.get("alpha") or alpha)
+            normal = bool(float(p_value) >= threshold)
+            return normal, {
+                "available": True,
+                "method": normal_candidate.get("method") or "normal_candidate",
+                "p_value": float(p_value),
+                "threshold": threshold,
+                "normal": normal,
+            }
+    explicit = distribution.get("normal_ok")
+    if isinstance(explicit, (bool, np.bool_)):
+        return bool(explicit), {
+            "available": True,
+            "method": "explicit_normal_ok",
+            "p_value": None,
+            "threshold": alpha,
+            "normal": bool(explicit),
+        }
+    return None, {
+        "available": False,
+        "reason_code": "AGGREGATE_NORMALITY_UNAVAILABLE",
+    }
 
 
 def diagnose_time_model(
@@ -310,6 +344,9 @@ def diagnose_time_model(
     if not np.all(np.isfinite(means)):
         raise ValueError("管制圖位置資料必須全部為有限數值")
     for name, series in (("location", chart_set.location), ("variation", chart_set.variation)):
+        numeric_values = [float(value) for value in series.values if value is not None]
+        if not all(isfinite(value) for value in numeric_values):
+            raise ValueError(f"{name}.values 的非空值必須全部為有限數值")
         for field in ("cl", "ucl", "lcl"):
             if not np.all(np.isfinite(np.asarray(getattr(series, field), dtype=float))):
                 raise ValueError(f"{name}.{field} 必須全部為有限數值")
@@ -332,6 +369,9 @@ def diagnose_time_model(
     ])
     instantaneous, instantaneous_rows = _instantaneous(groups, alpha)
     modality = _modality(values)
+    aggregate_normal, aggregate_normality = _aggregate_normality(
+        distribution, modality, alpha
+    )
     formal = _formal_stability_evidence(
         stability if stability is not None else evaluate_study_stability(chart_set)
     )
@@ -343,6 +383,7 @@ def diagnose_time_model(
         "formal_stability": formal,
         "instantaneous_distribution": instantaneous,
         "aggregate_modality": modality,
+        "aggregate_normality": aggregate_normality,
         "aggregate_distribution": dict(distribution),
         "multiple_testing": {
             "method": "Holm",
@@ -381,11 +422,11 @@ def diagnose_time_model(
     elif changes["detected"]:
         candidate = "C4"
     elif location_changed:
-        if not _aggregate_distribution_available(distribution, modality):
+        if aggregate_normal is None:
             candidate = None
             reason_code = "TIME_DIAGNOSTIC_DISTRIBUTION_UNAVAILABLE"
         else:
-            candidate = "C1" if distribution.get("normal_ok") else "C2"
+            candidate = "C1" if aggregate_normal else "C2"
     elif formal.get("stable") is not True:
         candidate = None
         reason_code = "TIME_DIAGNOSTIC_STABILITY_UNAVAILABLE"
