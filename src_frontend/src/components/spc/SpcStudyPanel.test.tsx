@@ -1,11 +1,28 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { SpcStudyResult } from '../../types';
 import SpcStudyPanel from './SpcStudyPanel';
 
 const analyzeMock = vi.hoisted(() => vi.fn());
+const saveOcapMock = vi.hoisted(() => vi.fn());
+const assigneesState = vi.hoisted(() => ({
+  data: [{ id: 8, username: 'qa-user', role: 'qa_supervisor', role_name: 'QA主管' }],
+}));
 const useSpcStudyMock = vi.hoisted(() => vi.fn((_id: number | null) => ({ data: null })));
 const studiesState = vi.hoisted(() => ({ value: [] as Array<Record<string, unknown>> }));
+
+beforeAll(() => {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation(() => ({
+      matches: false,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  });
+});
 
 vi.mock('../../context/useAuth', () => ({
   useAuth: () => ({ hasPermission: () => true }),
@@ -18,7 +35,12 @@ vi.mock('../../hooks/useSpcStudies', () => ({
   useApproveSpcStudy: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRejectSpcStudy: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRetireSpcLimit: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useSaveSpcOcap: () => ({ mutate: vi.fn(), isPending: false }),
+  useSaveSpcOcap: () => ({
+    mutate: saveOcapMock, isPending: false, isError: false,
+  }),
+  useSpcAssignees: () => ({
+    data: assigneesState.data, isLoading: false, isError: false,
+  }),
   useSpcStudies: () => ({ data: studiesState.value }),
   useSpcStudy: (id: number | null) => useSpcStudyMock(id),
 }));
@@ -192,5 +214,73 @@ describe('SpcStudyPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '返回回溯基準' }));
 
     expect(onVersionChange).toHaveBeenCalledWith(null);
+  });
+
+  it('OCAP 儲存後立即替換事件資料，重新開啟不需重新整理', async () => {
+    const oldOcap = {
+      id: 3, event_id: 81, investigation_6m: { summary: '舊原因' },
+      remeasurement: null, process_adjustment: '舊調整', product_disposition: null,
+      owner_id: 8, effectiveness: null, status: 'open', created_by: 1,
+      updated_by: 1, created_at: '2026-07-19T01:00:00Z',
+      updated_at: '2026-07-19T01:00:00Z',
+    };
+    const newOcap = {
+      ...oldOcap, process_adjustment: '新調整',
+      updated_at: '2026-07-19T02:00:00Z',
+    };
+    const event = {
+      id: 81, limit_version_id: 8, study_version_id: version.id,
+      sample_id: null, chart_kind: 'variation', rule_code: 'beyond_limits',
+      point_index: 4, observed_value: 0.8, status: 'investigating',
+      created_at: '2026-07-19T00:00:00Z', ocap: oldOcap,
+    };
+    const limit = {
+      id: 8, study_version_id: version.id, revision: 1, chart_type: 'xbar_s',
+      limits: {}, status: 'active', approved_by: 1, approved_at: '2026-07-18',
+      events: [event],
+    };
+    const ongoing = {
+      ...version,
+      study_type: 'ongoing',
+      status: 'active',
+      data_hash: 'current-hash',
+      monitoring_limit: limit,
+      limit_versions: [limit],
+    } as SpcStudyResult;
+    let latest = ongoing;
+    const onVersionChange = vi.fn((value: SpcStudyResult | null) => {
+      if (value) latest = value;
+    });
+    saveOcapMock.mockImplementation((_input, options) => options.onSuccess(newOcap));
+    const view = render(
+      <SpcStudyPanel
+        source="shipping"
+        filters={ongoing.filters}
+        preview={{ process_stream_key: 'stream-a', data_hash: 'current-hash' } as never}
+        version={ongoing}
+        onVersionChange={onVersionChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /事件 #81/ }));
+    expect(screen.getByLabelText('製程調整')).toHaveValue('舊調整');
+    fireEvent.click(screen.getByRole('button', { name: '儲存 OCAP' }));
+
+    await waitFor(() => expect(onVersionChange).toHaveBeenCalled());
+    expect(latest.monitoring_limit?.events[0].ocap?.process_adjustment).toBe('新調整');
+    expect(latest.limit_versions?.[0].events[0].ocap?.process_adjustment).toBe('新調整');
+    expect(ongoing.monitoring_limit?.events[0].ocap?.process_adjustment).toBe('舊調整');
+
+    view.rerender(
+      <SpcStudyPanel
+        source="shipping"
+        filters={ongoing.filters}
+        preview={{ process_stream_key: 'stream-a', data_hash: 'current-hash' } as never}
+        version={latest}
+        onVersionChange={onVersionChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /事件 #81/ }));
+    expect(screen.getByLabelText('製程調整')).toHaveValue('新調整');
   });
 });

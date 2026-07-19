@@ -11,6 +11,7 @@ interface SpcOcapOffcanvasProps {
   onHide: () => void;
   onSave: (input: SpcOcapInput) => void;
   pending?: boolean;
+  saveError?: boolean;
   assignees?: SpcAssignee[];
   assigneesLoading?: boolean;
   assigneesError?: boolean;
@@ -18,7 +19,7 @@ interface SpcOcapOffcanvasProps {
 
 const SpcOcapOffcanvas = ({
   show, eventId, ocapId, initialValue, onHide, onSave, pending = false,
-  assignees = [], assigneesLoading = false, assigneesError = false,
+  saveError = false, assignees = [], assigneesLoading = false, assigneesError = false,
 }: SpcOcapOffcanvasProps) => {
   const [investigation, setInvestigation] = useState(() => String(initialValue?.investigation_6m?.summary ?? ''));
   const [remeasurement, setRemeasurement] = useState(() => String(initialValue?.remeasurement?.result ?? ''));
@@ -117,6 +118,11 @@ const SpcOcapOffcanvas = ({
             <Form.Control as="textarea" rows={3} value={effectiveness} onChange={event => setEffectiveness(event.target.value)} placeholder="結案前說明追蹤期間與客觀證據" />
           </Form.Group>
           <Form.Check id="ocap-closed" className="mb-3" label="結案" checked={closed} onChange={event => setClosed(event.target.checked)} />
+          {saveError && (
+            <Alert variant="danger" className="py-2">
+              OCAP 儲存失敗，已保留目前輸入，請確認資料後再試。
+            </Alert>
+          )}
           <div className="d-flex justify-content-end gap-2">
             <Button variant="outline-secondary" onClick={onHide}>取消</Button>
             <Button variant="primary" disabled={pending || (closed && !effectiveness.trim())} onClick={handleSave}>

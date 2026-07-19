@@ -76,4 +76,33 @@ describe('SpcOcapOffcanvas', () => {
     expect(historical).toBeDisabled();
     expect(screen.getByLabelText('責任人')).toHaveValue('77');
   });
+
+  it('儲存失敗時顯示提示並保留目前輸入', () => {
+    const onSave = vi.fn();
+    const view = render(
+      <SpcOcapOffcanvas
+        show
+        eventId={81}
+        onHide={vi.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('製程調整'), {
+      target: { value: '保留的調整內容' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '儲存 OCAP' }));
+    view.rerender(
+      <SpcOcapOffcanvas
+        show
+        eventId={81}
+        saveError
+        onHide={vi.fn()}
+        onSave={onSave}
+      />,
+    );
+
+    expect(screen.getByText('OCAP 儲存失敗，已保留目前輸入，請確認資料後再試。')).toBeInTheDocument();
+    expect(screen.getByLabelText('製程調整')).toHaveValue('保留的調整內容');
+  });
 });

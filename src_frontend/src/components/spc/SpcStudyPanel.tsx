@@ -3,10 +3,12 @@ import { Alert, Badge, Button, Card } from 'react-bootstrap';
 import { useAuth } from '../../context/useAuth';
 import {
   useAnalyzeSpcStudy, useApproveSpcStudy, useConfirmSpcTimeModel,
-  useRejectSpcStudy, useRetireSpcLimit, useSaveSpcOcap, useSpcStudies,
-  useSpcStudy, useSubmitSpcStudy,
+  useRejectSpcStudy, useRetireSpcLimit, useSaveSpcOcap, useSpcAssignees,
+  useSpcStudies, useSpcStudy, useSubmitSpcStudy,
 } from '../../hooks/useSpcStudies';
-import type { SpcChartData, SpcEventSummary, SpcStudyResult } from '../../types';
+import type {
+  SpcChartData, SpcEventSummary, SpcLimitVersionSummary, SpcOcapRecord, SpcStudyResult,
+} from '../../types';
 import SpcBaselineApprovalModal, { type SpcWorkflowAction } from './SpcBaselineApprovalModal';
 import SpcStudyHistoryOffcanvas from './SpcStudyHistoryOffcanvas';
 import SpcStudyWorkflowBar from './SpcStudyWorkflowBar';
@@ -28,6 +30,33 @@ const stabilityBadge = (label: string, stable: boolean | null | undefined) => (
   </Badge>
 );
 
+const replaceLimitEventOcap = (
+  limit: SpcLimitVersionSummary,
+  eventId: number,
+  ocap: SpcOcapRecord,
+): SpcLimitVersionSummary => ({
+  ...limit,
+  events: limit.events?.map(event => (
+    event.id === eventId
+      ? { ...event, ocap, status: ocap.status === 'closed' ? 'closed' : 'investigating' }
+      : event
+  )),
+});
+
+// eslint-disable-next-line react-refresh/only-export-components -- 供事件同步邏輯單獨測試與重用
+export const replaceEventOcap = (
+  version: SpcStudyResult,
+  eventId: number,
+  ocap: SpcOcapRecord,
+): SpcStudyResult => ({
+  ...version,
+  monitoring_limit: version.monitoring_limit
+    ? replaceLimitEventOcap(version.monitoring_limit, eventId, ocap)
+    : version.monitoring_limit,
+  limit_versions: version.limit_versions?.map(limit =>
+    replaceLimitEventOcap(limit, eventId, ocap)),
+});
+
 const SpcStudyPanel = ({
   source, filters, preview, version: selectedVersion, studyType = 'retrospective', onVersionChange,
 }: SpcStudyPanelProps) => {
@@ -38,7 +67,6 @@ const SpcStudyPanel = ({
   const approve = useApproveSpcStudy();
   const reject = useRejectSpcStudy();
   const retire = useRetireSpcLimit();
-  const saveOcap = useSaveSpcOcap();
   const { data: studies = [] } = useSpcStudies();
   const matchingStudy = studies.find(study =>
     study.source === source
@@ -71,6 +99,8 @@ const SpcStudyPanel = ({
   }, [onVersionChange, preview?.process_stream_key, savedStudy, version, versionMatchesPreview]);
 
   const canManage = hasPermission('spc.manage');
+  const saveOcap = useSaveSpcOcap(version?.study_id ?? null);
+  const assignees = useSpcAssignees(Boolean(selectedEvent && canManage));
   const canApprove = hasPermission('spc.approve');
   const canView = hasPermission('spc.view') || canManage || canApprove;
   const stability = version?.stability ?? preview?.stability;
@@ -239,8 +269,19 @@ const SpcStudyPanel = ({
           ocapId={selectedEvent.ocap?.id}
           initialValue={selectedEvent.ocap}
           pending={saveOcap.isPending}
+          saveError={saveOcap.isError}
+          assignees={assignees.data ?? []}
+          assigneesLoading={assignees.isLoading}
+          assigneesError={assignees.isError}
           onHide={() => setSelectedEvent(null)}
-          onSave={input => saveOcap.mutate(input, { onSuccess: () => setSelectedEvent(null) })}
+          onSave={input => saveOcap.mutate(input, {
+            onSuccess: ocap => {
+              if (version) {
+                onVersionChange(replaceEventOcap(version, selectedEvent.id, ocap));
+              }
+              setSelectedEvent(null);
+            },
+          })}
         />
       )}
     </Card>
