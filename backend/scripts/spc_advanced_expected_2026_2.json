@@ -1,0 +1,103 @@
+{
+  "dataset_version": "spc-advanced-golden-2026.2",
+  "expected": {
+    "attribute": {
+      "p": {
+        "chart_type": "p",
+        "center": 0.05641025641025641,
+        "first_lcl": 0.0,
+        "first_ucl": 0.15,
+        "total_inspected": 390,
+        "total_nonconforming": 22
+      },
+      "np": {
+        "chart_type": "np",
+        "center": 0.055,
+        "first_lcl": 0.0,
+        "first_ucl": 13.0,
+        "total_inspected": 400,
+        "total_nonconforming": 22
+      }
+    },
+    "machine": {
+      "method": "G",
+      "n": 60,
+      "pm": 2.666687117753824,
+      "pmk": 2.6666871177538165,
+      "q_0_135": 9.700002300729661,
+      "q_50": 10.0,
+      "q_99_865": 10.29999769927034,
+      "approvable": true
+    },
+    "time_models": {
+      "A1": "A1",
+      "A2": "A2",
+      "B": "B",
+      "C1": "C1",
+      "C2": "C2",
+      "C3": "C3",
+      "C4": "C4",
+      "D": "D"
+    },
+    "transformations": {
+      "boxcox": {
+        "model": "boxcox",
+        "accepted": true,
+        "ad_statistic": 0.02384194433875564,
+        "ad_p_value": 0.15,
+        "roundtrip_relative_error": 8.026883038097634e-16
+      },
+      "johnson_su": {
+        "model": "johnson_su",
+        "accepted": true,
+        "ad_statistic": 0.02871720234293207,
+        "ad_p_value": 0.15,
+        "roundtrip_relative_error": 2.220446049250313e-15
+      },
+      "johnson_sb": {
+        "model": "johnson_sb",
+        "accepted": true,
+        "ad_statistic": 0.03081052508603932,
+        "ad_p_value": 0.15,
+        "roundtrip_relative_error": 2.6210813127703315e-16
+      },
+      "johnson_sl": {
+        "model": "johnson_sl",
+        "accepted": true,
+        "ad_statistic": 0.023737441139545012,
+        "ad_p_value": 0.15,
+        "roundtrip_relative_error": 1.4564185882478545e-15
+      }
+    }
+  },
+  "tolerances": {
+    "attribute.p.center": {"abs": 1e-12, "rel": 1e-12},
+    "attribute.p.first_lcl": {"abs": 0.0, "rel": 0.0},
+    "attribute.p.first_ucl": {"abs": 1e-12, "rel": 1e-12},
+    "attribute.p.total_inspected": {"abs": 0.0, "rel": 0.0},
+    "attribute.p.total_nonconforming": {"abs": 0.0, "rel": 0.0},
+    "attribute.np.center": {"abs": 1e-12, "rel": 1e-12},
+    "attribute.np.first_lcl": {"abs": 0.0, "rel": 0.0},
+    "attribute.np.first_ucl": {"abs": 0.0, "rel": 0.0},
+    "attribute.np.total_inspected": {"abs": 0.0, "rel": 0.0},
+    "attribute.np.total_nonconforming": {"abs": 0.0, "rel": 0.0},
+    "machine.n": {"abs": 0.0, "rel": 0.0},
+    "machine.pm": {"abs": 1e-12, "rel": 1e-12},
+    "machine.pmk": {"abs": 1e-12, "rel": 1e-12},
+    "machine.q_0_135": {"abs": 1e-12, "rel": 1e-12},
+    "machine.q_50": {"abs": 1e-12, "rel": 1e-12},
+    "machine.q_99_865": {"abs": 1e-12, "rel": 1e-12},
+    "transformations.boxcox.ad_statistic": {"abs": 1e-10, "rel": 1e-10},
+    "transformations.boxcox.ad_p_value": {"abs": 1e-12, "rel": 1e-12},
+    "transformations.boxcox.roundtrip_relative_error": {"abs": 1e-12, "rel": 0.0},
+    "transformations.johnson_su.ad_statistic": {"abs": 1e-10, "rel": 1e-10},
+    "transformations.johnson_su.ad_p_value": {"abs": 1e-12, "rel": 1e-12},
+    "transformations.johnson_su.roundtrip_relative_error": {"abs": 1e-12, "rel": 0.0},
+    "transformations.johnson_sb.ad_statistic": {"abs": 1e-10, "rel": 1e-10},
+    "transformations.johnson_sb.ad_p_value": {"abs": 1e-12, "rel": 1e-12},
+    "transformations.johnson_sb.roundtrip_relative_error": {"abs": 1e-12, "rel": 0.0},
+    "transformations.johnson_sl.ad_statistic": {"abs": 1e-10, "rel": 1e-10},
+    "transformations.johnson_sl.ad_p_value": {"abs": 1e-12, "rel": 1e-12},
+    "transformations.johnson_sl.roundtrip_relative_error": {"abs": 1e-12, "rel": 0.0}
+  }
+}

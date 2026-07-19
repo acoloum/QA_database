@@ -17,6 +17,7 @@ from backend.models import (
     SpcValidationRun,
     User,
 )
+from backend.scripts.spc_advanced_regression import run_advanced_regression
 from backend.seeds.seed_roles import ROLES
 
 
@@ -127,6 +128,32 @@ def test_spc_audit_entities_roundtrip_and_keep_relationships(app, db_session):
         assert version.limit_versions == [limit]
         assert limit.events == [event]
         assert event.ocap is ocap
+
+
+def test_advanced_regression_persists_validation_run(app, db_session):
+    """進階固定基準通過時必須保存完整且可稽核的確效紀錄。"""
+
+    with app.app_context():
+        actor = _user(db_session, "advanced-validation-user")
+        db_session.commit()
+
+        result = run_advanced_regression(executed_by=actor.id, persist=True)
+        saved = SpcValidationRun.query.order_by(SpcValidationRun.id.desc()).first()
+
+        assert result["result"] == "PASS"
+        assert saved is not None
+        assert saved.dataset_version == "spc-advanced-golden-2026.2"
+        assert saved.method_version == "2026.2"
+        assert saved.result == "PASS"
+        assert saved.executed_by == actor.id
+        assert saved.actual["attribute"]["p"]["chart_type"] == "p"
+        assert saved.actual["attribute"]["np"]["chart_type"] == "np"
+        assert saved.actual["machine"]["pmk"] is not None
+        assert saved.actual["time_models"]["D"] == "D"
+        assert set(saved.actual["transformations"]) == {
+            "boxcox", "johnson_su", "johnson_sb", "johnson_sl",
+        }
+        assert saved.expected and saved.tolerances
 
 
 def test_study_version_number_is_unique_within_study(app, db_session):

@@ -8,6 +8,11 @@ from backend.services.spc_analysis_service import calculate_process_capability
 from backend.services.spc_chart_engine import calculate_chart_set
 from backend.services.spc_contracts import SpcSubgroup
 from backend.services.spc_time_model import classify_time_model
+from backend.scripts.spc_advanced_regression import (
+    _build_actual,
+    _compare,
+    _load_baseline,
+)
 
 
 def _groups(sizes):
@@ -161,3 +166,28 @@ def test_golden_confirmed_a1_supports_one_sided_capability():
     assert capability["ppl"] is None
     assert capability["ppu"] == pytest.approx(2.660, abs=1e-3)
     assert capability["cpk"] == capability["ppk"]
+
+
+def test_advanced_fixed_baseline_reports_value_drift_and_missing_tolerance():
+    """固定 expected 不得由 actual 自動更新，差異必須帶 path 與容許誤差。"""
+
+    expected, tolerances = _load_baseline()
+    actual = _build_actual()
+    actual["attribute"]["p"]["center"] += 0.01
+
+    differences = _compare(expected, actual, tolerances)
+
+    assert differences == [{
+        "path": "attribute.p.center",
+        "expected": expected["attribute"]["p"]["center"],
+        "actual": actual["attribute"]["p"]["center"],
+        "abs_tol": 1e-12,
+        "rel_tol": 1e-12,
+    }]
+
+    missing = dict(tolerances)
+    missing.pop("machine.pmk")
+    assert any(
+        row == {"path": "machine.pmk", "error": "數值基準缺少明確容許誤差"}
+        for row in _compare(expected, _build_actual(), missing)
+    )

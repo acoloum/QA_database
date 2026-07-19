@@ -10,6 +10,8 @@ import backend.services.spc_study_service as spc_study_module
 from backend.models import (
     AuditLog,
     Role,
+    ShippingData,
+    ShippingMeasurement,
     SpcEvent,
     SpcLimitVersion,
     SPCCache,
@@ -1036,6 +1038,95 @@ def test_ongoing_uses_transformed_observations_and_preserves_raw_samples(
         assert serialized["scale"] == "transformed"
         assert serialized["transformation_decision"] == decision
         assert serialized["original_sample_values"] == [200.0, 220.0]
+
+
+def test_stable_transformed_baseline_reaches_approved_ongoing_without_gate_patch(
+    app, db_session
+):
+    """以真實出貨轉接器驗證穩定轉換基準可完成正式生命週期。"""
+
+    with app.app_context():
+        _role(
+            db_session,
+            "transformed_e2e_approver",
+            {"spc.manage": True, "spc.approve": True, "spc.view": True},
+        )
+        actor = _user(db_session, "transformed-e2e", "transformed_e2e_approver")
+        probabilities = np.linspace(0.01, 0.99, 90)
+        values = scipy_stats.lognorm.ppf(
+            probabilities, 0.6, loc=0.0, scale=np.exp(1.0)
+        )
+        values = np.random.default_rng(41).permutation(values)
+        for index in range(30):
+            record = ShippingData(
+                date=date(2026, 6, index + 1),
+                material="SPC-E2E",
+                spec="LENGTH-TRANSFORM",
+                order_num=f"SPC-E2E-{index + 1}",
+                group_count=3,
+            )
+            db_session.add(record)
+            db_session.flush()
+            for group in range(3):
+                db_session.add(ShippingMeasurement(
+                    shipping_id=record.id,
+                    group_num=group + 1,
+                    item="長度",
+                    position="",
+                    value_single=float(values[index * 3 + group]),
+                    lower_limit=0.2,
+                    upper_limit=15.0,
+                ))
+        db_session.commit()
+
+        filters = {
+            "field": "長度",
+            "material": "SPC-E2E",
+            "spec": "LENGTH-TRANSFORM",
+        }
+        baseline = SpcStudyService.analyze("shipping", filters, actor.id)
+        transformed = SpcStudyService.confirm_transformation(
+            baseline.id,
+            actor.id,
+            model="johnson_sl",
+            reason="固定基準偏態，確認採 Johnson SL 轉換",
+        )
+        controlled = SpcStudyService.confirm_time_model(
+            transformed.id,
+            actor.id,
+            model="A2",
+            reason="轉換後位置與變異圖均穩定，確認 A2",
+        )
+        submitted = SpcStudyService.submit(
+            controlled.id, actor.id, reason="送審穩定轉換基準"
+        )
+        limit = SpcStudyService.approve_and_activate(
+            submitted.id, actor.id, reason="核准穩定轉換基準"
+        )
+
+        new_record = ShippingData(
+            date=date(2026, 7, 1), material="SPC-E2E", spec="LENGTH-TRANSFORM",
+            order_num="SPC-E2E-ONGOING", group_count=3,
+        )
+        db_session.add(new_record)
+        db_session.flush()
+        for group, value in enumerate((8.0, 8.5, 9.0), start=1):
+            db_session.add(ShippingMeasurement(
+                shipping_id=new_record.id, group_num=group, item="長度", position="",
+                value_single=value, lower_limit=0.2, upper_limit=15.0,
+            ))
+        db_session.commit()
+
+        ongoing = SpcStudyService.analyze(
+            "shipping", filters, actor.id, study_type="ongoing"
+        )
+
+        assert controlled.stability_result["stable"] is True
+        assert limit.status == "active"
+        assert limit.limits["scale"] == "transformed"
+        assert ongoing.status == "active"
+        assert ongoing.chart_result["scale"] == "transformed"
+        assert ongoing.time_model_result["reason_code"] == "ONGOING_USES_APPROVED_LIMITS"
 
 
 def test_bcd_research_approval_never_creates_production_limits(app, db_session, monkeypatch):

@@ -1,10 +1,10 @@
-# SPC 分析軟體確效文件（AIAG & VDA SPC 2026.1）
+# SPC 分析軟體確效文件（AIAG & VDA SPC 2026.2）
 
 本文件定義出貨檢驗與巡檢 SPC 的受控計算方法、輸入證據、適用門檻及可重現驗證方式。正式判定來源只存在於後端研究版本；前端不得重算或覆蓋穩定性結果。
 
 ## 受控方法
 
-| 項目 | 2026.1 實作 | 不適用時的處理 |
+| 項目 | 2026.2 實作 | 不適用時的處理 |
 |---|---|---|
 | 製程流 | 來源、完整篩選、品質特性、來源記錄／量測 ID、規格與排除快照共同形成製程流與 SHA-256 資料雜湊 | 篩選或來源資料改變後不得沿用原送審雜湊 |
 | 管制圖選型 | 所有子組 `n≥3` 優先 X̄-S；所有子組 `n=2` 使用 X̄-R；所有子組 `n=1` 且時間嚴格遞增使用 I-MR | 混合 `n=2` 與 `n≥3`、缺少時間或變異為零時回傳明確原因碼，不補造界限 |
@@ -19,6 +19,10 @@
 | 正式界限 | 候選研究版本送審後，由 `spc.approve` 核准生效；同一製程流／特性只有一個 active 版 | 舊 `SPC管制界限` 僅匯入 `legacy_imported`，不可偽造核准人或直接啟用 |
 | 正式失控事件 | 只有持續 SPC 使用 active 界限時建立去重事件，研究、事件與 audit 在同一交易提交；後續以 OCAP 保存 6M、重測、調整、產品處置、責任人與有效性 | 回溯研究只顯示診斷違規，不自動建立 OCAP；OCAP 可受控更新但不可刪除 |
 | 持續監控 | 目前資料只計算觀測統計量，沿用核准版本的逐點界限與規則集；子組大小或圖表類型未被核准時拒絕監控 | 零變異仍是合法觀測資料；不因新增觀測值重新置中、重估變異或重算界限 |
+| 屬性管制圖 | 只使用出貨／巡檢可由保存量測與規格可靠重建的符合／不符合單位，提供 p／np 與精確二項界限 | 分類不明資料 fail-closed 排除；不使用 NCMR、不實作 c／u；np 子組大小不固定時拒絕 |
+| 機器績效 | 只接受固定機台的巡檢 min/max 原始觀測，N≥50 且研究條件、規格、分布均確認後，以 G 法報告 Pm／Pmk | 不接受出貨或 Excel 來源；只走研究核准，不建立生產界限或 OCAP |
+| 完整時間診斷 | 以固定方法提出 A1、A2、B、C1、C2、C3、C4、D，保存 trend、Welch／Levene Holm、多峰與正式穩定性證據 | N<25 不可確認；B／C／D 只可人工理由確認為研究，不報 Cp／Cpk |
+| 分布轉換 | 保存 Box-Cox、Johnson SU／SB／SL 四候選的參數、AD、尾端、單調性與 round-trip 證據 | 只允許人工理由確認已通過候選；原始分布接受時不自動推薦，仍保留完整候選證據 |
 
 ## 指數與參數
 
@@ -36,15 +40,25 @@
 
 ## 黃金資料與容許誤差
 
-`backend/tests/test_services/test_spc_golden.py` 固定涵蓋：
+`backend/tests/test_services/test_spc_golden.py` 與
+`backend/scripts/spc_advanced_expected_2026_2.json` 固定涵蓋：
 
 - X̄-S、X̄-R、I-MR 與不等 `n` 逐點界限；
 - A1、A2、B、C3、D 候選；
 - 單側與雙側規格；
 - 位置穩定但變異失控；
 - 無可接受分布時不回退、不產生 PPM／指標補值。
+- p／np 精確離散界限與固定／不固定子組契約；
+- N=60 的 Pm／Pmk 與 G 法三分位數；
+- A1、A2、B、C1、C2、C3、C4、D 八類固定 raw datasets；
+- Box-Cox、Johnson SU、Johnson SB、Johnson SL 四類固定 datasets。
 
 黃金數值使用 `pytest.approx`；管制界限絕對容許差 `1e-8`，指數因對外顯示三位小數而使用 `1e-3`。資料雜湊、原因碼、圖表選型、狀態與 `null` 必須完全一致。任何 NaN／Infinity 均判定失敗。
+
+進階 runner 不會由本次 actual 自動產生 expected。expected 是 committed、可審查的固定
+JSON；每一個數值 path 都必須在 `tolerances` 明列 absolute／relative tolerance，缺少
+tolerance 本身即 FAIL。執行結果含逐 path PASS／FAIL 差異，並可把 expected、actual、
+tolerances、dataset/method/code version、結果及執行者保存至 `SPC軟體確效執行`。
 
 ## 重現步驟
 
@@ -53,8 +67,24 @@
 ```powershell
 C:\QC_Database\venv\Scripts\python.exe -m pytest backend\tests\test_services\test_spc_golden.py -q
 C:\QC_Database\venv\Scripts\python.exe backend\scripts\spc_regression.py
+C:\QC_Database\venv\Scripts\python.exe backend\scripts\spc_advanced_regression.py
+C:\QC_Database\venv\Scripts\python.exe backend\scripts\spc_advanced_regression.py --persist --executed-by <使用者ID>
 ```
 
 第二個命令使用固定資料完成 JSON 保存／讀回，輸出方法版本、程式版本、SHA-256、圖表選型、每點界限、兩圖穩定性、分布、時間模型與指標。成功條件為 `[PASS]`，且無 NaN、無未說明的常態回退。
 
-完整發版驗證另包含：後端全量 pytest、前端 lint/build/test、`npm audit`、`git diff --check`，以及依 [migration 36 runbook](spc_migration_36_runbook.md) 執行 PostgreSQL dry-run 與筆數核對。
+進階 runner 成功時最後一行必須精確為：
+
+```text
+[PASS] SPC 2026.2 進階分析確效通過；屬性圖、機器績效、時間模型與分布轉換皆符合固定基準。
+```
+
+2026-07-19 對正式 `qa_database` 執行 `--persist --executed-by 1` 已 PASS，保存
+`SpcValidationRun.id=1`；dataset `spc-advanced-golden-2026.2`、method `2026.2`、
+code `2026.1`、expected／actual／tolerances 均為 JSON object。此 ID 是該環境的
+稽核證據，不是可跨環境假設的固定 ID。
+
+完整發版驗證另包含：後端全量 pytest、兩個 regression runner、前端
+lint/build/test、`npm audit`、`git diff --check`，以及依
+[migration 38 runbook](migrations/38-spc-analysis-family-runbook.md) 執行 PostgreSQL
+rollback dry-run、正式套用、idempotent 重跑與 schema/preflight 查核。

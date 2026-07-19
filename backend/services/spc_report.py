@@ -59,6 +59,10 @@ class SpcReportService:
         for item in items:
             summary.append(item)
 
+        audit = workbook.create_sheet("版本稽核")
+        for name, value in (stats_data.get("version_metadata") or {}).items():
+            audit.append([name, value])
+
         samples = workbook.create_sheet("研究樣本")
         rows = stats_data.get("version_samples") or []
         headers = list(rows[0]) if rows else ["無樣本"]

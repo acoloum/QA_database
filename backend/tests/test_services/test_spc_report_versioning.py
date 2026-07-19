@@ -134,10 +134,15 @@ def test_machine_report_uses_research_semantics_without_control_limits(app, db_s
         workbook = load_workbook(SpcReportService.generate_version_report(version.id))
 
         assert "機器績效摘要" in workbook.sheetnames
+        assert "版本稽核" in workbook.sheetnames
         assert "管制圖數據" not in workbook.sheetnames
         rows = _sheet_values(workbook, "機器績效摘要")
         assert ("資料來源語意", "patrol_min_max_observations") in rows
         assert ("Pm", 2.0) in rows
+        audit = dict(_sheet_values(workbook, "版本稽核"))
+        assert audit["分析族別"] == "machine"
+        assert audit["方法版本"] == "2026.2"
+        assert audit["分布證據"]
 
 
 def test_machine_report_marks_missing_source_semantics_as_not_auditable(app, db_session):
