@@ -6,7 +6,7 @@ from io import BytesIO
 import pytest
 from openpyxl import load_workbook
 
-from backend.models import Role, SpcEvent, SpcLimitVersion, SpcOcap, User
+from backend.models import Role, SpcEvent, SpcLimitVersion, User
 from backend.services.spc_contracts import SpcStudyInput, SpcSubgroup
 from backend.services.spc_study_service import ADAPTERS
 from backend.utils import generate_token, hash_password
@@ -39,6 +39,10 @@ def spc_roles(db_session):
             code="spc_approver", name="SPC核准",
             permissions={"spc.view": True, "spc.manage": True, "spc.approve": True},
         ),
+        Role(code="qa_supervisor", name="QA主管", permissions={"spc.manage": True}),
+        Role(code="qc_manager", name="品管經理", permissions={"spc.manage": True}),
+        Role(code="admin", name="系統管理員", permissions={"spc.manage": True}),
+        Role(code="inspector", name="檢驗員", permissions={"spc.view": True}),
         Role(code="no_spc", name="無SPC權限", permissions={}),
     ])
     db_session.commit()
@@ -109,6 +113,29 @@ def test_analyze_requires_spc_view_permission(client, db_session, spc_roles):
         json={"source": "shipping", "filters": {}},
     )
     assert response.status_code == 403
+
+
+def test_spc_assignees_require_manage_and_expose_minimal_active_quality_users(
+    client, db_session, spc_roles
+):
+    manager = _user(db_session, "assignee-reader", "spc_manager")
+    viewer = _user(db_session, "assignee-viewer", "spc_viewer")
+    qa = _user(db_session, "qa-choice", "qa_supervisor")
+    qc = _user(db_session, "qc-choice", "qc_manager")
+    admin = _user(db_session, "admin-choice", "admin")
+    _user(db_session, "inspector-choice", "inspector")
+    disabled = _user(db_session, "disabled-choice", "qa_supervisor")
+    disabled.is_active = False
+    db_session.commit()
+
+    forbidden = client.get("/api/spc/assignees", headers=_headers(viewer))
+    response = client.get("/api/spc/assignees", headers=_headers(manager))
+
+    assert forbidden.status_code == 403
+    assert response.status_code == 200
+    rows = response.get_json()["data"]
+    assert {row["id"] for row in rows} == {qa.id, qc.id, admin.id}
+    assert set(rows[0]) == {"id", "username", "role", "role_name"}
 
 
 def test_submit_data_hash_conflict_returns_stable_409_contract(
@@ -183,11 +210,31 @@ def test_study_detail_exposes_limit_event_and_ocap_traceability(
     )
     db_session.add(event)
     db_session.flush()
-    db_session.add(SpcOcap(
-        event_id=event.id, investigation_6m={"machine": "壓力波動"},
-        status="open", created_by=manager.id, updated_by=manager.id,
-    ))
     db_session.commit()
+
+    created = client.post(
+        f"/api/spc/events/{event.id}/ocap",
+        headers=_headers(manager),
+        json={
+            "investigation_6m": {"summary": "壓力波動"},
+            "owner_id": None,
+            "status": "open",
+        },
+    )
+    assert created.status_code == 200
+    created_data = created.get_json()["data"]
+    assert created_data["event_id"] == event.id
+    assert created_data["investigation_6m"] == {"summary": "壓力波動"}
+    assert "created_at" in created_data
+    assert "updated_at" in created_data
+
+    updated = client.patch(
+        f"/api/spc/ocap/{created_data['id']}",
+        headers=_headers(manager),
+        json={"process_adjustment": "調整壓力", "status": "open"},
+    )
+    assert updated.status_code == 200
+    assert updated.get_json()["data"]["process_adjustment"] == "調整壓力"
 
     detail = client.get(
         f"/api/spc/studies/{analyzed['study_id']}", headers=_headers(manager)
@@ -198,7 +245,7 @@ def test_study_detail_exposes_limit_event_and_ocap_traceability(
     assert saved_limit["status"] == "active"
     assert saved_limit["events"][0]["id"] == event.id
     assert saved_limit["events"][0]["ocap"]["investigation_6m"] == {
-        "machine": "壓力波動"
+        "summary": "壓力波動"
     }
 
 

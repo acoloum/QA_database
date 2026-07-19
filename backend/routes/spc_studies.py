@@ -305,6 +305,14 @@ def retire_limit(current_user, limit_id):
     return _success({"id": limit.id, "status": limit.status})
 
 
+@spc_studies_bp.get("/api/spc/assignees")
+@auth_required
+@require_permission("spc.manage")
+@_handle_spc_errors
+def list_ocap_assignees(current_user):
+    return _success(SpcOcapService.list_assignable_users())
+
+
 @spc_studies_bp.post("/api/spc/events/<int:event_id>/ocap")
 @auth_required
 @require_permission("spc.manage")
@@ -313,7 +321,7 @@ def create_ocap(current_user, event_id):
     ocap = SpcOcapService.save_ocap(
         event_id, current_user.id, request.get_json(silent=True) or {}
     )
-    return _success({"id": ocap.id, "event_id": ocap.event_id, "status": ocap.status})
+    return _success(serialize_ocap(ocap))
 
 
 @spc_studies_bp.patch("/api/spc/ocap/<int:ocap_id>")
@@ -327,4 +335,4 @@ def update_ocap(current_user, ocap_id):
     updated = SpcOcapService.save_ocap(
         ocap.event_id, current_user.id, request.get_json(silent=True) or {}
     )
-    return _success({"id": updated.id, "event_id": updated.event_id, "status": updated.status})
+    return _success(serialize_ocap(updated))
