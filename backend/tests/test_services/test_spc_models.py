@@ -185,6 +185,67 @@ def test_spc_study_identity_includes_analysis_family(app, db_session):
     }
 
 
+def test_active_limit_identity_includes_analysis_family(app, db_session):
+    with app.app_context():
+        user = _user(db_session, "spc-family-limit-user")
+        _, variable_version = _study_version(
+            db_session, user, stream="family-limit-stream"
+        )
+        _, attribute_version = _study_version(
+            db_session,
+            user,
+            stream="family-limit-stream",
+            study_type="ongoing",
+        )
+        db_session.add_all([
+            SpcLimitVersion(
+                study_version_id=variable_version.id,
+                analysis_family="variable",
+                process_stream_key="family-limit-stream",
+                characteristic="外徑",
+                revision=1,
+                chart_type="xbar_s",
+                limits={},
+                status="active",
+                created_by=user.id,
+            ),
+            SpcLimitVersion(
+                study_version_id=attribute_version.id,
+                analysis_family="attribute",
+                process_stream_key="family-limit-stream",
+                characteristic="外徑",
+                revision=1,
+                chart_type="p",
+                limits={},
+                status="active",
+                created_by=user.id,
+            ),
+        ])
+        db_session.commit()
+
+        assert SpcLimitVersion.query.filter_by(status="active").count() == 2
+
+
+def test_analysis_family_migration_handles_immutable_rows_and_rebuilds_indexes():
+    migration = Path(
+        "backend/migration/38_add_spc_analysis_family.sql"
+    ).read_text(encoding="utf-8")
+
+    assert '"分析族別" VARCHAR(20) NOT NULL DEFAULT \'variable\'' in migration
+    assert '"分析選項快照" JSONB NOT NULL DEFAULT \'{}\'::jsonb' in migration
+    assert (
+        'IF EXISTS (SELECT 1 FROM "SPC研究" WHERE "分析族別" IS NULL) THEN'
+        in migration
+    )
+    assert 'DISABLE TRIGGER trg_spc_limit_version_immutable' in migration
+    assert 'ENABLE TRIGGER trg_spc_limit_version_immutable' in migration
+    assert 'DROP INDEX IF EXISTS idx_spc_study_stream_characteristic' in migration
+    assert (
+        'ON "SPC研究" ("分析族別", "製程流識別鍵", "品質特性")'
+        in migration
+    )
+
+
 @pytest.mark.parametrize(
     ("model_factory", "invalid_status"),
     [

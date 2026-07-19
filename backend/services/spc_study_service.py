@@ -2,6 +2,7 @@
 
 from dataclasses import asdict, replace
 from datetime import date, datetime, timedelta, timezone
+import inspect
 import json
 import os
 from typing import Any, Callable, Mapping
@@ -41,6 +42,7 @@ from .spc_contracts import (
     SpcStudyInput,
     SpcSubgroup,
 )
+from .spc_adapters.common import SPC_INPUT_CONTRACT_VERSION
 from .spc_distribution import assess_distribution
 from .spc_errors import (
     SpcConflict,
@@ -122,12 +124,29 @@ def _adapter_input(
     *,
     analysis_family: AnalysisFamily = "variable",
     options: Mapping[str, Any] | None = None,
+    input_contract_version: str = SPC_INPUT_CONTRACT_VERSION,
 ) -> SpcStudyInput:
     adapter = ADAPTERS.get(source)
     if adapter is None:
         raise SpcValidationError("SPC_SOURCE_UNSUPPORTED", f"不支援的 SPC 資料來源：{source}")
+    parameters = inspect.signature(adapter).parameters.values()
+    supports_context = any(
+        parameter.kind == parameter.VAR_KEYWORD
+        for parameter in parameters
+    ) or {"analysis_family", "options", "input_contract_version"}.issubset(
+        inspect.signature(adapter).parameters
+    )
+    study_input = (
+        adapter(
+            filters,
+            analysis_family=analysis_family,
+            options=dict(options or {}),
+            input_contract_version=input_contract_version,
+        )
+        if supports_context else adapter(filters)
+    )
     return replace(
-        adapter(filters),
+        study_input,
         analysis_family=analysis_family,
         options=dict(options or {}),
     )
@@ -346,6 +365,11 @@ def _assert_source_unchanged(version: SpcStudyVersion) -> SpcStudyInput:
         version.study.source,
         version.study.filters,
         analysis_family=version.study.analysis_family,
+        options=version.analysis_options or {},
+        input_contract_version=(
+            "2026.1" if version.method_version == "2026.1"
+            else SPC_INPUT_CONTRACT_VERSION
+        ),
     )
     if current.data_hash != version.data_hash:
         raise SpcConflict(
@@ -477,7 +501,7 @@ class SpcStudyService:
         _require_permission(actor_id, "spc.view")
         if study_type not in {"retrospective", "ongoing"}:
             raise SpcValidationError("SPC_STUDY_TYPE_INVALID", "研究類型不受支援")
-        if analysis_family not in ANALYSIS_FAMILIES:
+        if not isinstance(analysis_family, str) or analysis_family not in ANALYSIS_FAMILIES:
             raise SpcValidationError(
                 "SPC_ANALYSIS_FAMILY_INVALID",
                 "分析族別僅支援 variable、attribute 或 machine",
@@ -485,6 +509,11 @@ class SpcStudyService:
         if options is not None and not isinstance(options, Mapping):
             raise SpcValidationError(
                 "SPC_ANALYSIS_OPTIONS_INVALID", "分析選項必須是物件",
+            )
+        if analysis_family != "variable":
+            raise SpcValidationError(
+                "SPC_ANALYSIS_FAMILY_NOT_IMPLEMENTED",
+                "目前僅支援 variable 分析族別",
             )
         study_input = _adapter_input(
             source,
@@ -552,6 +581,7 @@ class SpcStudyService:
             method_version=SPC_METHOD_VERSION,
             code_version=SPC_CODE_VERSION,
             data_hash=study_input.data_hash,
+            analysis_options=dict(study_input.options),
             specification_snapshot=dict(study_input.specification),
             status="active" if study_type == "ongoing" else "draft",
             created_by=actor_id,
@@ -823,6 +853,7 @@ class SpcStudyService:
             method_version=version.method_version,
             code_version=version.code_version,
             data_hash=version.data_hash,
+            analysis_options=dict(version.analysis_options or {}),
             specification_snapshot=dict(version.specification_snapshot or {}),
             chart_result=dict(version.chart_result or {}),
             stability_result=dict(version.stability_result or {}),

@@ -350,6 +350,7 @@ class SpcStudyVersion(db.Model):
     method_version = db.Column('方法版本', db.String(30), nullable=False)
     code_version = db.Column('程式版本', db.String(80), nullable=True)
     data_hash = db.Column('資料雜湊', db.String(64), nullable=True)
+    analysis_options = db.Column('分析選項快照', JsonType, nullable=False, default=dict)
     specification_snapshot = db.Column('規格快照', JsonType, nullable=True)
     chart_result = db.Column('管制圖結果', JsonType, nullable=True)
     stability_result = db.Column('穩定性結果', JsonType, nullable=True)

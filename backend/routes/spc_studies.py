@@ -118,6 +118,7 @@ def serialize_version(version, *, include_samples=False, include_relations=True)
         "method_version": version.method_version,
         "code_version": version.code_version,
         "data_hash": version.data_hash,
+        "options": version.analysis_options or {},
         "specification": version.specification_snapshot or {},
         "charts": version.chart_result,
         "stability": version.stability_result or {},
@@ -196,7 +197,11 @@ def _handle_spc_errors(function):
             }
             if error.details is not None:
                 payload["details"] = _json_value(error.details)
-            return jsonify(payload), error.status_code
+            status_code = (
+                400 if error.code == "SPC_ANALYSIS_FAMILY_INVALID"
+                else error.status_code
+            )
+            return jsonify(payload), status_code
         except ValueError as error:
             return jsonify({
                 "success": False, "code": "VALIDATION_ERROR", "message": str(error),
@@ -214,12 +219,15 @@ def analyze_study(current_user):
     filters = body.get("filters") or {}
     if not source:
         raise SpcValidationError("SPC_SOURCE_REQUIRED", "必須指定 SPC 資料來源")
+    analysis_family = (
+        body["analysis_family"] if "analysis_family" in body else "variable"
+    )
     version = SpcStudyService.analyze(
         source,
         filters,
         current_user.id,
         study_type=body.get("study_type") or "retrospective",
-        analysis_family=body.get("analysis_family") or "variable",
+        analysis_family=analysis_family,
         options=body.get("options"),
     )
     return _success(serialize_version(version, include_samples=True))
@@ -301,12 +309,7 @@ def approve_study(current_user, version_id):
     limit = SpcStudyService.approve_and_activate(
         version_id, current_user.id, reason=body.get("reason")
     )
-    return _success({
-        "id": limit.id, "study_version_id": limit.study_version_id,
-        "revision": limit.revision, "status": limit.status,
-        "limits": limit.limits, "approved_by": limit.approved_by,
-        "approved_at": _json_value(limit.approved_at),
-    })
+    return _success(serialize_limit_version(limit))
 
 
 @spc_studies_bp.post("/api/spc/study-versions/<int:version_id>/reject")

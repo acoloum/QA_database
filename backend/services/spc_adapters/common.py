@@ -104,21 +104,23 @@ def calculate_study_data_hash(
     *, source: str, filters: Mapping[str, Any], source_rows: Sequence[Mapping[str, Any]],
     specification: Mapping[str, Any], analysis_family: str = "variable",
     options: Mapping[str, Any] | None = None,
+    input_contract_version: str = SPC_INPUT_CONTRACT_VERSION,
 ) -> str:
-    """雜湊完整研究輸入；查詢回傳順序不同仍產生相同結果。"""
+    """雜湊完整研究輸入；依指定契約保留歷史版本相容性。"""
 
     sorted_rows = sorted(
         (dict(row) for row in source_rows), key=canonical_json,
     )
     payload = {
-        "contract_version": SPC_INPUT_CONTRACT_VERSION,
+        "contract_version": input_contract_version,
         "source": source,
         "filters": dict(filters),
-        "analysis_family": analysis_family,
-        "options": dict(options or {}),
         "source_rows": sorted_rows,
         "specification": dict(specification),
     }
+    if input_contract_version != "2026.1":
+        payload["analysis_family"] = analysis_family
+        payload["options"] = dict(options or {})
     return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
 

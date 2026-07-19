@@ -7,6 +7,7 @@ from typing import Any, Mapping
 from ...models import ShippingData, ShippingMeasurement, Vendor
 from ..spc_contracts import SpcReason, SpcStudyInput, SpcSubgroup
 from .common import (
+    SPC_INPUT_CONTRACT_VERSION,
     calculate_study_data_hash,
     canonical_process_stream,
     specification_from_measurement_limits,
@@ -30,7 +31,13 @@ def _measurement_value(row: ShippingMeasurement, characteristic: str) -> float |
     return float(row.value_single)
 
 
-def build_shipping_study_input(args: Mapping[str, Any]) -> SpcStudyInput:
+def build_shipping_study_input(
+    args: Mapping[str, Any],
+    *,
+    analysis_family: str = "variable",
+    options: Mapping[str, Any] | None = None,
+    input_contract_version: str = SPC_INPUT_CONTRACT_VERSION,
+) -> SpcStudyInput:
     """依完整出貨篩選條件建立可重現的 SPC 研究輸入。"""
 
     stream = canonical_process_stream("shipping", args)
@@ -149,6 +156,9 @@ def build_shipping_study_input(args: Mapping[str, Any]) -> SpcStudyInput:
     data_hash = calculate_study_data_hash(
         source="shipping", filters=filters, source_rows=source_rows,
         specification=specification,
+        analysis_family=analysis_family,
+        options=options,
+        input_contract_version=input_contract_version,
     )
     return SpcStudyInput(
         source="shipping",
@@ -157,6 +167,8 @@ def build_shipping_study_input(args: Mapping[str, Any]) -> SpcStudyInput:
         characteristic=characteristic,
         subgroups=subgroups,
         specification=specification,
+        analysis_family=analysis_family,
+        options=options,
         data_hash=data_hash,
         reasons=reasons,
         metadata={

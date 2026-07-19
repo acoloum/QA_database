@@ -16,6 +16,7 @@ from backend.models import (
     User,
 )
 from backend.services.spc_contracts import SpcStudyInput, SpcSubgroup
+from backend.services.spc_adapters.common import calculate_study_data_hash
 from backend.services.spc_errors import SpcConflict, SpcForbidden, SpcValidationError
 from backend.services.spc_study_service import (
     ADAPTERS,
@@ -140,6 +141,161 @@ def test_analyze_rejects_unknown_analysis_family(app, db_session, spc_view_user)
         )
 
     assert error.value.code == "SPC_ANALYSIS_FAMILY_INVALID"
+
+
+@pytest.mark.parametrize("analysis_family", [[], {}, 7])
+def test_analyze_rejects_non_string_analysis_family(
+    app, db_session, spc_view_user, analysis_family
+):
+    with pytest.raises(SpcValidationError) as error:
+        SpcStudyService.analyze(
+            "shipping", {}, spc_view_user.id, analysis_family=analysis_family
+        )
+
+    assert error.value.code == "SPC_ANALYSIS_FAMILY_INVALID"
+
+
+@pytest.mark.parametrize("analysis_family", ["attribute", "machine"])
+def test_analyze_rejects_unimplemented_analysis_family(
+    app, db_session, spc_view_user, analysis_family
+):
+    with pytest.raises(SpcValidationError) as error:
+        SpcStudyService.analyze(
+            "shipping", {}, spc_view_user.id, analysis_family=analysis_family
+        )
+
+    assert error.value.code == "SPC_ANALYSIS_FAMILY_NOT_IMPLEMENTED"
+
+
+def test_analyze_snapshots_options_and_includes_them_in_hash(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        _role(db_session, "spc_options_manager", {"spc.view": True, "spc.manage": True})
+        manager = _user(db_session, "spc-options-manager", "spc_options_manager")
+        source_rows = [{"id": 1, "value": 10.0}]
+        specification = {"found": True, "LSL": 9.5, "USL": 10.5}
+        options = {"subgroup": {"size": 5}, "rule_set": ["beyond_limits"]}
+
+        def adapter(
+            _filters, *, analysis_family, options, input_contract_version
+        ):
+            return SpcStudyInput(
+                source="shipping",
+                filters={"field": "外徑"},
+                process_stream_key="options-stream",
+                characteristic="外徑",
+                subgroups=_input().subgroups,
+                specification=specification,
+                analysis_family=analysis_family,
+                options=options,
+                data_hash=calculate_study_data_hash(
+                    source="shipping",
+                    filters={"field": "外徑"},
+                    source_rows=source_rows,
+                    specification=specification,
+                    analysis_family=analysis_family,
+                    options=options,
+                    input_contract_version=input_contract_version,
+                ),
+            )
+
+        monkeypatch.setitem(ADAPTERS, "shipping", adapter)
+        version = SpcStudyService.analyze(
+            "shipping", {"field": "外徑"}, manager.id, options=options
+        )
+
+        assert version.analysis_options == options
+        assert version.study.filters == {"field": "外徑"}
+        assert version.data_hash == calculate_study_data_hash(
+            source="shipping",
+            filters={"field": "外徑"},
+            source_rows=source_rows,
+            specification=specification,
+            analysis_family="variable",
+            options=options,
+            input_contract_version="2026.2",
+        )
+
+        submitted = SpcStudyService.submit(version.id, manager.id, reason="選項已確認")
+        assert submitted.status == "submitted"
+
+
+def test_legacy_2026_1_version_can_submit_and_approve_with_historical_hash(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        _role(db_session, "legacy_manager", {"spc.view": True, "spc.manage": True})
+        _role(db_session, "legacy_approver", {"spc.approve": True})
+        manager = _user(db_session, "legacy-hash-manager", "legacy_manager")
+        approver = _user(db_session, "legacy-hash-approver", "legacy_approver")
+        source_rows = [{"id": 1, "value": 10.0}]
+        specification = {"found": True, "LSL": 9.5, "USL": 10.5}
+        legacy_hash = calculate_study_data_hash(
+            source="shipping",
+            filters={"field": "外徑"},
+            source_rows=source_rows,
+            specification=specification,
+            input_contract_version="2026.1",
+        )
+        calls = []
+
+        def adapter(
+            _filters, *, analysis_family, options, input_contract_version
+        ):
+            calls.append((analysis_family, options, input_contract_version))
+            return SpcStudyInput(
+                source="shipping",
+                filters={"field": "外徑"},
+                process_stream_key="legacy-hash-stream",
+                characteristic="外徑",
+                subgroups=_input().subgroups,
+                specification=specification,
+                analysis_family=analysis_family,
+                options=options,
+                data_hash=calculate_study_data_hash(
+                    source="shipping",
+                    filters={"field": "外徑"},
+                    source_rows=source_rows,
+                    specification=specification,
+                    analysis_family=analysis_family,
+                    options=options,
+                    input_contract_version=input_contract_version,
+                ),
+            )
+
+        monkeypatch.setitem(ADAPTERS, "shipping", adapter)
+        study = SpcStudy(
+            source="shipping",
+            study_type="retrospective",
+            analysis_family="variable",
+            process_stream_key="legacy-hash-stream",
+            characteristic="外徑",
+            filters={"field": "外徑"},
+            status="draft",
+            created_by=manager.id,
+        )
+        results = _approvable_results(_input())
+        version = SpcStudyVersion(
+            study=study,
+            version_no=1,
+            method_version="2026.1",
+            data_hash=legacy_hash,
+            specification_snapshot=specification,
+            status="draft",
+            created_by=manager.id,
+            **results,
+        )
+        db_session.add(version)
+        db_session.commit()
+
+        submitted = SpcStudyService.submit(version.id, manager.id, reason="保留舊版證據")
+        limit = SpcStudyService.approve_and_activate(
+            submitted.id, approver.id, reason="舊版雜湊一致"
+        )
+
+        assert calls == [("variable", {}, "2026.1"), ("variable", {}, "2026.1")]
+        assert limit.analysis_family == "variable"
 
 
 def test_preview_cache_upsert_updates_existing_key_atomically(app, db_session):

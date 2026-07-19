@@ -95,7 +95,7 @@ def test_viewer_can_analyze_and_read_study_contract(
     assert version["study_type"] == "retrospective"
     assert version["process_stream_key"] == "api-stream"
     assert version["filters"]["field"] == "外徑"
-    assert version["method_version"] == "2026.1"
+    assert version["method_version"] == "2026.2"
     assert version["data_hash"] == "a" * 64
     assert version["charts"]["chart_type"] == "xbar_r"
     assert "location" in version["stability"]
@@ -115,6 +115,21 @@ def test_viewer_can_analyze_and_read_study_contract(
     assert history_data["page"] == 1
     assert history_data["per_page"] == 20
     assert history_data["total"] == 1
+
+
+def test_analyze_rejects_non_string_analysis_family_from_api(
+    client, db_session, spc_roles
+):
+    viewer = _user(db_session, "spc-family-api-viewer", "spc_viewer")
+
+    response = client.post(
+        "/api/spc/studies/analyze",
+        headers=_headers(viewer),
+        json={"source": "shipping", "filters": {}, "analysis_family": []},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["code"] == "SPC_ANALYSIS_FAMILY_INVALID"
 
 
 def test_analyze_requires_spc_view_permission(client, db_session, spc_roles):
