@@ -586,10 +586,7 @@ class PatrolService:
 
     @staticmethod
     def export_excel(args: Dict[str, Any]) -> BytesIO:
-        """匯出巡檢資料 Excel（含 SPC 統計與圖表，按規格+材質分組）"""
-        from ..services.spc_report import SpcReportService
-        from openpyxl import load_workbook
-
+        """匯出巡檢原始資料；SPC 報表由不可變研究版本的路由流程處理。"""
         spc_item = args.get('item', '')      # 測量項目（外徑/內徑/厚度）
         spc_position = args.get('position', '')  # 測量位置（前段/中段/後段/全段）
 
@@ -683,69 +680,14 @@ class PatrolService:
             df.to_excel(output, index=False, engine='openpyxl', sheet_name='原始數據')
             output.seek(0)
 
-            # === 2. 如果有選擇 SPC 項目，按規格+材質分組產生 SPC 報表 ===
-            if spc_item and rows:
-                wb = load_workbook(output)
-
-                # 收集所有不重複的「規格+材質」組合
-                spec_mat_set: Dict[str, Dict[str, Any]] = {}
-                for row in rows:
-                    patrol = row[0]
-                    v_name = row[4]  # Vendor.name
-                    mat = (patrol.material or '').strip()
-                    spec_val = (patrol.spec or '').strip()
-                    cust = (v_name.strip() if v_name else '')
-                    if mat or spec_val:
-                        group_key = f"{spec_val}_{mat}"
-                        if group_key not in spec_mat_set:
-                            spec_mat_set[group_key] = {'spec': spec_val, 'material': mat, 'customers': set()}
-                        if cust:
-                            spec_mat_set[group_key]['customers'].add(cust)
-
-                for group_key, group_info in spec_mat_set.items():
-                    # 為每個組合呼叫 get_spc 取得統計數據
-                    spc_args = {
-                        'item': spc_item,
-                        'pos': spc_position if spc_position != '全段' else '',
-                        'mat': group_info['material'],
-                        'spec': group_info['spec'],
-                        's_date': args.get('s_date', ''),
-                        'e_date': args.get('e_date', ''),
-                        'm_id': args.get('m_id', ''),
-                        'op_id': args.get('op_id', ''),
-                    }
-                    stats_data = PatrolService.get_spc(spc_args)
-
-                    # 跳過無數據的組合
-                    if not stats_data.get('avgs'):
-                        continue
-
-                    # 產生 SPC 報表（獨立 Workbook）
-                    pos_label = spc_position if spc_position else '全段'
-                    field_label = f"{spc_item}-{pos_label}"
-                    # 從該分組的實際資料中取得客戶名稱
-                    group_customers = group_info.get('customers', set())
-                    cust_display = '、'.join(sorted(group_customers)) if group_customers else '無'
-                    filters = {
-                        'material': group_info['material'] or '全部',
-                        'spec': group_info['spec'] or '全部',
-                        'customer': cust_display,
-                        'start_date': args.get('s_date', '不限'),
-                        'end_date': args.get('e_date', '不限'),
-                    }
-                    spc_output = SpcReportService.generate_report(stats_data, field_label, filters)
-
-                    spc_wb = load_workbook(spc_output)
-                    # 建立工作表名稱前綴（截斷以避免超過 31 字元限制）
-                    spec_short = sanitize_sheet_name(group_info['spec'][:8]) if group_info['spec'] else '無規格'
-                    mat_short = sanitize_sheet_name(group_info['material'][:6]) if group_info['material'] else '無材質'
-                    prefix = f"{spec_short}-{mat_short}"
-                    copy_spc_workbook_sheets(wb, spc_wb, prefix)
-
-                # 輸出最終結果
-                output = BytesIO()
-                wb.save(output)
-                output.seek(0)
+            # SPC 報表必須由路由層取得 actor、建立或驗證不可變研究版本後，
+            # 使用 SpcReportService.generate_version_report 產生；此服務不可再以
+            # 當前巡檢資料即時計算，避免匯出內容沒有可追溯的版本與核准證據。
+            if spc_item:
+                from .spc_errors import SpcValidationError
+                raise SpcValidationError(
+                    "SPC_VERSION_REQUIRED", "含 SPC 的巡檢匯出必須指定或建立研究版本"
+                )
 
             return output
         except Exception as e:

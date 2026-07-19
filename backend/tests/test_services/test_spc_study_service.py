@@ -155,7 +155,7 @@ def test_analyze_rejects_non_string_analysis_family(
     assert error.value.code == "SPC_ANALYSIS_FAMILY_INVALID"
 
 
-@pytest.mark.parametrize("analysis_family", ["attribute", "machine"])
+@pytest.mark.parametrize("analysis_family", ["machine"])
 def test_analyze_rejects_unimplemented_analysis_family(
     app, db_session, spc_view_user, analysis_family
 ):

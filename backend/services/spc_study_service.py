@@ -29,6 +29,7 @@ from ..models import (
 from ..utils import log_audit
 from .spc_adapters.patrol import build_patrol_study_input
 from .spc_adapters.shipping import build_shipping_study_input
+from .spc_adapters.attribute import build_attribute_study_input
 from .spc_analysis_service import calculate_process_capability
 from .spc_chart_engine import (
     SpcChartNotApplicable,
@@ -42,6 +43,10 @@ from .spc_contracts import (
     SpcStudyInput,
     SpcSubgroup,
 )
+from .spc_attribute_engine import (
+    calculate_attribute_chart,
+    calculate_attribute_observations,
+)
 from .spc_adapters.common import SPC_INPUT_CONTRACT_VERSION
 from .spc_distribution import assess_distribution
 from .spc_errors import (
@@ -50,7 +55,7 @@ from .spc_errors import (
     SpcNotFound,
     SpcValidationError,
 )
-from .spc_stability import evaluate_study_stability
+from .spc_stability import evaluate_attribute_stability, evaluate_study_stability
 from .spc_time_model import classify_time_model
 
 
@@ -145,6 +150,11 @@ def _adapter_input(
         )
         if supports_context else adapter(filters)
     )
+    if analysis_family == "attribute" and study_input.analysis_family != "attribute":
+        interval = str((options or {}).get("interval") or "day").lower()
+        study_input = build_attribute_study_input(
+            source, filters, interval, input_contract_version=input_contract_version
+        )
     return replace(
         study_input,
         analysis_family=analysis_family,
@@ -164,6 +174,8 @@ def _chart_result(chart_set: SpcChartSet) -> dict[str, Any]:
 
 
 def _calculate_results(study_input: SpcStudyInput) -> dict[str, Any]:
+    if study_input.analysis_family == "attribute":
+        return _calculate_attribute_results(study_input)
     all_values = [
         value
         for subgroup in study_input.subgroups
@@ -226,6 +238,66 @@ def _calculate_results(study_input: SpcStudyInput) -> dict[str, Any]:
     }
 
 
+def _attribute_not_applicable(study_input: SpcStudyInput, exc: SpcChartNotApplicable) -> dict[str, Any]:
+    return {
+        "chart_result": None,
+        "stability_result": {
+            "evaluated": False, "stable": None, "violations": [],
+            "rules_used": [], "residual_method": "binomial_pearson",
+            "reason_code": exc.code,
+        },
+        "distribution_result": {"available": False, "reason": "attribute_chart"},
+        "time_model_result": {"candidate": None, "confirmed": False,
+                              "statistically_controlled": False, "reason_code": exc.code},
+        "capability_result": {"available": False, "reason": "attribute_chart"},
+        "applicability_result": {"applicable": False, "reason_code": exc.code,
+                                  "message": str(exc)},
+    }
+
+
+def _calculate_attribute_results(study_input: SpcStudyInput) -> dict[str, Any]:
+    """建立屬性基準研究；完整保存精確界限與分類證據。"""
+
+    requested_chart = str(study_input.options.get("chart_type") or "p").lower()
+    alpha = float(study_input.options.get("alpha") or 0.0027)
+    try:
+        chart = calculate_attribute_chart(
+            tuple(study_input.subgroups), requested_chart, alpha=alpha
+        )
+    except SpcChartNotApplicable as exc:
+        return _attribute_not_applicable(study_input, exc)
+    chart["exact_alpha"] = alpha
+    chart["interval"] = study_input.options.get("interval") or "day"
+    chart["warnings"] = {
+        "sample_size_variation": chart.get("sample_size_variation_warning", False),
+        "classification_excluded_records": int(
+            study_input.metadata.get("excluded_record_count", 0)
+        ),
+    }
+    chart["eligibility_evidence"] = list(
+        study_input.metadata.get("classification_evidence", [])
+    )
+    chart["exclusion_evidence"] = list(
+        study_input.metadata.get("classification_snapshot", [])
+    )
+    stability = evaluate_attribute_stability(chart)
+    return {
+        "chart_result": chart,
+        "stability_result": stability,
+        "distribution_result": {"available": False, "reason": "attribute_chart"},
+        "time_model_result": {
+            "candidate": None, "confirmed": False,
+            "statistically_controlled": stability.get("stable"),
+            "reason_code": "ATTRIBUTE_BASELINE",
+        },
+        "capability_result": {"available": False, "reason": "attribute_chart"},
+        "applicability_result": {
+            "applicable": True, "reason_code": None, "chart_type": requested_chart,
+            "eligibility": dict(study_input.metadata),
+        },
+    }
+
+
 def _approved_series_limits(
     saved: Mapping[str, Any],
     baseline_sizes: list[int],
@@ -270,6 +342,9 @@ def _calculate_ongoing_results(
     study_input: SpcStudyInput, active_limit: SpcLimitVersion
 ) -> dict[str, Any]:
     """只以已核准界限評估目前觀測值，不重新置中或建立新界限。"""
+
+    if study_input.analysis_family == "attribute":
+        return _calculate_attribute_ongoing_results(study_input, active_limit)
 
     try:
         current = calculate_chart_observations(
@@ -354,6 +429,68 @@ def _calculate_ongoing_results(
     }
 
 
+def _calculate_attribute_ongoing_results(
+    study_input: SpcStudyInput, active_limit: SpcLimitVersion
+) -> dict[str, Any]:
+    """套用核准屬性基準的中心、alpha 與規則，不以近期資料重新置中。"""
+
+    saved = dict(active_limit.limits or {})
+    if active_limit.chart_type not in {"p", "np"}:
+        raise SpcValidationError("SPC_CHART_TYPE_MISMATCH", "核准界限不是屬性型 p／np 圖")
+    try:
+        center = float(saved["center"])
+        alpha = float(saved["alpha"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SpcValidationError("SPC_APPROVED_LIMITS_INVALID", "核准屬性界限缺少 center 或 alpha") from exc
+    requested = str(study_input.options.get("chart_type") or active_limit.chart_type).lower()
+    if requested != active_limit.chart_type:
+        raise SpcValidationError("SPC_CHART_TYPE_MISMATCH", "目前圖表選型與核准界限不一致")
+    frozen_interval = saved.get("interval")
+    if frozen_interval and study_input.options.get("interval") != frozen_interval:
+        raise SpcValidationError("SPC_INTERVAL_MISMATCH", "目前時間區間與核准屬性基準不一致")
+    try:
+        chart = calculate_attribute_observations(
+            tuple(study_input.subgroups), requested, center=center, alpha=alpha,
+            baseline_n=(int(saved["baseline_n"]) if saved.get("baseline_n") is not None else None),
+        )
+    except SpcChartNotApplicable as exc:
+        raise SpcValidationError(exc.code, str(exc)) from exc
+    chart["exact_alpha"] = alpha
+    chart["interval"] = frozen_interval or study_input.options.get("interval") or "day"
+    chart["warnings"] = {
+        "sample_size_variation": chart.get("sample_size_variation_warning", False),
+        "classification_excluded_records": int(study_input.metadata.get("excluded_record_count", 0)),
+    }
+    chart["eligibility_evidence"] = list(
+        study_input.metadata.get("classification_evidence", [])
+    )
+    chart["exclusion_evidence"] = list(
+        study_input.metadata.get("classification_snapshot", [])
+    )
+    rules = saved.get("rules_used")
+    if not isinstance(rules, list) or not rules:
+        rules = (active_limit.study_version.stability_result or {}).get("rules_used")
+    if not isinstance(rules, list) or not rules:
+        raise SpcValidationError("SPC_APPROVED_RULES_MISSING", "核准版本缺少正式失控規則集")
+    stability = evaluate_attribute_stability(chart, enabled_rules=rules)
+    return {
+        "chart_result": chart,
+        "stability_result": stability,
+        "distribution_result": {"available": False, "reason": "attribute_ongoing"},
+        "time_model_result": {
+            "candidate": None, "confirmed": False,
+            "statistically_controlled": stability.get("stable"),
+            "reason_code": "ONGOING_USES_APPROVED_LIMITS",
+            "limit_version_id": active_limit.id,
+        },
+        "capability_result": {"available": False, "reason": "ongoing_monitoring"},
+        "applicability_result": {
+            "applicable": True, "reason_code": None, "chart_type": requested,
+            "active_limit_version_id": active_limit.id,
+        },
+    }
+
+
 def _timestamp_text(value: date | datetime | str | None) -> str | None:
     if isinstance(value, (date, datetime)):
         return value.isoformat()
@@ -385,6 +522,10 @@ def _assert_approvable(version: SpcStudyVersion) -> None:
         raise SpcValidationError("AUDIT_INCOMPLETE", "稽核資料不完整，必須重新建立研究")
     if not (version.applicability_result or {}).get("applicable"):
         raise SpcValidationError("CHART_NOT_APPLICABLE", "目前資料不適用支援的管制圖")
+    if version.study.analysis_family == "attribute":
+        if (version.stability_result or {}).get("stable") is not True:
+            raise SpcValidationError("PROCESS_UNSTABLE", "屬性位置圖必須穩定")
+        return
     time_model = version.time_model_result or {}
     model = time_model.get("model") or time_model.get("candidate")
     if not time_model.get("confirmed") or model not in {"A1", "A2"}:
@@ -441,26 +582,33 @@ def _add_input_samples(
     version: SpcStudyVersion, source: str, study_input: SpcStudyInput
 ) -> None:
     for index, subgroup in enumerate(study_input.subgroups):
+        if study_input.analysis_family == "attribute":
+            values = [float(subgroup.nonconforming), float(subgroup.inspected)]
+            distribution_values = []
+            measurement_ids = []
+        else:
+            values = list(subgroup.values)
+            distribution_values = list(subgroup.distribution_values or subgroup.values)
+            measurement_ids = list(subgroup.measurement_ids)
         db.session.add(SpcStudySample(
             version_id=version.id,
             source_record_type=(
                 "ShippingMeasurement" if source == "shipping" else "PatrolDetail"
             ),
             source_record_id=subgroup.record_ids[0],
-            source_measurement_id=(
-                subgroup.measurement_ids[0] if subgroup.measurement_ids else None
-            ),
+            source_measurement_id=measurement_ids[0] if measurement_ids else None,
             source_record_ids=list(subgroup.record_ids),
-            source_measurement_ids=list(subgroup.measurement_ids),
+            source_measurement_ids=measurement_ids,
             sample_timestamp=_timestamp_text(subgroup.timestamp),
             subgroup_key=subgroup.key,
             subgroup_order=index,
-            values=list(subgroup.values),
-            distribution_values=list(
-                subgroup.distribution_values or subgroup.values
-            ),
+            values=values,
+            distribution_values=distribution_values,
             excluded=False,
-            exclusion_snapshot=list(subgroup.exclusion_snapshot),
+            exclusion_snapshot=(
+                [] if study_input.analysis_family == "attribute"
+                else list(subgroup.exclusion_snapshot)
+            ),
         ))
 
 
@@ -510,10 +658,10 @@ class SpcStudyService:
             raise SpcValidationError(
                 "SPC_ANALYSIS_OPTIONS_INVALID", "分析選項必須是物件",
             )
-        if analysis_family != "variable":
+        if analysis_family == "machine":
             raise SpcValidationError(
                 "SPC_ANALYSIS_FAMILY_NOT_IMPLEMENTED",
-                "目前僅支援 variable 分析族別",
+                "目前尚未支援 machine 分析族別",
             )
         study_input = _adapter_input(
             source,
@@ -916,14 +1064,20 @@ class SpcStudyService:
             characteristic=version.study.characteristic,
         ).scalar()
         chart = version.chart_result or {}
-        limit = SpcLimitVersion(
-            study_version_id=version.id,
-            analysis_family=version.study.analysis_family,
-            process_stream_key=version.study.process_stream_key,
-            characteristic=version.study.characteristic,
-            revision=int(revision or 0) + 1,
-            chart_type=chart["chart_type"],
-            limits={
+        if version.study.analysis_family == "attribute":
+            limits = {
+                "center": chart["center"],
+                "alpha": chart["exact_alpha"],
+                "interval": chart.get("interval"),
+                "baseline_n": (
+                    chart.get("n", [None])[0] if chart.get("chart_type") == "np" else None
+                ),
+                "rules_used": list((version.stability_result or {}).get("rules_used") or []),
+                "lower_counts": list(chart.get("lower_counts") or []),
+                "upper_counts": list(chart.get("upper_counts") or []),
+            }
+        else:
+            limits = {
                 "location": {
                     key: chart["location"][key] for key in ("cl", "ucl", "lcl")
                 },
@@ -931,7 +1085,15 @@ class SpcStudyService:
                     key: chart["variation"][key] for key in ("cl", "ucl", "lcl")
                 },
                 "subgroup_sizes": chart.get("subgroup_sizes", []),
-            },
+            }
+        limit = SpcLimitVersion(
+            study_version_id=version.id,
+            analysis_family=version.study.analysis_family,
+            process_stream_key=version.study.process_stream_key,
+            characteristic=version.study.characteristic,
+            revision=int(revision or 0) + 1,
+            chart_type=chart["chart_type"],
+            limits=limits,
             status="active",
             reason=reason,
             created_by=version.created_by,

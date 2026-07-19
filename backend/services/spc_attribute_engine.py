@@ -48,13 +48,15 @@ def _sample_size_metadata(sizes: tuple[int, ...]) -> dict[str, float | bool]:
     }
 
 
-def calculate_attribute_chart(
+def calculate_attribute_observations(
     subgroups: Iterable[AttributeSubgroup],
     requested_chart: str,
     *,
+    center: float,
     alpha: float = 0.0027,
+    baseline_n: int | None = None,
 ) -> dict:
-    """計算 p 或 np 圖，並以精確二項分配產生每點界限。"""
+    """以指定且已凍結的比例中心計算屬性圖觀測值與精確界限。"""
 
     groups = tuple(subgroups)
     if not groups:
@@ -68,7 +70,7 @@ def calculate_attribute_chart(
     counts = tuple(group.nonconforming for group in groups)
     total_inspected = sum(sizes)
     total_nonconforming = sum(counts)
-    p_bar = total_nonconforming / total_inspected
+    p_bar = float(center)
     if p_bar == 0:
         raise SpcChartNotApplicable(
             "ZERO_DEFECT_BASELINE", "零缺陷基線不可建立屬性管制界限"
@@ -80,6 +82,10 @@ def calculate_attribute_chart(
     if requested_chart == "np" and len(set(sizes)) != 1:
         raise SpcChartNotApplicable(
             "NP_REQUIRES_FIXED_SUBGROUP_SIZE", "np 圖需要固定子組大小"
+        )
+    if requested_chart == "np" and baseline_n is not None and sizes[0] != baseline_n:
+        raise SpcChartNotApplicable(
+            "NP_SUBGROUP_SIZE_MISMATCH", "np 圖目前子組大小與核准基準不一致"
         )
 
     exact_counts = tuple(_exact_limits(n, p_bar, alpha) for n in sizes)
@@ -137,3 +143,23 @@ def calculate_attribute_chart(
         "ooc_flags": ooc_flags,
         **metadata,
     }
+
+
+def calculate_attribute_chart(
+    subgroups: Iterable[AttributeSubgroup],
+    requested_chart: str,
+    *,
+    alpha: float = 0.0027,
+) -> dict:
+    """以研究資料的加權比例建立 p 或 np 基準管制圖。"""
+
+    groups = tuple(subgroups)
+    if not groups:
+        raise SpcChartNotApplicable("NO_ATTRIBUTE_DATA", "沒有可用屬性子組")
+    center = sum(group.nonconforming for group in groups) / sum(
+        group.inspected for group in groups
+    )
+    return calculate_attribute_observations(
+        groups, requested_chart, center=center, alpha=alpha,
+        baseline_n=groups[0].inspected if requested_chart == "np" else None,
+    )

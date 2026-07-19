@@ -526,7 +526,7 @@ def test_patrol_spc_uses_common_2026_contract_and_keeps_legacy_mapping(
             "item": "外徑", "pos": "前段", "mat": "6061", "spec": "10*1*100",
         })
 
-        assert result["schema_version"] == "2026.1"
+        assert result["schema_version"] == "2026.2"
         assert result["charts"]["chart_type"] == "xbar_r"
         assert result["avgs"] == result["charts"]["location"]["values"]
         assert result["r_ucls"] == result["charts"]["variation"]["ucl"]

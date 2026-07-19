@@ -236,6 +236,48 @@ def evaluate_study_stability(
     }
 
 
+def evaluate_attribute_stability(
+    chart: Dict[str, Any], enabled_rules: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """以精確計數界限及 Pearson 殘差評估屬性型 SPC。"""
+
+    rules = list(enabled_rules if enabled_rules is not None else DEFAULT_STABILITY_RULES)
+    residuals = list(chart.get("pearson_residuals") or [])
+    # beyond-limits 的離散邊界只能依 raw count 的精確二項語意判斷；其餘規則
+    # 則以中心為 0、三 sigma 為 ±3 的 Pearson 殘差判定。
+    residual_rules = [rule for rule in rules if rule != "beyond_limits"]
+    residual = evaluate_chart_stability(
+        residuals, 0.0, 3.0, -3.0, chart_kind="location",
+        enabled_rules=residual_rules,
+    )
+    violations = list(residual["violations"])
+    for index, flag in enumerate(chart.get("ooc_flags") or []):
+        if "beyond_limits" in rules and flag.get("out_of_control"):
+            violations.append({
+                "index": index, "window_start": index, "window_end": index,
+                "rule": "beyond_limits", "label": RULE_LABELS["beyond_limits"],
+                "chart_kind": "location",
+            })
+    location = {
+        **residual,
+        "evaluated": len(residuals) >= 5,
+        "stable": not violations if len(residuals) >= 5 else None,
+        "violations": violations,
+        "rules_used": rules,
+        "residual_method": "binomial_pearson",
+        "center": 0.0,
+    }
+    variation = {
+        "evaluated": True, "stable": True, "violations": [],
+        "rules_used": rules, "chart_kind": "variation", "not_applicable": True,
+    }
+    return {
+        "evaluated": location["evaluated"], "stable": location["stable"],
+        "location": location, "variation": variation, "violations": violations,
+        "rules_used": rules, "residual_method": "binomial_pearson",
+    }
+
+
 def evaluate_stability(
     avgs: List[float],
     x_cl: float,

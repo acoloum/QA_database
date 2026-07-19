@@ -22,15 +22,16 @@ class SpcReportService:
         location = chart.get("location") or {}
         variation = chart.get("variation") or {}
         samples = list(version.samples)
-        avgs = list(location.get("values") or [
+        is_attribute = version.study.analysis_family == "attribute"
+        avgs = list(chart.get("values") if is_attribute else location.get("values") or [
             float(np.mean(sample.values)) for sample in samples
         ])
-        variation_values = list(variation.get("values") or [
+        variation_values = list([] if is_attribute else variation.get("values") or [
             float(np.ptp(sample.values)) for sample in samples
         ])
-        x_cls = list(location.get("cl") or [])
-        x_ucls = list(location.get("ucl") or [])
-        x_lcls = list(location.get("lcl") or [])
+        x_cls = list(chart.get("cl") if is_attribute else location.get("cl") or [])
+        x_ucls = list(chart.get("ucl") if is_attribute else location.get("ucl") or [])
+        x_lcls = list(chart.get("lcl") if is_attribute else location.get("lcl") or [])
         r_cls = list(variation.get("cl") or [])
         r_ucls = list(variation.get("ucl") or [])
         r_lcls = list(variation.get("lcl") or [])
@@ -55,6 +56,7 @@ class SpcReportService:
             "研究版本ID": version.id,
             "研究ID": version.study_id,
             "研究類型": version.study.study_type,
+            "分析族別": version.study.analysis_family,
             "資料來源": version.study.source,
             "完整篩選條件": json.dumps(
                 version.study.filters or {}, ensure_ascii=False, sort_keys=True
@@ -68,6 +70,9 @@ class SpcReportService:
                 ])
             ),
             "圖表選型": chart.get("chart_type"),
+            "時間區間": chart.get("interval") or (version.analysis_options or {}).get("interval"),
+            "精確 alpha": chart.get("exact_alpha"),
+            "屬性警示": json.dumps(chart.get("warnings") or {}, ensure_ascii=False, sort_keys=True),
             "時間模型": json.dumps(
                 version.time_model_result or {}, ensure_ascii=False, sort_keys=True
             ),
@@ -88,6 +93,7 @@ class SpcReportService:
             "建立者ID": version.created_by,
             "建立時間": version.created_at.isoformat() if version.created_at else None,
             "核准界限版次": limits.revision if limits else None,
+            "核准界限內容": json.dumps(limits.limits or {}, ensure_ascii=False, sort_keys=True) if limits else None,
             "核准者ID": limits.approved_by if limits else None,
             "核准時間": (
                 limits.approved_at.isoformat() if limits and limits.approved_at else None
@@ -103,7 +109,7 @@ class SpcReportService:
             "avgs": avgs,
             "ranges": variation_values,
             "all_values": distribution_values,
-            "subgroup_sizes": list(chart.get("subgroup_sizes") or []),
+            "subgroup_sizes": list(chart.get("n") if is_attribute else chart.get("subgroup_sizes") or []),
             "avg_subgroup_size": (
                 int(round(float(np.mean(chart.get("subgroup_sizes")))))
                 if chart.get("subgroup_sizes") else None
@@ -113,6 +119,10 @@ class SpcReportService:
             "x_cls": x_cls, "x_ucls": x_ucls, "x_lcls": x_lcls,
             "r_cls": r_cls, "r_ucls": r_ucls, "r_lcls": r_lcls,
             "charts": chart,
+            "analysis_family": version.study.analysis_family,
+            "attribute_counts": {
+                "n": list(chart.get("n") or []), "x": list(chart.get("x") or []),
+            } if is_attribute else None,
             "stability": version.stability_result or {},
             "distribution": version.distribution_result or {},
             "time_model": version.time_model_result or {},
@@ -134,6 +144,8 @@ class SpcReportService:
                 "來源紀錄ID": json.dumps(sample.source_record_ids or [], ensure_ascii=False),
                 "來源量測ID": json.dumps(sample.source_measurement_ids or [], ensure_ascii=False),
                 "管制圖量測值": json.dumps(sample.values or [], ensure_ascii=False),
+                "不符合數(x)": sample.values[0] if is_attribute and sample.values else None,
+                "受檢數(n)": sample.values[1] if is_attribute and len(sample.values or []) > 1 else None,
                 "分布分析值": json.dumps(
                     sample.distribution_values or [], ensure_ascii=False
                 ),
@@ -509,6 +521,9 @@ class SpcReportService:
             f"{variation_label}_UCL", f"{variation_label}_CL",
             f"{variation_label}_LCL",
         ]
+        is_attribute = stats_data.get("analysis_family") == "attribute"
+        if is_attribute:
+            data_headers.extend(["受檢數(n)", "不符合數(x)"])
         for col_idx, h in enumerate(data_headers, 1):
             cell = ws2.cell(row=1, column=col_idx, value=h)
             cell.font = header_font
@@ -530,6 +545,9 @@ class SpcReportService:
         r_ucls = stats_data.get('r_ucls') or [r_ucl] * len(avgs)
         r_cls = stats_data.get('r_cls') or [r_cl] * len(avgs)
         r_lcls = stats_data.get('r_lcls') or [stats_data.get('r_lcl')] * len(avgs)
+        attribute_counts = stats_data.get("attribute_counts") or {}
+        inspected_counts = attribute_counts.get("n") or []
+        nonconforming_counts = attribute_counts.get("x") or []
 
         # USL/LSL columns if available
         has_spec_limits = pc.get('available') and pc.get('usl') is not None and pc.get('lsl') is not None
@@ -582,6 +600,13 @@ class SpcReportService:
             ws2.cell(row=r, column=9, value=round(point_r_ucl, 4) if point_r_ucl is not None else None)
             ws2.cell(row=r, column=10, value=round(point_r_cl, 4) if point_r_cl is not None else None)
             ws2.cell(row=r, column=11, value=round(point_r_lcl, 4) if point_r_lcl is not None else None)
+            if is_attribute:
+                ws2.cell(row=r, column=12, value=(
+                    inspected_counts[i] if i < len(inspected_counts) else None
+                ))
+                ws2.cell(row=r, column=13, value=(
+                    nonconforming_counts[i] if i < len(nonconforming_counts) else None
+                ))
 
             if has_spec_limits:
                 ws2.cell(row=r, column=12, value=round(pc['usl'], 4))
