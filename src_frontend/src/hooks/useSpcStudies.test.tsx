@@ -4,7 +4,7 @@ import type { PropsWithChildren } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../services/api';
 import {
-  fetchSpcEvent, useAnalyzeSpcStudy, useSaveSpcOcap, useSpcAssignees,
+  fetchSpcEvent, useAnalyzeSpcStudy, useApproveSpcResearch, useSaveSpcOcap, useSpcAssignees,
   useSpcStudyHistory, useSubmitSpcStudy,
 } from './useSpcStudies';
 
@@ -46,6 +46,44 @@ describe('SPC 研究 hooks', () => {
       filters: { vendor: 'A廠', field: 'od' },
     });
     expect(returned).toMatchObject({ id: 21, study_id: 7 });
+  });
+
+  it('機器研究只傳送巡檢固定流 filters 與受控條件 options', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { success: true, data: { id: 22, study_id: 8 } } });
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const { result } = renderHook(() => useAnalyzeSpcStudy(), { wrapper: createWrapper(queryClient) });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        source: 'patrol', analysis_family: 'machine',
+        filters: { m_id: 7, mat: '6061', spec: '10x1', item: '外徑', pos: 'A' },
+        options: { conditions_confirmed: true, condition_reason: '已確認機台設定與治具狀態' },
+      });
+    });
+
+    expect(api.post).toHaveBeenCalledWith('/spc/studies/analyze', {
+      source: 'patrol', analysis_family: 'machine',
+      filters: { m_id: 7, mat: '6061', spec: '10x1', item: '外徑', pos: 'A' },
+      options: { conditions_confirmed: true, condition_reason: '已確認機台設定與治具狀態' },
+    });
+  });
+
+  it('核准機器研究使用 research 端點且維持研究快取失效範圍', async () => {
+    vi.mocked(api.post).mockResolvedValue({
+      data: { success: true, data: { id: 22, study_id: 8, status: 'approved' } },
+    });
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useApproveSpcResearch(), { wrapper: createWrapper(queryClient) });
+
+    await act(async () => {
+      await result.current.mutateAsync({ versionId: 22, studyId: 8, reason: '已核對研究條件與績效證據' });
+    });
+
+    expect(api.post).toHaveBeenCalledWith('/spc/study-versions/22/approve-research', {
+      reason: '已核對研究條件與績效證據',
+    });
+    expect(invalidateSpy).toHaveBeenCalledTimes(3);
   });
 
   it('屬性研究保留 family 與受控 options，不影響既有呼叫格式', async () => {

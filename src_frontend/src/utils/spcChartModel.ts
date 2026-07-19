@@ -1,5 +1,5 @@
 import type { ChartData } from 'chart.js';
-import { isSpcChartSet } from '../types/spc';
+import { isMachinePerformanceResult, isSpcChartSet } from '../types/spc';
 import type {
   CpkTrend,
   DistributionStats,
@@ -68,6 +68,7 @@ export const mergeOngoingStudyForDisplay = (
 ): SpcChartData | null | undefined => {
   if (
     !preview || !version || version.study_type !== 'ongoing' || !isSpcChartSet(version.charts)
+    || isMachinePerformanceResult(version.capability)
     || !preview.process_stream_key
     || version.process_stream_key !== preview.process_stream_key
     || !preview.data_hash

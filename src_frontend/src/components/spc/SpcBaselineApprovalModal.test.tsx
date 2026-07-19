@@ -11,7 +11,7 @@ const xbarCharts: SpcChartSet = {
   variation: { statistic: 'r', values: [0.2, 0.1], cl: [0.2, 0.2], ucl: [0.5, 0.5], lcl: [0, 0] },
 };
 
-const version = {
+const version: SpcStudyResult = {
   id: 12,
   study_id: 5,
   source: 'shipping',
@@ -34,7 +34,7 @@ const version = {
   capability: { available: true, cp: 1.5, cpk: 1.4 },
   applicability: { applicable: true },
   status: 'submitted', audit_incomplete: false, created_by: 1, created_at: '2026-07-18',
-} as unknown as SpcStudyResult;
+};
 
 describe('SpcBaselineApprovalModal', () => {
   it('核准前揭露篩選、來源、雜湊、時間範圍、子組與界限，且理由必填', () => {
@@ -91,5 +91,29 @@ describe('SpcBaselineApprovalModal', () => {
     expect(screen.getByText('n=5')).toBeInTheDocument();
     expect(screen.getByText(/10\.700/)).toBeInTheDocument();
     expect(screen.getByText(/10\.500/)).toBeInTheDocument();
+  });
+
+  it('機器研究核准時揭露保存的固定條件與確認理由，且不顯示生效界限', () => {
+    const machineVersion: SpcStudyResult = {
+      ...version,
+      source: 'patrol', analysis_family: 'machine', charts: null,
+      filters: { m_id: 7, mat: '6061', spec: '10x1', item: '外徑', pos: 'A' },
+      options: { conditions_confirmed: true, condition_reason: '已確認機台設定與治具狀態' },
+      capability: {
+        available: true, approvable: true, preliminary: false, index_family: 'machine', method: 'G', n: 60, reason_code: null,
+        distribution: { model: 'normal', label: '常態分布', accepted: true, reason_code: null },
+        quantiles: { q_0_135: 9.7, q_50: 10, q_99_865: 10.3 }, usl: 11, lsl: 9,
+        pm: 3.33, pmu: 3.33, pml: 3.33, pmk: 3.33, targets: { class: '關鍵', pm: 2.33, pmk: 2 },
+        evidence: { source_semantics: 'patrol_min_max_observations', operators: [8], record_ids: [101], detail_ids: [1001], date_span: { start: '2026-07-01', end: '2026-07-02' }, conditions_confirmed: true, condition_reason: '已確認機台設定與治具狀態' },
+      },
+      status: 'submitted',
+    };
+    render(<SpcBaselineApprovalModal show action="approve-research" source="patrol" filters={machineVersion.filters} version={machineVersion} onHide={vi.fn()} onConfirm={vi.fn()} />);
+
+    expect(screen.getByText('核准機器研究結果')).toBeInTheDocument();
+    expect(screen.getByText('已確認機台設定與治具狀態')).toBeInTheDocument();
+    expect(screen.getByText('patrol_min_max_observations')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '核准研究結果' })).toBeInTheDocument();
+    expect(screen.queryByText('位置 UCL')).not.toBeInTheDocument();
   });
 });

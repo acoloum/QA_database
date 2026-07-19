@@ -13,13 +13,20 @@ interface SpcStudyWorkflowBarProps {
   onShowHistory: () => void;
 }
 
-const stages = [
+const baselineStages = [
   { status: 'draft', label: '候選' },
   { status: 'submitted', label: '送審' },
   { status: 'active', label: '生效' },
 ];
 
-const stageIndex = (status: SpcStudyResult['status'] | undefined) => {
+const researchStages = [
+  { status: 'draft', label: '候選' },
+  { status: 'submitted', label: '送審' },
+  { status: 'approved', label: '核准研究' },
+];
+
+const stageIndex = (status: SpcStudyResult['status'] | undefined, research: boolean) => {
+  if (research && status === 'approved') return 2;
   if (status === 'active' || status === 'retired') return 2;
   if (status === 'submitted') return 1;
   return status ? 0 : -1;
@@ -29,7 +36,9 @@ const SpcStudyWorkflowBar = ({
   version, canView, canManage, canApprove, analyzing = false,
   onAnalyze, onAction, onShowHistory,
 }: SpcStudyWorkflowBarProps) => {
-  const current = stageIndex(version?.status);
+  const research = version?.analysis_family === 'machine';
+  const stages = research ? researchStages : baselineStages;
+  const current = stageIndex(version?.status, research);
   const candidate = version?.time_model.candidate;
   const canConfirmTimeModel = version?.status === 'draft'
     && !version.time_model.confirmed
@@ -37,7 +46,7 @@ const SpcStudyWorkflowBar = ({
 
   return (
     <div className="spc-workflow">
-      <div className="spc-lifecycle" aria-label="SPC 基準生命週期">
+      <div className="spc-lifecycle" aria-label={research ? '機器研究生命週期' : 'SPC 基準生命週期'}>
         {stages.map((stage, index) => (
           <div key={stage.status} className={`spc-stage ${index <= current ? 'is-complete' : ''} ${index === current ? 'is-current' : ''}`}>
             <span className="spc-stage-dot">{index < current ? '✓' : index + 1}</span>
@@ -54,7 +63,7 @@ const SpcStudyWorkflowBar = ({
             {analyzing ? '建立中…' : version ? '重建候選' : '建立候選'}
           </Button>
         )}
-        {canManage && canConfirmTimeModel && (
+        {!research && canManage && canConfirmTimeModel && (
           <Button size="sm" variant="outline-primary" onClick={() => onAction('time-model')}>
             確認 {candidate}
           </Button>
@@ -65,10 +74,10 @@ const SpcStudyWorkflowBar = ({
         {canApprove && version?.status === 'submitted' && (
           <>
             <Button size="sm" variant="outline-danger" onClick={() => onAction('reject')}>退回</Button>
-            <Button size="sm" variant="success" onClick={() => onAction('approve')}>核准生效</Button>
+            <Button size="sm" variant="success" onClick={() => onAction(research ? 'approve-research' : 'approve')}>{research ? '核准研究結果' : '核准生效'}</Button>
           </>
         )}
-        {canApprove && version?.status === 'active' && (
+        {!research && canApprove && version?.status === 'active' && (
           <Button size="sm" variant="outline-danger" onClick={() => onAction('retire')}>停用／重建</Button>
         )}
       </div>

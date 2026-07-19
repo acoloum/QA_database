@@ -171,6 +171,46 @@ export interface ProcessCapability {
   distribution?: SpcDistributionAssessment;
 }
 
+/** 機器績效研究的後端結果；不與製程 Cp/Cpk 共用欄位。 */
+export interface MachineStudyEvidence {
+  source_semantics: 'patrol_min_max_observations' | string | null;
+  operators: number[];
+  record_ids: number[];
+  detail_ids: number[];
+  date_span: { start: string | null; end: string | null };
+  conditions_confirmed: boolean;
+  condition_reason: string | null;
+}
+
+export interface MachinePerformanceResult {
+  available: boolean;
+  approvable: boolean;
+  preliminary: boolean;
+  index_family: 'machine';
+  method: 'G';
+  n: number;
+  reason_code: string | null;
+  distribution: {
+    model: string | null;
+    label: string | null;
+    accepted: boolean;
+    reason_code: string | null;
+  };
+  quantiles: { q_0_135: number | null; q_50: number | null; q_99_865: number | null };
+  usl: number | null;
+  lsl: number | null;
+  pm: number | null;
+  pmu: number | null;
+  pml: number | null;
+  pmk: number | null;
+  targets: { class: string; pm: number; pmk: number };
+  evidence: MachineStudyEvidence;
+}
+
+export const isMachinePerformanceResult = (
+  capability: ProcessCapability | MachinePerformanceResult | null | undefined,
+): capability is MachinePerformanceResult => Boolean(capability && 'index_family' in capability && capability.index_family === 'machine');
+
 export interface SpcTargets {
   class: string;
   confidence: string;
@@ -296,7 +336,7 @@ export interface SpcStudyResult {
   stability: SpcStability;
   distribution: SpcDistributionAssessment;
   time_model: SpcTimeModel;
-  capability: ProcessCapability;
+  capability: ProcessCapability | MachinePerformanceResult;
   applicability: SpcApplicability;
   status: 'draft' | 'submitted' | 'approved' | 'active' | 'retired' | 'rejected' | 'superseded' | 'legacy_imported';
   audit_incomplete: boolean;

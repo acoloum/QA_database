@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Badge, Button, Col, Form, Modal, Row, Table } from 'react-bootstrap';
-import { isSpcAttributeChartData, isSpcChartSet, type SpcStudyResult } from '../../types/spc';
+import { isMachinePerformanceResult, isSpcAttributeChartData, isSpcChartSet, type SpcStudyResult } from '../../types/spc';
 
-export type SpcWorkflowAction = 'time-model' | 'submit' | 'approve' | 'reject' | 'retire';
+export type SpcWorkflowAction = 'time-model' | 'submit' | 'approve' | 'approve-research' | 'reject' | 'retire';
 
 interface SpcBaselineApprovalModalProps {
   show: boolean;
@@ -19,6 +19,7 @@ const ACTION_COPY: Record<SpcWorkflowAction, { title: string; reason: string; bu
   'time-model': { title: '確認時間模型', reason: '確認理由', button: '確認時間模型', variant: 'primary' },
   submit: { title: '送審 SPC 研究候選', reason: '送審理由', button: '送審', variant: 'primary' },
   approve: { title: '核准 SPC 基準', reason: '核准理由', button: '核准並生效', variant: 'success' },
+  'approve-research': { title: '核准機器研究結果', reason: '核准理由', button: '核准研究結果', variant: 'success' },
   reject: { title: '退回 SPC 研究候選', reason: '退回理由', button: '退回修正', variant: 'danger' },
   retire: { title: '停用 SPC 正式基準', reason: '停用理由', button: '停用基準', variant: 'danger' },
 };
@@ -53,6 +54,7 @@ const SpcBaselineApprovalModal = ({
   }, [version.samples]);
 
   const chart = version.charts;
+  const machineCapability = isMachinePerformanceResult(version.capability) ? version.capability : null;
   const attributeChart = isSpcAttributeChartData(chart) ? chart : null;
   const variableChart = isSpcChartSet(chart) ? chart : null;
   const limitRows = useMemo(() => {
@@ -75,7 +77,7 @@ const SpcBaselineApprovalModal = ({
     <Modal show={show} onHide={onHide} size="xl" centered>
       <Modal.Header closeButton className="spc-approval-header">
         <div>
-          <div className="spc-eyebrow">基準生命週期 · 研究 v{version.version_no}</div>
+          <div className="spc-eyebrow">{machineCapability ? '研究生命週期' : '基準生命週期'} · 研究 v{version.version_no}</div>
           <Modal.Title>{copy.title}</Modal.Title>
         </div>
         <Badge bg={source === 'shipping' ? 'primary' : 'secondary'}>
@@ -100,8 +102,16 @@ const SpcBaselineApprovalModal = ({
             </Table>
           </Col>
           <Col lg={5}>
-            <h6 className="spc-section-label">保存界限快照</h6>
-            {attributeChart ? (
+            <h6 className="spc-section-label">{machineCapability ? '機器研究條件快照' : '保存界限快照'}</h6>
+            {machineCapability ? (
+              <Table responsive size="sm" className="spc-evidence-table"><tbody>
+                <tr><th>研究條件已確認</th><td>{formatValue(machineCapability.evidence.conditions_confirmed)}</td></tr>
+                <tr><th>條件確認理由</th><td>{machineCapability.evidence.condition_reason ?? '未保存'}</td></tr>
+                <tr><th>來源觀測語意</th><td>{machineCapability.evidence.source_semantics ?? '未保存'}</td></tr>
+                <tr><th>實際操作者</th><td>{machineCapability.evidence.operators.join('、') || '未保存'}</td></tr>
+                <tr><th>日期範圍</th><td>{machineCapability.evidence.date_span.start ?? '—'} ～ {machineCapability.evidence.date_span.end ?? '—'}</td></tr>
+              </tbody></Table>
+            ) : attributeChart ? (
               <Table responsive size="sm" className="spc-evidence-table">
                 <thead><tr><th>子組</th><th>x／n</th><th>UCL／CL／LCL</th></tr></thead>
                 <tbody>

@@ -7,8 +7,9 @@ import {
   useSpcStudies, useSpcStudy, useSubmitSpcStudy,
 } from '../../hooks/useSpcStudies';
 import type {
-  SpcChartData, SpcEventSummary, SpcStudyResult,
+  ProcessCapability, SpcChartData, SpcEventSummary, SpcStudyResult,
 } from '../../types';
+import { isMachinePerformanceResult } from '../../types/spc';
 import { replaceEvent, replaceEventOcap } from '../../utils/spcEventState';
 import SpcBaselineApprovalModal, { type SpcWorkflowAction } from './SpcBaselineApprovalModal';
 import SpcStudyHistoryOffcanvas from './SpcStudyHistoryOffcanvas';
@@ -97,6 +98,8 @@ const SpcStudyPanel = ({
   const distribution = version?.distribution ?? preview?.distribution;
   const timeModel = version?.time_model ?? preview?.time_model;
   const capability = version?.capability ?? preview?.capability;
+  const processCapability: ProcessCapability | null = capability && !isMachinePerformanceResult(capability)
+    ? capability : null;
   const applicability = version?.applicability ?? preview?.applicability;
   const pending = submit.isPending || confirmTimeModel.isPending || approve.isPending
     || reject.isPending || retire.isPending;
@@ -226,10 +229,10 @@ const SpcStudyPanel = ({
             <Badge className="spc-signal-badge" bg={timeModel?.confirmed ? 'success' : 'info'}>
               時間模型 {timeModel?.model ?? timeModel?.candidate ?? '未判定'}
             </Badge>
-            {capability?.available && capability.applicable === 'capability' && (
+            {processCapability?.available && processCapability.applicable === 'capability' && (
               <Badge className="spc-signal-badge" bg="success">Cp/Cpk 可報告</Badge>
             )}
-            {capability?.available && capability.applicable === 'performance' && (
+            {processCapability?.available && processCapability.applicable === 'performance' && (
               <Badge className="spc-signal-badge" bg="secondary">僅 Pp/Ppk</Badge>
             )}
           </div>

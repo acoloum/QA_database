@@ -6,20 +6,45 @@ import type {
   SpcStudyVersionSummary,
 } from '../types';
 
+export interface MachineStudyFilters {
+  m_id: number;
+  mat: string;
+  spec: string;
+  item: string;
+  pos: string;
+}
+
+export interface MachineStudyOptions {
+  conditions_confirmed: boolean;
+  condition_reason: string;
+}
+
 interface ApiSuccess<T> {
   success: true;
   data: T;
 }
 
-export interface AnalyzeSpcStudyInput {
+interface AnalyzeSpcStudyBaseInput {
   source: 'shipping' | 'patrol';
   filters: Record<string, unknown>;
   study_type?: 'retrospective' | 'ongoing';
+}
+
+export interface AnalyzeSpcStudyInput extends AnalyzeSpcStudyBaseInput {
   /** 未指定時後端維持既有 variable 研究相容行為。 */
   analysis_family?: SpcAnalysisFamily;
   /** 屬性研究可傳 interval、chart_type 與受後端驗證的 alpha。 */
   options?: Record<string, unknown>;
 }
+
+export interface AnalyzeMachineSpcStudyInput extends Omit<AnalyzeSpcStudyBaseInput, 'source' | 'filters' | 'study_type'> {
+  source: 'patrol';
+  filters: MachineStudyFilters;
+  analysis_family: 'machine';
+  options: MachineStudyOptions;
+}
+
+type AnalyzeStudyRequest = AnalyzeSpcStudyInput | AnalyzeMachineSpcStudyInput;
 
 export interface SpcStudyActionInput {
   versionId: number;
@@ -104,7 +129,7 @@ export const useSpcAssignees = (enabled = true) => useQuery({
 export const useAnalyzeSpcStudy = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: AnalyzeSpcStudyInput) => unwrap(
+    mutationFn: async (input: AnalyzeStudyRequest) => unwrap(
       await api.post<ApiSuccess<SpcStudyResult>>('/spc/studies/analyze', input),
     ),
     onSuccess: (version) => invalidateStudy(queryClient, version.study_id),
@@ -144,6 +169,19 @@ export const useApproveSpcStudy = () => {
       ),
     ),
     onSuccess: (_limit, input) => invalidateStudy(queryClient, input.studyId),
+  });
+};
+
+/** 核准機器研究結論；後端不會建立生產界限。 */
+export const useApproveSpcResearch = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ versionId, reason }: SpcStudyActionInput) => unwrap(
+      await api.post<ApiSuccess<SpcStudyVersionSummary>>(
+        `/spc/study-versions/${versionId}/approve-research`, { reason },
+      ),
+    ),
+    onSuccess: (_version, input) => invalidateStudy(queryClient, input.studyId),
   });
 };
 
