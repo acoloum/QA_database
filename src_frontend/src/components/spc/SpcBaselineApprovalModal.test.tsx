@@ -1,7 +1,15 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { SpcStudyResult } from '../../types';
+import type { SpcChartSet, SpcStudyResult } from '../../types';
 import SpcBaselineApprovalModal from './SpcBaselineApprovalModal';
+
+const xbarCharts: SpcChartSet = {
+  chart_type: 'xbar_r',
+  subgroup_sizes: [2, 2],
+  sigma_within: 0.2,
+  location: { statistic: 'xbar', values: [10, 10.1], cl: [10, 10], ucl: [10.5, 10.5], lcl: [9.5, 9.5] },
+  variation: { statistic: 'r', values: [0.2, 0.1], cl: [0.2, 0.2], ucl: [0.5, 0.5], lcl: [0, 0] },
+};
 
 const version = {
   id: 12,
@@ -14,13 +22,7 @@ const version = {
   data_hash: '1234567890abcdef'.repeat(4),
   method_version: '2026.1',
   code_version: 'build-77',
-  charts: {
-    chart_type: 'xbar_r',
-    subgroup_sizes: [2, 2],
-    sigma_within: 0.2,
-    location: { statistic: 'xbar', values: [10, 10.1], cl: [10, 10], ucl: [10.5, 10.5], lcl: [9.5, 9.5] },
-    variation: { statistic: 'r', values: [0.2, 0.1], cl: [0.2, 0.2], ucl: [0.5, 0.5], lcl: [0, 0] },
-  },
+  charts: xbarCharts,
   samples: [
     { id: 1, key: 'A', order: 0, timestamp: '2026-07-01', values: [9.9, 10.1], distribution_values: [9.9, 10.1], record_ids: [101], measurement_ids: [1001, 1002], exclusion_snapshot: [] },
     { id: 2, key: 'B', order: 1, timestamp: '2026-07-02', values: [10, 10.2], distribution_values: [10, 10.2], record_ids: [102], measurement_ids: [1003, 1004], exclusion_snapshot: [] },
@@ -66,10 +68,10 @@ describe('SpcBaselineApprovalModal', () => {
     const unequal = {
       ...version,
       charts: {
-        ...version.charts,
+        ...xbarCharts,
         subgroup_sizes: [3, 5],
-        location: { ...version.charts!.location, ucl: [10.7, 10.5], cl: [10, 10], lcl: [9.3, 9.5] },
-        variation: { ...version.charts!.variation, ucl: [0.8, 0.6], cl: [0.3, 0.25], lcl: [0.02, 0.05] },
+        location: { ...xbarCharts.location, ucl: [10.7, 10.5], cl: [10, 10], lcl: [9.3, 9.5] },
+        variation: { ...xbarCharts.variation, ucl: [0.8, 0.6], cl: [0.3, 0.25], lcl: [0.02, 0.05] },
       },
     } as SpcStudyResult;
 

@@ -20,7 +20,7 @@ const statusColor = (status: string) => ({
 const SpcStudyHistoryOffcanvas = ({ show, studyId, onHide }: SpcStudyHistoryOffcanvasProps) => {
   const [pagination, setPagination] = useState({ studyId, page: 1 });
   const page = pagination.studyId === studyId ? pagination.page : 1;
-  const { data, isLoading } = useSpcStudyHistory(show ? studyId : null, page);
+  const { data, isLoading, isError, refetch } = useSpcStudyHistory(show ? studyId : null, page);
   const versions = data?.items ?? [];
   return (
     <Offcanvas show={show} onHide={onHide} placement="end" className="spc-history-canvas">
@@ -31,7 +31,12 @@ const SpcStudyHistoryOffcanvas = ({ show, studyId, onHide }: SpcStudyHistoryOffc
         </div>
       </Offcanvas.Header>
       <Offcanvas.Body>
-        {isLoading ? <div className="text-center py-5"><Spinner /></div> : (
+        {isLoading ? <div className="text-center py-5"><Spinner /></div> : isError ? (
+          <Alert variant="danger">
+            <div>無法載入研究版本歷程。</div>
+            <Button className="mt-2" size="sm" variant="outline-danger" onClick={() => void refetch()}>重試</Button>
+          </Alert>
+        ) : (
           <>
             {versions.some(version => version.audit_incomplete) && (
               <Alert variant="warning">歷程包含稽核資料不完整的舊版本，不可直接核准為新基準。</Alert>

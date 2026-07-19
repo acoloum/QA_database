@@ -1,4 +1,5 @@
 import type { ChartData } from 'chart.js';
+import { isSpcChartSet } from '../types/spc';
 import type {
   CpkTrend,
   DistributionStats,
@@ -12,7 +13,7 @@ import type {
   SpcStabilityViolation,
   SpcStudyResult,
   SpcViolation,
-} from '../types';
+} from '../types/spc';
 import { generateHistogramBins, movingAverage, normalPDF } from './spcAnalysis';
 
 export interface SpcStatsSummary {
@@ -66,7 +67,7 @@ export const mergeOngoingStudyForDisplay = (
   version: SpcStudyResult | null | undefined,
 ): SpcChartData | null | undefined => {
   if (
-    !preview || !version || version.study_type !== 'ongoing' || !version.charts
+    !preview || !version || version.study_type !== 'ongoing' || !isSpcChartSet(version.charts)
     || !preview.process_stream_key
     || version.process_stream_key !== preview.process_stream_key
     || !preview.data_hash

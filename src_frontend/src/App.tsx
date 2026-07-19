@@ -5,6 +5,7 @@ import MainLayout from './layouts/MainLayout';
 import AuthLayout from './layouts/AuthLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
+import SpcViewRoute from './components/SpcViewRoute';
 
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
@@ -63,12 +64,17 @@ function App() {
                 <Route path="/extrusion-tolerance" element={<ExtrusionTolerancePage />} />
                 <Route path="/vendor-performance" element={<VendorPerformancePage />} />
                 <Route path="/quality-analytics" element={<QualityAnalyticsPage />} />
-                <Route path="/spc/advanced" element={<AdvancedSpcPage />} />
                 <Route path="/pyrometry" element={<PyrometryDashboardPage />} />
                 <Route path="/pyrometry/furnaces" element={<FurnaceMasterPage />} />
                 <Route path="/pyrometry/tests" element={<PyrometryTestListPage />} />
                 <Route path="/pyrometry/recorders" element={<RecorderCalibrationPage />} />
                 <Route path="/pyrometry/thermocouples" element={<ThermocoupleCalibrationPage />} />
+              </Route>
+            </Route>
+
+            <Route element={<SpcViewRoute />}>
+              <Route element={<MainLayout />}>
+                <Route path="/spc/advanced" element={<AdvancedSpcPage />} />
               </Route>
             </Route>
 

@@ -6,6 +6,7 @@ interface MenuItem {
     title: string;
     path: string;
     icon: string;
+    permission?: string;
 }
 
 interface MenuGroup {
@@ -16,7 +17,7 @@ interface MenuGroup {
 
 const Sidebar = () => {
     const [isCollapsed, setIsCollapsed] = useState(false);
-    const { user } = useAuth();
+    const { user, hasPermission } = useAuth();
     const isAdmin = user?.role === 'admin';
 
     const menuGroups: MenuGroup[] = [
@@ -40,7 +41,7 @@ const Sidebar = () => {
                 { title: '擠壓公差', path: '/extrusion-tolerance', icon: 'fa-compress-alt' },
                 { title: '廠商績效', path: '/vendor-performance', icon: 'fa-chart-line' },
                 { title: '品質分析', path: '/quality-analytics', icon: 'fa-chart-simple' },
-                { title: '進階 SPC', path: '/spc/advanced', icon: 'fa-chart-area' },
+                { title: '進階 SPC', path: '/spc/advanced', icon: 'fa-chart-area', permission: 'spc.view' },
             ]
         },
         {
@@ -101,7 +102,7 @@ const Sidebar = () => {
                                 <div className="nav-group-title">{group.title}</div>
                             )}
                             <ul className="nav-list">
-                                {group.items.map((item) => (
+                                {group.items.filter(item => !item.permission || hasPermission(item.permission)).map((item) => (
                                     <li key={item.path}>
                                         <NavLink 
                                             to={item.path}

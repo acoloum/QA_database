@@ -1,4 +1,5 @@
 export type SpcChartType = 'xbar_s' | 'xbar_r' | 'i_mr' | 'p' | 'np';
+export type SpcVariableChartType = Exclude<SpcChartType, 'p' | 'np'>;
 export type SpcAnalysisFamily = 'variable' | 'attribute' | 'machine';
 export type SpcChartKind = 'location' | 'variation';
 
@@ -27,7 +28,7 @@ export interface SpcChartSeries {
 }
 
 export interface SpcChartSet {
-  chart_type: SpcChartType;
+  chart_type: SpcVariableChartType;
   location: SpcChartSeries;
   variation: SpcChartSeries;
   subgroup_sizes: number[];
@@ -56,6 +57,14 @@ export interface SpcAttributeChartData {
   warnings?: Record<string, boolean>;
   exclusion_evidence?: Array<Record<string, unknown>>;
 }
+
+export const isSpcAttributeChartData = (
+  charts: SpcChartSet | SpcAttributeChartData | null | undefined,
+): charts is SpcAttributeChartData => charts?.chart_type === 'p' || charts?.chart_type === 'np';
+
+export const isSpcChartSet = (
+  charts: SpcChartSet | SpcAttributeChartData | null | undefined,
+): charts is SpcChartSet => Boolean(charts && !isSpcAttributeChartData(charts));
 
 export interface SpcStabilityViolation {
   index: number;
@@ -283,7 +292,7 @@ export interface SpcStudyResult {
   code_version: string | null;
   data_hash: string;
   specification: ToleranceLimits;
-  charts: SpcChartSet | null;
+  charts: SpcChartSet | SpcAttributeChartData | null;
   stability: SpcStability;
   distribution: SpcDistributionAssessment;
   time_model: SpcTimeModel;

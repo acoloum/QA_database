@@ -1,29 +1,15 @@
 import { Alert, Badge, Card, Table } from 'react-bootstrap';
-import type { SpcAttributeChartData, SpcStudyResult } from '../../../types';
+import { isSpcAttributeChartData, type SpcStudyResult } from '../../../types/spc';
 import AttributeControlChart from './AttributeControlChart';
 
 interface AttributeStudyPanelProps {
   result: SpcStudyResult | null;
 }
 
-const asAttributeChart = (value: unknown): SpcAttributeChartData | null => {
-  if (!value || typeof value !== 'object') return null;
-  const chart = value as Partial<SpcAttributeChartData>;
-  if (
-    (chart.chart_type !== 'p' && chart.chart_type !== 'np')
-    || !Array.isArray(chart.values) || !Array.isArray(chart.cl)
-    || !Array.isArray(chart.ucl) || !Array.isArray(chart.lcl)
-    || !Array.isArray(chart.n) || !Array.isArray(chart.x)
-    || chart.values.length === 0 || [chart.cl, chart.ucl, chart.lcl, chart.n, chart.x]
-      .some(values => values.length !== chart.values?.length)
-  ) return null;
-  return chart as SpcAttributeChartData;
-};
-
 const AttributeStudyPanel = ({ result }: AttributeStudyPanelProps) => {
   if (!result) return <Alert variant="light" className="mb-0">設定條件後建立屬性研究，不會以預設資料替代分析結果。</Alert>;
 
-  const chart = asAttributeChart(result.charts);
+  const chart = isSpcAttributeChartData(result.charts) ? result.charts : null;
   const reasons = result.applicability?.reasons ?? [];
   const reasonText = [
     result.applicability?.message,
@@ -37,7 +23,9 @@ const AttributeStudyPanel = ({ result }: AttributeStudyPanelProps) => {
   const subgroupKeys = chart?.counts?.map(count => count.key)
     ?? result.samples?.map(sample => sample.key)
     ?? [];
-  const hasTraceablePoints = Boolean(chart && subgroupKeys.length === chart.values.length);
+  const hasTraceablePoints = Boolean(chart && chart.values.length > 0
+    && [chart.cl, chart.ucl, chart.lcl, chart.n, chart.x].every(values => values.length === chart.values.length)
+    && subgroupKeys.length === chart.values.length);
 
   return (
     <Card>

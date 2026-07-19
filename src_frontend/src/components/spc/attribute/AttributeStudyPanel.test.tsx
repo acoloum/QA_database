@@ -50,4 +50,29 @@ describe('AttributeStudyPanel', () => {
     expect(screen.getByTestId('attribute-chart')).toBeInTheDocument();
     expect(screen.getByText('已排除 2 筆無法判定符合性的資料')).toBeInTheDocument();
   });
+
+  it('後端未提供 counts 時以 n/x 與保存子組鍵繪圖', () => {
+    render(<AttributeStudyPanel result={{
+      ...applicableResult,
+      charts: { ...applicableResult.charts, counts: undefined },
+      samples: [
+        { key: 'attribute:2026-07-01' },
+        { key: 'attribute:2026-07-02' },
+      ],
+    } as unknown as SpcStudyResult} />);
+
+    expect(screen.getByTestId('attribute-chart')).toBeInTheDocument();
+    expect(screen.getByText('attribute:2026-07-01')).toBeInTheDocument();
+    expect(screen.getByText('0.2000')).toBeInTheDocument();
+  });
+
+  it('零缺陷基線不適用時顯示原因且不繪製零基線圖', () => {
+    render(<AttributeStudyPanel result={{
+      ...npNotApplicableResult,
+      applicability: { applicable: false, reason_code: 'ZERO_DEFECT_BASELINE', message: '零缺陷基線不可建立屬性管制界限' },
+    }} />);
+
+    expect(screen.getByText(/零缺陷基線不可建立屬性管制界限/)).toBeInTheDocument();
+    expect(screen.queryByTestId('attribute-chart')).not.toBeInTheDocument();
+  });
 });

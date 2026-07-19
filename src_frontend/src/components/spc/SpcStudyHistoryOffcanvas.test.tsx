@@ -48,3 +48,14 @@ it('研究歷程可切換下一頁並使用後端分頁順序', () => {
   rerender(<SpcStudyHistoryOffcanvas show studyId={10} onHide={vi.fn()} />);
   expect(historyMock).toHaveBeenLastCalledWith(10, 1);
 });
+
+it('歷程 API 失敗時顯示錯誤並可重試', () => {
+  const refetch = vi.fn();
+  historyMock.mockReturnValue({ data: undefined, isLoading: false, isError: true, refetch });
+  render(<SpcStudyHistoryOffcanvas show studyId={9} onHide={vi.fn()} />);
+
+  expect(screen.getByText('無法載入研究版本歷程。')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '重試' }));
+  expect(refetch).toHaveBeenCalledOnce();
+  expect(screen.queryByText('尚無保存版本。')).not.toBeInTheDocument();
+});

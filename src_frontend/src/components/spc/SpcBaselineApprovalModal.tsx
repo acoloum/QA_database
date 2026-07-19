@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Badge, Button, Col, Form, Modal, Row, Table } from 'react-bootstrap';
-import type { SpcStudyResult } from '../../types';
+import { isSpcAttributeChartData, isSpcChartSet, type SpcStudyResult } from '../../types/spc';
 
 export type SpcWorkflowAction = 'time-model' | 'submit' | 'approve' | 'reject' | 'retire';
 
@@ -53,26 +53,22 @@ const SpcBaselineApprovalModal = ({
   }, [version.samples]);
 
   const chart = version.charts;
-  const attributeChart = chart && (chart.chart_type === 'p' || chart.chart_type === 'np')
-    ? chart as unknown as {
-      chart_type: 'p' | 'np'; values: number[]; cl: number[]; ucl: number[]; lcl: number[];
-      n: number[]; x: number[];
-    }
-    : null;
+  const attributeChart = isSpcAttributeChartData(chart) ? chart : null;
+  const variableChart = isSpcChartSet(chart) ? chart : null;
   const limitRows = useMemo(() => {
-    if (!chart || attributeChart) return [];
+    if (!variableChart) return [];
     const seen = new Set<number>();
-    return chart.subgroup_sizes.flatMap((size, index) => {
+    return variableChart.subgroup_sizes.flatMap((size, index) => {
       if (seen.has(size)) return [];
       seen.add(size);
       return [{
         size,
-        xUcl: chart.location.ucl[index], xCl: chart.location.cl[index],
-        xLcl: chart.location.lcl[index], rUcl: chart.variation.ucl[index],
-        rCl: chart.variation.cl[index], rLcl: chart.variation.lcl[index],
+        xUcl: variableChart.location.ucl[index], xCl: variableChart.location.cl[index],
+        xLcl: variableChart.location.lcl[index], rUcl: variableChart.variation.ucl[index],
+        rCl: variableChart.variation.cl[index], rLcl: variableChart.variation.lcl[index],
       }];
     });
-  }, [attributeChart, chart]);
+  }, [variableChart]);
   const modelAllowed = action !== 'time-model' || candidate === 'A1' || candidate === 'A2';
 
   return (
@@ -133,12 +129,12 @@ const SpcBaselineApprovalModal = ({
               </Table>
             ) : (
               <div className="spc-limit-grid">
-                <div><span>位置 UCL</span><strong>{firstLimit(chart?.location.ucl)}</strong></div>
-                <div><span>位置 CL</span><strong>{firstLimit(chart?.location.cl)}</strong></div>
-                <div><span>位置 LCL</span><strong>{firstLimit(chart?.location.lcl)}</strong></div>
-                <div><span>變異 UCL</span><strong>{firstLimit(chart?.variation.ucl)}</strong></div>
-                <div><span>變異 CL</span><strong>{firstLimit(chart?.variation.cl)}</strong></div>
-                <div><span>變異 LCL</span><strong>{firstLimit(chart?.variation.lcl)}</strong></div>
+                <div><span>位置 UCL</span><strong>{firstLimit(variableChart?.location.ucl)}</strong></div>
+                <div><span>位置 CL</span><strong>{firstLimit(variableChart?.location.cl)}</strong></div>
+                <div><span>位置 LCL</span><strong>{firstLimit(variableChart?.location.lcl)}</strong></div>
+                <div><span>變異 UCL</span><strong>{firstLimit(variableChart?.variation.ucl)}</strong></div>
+                <div><span>變異 CL</span><strong>{firstLimit(variableChart?.variation.cl)}</strong></div>
+                <div><span>變異 LCL</span><strong>{firstLimit(variableChart?.variation.lcl)}</strong></div>
               </div>
             )}
             {action === 'time-model' && (
