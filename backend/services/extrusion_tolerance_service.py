@@ -91,9 +91,11 @@ class ExtrusionToleranceService:
     @staticmethod
     def get_detail(tolerance_id: int) -> Dict[str, Any]:
         """取得單筆主檔 + 明細"""
-        t = ExtrusionToleranceMain.query.options(
-            joinedload(ExtrusionToleranceMain.details)
-        ).get(tolerance_id)
+        t = db.session.get(
+            ExtrusionToleranceMain,
+            tolerance_id,
+            options=[joinedload(ExtrusionToleranceMain.details)],
+        )
         if not t:
             raise ValueError("找不到該筆擠壓公差資料")
 

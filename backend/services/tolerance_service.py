@@ -57,10 +57,14 @@ class ToleranceService:
     @staticmethod
     def get_tolerance_detail(tolerance_id: int) -> Dict[str, Any]:
         try:
-            t = VendorToleranceMain.query.options(
-                joinedload(VendorToleranceMain.vendor),
-                joinedload(VendorToleranceMain.details)
-            ).get(tolerance_id)
+            t = db.session.get(
+                VendorToleranceMain,
+                tolerance_id,
+                options=[
+                    joinedload(VendorToleranceMain.vendor),
+                    joinedload(VendorToleranceMain.details),
+                ],
+            )
             
             if not t: raise ValueError("找不到該筆公差資料")
 

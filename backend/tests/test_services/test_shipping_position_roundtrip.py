@@ -88,7 +88,7 @@ def test_set_measurement_exclusion_and_stats_skip(db_session, setup_data):
     m_id = m.id
 
     ShippingService.set_measurement_exclusion(m_id, excluded=True, reason="校正量測誤植")
-    m_after = ShippingMeasurement.query.get(m_id)
+    m_after = db_session.get(ShippingMeasurement, m_id)
     assert m_after.excluded is True
     assert m_after.exclusion_reason == "校正量測誤植"
 
@@ -96,7 +96,7 @@ def test_set_measurement_exclusion_and_stats_skip(db_session, setup_data):
     ShippingService.set_measurement_exclusion(
         m_id, excluded=False, reason="重測確認原量測有效"
     )
-    m_restored = ShippingMeasurement.query.get(m_id)
+    m_restored = db_session.get(ShippingMeasurement, m_id)
     assert m_restored.excluded is False
     assert m_restored.exclusion_reason is None
 
