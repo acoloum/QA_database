@@ -111,4 +111,25 @@ describe('TimeDiagnosticPanel', () => {
     expect(screen.queryByLabelText('確認模型')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '確認模型' })).not.toBeInTheDocument();
   });
+
+  it('舊版已確認診斷仍顯示完整人工判定稽核證據', () => {
+    render(<TimeDiagnosticPanel version={{
+      ...version(), method_version: '2026.1',
+      time_model: {
+        candidate: 'C3', model: 'C4', system_candidate: 'C3', overridden: true,
+        confirmed: true, statistically_controlled: false,
+        confirmed_by: 8, confirmed_at: '2026-07-01T08:30:00+00:00',
+        confirmation_reason: '舊版已完成批次切換複核',
+      },
+    }} canApprove onConfirm={vi.fn()} />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('舊版方法 2026.1 僅供唯讀');
+    expect(screen.getByText(/系統候選：C3/)).toBeInTheDocument();
+    expect(screen.getByText(/確認模型：C4/)).toBeInTheDocument();
+    expect(screen.getByText('人工改判')).toBeInTheDocument();
+    expect(screen.getByText(/確認者：8/)).toBeInTheDocument();
+    expect(screen.getByText(/2026-07-01T08:30:00/)).toBeInTheDocument();
+    expect(screen.getByText('舊版已完成批次切換複核')).toBeInTheDocument();
+    expect(screen.queryByLabelText('確認模型')).not.toBeInTheDocument();
+  });
 });

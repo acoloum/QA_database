@@ -52,8 +52,14 @@ const SpcStudyWorkflowBar = ({
   const current = stageIndex(version?.status, research);
   const candidate = version?.time_model.candidate;
   const canConfirmTimeModel = version?.status === 'draft'
+    && version.method_version === '2026.2'
     && !version.time_model.confirmed
     && (candidate === 'A1' || candidate === 'A2');
+  const legacyTimeModelReadOnly = Boolean(version
+    && version.method_version !== '2026.2'
+    && version.status === 'draft'
+    && candidate
+    && !version.time_model.confirmed);
   const variableTimeModelUnconfirmed = version?.analysis_family === 'variable'
     && version.status === 'draft' && version.time_model.confirmed !== true;
 
@@ -100,9 +106,11 @@ const SpcStudyWorkflowBar = ({
           <Button size="sm" variant="outline-danger" onClick={() => onAction('retire')}>停用／重建</Button>
         )}
       </div>
-      {variableTimeModelUnconfirmed && (
+      {(legacyTimeModelReadOnly || variableTimeModelUnconfirmed) && (
         <div className="small text-warning mt-2" role="status">
-          請先由具核准權限者確認時間模型，再送交審查。
+          {legacyTimeModelReadOnly
+            ? '舊版方法僅供歷史送審與核准，不可重新確認時間模型。'
+            : '請先由具核准權限者確認時間模型，再送交審查。'}
         </div>
       )}
     </div>

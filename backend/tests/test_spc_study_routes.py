@@ -39,6 +39,26 @@ def _headers(user):
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
+def _decision_version(db_session, actor, stream_key):
+    """建立目前方法的草稿，以隔離決定端點的輸入驗證測試。"""
+
+    study = SpcStudy(
+        source="shipping", study_type="retrospective", analysis_family="variable",
+        process_stream_key=stream_key, characteristic="外徑", filters={},
+        status="draft", created_by=actor.id,
+    )
+    version = SpcStudyVersion(
+        study=study, version_no=1, method_version="2026.2", data_hash="f" * 64,
+        analysis_options={}, specification_snapshot={}, chart_result={},
+        stability_result={}, distribution_result={}, capability_result={},
+        applicability_result={}, status="draft", created_by=actor.id,
+        time_model_result={"candidate": "A1", "confirmed": False},
+    )
+    db_session.add(version)
+    db_session.commit()
+    return version
+
+
 @pytest.fixture
 def spc_roles(db_session):
     db_session.add_all([
@@ -245,13 +265,14 @@ def test_time_model_route_requires_approve_permission_and_reason(
 ):
     manager = _user(db_session, "time-model-manager", "spc_manager")
     approver = _user(db_session, "time-model-approver", "spc_approver")
+    version = _decision_version(db_session, approver, "missing-time-model-reason")
 
     forbidden = client.post(
         "/api/spc/study-versions/999/time-model",
         headers=_headers(manager), json={"model": "A1", "reason": "確認"},
     )
     missing_reason = client.post(
-        "/api/spc/study-versions/999/time-model",
+        f"/api/spc/study-versions/{version.id}/time-model",
         headers=_headers(approver), json={"model": "A1", "reason": " "},
     )
 
@@ -297,6 +318,7 @@ def test_transformation_route_requires_approve_permission_and_reason(
 ):
     manager = _user(db_session, "transformation-manager", "spc_manager")
     approver = _user(db_session, "transformation-approver", "spc_approver")
+    version = _decision_version(db_session, approver, "missing-transformation-reason")
 
     forbidden = client.post(
         "/api/spc/study-versions/999/transformation",
@@ -304,7 +326,7 @@ def test_transformation_route_requires_approve_permission_and_reason(
         json={"model": "johnson_su", "reason": "確認"},
     )
     missing_reason = client.post(
-        "/api/spc/study-versions/999/transformation",
+        f"/api/spc/study-versions/{version.id}/transformation",
         headers=_headers(approver),
         json={"model": "johnson_su", "reason": " "},
     )
@@ -313,6 +335,78 @@ def test_transformation_route_requires_approve_permission_and_reason(
     assert forbidden.get_json()["error"] == "權限不足"
     assert missing_reason.status_code == 422
     assert missing_reason.get_json()["code"] == "REASON_REQUIRED"
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "model"),
+    [("time-model", "A1"), ("transformation", "johnson_su")],
+)
+def test_legacy_decision_routes_return_stable_read_only_error(
+    client, db_session, spc_roles, endpoint, model
+):
+    approver = _user(db_session, f"legacy-route-{endpoint}", "spc_approver")
+    study = SpcStudy(
+        source="shipping", study_type="retrospective", analysis_family="variable",
+        process_stream_key=f"legacy-route-{endpoint}", characteristic="外徑",
+        filters={}, status="draft", created_by=approver.id,
+    )
+    version = SpcStudyVersion(
+        study=study, version_no=1, method_version="2026.1", data_hash="3" * 64,
+        analysis_options={}, specification_snapshot={}, chart_result={},
+        stability_result={}, distribution_result={}, capability_result={},
+        applicability_result={}, status="draft", created_by=approver.id,
+        time_model_result={"candidate": "A1", "confirmed": False},
+    )
+    db_session.add(version)
+    db_session.commit()
+
+    response = client.post(
+        f"/api/spc/study-versions/{version.id}/{endpoint}",
+        headers=_headers(approver), json={"model": model, "reason": "舊版不可重算"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["code"] == "SPC_METHOD_VERSION_READ_ONLY"
+    assert db_session.get(SpcStudyVersion, version.id).status == "draft"
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "model", "reason"),
+    [
+        ("time-model", "A1", "短"),
+        ("time-model", "A1", "甲" * 501),
+        ("transformation", "johnson_su", "短"),
+        ("transformation", "johnson_su", "甲" * 501),
+    ],
+)
+def test_decision_routes_reject_reason_outside_2_to_500_characters(
+    client, db_session, spc_roles, endpoint, model, reason
+):
+    approver = _user(
+        db_session, f"reason-route-{endpoint}-{len(reason)}", "spc_approver"
+    )
+    study = SpcStudy(
+        source="shipping", study_type="retrospective", analysis_family="variable",
+        process_stream_key=f"reason-route-{endpoint}-{len(reason)}",
+        characteristic="外徑", filters={}, status="draft", created_by=approver.id,
+    )
+    version = SpcStudyVersion(
+        study=study, version_no=1, method_version="2026.2", data_hash="4" * 64,
+        analysis_options={}, specification_snapshot={}, chart_result={},
+        stability_result={}, distribution_result={}, capability_result={},
+        applicability_result={}, status="draft", created_by=approver.id,
+        time_model_result={"candidate": "A1", "confirmed": False},
+    )
+    db_session.add(version)
+    db_session.commit()
+
+    response = client.post(
+        f"/api/spc/study-versions/{version.id}/{endpoint}",
+        headers=_headers(approver), json={"model": model, "reason": reason},
+    )
+
+    assert response.status_code == 422
+    assert response.get_json()["code"] == "REASON_LENGTH_INVALID"
 
 
 def test_legacy_limit_write_endpoints_are_gone(client, db_session, spc_roles):

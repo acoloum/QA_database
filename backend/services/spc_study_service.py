@@ -60,6 +60,7 @@ from .spc_errors import (
     SpcConflict,
     SpcForbidden,
     SpcNotFound,
+    SpcServiceError,
     SpcValidationError,
 )
 from .spc_stability import evaluate_attribute_stability, evaluate_study_stability
@@ -166,6 +167,28 @@ def _require_reason(reason: str | None) -> str:
     if not normalized:
         raise SpcValidationError("REASON_REQUIRED", "狀態轉換必須填寫理由")
     return normalized
+
+
+def _require_decision_reason(reason: str | None) -> str:
+    """驗證人工診斷決定的理由長度，不影響其他工作流程理由規則。"""
+
+    normalized = _require_reason(reason)
+    if not 2 <= len(normalized) <= 500:
+        raise SpcValidationError(
+            "REASON_LENGTH_INVALID",
+            "確認理由必須為 2 至 500 個字元",
+        )
+    return normalized
+
+
+def _assert_current_decision_method(version: SpcStudyVersion) -> None:
+    """舊版方法僅保留既有審批證據，不得建立診斷後繼版本。"""
+
+    if version.method_version != SPC_METHOD_VERSION:
+        raise SpcServiceError(
+            "SPC_METHOD_VERSION_READ_ONLY",
+            f"方法版本 {version.method_version} 僅供歷史送審與核准，不可重新計算或建立後繼版本",
+        )
 
 
 def _require_permission(actor_id: int, permission: str) -> User:
@@ -1518,7 +1541,6 @@ class SpcStudyService:
         version_id: int, actor_id: int, *, model: str, reason: str
     ) -> SpcStudyVersion:
         _require_permission(actor_id, "spc.approve")
-        reason = _require_reason(reason)
         study_id = db.session.query(SpcStudyVersion.study_id).filter_by(
             id=version_id
         ).scalar()
@@ -1530,6 +1552,8 @@ class SpcStudyService:
         version = SpcStudyVersion.query.filter_by(
             id=version_id
         ).with_for_update().one()
+        _assert_current_decision_method(version)
+        reason = _require_decision_reason(reason)
         if version.status != "draft":
             raise SpcConflict(
                 "SPC_TIME_MODEL_CONFIRM_CONFLICT",
@@ -1644,7 +1668,6 @@ class SpcStudyService:
         """確認已通過候選，建立轉換尺度的不可變後繼版本。"""
 
         _require_permission(actor_id, "spc.approve")
-        reason = _require_reason(reason)
         study_id = db.session.query(SpcStudyVersion.study_id).filter_by(
             id=version_id
         ).scalar()
@@ -1655,6 +1678,8 @@ class SpcStudyService:
             selectinload(SpcStudyVersion.samples),
             selectinload(SpcStudyVersion.study),
         ).filter_by(id=version_id).with_for_update().one()
+        _assert_current_decision_method(version)
+        reason = _require_decision_reason(reason)
         if version.status != "draft":
             raise SpcConflict(
                 "SPC_TRANSFORMATION_CONFIRM_CONFLICT",

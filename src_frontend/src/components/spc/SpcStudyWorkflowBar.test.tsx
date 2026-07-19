@@ -97,4 +97,16 @@ describe('SpcStudyWorkflowBar 機器研究', () => {
     expect(screen.getByRole('button', { name: '送審' })).toBeInTheDocument();
     expect(screen.queryByText('請先由具核准權限者確認時間模型，再送交審查。')).not.toBeInTheDocument();
   });
+
+  it('舊版方法即使保存 A1 候選也不顯示時間模型確認入口', () => {
+    const legacyVersion: SpcStudyResult = {
+      ...machineVersion(), method_version: '2026.1', analysis_family: 'variable', status: 'draft',
+      capability: { available: false },
+      time_model: { candidate: 'A1', confirmed: false, statistically_controlled: false },
+    };
+    render(<SpcStudyWorkflowBar version={legacyVersion} canView canManage canApprove onAnalyze={vi.fn()} onAction={vi.fn()} onShowHistory={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: '確認 A1' })).not.toBeInTheDocument();
+    expect(screen.getByText('舊版方法僅供歷史送審與核准，不可重新確認時間模型。')).toBeInTheDocument();
+  });
 });

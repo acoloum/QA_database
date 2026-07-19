@@ -214,6 +214,17 @@ describe('SpcStudyPanel', () => {
     expect(screen.getByText('AIAG & VDA SPC · 2026.1')).toBeInTheDocument();
   });
 
+  it('SpcStudyPanel 的舊版 A1 候選不可繞過唯讀限制開啟確認 modal', () => {
+    const legacyCandidate = {
+      ...version,
+      time_model: { candidate: 'A1', confirmed: false, statistically_controlled: false },
+    } as SpcStudyResult;
+    render(<SpcStudyPanel source="shipping" filters={legacyCandidate.filters} preview={{ process_stream_key: 'stream-a' } as never} version={legacyCandidate} onVersionChange={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: '確認 A1' })).not.toBeInTheDocument();
+    expect(screen.getByText('舊版方法僅供歷史送審與核准，不可重新確認時間模型。')).toBeInTheDocument();
+  });
+
   it.each(['B', 'C3', 'D'] as const)('已確認 %s 研究可從既有面板呼叫研究核准並更新結果', async model => {
     const researchVersion = {
       ...version,

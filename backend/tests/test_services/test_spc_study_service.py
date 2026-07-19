@@ -19,7 +19,9 @@ from backend.models import (
 )
 from backend.services.spc_contracts import SpcStudyInput, SpcSubgroup
 from backend.services.spc_adapters.common import calculate_study_data_hash
-from backend.services.spc_errors import SpcConflict, SpcForbidden, SpcValidationError
+from backend.services.spc_errors import (
+    SpcConflict, SpcForbidden, SpcServiceError, SpcValidationError,
+)
 from backend.services.spc_study_service import (
     ADAPTERS,
     SpcStudyService,
@@ -326,6 +328,106 @@ def test_legacy_2026_1_version_can_submit_and_approve_with_historical_hash(
 
         assert calls == [("variable", {}, "2026.1"), ("variable", {}, "2026.1")]
         assert limit.analysis_family == "variable"
+
+
+@pytest.mark.parametrize(
+    ("action", "model"),
+    [("time_model", "A1"), ("transformation", "johnson_su")],
+)
+def test_legacy_2026_1_decision_endpoints_cannot_create_successor(
+    app, db_session, action, model
+):
+    with app.app_context():
+        role = f"legacy_{action}_approver"
+        _role(db_session, role, {"spc.approve": True})
+        approver = _user(db_session, f"legacy-{action}-approver", role)
+        study = SpcStudy(
+            source="shipping", study_type="retrospective",
+            analysis_family="variable", process_stream_key=f"legacy-{action}",
+            characteristic="外徑", filters={}, status="draft",
+            created_by=approver.id,
+        )
+        version = SpcStudyVersion(
+            study=study, version_no=1, method_version="2026.1",
+            data_hash="1" * 64, analysis_options={},
+            specification_snapshot={"found": True, "LSL": 9.5, "USL": 10.5},
+            chart_result={}, stability_result={}, capability_result={},
+            applicability_result={}, status="draft", created_by=approver.id,
+            time_model_result={
+                "candidate": "A1", "confirmed": False,
+                "statistically_controlled": True,
+            },
+            distribution_result={
+                "transformation_candidates": [{
+                    "model": "johnson_su", "accepted": True,
+                    "params": {}, "reason_code": None,
+                }],
+            },
+        )
+        db_session.add(version)
+        db_session.commit()
+
+        with pytest.raises(SpcServiceError) as read_only:
+            if action == "time_model":
+                SpcStudyService.confirm_time_model(
+                    version.id, approver.id, model=model, reason="舊版不可重算"
+                )
+            else:
+                SpcStudyService.confirm_transformation(
+                    version.id, approver.id, model=model, reason="舊版不可重算"
+                )
+
+        assert read_only.value.code == "SPC_METHOD_VERSION_READ_ONLY"
+        assert read_only.value.status_code == 400
+        assert version.status == "draft"
+        assert SpcStudyVersion.query.filter_by(study_id=study.id).count() == 1
+
+
+@pytest.mark.parametrize(
+    ("action", "model", "reason"),
+    [
+        ("time_model", "A1", "短"),
+        ("time_model", "A1", "甲" * 501),
+        ("transformation", "johnson_su", "短"),
+        ("transformation", "johnson_su", "甲" * 501),
+    ],
+)
+def test_decision_endpoint_reason_must_be_between_2_and_500_characters(
+    app, db_session, action, model, reason
+):
+    with app.app_context():
+        role = f"reason_{action}"
+        _role(db_session, role, {"spc.approve": True})
+        approver = _user(db_session, f"reason-{action}-{len(reason)}", role)
+        study = SpcStudy(
+            source="shipping", study_type="retrospective",
+            analysis_family="variable", process_stream_key=f"reason-{action}-{len(reason)}",
+            characteristic="外徑", filters={}, status="draft",
+            created_by=approver.id,
+        )
+        version = SpcStudyVersion(
+            study=study, version_no=1, method_version="2026.2",
+            data_hash="2" * 64, analysis_options={}, specification_snapshot={},
+            chart_result={}, stability_result={}, distribution_result={},
+            capability_result={}, applicability_result={}, status="draft",
+            created_by=approver.id,
+            time_model_result={"candidate": "A1", "confirmed": False},
+        )
+        db_session.add(version)
+        db_session.commit()
+
+        with pytest.raises(SpcValidationError) as invalid_reason:
+            if action == "time_model":
+                SpcStudyService.confirm_time_model(
+                    version.id, approver.id, model=model, reason=reason
+                )
+            else:
+                SpcStudyService.confirm_transformation(
+                    version.id, approver.id, model=model, reason=reason
+                )
+
+        assert invalid_reason.value.code == "REASON_LENGTH_INVALID"
+        assert version.status == "draft"
 
 
 def test_preview_cache_upsert_updates_existing_key_atomically(app, db_session):

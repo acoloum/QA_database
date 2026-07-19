@@ -137,7 +137,7 @@ const TimeDiagnosticPanelContent = ({
         </Table>
       </details>}
 
-      {!legacyReadOnly && diagnostic.confirmed ? <div className="border rounded p-3" aria-label="時間模型確認證據">
+      {diagnostic.confirmed ? <div className="border rounded p-3" aria-label="時間模型確認證據">
         <div className="d-flex gap-2 flex-wrap"><strong>確認模型：{diagnostic.model ?? systemCandidate}</strong>{diagnostic.overridden && <Badge bg="warning" text="dark">人工改判</Badge>}</div>
         <div className="small text-muted mt-1">確認者：{diagnostic.confirmed_by ?? '—'}；確認時間：{diagnostic.confirmed_at ?? '—'}</div>
         <div className="mt-2">{diagnostic.confirmation_reason ?? '未保存確認理由'}</div>
