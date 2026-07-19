@@ -10,7 +10,6 @@ import os
 from typing import Any, Callable, Mapping
 
 import numpy as np
-from scipy import stats as scipy_stats
 from sqlalchemy import func, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -56,7 +55,7 @@ from .spc_attribute_options import (
     ATTRIBUTE_OPTION_DEFAULTS,
     canonical_attribute_options,
 )
-from .spc_distribution import assess_distribution
+from .spc_distribution import assess_distribution, dist_quantiles
 from .spc_errors import (
     SpcConflict,
     SpcForbidden,
@@ -513,9 +512,37 @@ def _calculate_ongoing_results(
     if study_input.analysis_family == "attribute":
         return _calculate_attribute_ongoing_results(study_input, active_limit)
 
+    saved_limits = dict(active_limit.limits or {})
+    scale = saved_limits.get("scale", "original")
+    monitoring_subgroups = tuple(study_input.subgroups)
+    original_chart_values = [list(group.values) for group in monitoring_subgroups]
+    transformation_decision = None
+    if scale == "transformed":
+        transformation_decision = saved_limits.get("transformation_decision")
+        if (
+            not isinstance(transformation_decision, Mapping)
+            or transformation_decision.get("confirmed") is not True
+        ):
+            raise SpcValidationError(
+                "SPC_APPROVED_TRANSFORMATION_MISSING",
+                "轉換尺度核准界限缺少完整轉換決定",
+            )
+        try:
+            monitoring_subgroups, original_chart_values = _transform_subgroups(
+                monitoring_subgroups, dict(transformation_decision)
+            )
+        except ValueError as exc:
+            raise SpcValidationError(
+                "SPC_MONITORING_TRANSFORMATION_INVALID",
+                "目前資料無法套用核准的分布轉換",
+            ) from exc
+    elif scale != "original":
+        raise SpcValidationError(
+            "SPC_APPROVED_SCALE_INVALID", "核准界限的尺度標記不受支援"
+        )
     try:
         current = calculate_chart_observations(
-            study_input.subgroups, active_limit.chart_type
+            monitoring_subgroups, active_limit.chart_type
         )
     except SpcChartNotApplicable as exc:
         raise SpcValidationError(exc.code, str(exc)) from exc
@@ -525,7 +552,6 @@ def _calculate_ongoing_results(
             "目前子組結構與核准界限的管制圖類型不一致",
             details={"approved": active_limit.chart_type, "current": current.chart_type},
         )
-    saved_limits = dict(active_limit.limits or {})
     baseline_sizes = [int(value) for value in (saved_limits.get("subgroup_sizes") or [])]
     x_cl, x_ucl, x_lcl = _approved_series_limits(
         saved_limits, baseline_sizes, current.subgroup_sizes, series_name="location"
@@ -564,34 +590,66 @@ def _calculate_ongoing_results(
             "核准版本缺少正式失控規則集，不能執行持續監控",
         )
     stability = evaluate_study_stability(monitored, enabled_rules=approved_rules)
+    stability["scale"] = scale
+    if transformation_decision is not None:
+        stability["transformation_decision"] = dict(transformation_decision)
     all_values = [
         value
-        for subgroup in study_input.subgroups
+        for subgroup in monitoring_subgroups
         for value in (subgroup.distribution_values or subgroup.values)
     ]
+    chart_result = _chart_result(monitored)
+    chart_result.update({
+        "scale": scale,
+        "original_values": original_chart_values,
+    })
+    if transformation_decision is not None:
+        chart_result["transformation_decision"] = dict(transformation_decision)
+    distribution = assess_distribution(
+        all_values,
+        field=None if scale == "transformed" else study_input.characteristic,
+        include_transformations=(scale != "transformed"),
+    )
+    if transformation_decision is not None:
+        distribution.update({
+            "scale": "transformed",
+            "original_model": (saved_limits.get("distribution") or {}).get(
+                "original_model"
+            ),
+            "transformation_decision": dict(transformation_decision),
+        })
     return {
-        "chart_result": _chart_result(monitored),
+        "chart_result": chart_result,
         "stability_result": stability,
-        "distribution_result": assess_distribution(
-            all_values, field=study_input.characteristic
-        ),
+        "distribution_result": distribution,
         "time_model_result": {
             "candidate": None,
             "confirmed": False,
             "statistically_controlled": stability.get("stable") is True,
             "reason_code": "ONGOING_USES_APPROVED_LIMITS",
             "limit_version_id": active_limit.id,
+            "scale": scale,
+            "transformation_decision": (
+                dict(transformation_decision)
+                if transformation_decision is not None else None
+            ),
         },
         "capability_result": {
             "available": False,
             "reason": "ongoing_monitoring",
             "capability_reason": "ONGOING_REQUIRES_SEPARATE_CAPABILITY_STUDY",
+            "scale": scale,
+            "transformation_decision": (
+                dict(transformation_decision)
+                if transformation_decision is not None else None
+            ),
         },
         "applicability_result": {
             "applicable": True,
             "reason_code": None,
             "chart_type": monitored.chart_type,
             "active_limit_version_id": active_limit.id,
+            "scale": scale,
         },
     }
 
@@ -662,6 +720,7 @@ def _calculate_attribute_ongoing_results(
         "applicability_result": {
             "applicable": True, "reason_code": None, "chart_type": requested,
             "active_limit_version_id": active_limit.id,
+            "scale": "original",
         },
     }
 
@@ -821,8 +880,17 @@ def _transformed_specification(
 ) -> dict[str, Any]:
     """依嚴格單調轉換映射規格；原始規格快照仍由版本欄位保存。"""
 
-    transformed = dict(specification)
-    for key in ("LSL", "USL", "nominal"):
+    transformed = {
+        key: value for key, value in specification.items()
+        if key not in {"LSL", "USL", "nominal"}
+    }
+    one_sided = specification.get("one_sided")
+    keys = (
+        ("USL",) if one_sided == "upper"
+        else ("LSL",) if one_sided == "lower"
+        else ("LSL", "USL")
+    )
+    for key in keys:
         value = specification.get(key)
         if value is None:
             continue
@@ -840,71 +908,79 @@ def _transformed_specification(
 
 
 def _original_scale_evidence(
-    candidate: Mapping[str, Any], specification: Mapping[str, Any]
+    candidate: Mapping[str, Any],
+    transformed_distribution: Mapping[str, Any],
+    transformed_ppm: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """以候選配適模型在原尺度回傳 G 法分位數與規格外風險。"""
+    """依實際轉換後常態配適反轉換分位數，風險與能力結果同源。"""
 
-    quantiles = [float(value) for value in candidate.get("tail_quantiles") or []]
-    model = candidate.get("model")
-    params = candidate.get("params") or {}
-
-    def cumulative(value: float) -> float:
-        transformed = float(transform_values(value, candidate))
-        if model == "boxcox":
-            return float(scipy_stats.norm.cdf(
-                transformed,
-                loc=float(params["transformed_mean"]),
-                scale=float(params["transformed_std"]),
-            ))
-        return float(scipy_stats.norm.cdf(transformed))
-
-    usl = specification.get("USL")
-    lsl = specification.get("LSL")
-    one_sided = specification.get("one_sided")
+    transformed_quantiles = dist_quantiles(dict(transformed_distribution))
     try:
-        upper = (1.0 - cumulative(float(usl))) * 1_000_000 if usl is not None else 0.0
-        lower = cumulative(float(lsl)) * 1_000_000 if lsl is not None and one_sided != "upper" else 0.0
-        ppm = {
-            "upper": round(upper, 1),
-            "lower": round(lower, 1),
-            "total": round(upper + lower, 1),
-        }
-    except (ValueError, KeyError, TypeError):
-        ppm = {"upper": None, "lower": None, "total": None}
+        quantiles = [
+            float(value)
+            for value in inverse_values(list(transformed_quantiles), candidate)
+        ]
+    except (TypeError, ValueError):
+        quantiles = []
     return {
         "scale": "original",
         "quantiles": quantiles,
-        "ppm": ppm,
-        "model": model,
+        "ppm": dict(transformed_ppm),
+        "model": candidate.get("model"),
+        "transformed_distribution_params": list(
+            transformed_distribution.get("params") or []
+        ),
     }
 
 
-def _calculate_transformed_results(
-    version: SpcStudyVersion, candidate: Mapping[str, Any]
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
-    """由不可變原始樣本重算轉換尺度圖表、穩定性、分布與能力。"""
+def _transform_subgroups(raw_subgroups, candidate: Mapping[str, Any]):
+    """將原始子組映射到轉換尺度；來源識別與原始物件均不修改。"""
 
-    if version.study.analysis_family != "variable":
-        raise SpcValidationError(
-            "TRANSFORMATION_UNCONFIRMED", "目前只支援計量型研究的分布轉換"
-        )
     groups = []
-    for sample in sorted(version.samples, key=lambda item: item.subgroup_order):
-        original_values = list(sample.values or [])
-        original_distribution = list(sample.distribution_values or original_values)
+    original_chart_values = []
+    for subgroup in raw_subgroups:
+        original_values = list(subgroup.values or [])
+        sample_distribution = list(
+            subgroup.distribution_values or original_values
+        )
+        original_chart_values.append(original_values)
         groups.append(SpcSubgroup(
-            key=sample.subgroup_key,
-            timestamp=sample.sample_timestamp,
+            key=subgroup.subgroup_key if hasattr(subgroup, "subgroup_key") else subgroup.key,
+            timestamp=(
+                subgroup.sample_timestamp
+                if hasattr(subgroup, "sample_timestamp") else subgroup.timestamp
+            ),
             values=tuple(float(value) for value in transform_values(original_values, candidate)),
             distribution_values=tuple(
-                float(value) for value in transform_values(original_distribution, candidate)
+                float(value) for value in transform_values(sample_distribution, candidate)
             ),
-            record_ids=tuple(sample.source_record_ids or []),
-            measurement_ids=tuple(sample.source_measurement_ids or []),
-            exclusion_snapshot=tuple(sample.exclusion_snapshot or []),
+            record_ids=tuple(
+                (subgroup.source_record_ids if hasattr(subgroup, "source_record_ids") else subgroup.record_ids)
+                or []
+            ),
+            measurement_ids=tuple(
+                (subgroup.source_measurement_ids if hasattr(subgroup, "source_measurement_ids") else subgroup.measurement_ids)
+                or []
+            ),
+            exclusion_snapshot=tuple(subgroup.exclusion_snapshot or []),
         ))
+    return tuple(groups), original_chart_values
+
+
+def _recalculate_transformed_sequence(
+    samples,
+    specification: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    time_model: Mapping[str, Any],
+    characteristic: str,
+    original_distribution: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """由原始樣本與指定時間模型，純計算完整轉換尺度證據。"""
+
+    ordered_samples = sorted(samples, key=lambda item: item.subgroup_order)
+    groups, original_chart_values = _transform_subgroups(ordered_samples, candidate)
     try:
-        chart_set = calculate_chart_set(tuple(groups))
+        chart_set = calculate_chart_set(groups)
     except (SpcChartNotApplicable, ValueError) as exc:
         raise SpcValidationError(
             "TRANSFORMATION_UNCONFIRMED", "轉換後資料無法建立有效管制圖"
@@ -913,6 +989,8 @@ def _calculate_transformed_results(
     chart.update({
         "scale": "transformed",
         "transformation_model": candidate.get("model"),
+        "transformation_decision": dict(candidate),
+        "original_values": original_chart_values,
     })
     stability = evaluate_study_stability(chart_set)
     stability["scale"] = "transformed"
@@ -920,7 +998,7 @@ def _calculate_transformed_results(
         value for group in groups for value in (group.distribution_values or group.values)
     ]
     distribution = assess_distribution(
-        all_values, field=version.study.characteristic, include_transformations=False
+        all_values, field=None, include_transformations=False
     )
     if not distribution.get("accepted") or distribution.get("model") != "normal":
         raise SpcValidationError(
@@ -928,11 +1006,19 @@ def _calculate_transformed_results(
         )
     distribution.update({
         "scale": "transformed",
-        "original_model": (version.distribution_result or {}).get("model"),
+        "original_model": original_distribution.get("model"),
+        "original_characteristic": characteristic,
+        "original_distribution": dict(original_distribution),
         "transformation_decision": dict(candidate),
+        "transformation_candidates": original_distribution.get(
+            "transformation_candidates", []
+        ),
+        "transformation_recommendation": original_distribution.get(
+            "transformation_recommendation"
+        ),
     })
     specification = _transformed_specification(
-        dict(version.specification_snapshot or {}), candidate
+        dict(specification), candidate
     )
     location_values = [
         float(value) for value in chart_set.location.values if value is not None
@@ -945,19 +1031,43 @@ def _calculate_transformed_results(
         d2=(variation_center / chart_set.sigma_within if chart_set.sigma_within > 0 else 1.0),
         tolerance_limits=specification,
         stability=stability,
-        field=version.study.characteristic,
+        field=None,
         dist=distribution,
-        time_model=dict(version.time_model_result or {}),
+        time_model=dict(time_model),
         characteristic_class=str(
-            (version.specification_snapshot or {}).get("characteristic_class") or "其他"
+            specification.get("characteristic_class") or "其他"
         ),
     )
     capability["scale"] = "transformed"
     capability["transformed_specification"] = specification
     capability["original_scale"] = _original_scale_evidence(
-        candidate, dict(version.specification_snapshot or {})
+        candidate, distribution, capability.get("ppm") or {}
     )
+    capability["transformation_decision"] = dict(candidate)
     return chart, stability, distribution, capability
+
+
+def _calculate_transformed_results(
+    version: SpcStudyVersion, candidate: Mapping[str, Any], time_model=None
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """以版本不可變證據呼叫純轉換尺度重算流程。"""
+
+    if version.study.analysis_family != "variable":
+        raise SpcValidationError(
+            "TRANSFORMATION_UNCONFIRMED", "目前只支援計量型研究的分布轉換"
+        )
+    distribution = dict(version.distribution_result or {})
+    original_distribution = dict(
+        distribution.get("original_distribution") or distribution
+    )
+    return _recalculate_transformed_sequence(
+        version.samples,
+        dict(version.specification_snapshot or {}),
+        candidate,
+        dict(time_model if time_model is not None else version.time_model_result or {}),
+        version.study.characteristic,
+        original_distribution,
+    )
 
 
 def _add_input_samples(
@@ -1440,7 +1550,29 @@ class SpcStudyService:
             latest = db.session.query(func.max(SpcStudyVersion.version_no)).filter_by(
                 study_id=version.study_id
             ).scalar()
-            confirmed_capability = _recalculate_capability(version, confirmed_time_model)
+            saved_distribution = dict(version.distribution_result or {})
+            if saved_distribution.get("scale") == "transformed":
+                decision = saved_distribution.get("transformation_decision")
+                if not isinstance(decision, Mapping) or decision.get("confirmed") is not True:
+                    raise SpcValidationError(
+                        "TRANSFORMATION_UNCONFIRMED",
+                        "轉換尺度版本缺少已確認的轉換決定",
+                    )
+                (
+                    confirmed_chart,
+                    confirmed_stability,
+                    confirmed_distribution,
+                    confirmed_capability,
+                ) = _calculate_transformed_results(
+                    version, dict(decision), time_model=confirmed_time_model
+                )
+            else:
+                confirmed_chart = dict(version.chart_result or {})
+                confirmed_stability = dict(version.stability_result or {})
+                confirmed_distribution = saved_distribution
+                confirmed_capability = _recalculate_capability(
+                    version, confirmed_time_model
+                )
             confirmed = SpcStudyVersion(
                 study_id=version.study_id,
                 version_no=int(latest or 0) + 1,
@@ -1449,9 +1581,9 @@ class SpcStudyService:
                 data_hash=version.data_hash,
                 analysis_options=dict(version.analysis_options or {}),
                 specification_snapshot=dict(version.specification_snapshot or {}),
-                chart_result=dict(version.chart_result or {}),
-                stability_result=dict(version.stability_result or {}),
-                distribution_result=dict(version.distribution_result or {}),
+                chart_result=confirmed_chart,
+                stability_result=confirmed_stability,
+                distribution_result=confirmed_distribution,
                 time_model_result=confirmed_time_model,
                 capability_result=confirmed_capability,
                 applicability_result=dict(version.applicability_result or {}),
@@ -1552,6 +1684,7 @@ class SpcStudyService:
             ),
             "transformation_decision": decision,
         })
+        chart["transformation_decision"] = decision
         capability["transformation_decision"] = decision
         try:
             latest = db.session.query(func.max(SpcStudyVersion.version_no)).filter_by(
@@ -1679,7 +1812,37 @@ class SpcStudyService:
                     key: chart["variation"][key] for key in ("cl", "ucl", "lcl")
                 },
                 "subgroup_sizes": chart.get("subgroup_sizes", []),
+                "scale": chart.get("scale", "original"),
             }
+            if limits["scale"] == "transformed":
+                decision = (version.distribution_result or {}).get(
+                    "transformation_decision"
+                )
+                transformed_specification = (version.capability_result or {}).get(
+                    "transformed_specification"
+                )
+                if not isinstance(decision, Mapping) or decision.get("confirmed") is not True:
+                    raise SpcValidationError(
+                        "TRANSFORMATION_UNCONFIRMED",
+                        "轉換尺度研究缺少完整確認決定，不能核准",
+                    )
+                if not isinstance(transformed_specification, Mapping):
+                    raise SpcValidationError(
+                        "TRANSFORMATION_SPECIFICATION_INVALID",
+                        "轉換尺度研究缺少轉換後規格，不能核准",
+                    )
+                distribution = dict(version.distribution_result or {})
+                limits.update({
+                    "transformation_decision": dict(decision),
+                    "transformed_specification": dict(transformed_specification),
+                    "distribution": {
+                        "model": distribution.get("model"),
+                        "params": list(distribution.get("params") or []),
+                        "fit_method": distribution.get("fit_method"),
+                        "scale": distribution.get("scale"),
+                        "original_model": distribution.get("original_model"),
+                    },
+                })
         limit = SpcLimitVersion(
             study_version_id=version.id,
             analysis_family=version.study.analysis_family,

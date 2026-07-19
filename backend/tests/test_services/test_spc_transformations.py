@@ -94,3 +94,15 @@ def test_small_sample_returns_auditable_rejections():
     assert result["minimum_sample_size"] == 25
     assert all(not item["accepted"] for item in result["candidates"])
 
+
+def test_no_candidate_passes_returns_unconfirmed_without_recommendation():
+    values = (
+        [-5 + (index % 5) * 0.02 for index in range(50)]
+        + [5 + (index % 5) * 0.02 for index in range(50)]
+    )
+
+    result = evaluate_transformations(values)
+
+    assert result["reason_code"] == "TRANSFORMATION_UNCONFIRMED"
+    assert result["recommended"] is None
+    assert all(candidate["accepted"] is False for candidate in result["candidates"])

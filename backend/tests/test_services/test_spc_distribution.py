@@ -88,17 +88,38 @@ def test_original_accepted_distribution_suppresses_transformation_recommendation
 
 
 def test_unconfirmed_distribution_recommends_best_accepted_transformation():
-    probabilities = np.linspace(0.01, 0.99, 99)
+    probabilities = np.linspace(0.005, 0.995, 199)
     values = scipy_stats.johnsonsu.ppf(
-        probabilities, 1.2, 1.8, loc=-2.0, scale=1.5
+        probabilities, 2.0, 1.0, loc=-2.0, scale=1.0
     ).tolist()
 
     result = assess_distribution(values)
     accepted = [
         item for item in result["transformation_candidates"] if item["accepted"]
     ]
-    if result["accepted"]:
-        assert result["transformation_recommendation"] is None
-    else:
-        assert accepted
-        assert result["transformation_recommendation"]["model"] == accepted[0]["model"]
+    assert result["accepted"] is False
+    assert accepted
+    assert accepted[0]["rank"] == 1
+    assert result["transformation_recommendation"]["model"] == accepted[0]["model"]
+
+
+@pytest.mark.parametrize(
+    "values,reason_code",
+    [
+        (list(range(10)), "TRANSFORMATION_SAMPLE_INSUFFICIENT"),
+        (list(range(24)), "TRANSFORMATION_SAMPLE_INSUFFICIENT"),
+        ([1.0] * 30, "DEGENERATE_DISTRIBUTION_DATA"),
+        ([1.0] * 29 + [float("nan")], "NONFINITE_DISTRIBUTION_DATA"),
+        ([1.0] * 29 + [float("inf")], "NONFINITE_DISTRIBUTION_DATA"),
+    ],
+)
+def test_early_distribution_rejections_keep_four_controlled_transformation_candidates(
+    values, reason_code
+):
+    result = assess_distribution(values)
+
+    assert len(result["transformation_candidates"]) == 4
+    assert all(item["accepted"] is False for item in result["transformation_candidates"])
+    assert {
+        item["reason_code"] for item in result["transformation_candidates"]
+    } == {reason_code}

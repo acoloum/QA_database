@@ -107,10 +107,13 @@ def assess_distribution(
     result = _base_result(int(arr.size), alpha)
     if arr.size < MIN_DISTRIBUTION_SAMPLE:
         result["reason_code"] = "INSUFFICIENT_DISTRIBUTION_DATA"
-        return result
-    if not np.all(np.isfinite(arr)) or float(np.std(arr, ddof=1)) <= 0:
+        return _attach_transformations(result, arr, alpha) if include_transformations else result
+    if not np.all(np.isfinite(arr)):
+        result["reason_code"] = "NONFINITE_DISTRIBUTION_DATA"
+        return _attach_transformations(result, arr, alpha) if include_transformations else result
+    if float(np.std(arr, ddof=1)) <= 0:
         result["reason_code"] = "DEGENERATE_DISTRIBUTION_DATA"
-        return result
+        return _attach_transformations(result, arr, alpha) if include_transformations else result
 
     if field in SHAPE_FIELDS:
         if np.any(arr < 0):

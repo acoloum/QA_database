@@ -24,8 +24,11 @@ from backend.services.spc_study_service import (
     ADAPTERS,
     SpcStudyService,
     _calculate_results,
+    _transformed_specification,
     _upsert_preview_cache,
 )
+from backend.services.spc_transformations import evaluate_transformations, transform_values
+from backend.routes.spc_studies import serialize_event
 
 
 def _role(db_session, code, permissions):
@@ -614,9 +617,16 @@ def test_reconfirming_same_original_returns_stable_conflict_and_one_successor(
         assert len(audits) == 1
 
 
-def _transformation_input(data_hash="e" * 64):
+def _transformation_input(
+    data_hash="e" * 64,
+    *,
+    stream="transform-stream",
+    specification=None,
+    values=None,
+    characteristic="外徑",
+):
     probabilities = np.linspace(0.01, 0.99, 50)
-    values = scipy_stats.lognorm.ppf(
+    values = np.asarray(values) if values is not None else scipy_stats.lognorm.ppf(
         probabilities, 0.7, loc=0.0, scale=np.exp(1.0)
     )
     subgroups = tuple(
@@ -632,10 +642,10 @@ def _transformation_input(data_hash="e" * 64):
     return SpcStudyInput(
         source="shipping",
         filters={"field": "外徑"},
-        process_stream_key="transform-stream",
-        characteristic="外徑",
+        process_stream_key=stream,
+        characteristic=characteristic,
         subgroups=subgroups,
-        specification={"found": True, "LSL": 0.8, "USL": 12.0},
+        specification=(specification or {"found": True, "LSL": 0.8, "USL": 12.0}),
         data_hash=data_hash,
     )
 
@@ -669,6 +679,7 @@ def test_confirm_transformation_creates_immutable_transformed_successor(
         assert successor.chart_result["scale"] == "transformed"
         assert successor.capability_result["scale"] == "transformed"
         assert successor.capability_result["original_scale"]["quantiles"]
+        assert successor.capability_result["original_scale"]["ppm"] == successor.capability_result["ppm"]
         assert successor.distribution_result["transformation_decision"]["model"] == "johnson_sl"
         assert successor.distribution_result["transformation_decision"]["confirmed_by"] == approver.id
         assert successor.distribution_result["transformation_decision"]["confirmation_reason"]
@@ -712,6 +723,178 @@ def test_transformation_requires_approve_accepted_candidate_reason_and_stable_co
             )
         assert conflict.value.code == "SPC_TRANSFORMATION_CONFIRM_CONFLICT"
         assert successor.status == "draft"
+
+
+def test_transformation_and_time_confirmation_order_produces_same_scale_evidence(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        _role(db_session, "sequence_approver", {"spc.manage": True, "spc.approve": True})
+        actor = _user(db_session, "sequence-user", "sequence_approver")
+
+        def adapter(filters):
+            return _transformation_input(
+                stream=f"sequence-{filters['sequence']}",
+                data_hash=("1" if filters["sequence"] == "transform-first" else "2") * 64,
+            )
+
+        monkeypatch.setitem(ADAPTERS, "shipping", adapter)
+        transform_original = SpcStudyService.analyze(
+            "shipping", {"sequence": "transform-first"}, actor.id
+        )
+        transformed = SpcStudyService.confirm_transformation(
+            transform_original.id, actor.id, model="johnson_sl", reason="先確認轉換"
+        )
+        transform_then_time = SpcStudyService.confirm_time_model(
+            transformed.id, actor.id, model="A2", reason="後確認原尺度時間模型"
+        )
+
+        time_original = SpcStudyService.analyze(
+            "shipping", {"sequence": "time-first"}, actor.id
+        )
+        timed = SpcStudyService.confirm_time_model(
+            time_original.id, actor.id, model="A2", reason="先確認原尺度時間模型"
+        )
+        time_then_transform = SpcStudyService.confirm_transformation(
+            timed.id, actor.id, model="johnson_sl", reason="後確認轉換"
+        )
+
+        for key in ("pp", "ppk", "ppu", "ppl", "ppm"):
+            assert transform_then_time.capability_result[key] == time_then_transform.capability_result[key]
+        assert transform_then_time.capability_result["original_scale"] == time_then_transform.capability_result["original_scale"]
+        assert transform_then_time.capability_result["transformed_specification"] == time_then_transform.capability_result["transformed_specification"]
+        assert transform_then_time.distribution_result["transformation_decision"] == transformed.distribution_result["transformation_decision"]
+        assert transform_then_time.chart_result["scale"] == "transformed"
+
+
+def test_upper_only_boxcox_ignores_inapplicable_nonpositive_limits(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        _role(db_session, "boxcox_approver", {"spc.manage": True, "spc.approve": True})
+        actor = _user(db_session, "boxcox-user", "boxcox_approver")
+        values = np.power(0.25 * scipy_stats.norm.ppf(np.linspace(0.01, 0.99, 50)) + 2.0, 4.0)
+        source = _transformation_input(
+            stream="boxcox-upper",
+            values=values,
+            specification={
+                "found": True,
+                "one_sided": "upper",
+                "USL": 80.0,
+                "LSL": 0.0,
+                "nominal": 0.0,
+            },
+        )
+        monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: source)
+        original = SpcStudyService.analyze("shipping", {}, actor.id)
+
+        successor = SpcStudyService.confirm_transformation(
+            original.id, actor.id, model="boxcox", reason="上限單側轉換"
+        )
+
+        transformed_spec = successor.capability_result["transformed_specification"]
+        assert transformed_spec["USL"] is not None
+        assert "LSL" not in transformed_spec
+        assert "nominal" not in transformed_spec
+        assert successor.specification_snapshot["LSL"] == 0.0
+
+
+def test_transformed_specification_maps_only_applicable_sides():
+    values = np.power(
+        0.25 * scipy_stats.norm.ppf(np.linspace(0.01, 0.99, 50)) + 2.0,
+        4.0,
+    )
+    candidate = next(
+        item for item in evaluate_transformations(values)["candidates"]
+        if item["model"] == "boxcox"
+    )
+
+    lower = _transformed_specification(
+        {"one_sided": "lower", "LSL": 1.0, "USL": 0.0, "nominal": 0.0},
+        candidate,
+    )
+    two_sided = _transformed_specification(
+        {"LSL": 1.0, "USL": 80.0, "nominal": 0.0}, candidate
+    )
+
+    assert set(lower) & {"LSL", "USL", "nominal"} == {"LSL"}
+    assert set(two_sided) & {"LSL", "USL", "nominal"} == {"LSL", "USL"}
+
+
+def test_shape_characteristic_uses_normal_assessment_after_transformation(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        _role(db_session, "shape_transform_approver", {"spc.manage": True, "spc.approve": True})
+        actor = _user(db_session, "shape-transform", "shape_transform_approver")
+        source = _transformation_input(
+            stream="shape-transform", characteristic="真圓度"
+        )
+        monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: source)
+        original = SpcStudyService.analyze("shipping", {}, actor.id)
+
+        successor = SpcStudyService.confirm_transformation(
+            original.id, actor.id, model="johnson_sl", reason="形狀特性轉換"
+        )
+
+        assert successor.distribution_result["model"] == "normal"
+        assert successor.distribution_result["original_characteristic"] == "真圓度"
+
+
+def test_ongoing_uses_transformed_observations_and_preserves_raw_samples(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        _role(db_session, "ongoing_transform_approver", {"spc.manage": True, "spc.approve": True})
+        actor = _user(db_session, "ongoing-transform", "ongoing_transform_approver")
+        baseline = _transformation_input(stream="ongoing-transform", data_hash="7" * 64)
+        outlier_values = np.asarray([
+            value for group in baseline.subgroups for value in group.values
+        ])
+        outlier_values[-2:] = [200.0, 220.0]
+        ongoing = _transformation_input(
+            stream="ongoing-transform", data_hash="8" * 64, values=outlier_values
+        )
+        inputs = iter((baseline, baseline, baseline, ongoing))
+        monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: next(inputs))
+        original = SpcStudyService.analyze("shipping", {}, actor.id)
+        transformed = SpcStudyService.confirm_transformation(
+            original.id, actor.id, model="johnson_sl", reason="採用轉換基準"
+        )
+        controlled = SpcStudyService.confirm_time_model(
+            transformed.id, actor.id, model="A2", reason="確認原尺度時間模型"
+        )
+        monkeypatch.setattr(spc_study_module, "_assert_approvable", lambda _version: None)
+        submitted = SpcStudyService.submit(controlled.id, actor.id, reason="送審轉換基準")
+        limit = SpcStudyService.approve_and_activate(submitted.id, actor.id, reason="核准轉換基準")
+
+        monitored = SpcStudyService.analyze(
+            "shipping", {}, actor.id, study_type="ongoing"
+        )
+
+        decision = controlled.distribution_result["transformation_decision"]
+        expected_last = float(np.mean(transform_values([200.0, 220.0], decision)))
+        assert limit.limits["scale"] == "transformed"
+        assert limit.limits["transformation_decision"] == decision
+        assert limit.limits["transformed_specification"]
+        assert monitored.chart_result["scale"] == "transformed"
+        assert monitored.chart_result["transformation_decision"] == decision
+        assert monitored.chart_result["location"]["values"][-1] == pytest.approx(expected_last)
+        assert monitored.samples[-1].values == [200.0, 220.0]
+        assert monitored.stability_result["violations"]
+        events = SpcEvent.query.filter_by(study_version_id=monitored.id).all()
+        location_event = next(
+            event for event in events
+            if float(event.observed_value) == pytest.approx(expected_last)
+        )
+        serialized = serialize_event(
+            location_event,
+            versions_by_id={monitored.id: monitored},
+            samples_by_id={monitored.samples[-1].id: monitored.samples[-1]},
+        )
+        assert serialized["scale"] == "transformed"
+        assert serialized["transformation_decision"] == decision
+        assert serialized["original_sample_values"] == [200.0, 220.0]
 
 
 def test_bcd_research_approval_never_creates_production_limits(app, db_session, monkeypatch):

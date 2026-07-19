@@ -150,6 +150,24 @@ def _empty_candidate(model: str, reason_code: str) -> dict[str, Any]:
     }
 
 
+def _controlled_rejection(
+    arr: np.ndarray, alpha: float, reason_code: str
+) -> dict[str, Any]:
+    candidates = [
+        _empty_candidate(model, reason_code) for model in TRANSFORMATION_MODELS
+    ]
+    return {
+        "available": False,
+        "reason_code": reason_code,
+        "n": int(arr.size),
+        "minimum_sample_size": MIN_TRANSFORMATION_SAMPLE,
+        "alpha": float(alpha),
+        "fit_bias_note": "候選未配適；輸入資料未通過受控資格檢查。",
+        "candidates": candidates,
+        "recommended": None,
+    }
+
+
 def _fit_candidate(model: str, arr: np.ndarray, alpha: float) -> dict[str, Any]:
     if model == "boxcox":
         if np.any(arr <= 0):
@@ -251,39 +269,24 @@ def _fit_candidate(model: str, arr: np.ndarray, alpha: float) -> dict[str, Any]:
 def evaluate_transformations(values: Any, alpha: float = DEFAULT_ALPHA) -> dict[str, Any]:
     """評估四種候選；配適與 AD 使用同筆資料，結果屬探索性證據。"""
 
-    arr, _ = _numeric_input(values)
+    try:
+        arr = np.asarray([values] if np.isscalar(values) else values, dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("轉換輸入必須是數值") from exc
+    if arr.ndim != 1:
+        raise ValueError("轉換輸入必須是一維數值")
     if not 0 < float(alpha) < 1:
         raise ValueError("alpha 必須介於 0 與 1")
+    if not np.all(np.isfinite(arr)):
+        return _controlled_rejection(arr, float(alpha), "NONFINITE_DISTRIBUTION_DATA")
     if arr.size < MIN_TRANSFORMATION_SAMPLE:
-        candidates = [
-            _empty_candidate(model, "TRANSFORMATION_SAMPLE_INSUFFICIENT")
-            for model in TRANSFORMATION_MODELS
-        ]
-        return {
-            "available": False,
-            "reason_code": "TRANSFORMATION_SAMPLE_INSUFFICIENT",
-            "n": int(arr.size),
-            "minimum_sample_size": MIN_TRANSFORMATION_SAMPLE,
-            "alpha": float(alpha),
-            "fit_bias_note": "候選配適與常態性檢定使用同筆資料，小樣本不得確認。",
-            "candidates": candidates,
-            "recommended": None,
-        }
+        return _controlled_rejection(
+            arr, float(alpha), "TRANSFORMATION_SAMPLE_INSUFFICIENT"
+        )
     if float(np.std(arr, ddof=1)) <= 0:
-        candidates = [
-            _empty_candidate(model, "DEGENERATE_DISTRIBUTION_DATA")
-            for model in TRANSFORMATION_MODELS
-        ]
-        return {
-            "available": False,
-            "reason_code": "DEGENERATE_DISTRIBUTION_DATA",
-            "n": int(arr.size),
-            "minimum_sample_size": MIN_TRANSFORMATION_SAMPLE,
-            "alpha": float(alpha),
-            "fit_bias_note": "候選配適與常態性檢定使用同筆資料，結果需由具權限人員確認。",
-            "candidates": candidates,
-            "recommended": None,
-        }
+        return _controlled_rejection(
+            arr, float(alpha), "DEGENERATE_DISTRIBUTION_DATA"
+        )
 
     candidates = []
     for model in TRANSFORMATION_MODELS:

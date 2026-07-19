@@ -65,8 +65,8 @@ def serialize_ocap(ocap):
 def serialize_event(event, *, versions_by_id=None, samples_by_id=None):
     attribute_evidence = None
     version = (versions_by_id or {}).get(event.study_version_id)
+    sample = (samples_by_id or {}).get(event.sample_id) if event.sample_id else None
     if version is not None and version.study.analysis_family == "attribute":
-        sample = (samples_by_id or {}).get(event.sample_id) if event.sample_id else None
         values = list(sample.values or []) if sample is not None else []
         residuals = (version.chart_result or {}).get("pearson_residuals") or []
         attribute_evidence = {
@@ -79,6 +79,11 @@ def serialize_event(event, *, versions_by_id=None, samples_by_id=None):
             ),
             "subgroup_key": sample.subgroup_key if sample is not None else None,
         }
+    chart = dict(version.chart_result or {}) if version is not None else {}
+    scale = chart.get("scale", "original")
+    transformation_decision = (
+        chart.get("transformation_decision") if scale == "transformed" else None
+    )
     return _json_value({
         "id": event.id,
         "limit_version_id": event.limit_version_id,
@@ -89,6 +94,12 @@ def serialize_event(event, *, versions_by_id=None, samples_by_id=None):
         "point_index": event.point_index,
         "source_point_key": event.source_point_key,
         "observed_value": event.observed_value,
+        "scale": scale,
+        "transformation_decision": transformation_decision,
+        "original_sample_values": (
+            list(sample.values or [])
+            if scale == "transformed" and sample is not None else None
+        ),
         "attribute_evidence": attribute_evidence,
         "status": event.status,
         "created_at": event.created_at,
