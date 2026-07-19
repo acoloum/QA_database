@@ -4,7 +4,9 @@ from collections import OrderedDict
 from datetime import date
 from typing import Any, Mapping
 
-from ...models import PatrolDetail, PatrolMain
+from ...models import (
+    PatrolDetail, PatrolMain, VendorToleranceDetail, VendorToleranceMain,
+)
 from ..spc_contracts import SpcReason, SpcStudyInput, SpcSubgroup
 from .common import (
     SPC_INPUT_CONTRACT_VERSION,
@@ -16,6 +18,82 @@ from .common import (
 
 def _date_bound(value: str) -> date | None:
     return date.fromisoformat(value) if value else None
+
+
+def _machine_detail_bounds(detail: VendorToleranceDetail) -> tuple[float | None, float | None]:
+    """解析單筆已精確命中的公差明細；不使用模糊規格選擇邏輯。"""
+
+    lower = float(detail.dim_min) if detail.dim_min is not None else None
+    upper = float(detail.dim_max) if detail.dim_max is not None else None
+    if lower is None and upper is None and detail.std_val is not None:
+        standard = float(detail.std_val)
+        if detail.tolerance_min is not None:
+            lower = standard - abs(float(detail.tolerance_min))
+        if detail.tolerance_max is not None:
+            upper = standard + abs(float(detail.tolerance_max))
+    return lower, upper
+
+
+def resolve_machine_tolerance_specification(
+    *, material: str, spec: str, characteristic: str, position: str,
+    vendor_id: int | None,
+) -> dict[str, Any]:
+    """以固定機器研究的精確來源鍵解析可稽核規格快照。
+
+    customer 已指定時只接受該 customer 的公差；未指定時只接受通用公差，
+    不會把其他 customer 或模糊材質／規格候選當成核准證據。
+    """
+
+    query = (
+        VendorToleranceDetail.query.join(VendorToleranceMain)
+        .filter(
+            VendorToleranceMain.material == material,
+            VendorToleranceMain.spec == spec,
+            VendorToleranceDetail.item == characteristic,
+            VendorToleranceDetail.position == position,
+        )
+    )
+    if vendor_id is None:
+        query = query.filter(VendorToleranceMain.vendor_id.is_(None))
+        vendor_scope = "generic_only"
+    else:
+        query = query.filter(VendorToleranceMain.vendor_id == vendor_id)
+        vendor_scope = "exact_vendor"
+    details = query.order_by(VendorToleranceMain.id.asc(), VendorToleranceDetail.id.asc()).all()
+    base = {
+        "found": False,
+        "consistent": False,
+        "LSL": None,
+        "USL": None,
+        "master_ids": sorted({detail.main_id for detail in details}),
+        "detail_ids": [detail.id for detail in details],
+        "vendor_scope": vendor_scope,
+        "source": "machine_exact_vendor_tolerance",
+    }
+    if not details:
+        return {**base, "reason_code": "SPECIFICATION_UNCONFIRMED"}
+
+    parsed = [
+        (*_machine_detail_bounds(detail), detail.characteristic_class or "其他")
+        for detail in details
+    ]
+    valid = [
+        bounds for bounds in parsed
+        if (bounds[0] is not None or bounds[1] is not None)
+        and not (bounds[0] is not None and bounds[1] is not None and bounds[0] >= bounds[1])
+    ]
+    if len(valid) != len(parsed) or len(set(valid)) != 1:
+        return {**base, "reason_code": "MACHINE_SPECIFICATION_INCONSISTENT"}
+    lower, upper, characteristic_class = valid[0]
+    return {
+        **base,
+        "found": True,
+        "consistent": True,
+        "LSL": lower,
+        "USL": upper,
+        "characteristic_class": characteristic_class,
+        "reason_code": None,
+    }
 
 
 def build_patrol_study_input(
@@ -135,18 +213,16 @@ def build_patrol_study_input(
                 distribution_values=subgroup_distribution_values,
             ))
 
-    specification = resolve_tolerance_specification(
-        material=str(filters["mat"]), spec=str(filters["spec"]),
-        characteristic=characteristic, vendor_id=filters["cust_id"],
-        position=str(filters["pos"]) if is_machine else None,
-    )
-    if is_machine:
-        specification["consistent"] = bool(
-            specification.get("found") and (
-                specification.get("LSL") is not None
-                or specification.get("USL") is not None
-            )
+    specification = (
+        resolve_machine_tolerance_specification(
+            material=str(filters["mat"]), spec=str(filters["spec"]),
+            characteristic=characteristic, position=str(filters["pos"]),
+            vendor_id=filters["cust_id"],
+        ) if is_machine else resolve_tolerance_specification(
+            material=str(filters["mat"]), spec=str(filters["spec"]),
+            characteristic=characteristic, vendor_id=filters["cust_id"],
         )
+    )
     reasons: list[SpcReason] = []
     if not details:
         reasons.append(SpcReason("NO_DATA", "篩選範圍內沒有可用的巡檢量測明細"))

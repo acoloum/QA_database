@@ -27,10 +27,12 @@ class SpcReportService:
         targets = capability.get("targets") or {}
         quantiles = capability.get("quantiles") or {}
         options = (stats_data.get("study_version") or {}).get("options") or {}
+        source_semantics = evidence.get("source_semantics")
+        evidence_auditable = source_semantics == "patrol_min_max_observations"
         items = [
             ("研究類型", "固定機台績效研究（非生產管制基準）"),
             ("量測特性", field),
-            ("資料來源語意", evidence.get("source_semantics") or "patrol_min_max_observations"),
+            ("資料來源語意", source_semantics if evidence_auditable else "未保存／不可稽核"),
             ("研究條件已確認", "是" if evidence.get("conditions_confirmed", options.get("conditions_confirmed")) else "否"),
             ("條件確認理由", evidence.get("condition_reason", options.get("condition_reason"))),
             ("樣本數 N", capability.get("n")),
@@ -47,7 +49,11 @@ class SpcReportService:
             ("Pmk 目標", targets.get("pmk")),
             ("分布已確認", "是" if (stats_data.get("distribution") or {}).get("accepted") else "否"),
             ("核准狀態", (stats_data.get("study_version") or {}).get("status")),
-            ("限制說明", "本研究不建立 SPC 生產界限、不產生持續監控圖或 OCAP。"),
+            ("限制說明", (
+                "來源語意未保存，研究不可稽核且不可作為核准證據。"
+                if not evidence_auditable else
+                "本研究不建立 SPC 生產界限、不產生持續監控圖或 OCAP。"
+            )),
             ("資料雜湊", (stats_data.get("study_version") or {}).get("data_hash")),
         ]
         for item in items:

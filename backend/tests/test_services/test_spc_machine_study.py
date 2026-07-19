@@ -1,12 +1,14 @@
 """巡檢機器績效研究資格與核准測試。"""
 
+from dataclasses import replace
 from datetime import date, timedelta
+from types import SimpleNamespace
 
 import pytest
 
-from backend.models import Role, SpcLimitVersion, User
+from backend.models import AuditLog, Role, SpcLimitVersion, SpcStudyVersion, User
 from backend.services.spc_contracts import SpcStudyInput, SpcSubgroup
-from backend.services.spc_errors import SpcValidationError
+from backend.services.spc_errors import SpcConflict, SpcValidationError
 from backend.services.spc_study_service import ADAPTERS, SpcStudyService
 from backend.utils import hash_password
 from backend.utils import generate_token
@@ -60,9 +62,14 @@ def test_machine_research_approves_without_creating_spc_limits(app, db_session, 
         approved = SpcStudyService.approve_research(
             version.id, approver.id, reason="條件與績效證據完整"
         )
+        repeated = SpcStudyService.approve_research(
+            version.id, approver.id, reason="第二次核准不得覆寫原決策"
+        )
 
         assert approved.status == approved.study.status == "approved"
+        assert repeated.id == approved.id
         assert SpcLimitVersion.query.count() == 0
+        assert AuditLog.query.filter_by(action="approve_research", record_id=version.id).count() == 1
 
 
 def test_machine_analysis_requires_patrol_and_complete_exact_filters(app, db_session):
@@ -155,3 +162,61 @@ def test_confirmed_c_model_research_uses_limit_free_approval(app, db_session, mo
 
         assert approved.status == "approved"
         assert SpcLimitVersion.query.count() == 0
+
+
+def test_machine_research_approval_cas_lost_race_keeps_submitted_without_audit(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        db_session.add_all([
+            Role(code="spc_manager", name="SPC管理", permissions={"spc.view": True, "spc.manage": True}),
+            Role(code="spc_approver", name="SPC核准", permissions={"spc.approve": True}),
+        ])
+        db_session.commit()
+        manager = _user(db_session, "cas-manager", "spc_manager")
+        approver = _user(db_session, "cas-approver", "spc_approver")
+        monkeypatch.setitem(ADAPTERS, "patrol", lambda _filters, **_kwargs: _machine_input())
+        version = SpcStudyService.analyze(
+            "patrol", _machine_input().filters, manager.id,
+            analysis_family="machine", options=_machine_input().options,
+        )
+        SpcStudyService.submit(version.id, manager.id, reason="送審")
+        original_execute = db_session.execute
+
+        def simulate_lost_cas(statement, *args, **kwargs):
+            if getattr(statement, "table", None) == SpcStudyVersion.__table__:
+                return SimpleNamespace(rowcount=0)
+            return original_execute(statement, *args, **kwargs)
+
+        monkeypatch.setattr(db_session, "execute", simulate_lost_cas)
+        with pytest.raises(SpcConflict) as exc:
+            SpcStudyService.approve_research(version.id, approver.id, reason="核准")
+
+        assert exc.value.code == "INVALID_STUDY_STATE"
+        assert db_session.get(SpcStudyVersion, version.id).status == "submitted"
+        assert AuditLog.query.filter_by(action="approve_research", record_id=version.id).count() == 0
+
+
+def test_machine_research_without_saved_source_semantics_cannot_be_approved(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        db_session.add_all([
+            Role(code="spc_manager", name="SPC管理", permissions={"spc.view": True, "spc.manage": True}),
+            Role(code="spc_approver", name="SPC核准", permissions={"spc.approve": True}),
+        ])
+        db_session.commit()
+        manager = _user(db_session, "evidence-manager", "spc_manager")
+        approver = _user(db_session, "evidence-approver", "spc_approver")
+        input_without_semantics = replace(_machine_input(), metadata={})
+        monkeypatch.setitem(ADAPTERS, "patrol", lambda _filters, **_kwargs: input_without_semantics)
+        version = SpcStudyService.analyze(
+            "patrol", input_without_semantics.filters, manager.id,
+            analysis_family="machine", options=input_without_semantics.options,
+        )
+        SpcStudyService.submit(version.id, manager.id, reason="送審")
+
+        with pytest.raises(SpcValidationError) as exc:
+            SpcStudyService.approve_research(version.id, approver.id, reason="核准")
+
+        assert exc.value.code == "SOURCE_SEMANTICS_UNAUDITABLE"

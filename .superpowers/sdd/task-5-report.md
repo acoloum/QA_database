@@ -27,3 +27,11 @@
 
 - 此交付不建立 `SpcLimitVersion`、不提供 ongoing chart，也不為機器研究建立 OCAP。
 - 機器研究規格一致性透過固定材質、規格、項目、位置及不可變規格快照／資料雜湊驗證；來源改變時送審或核准會被拒絕。
+
+## Review 修正（第二輪）
+
+- 公差解析改為機器研究專用 SQL 精確 resolver。指定 customer 時只接受同一 customer；未指定時只接受通用公差。材質、規格、項目與位置皆採完全相等比對，拒絕既有一般公差服務的模糊、前綴與近似匹配。
+- 同一精確範圍內的所有公差主檔／明細 ID 皆保存；重複且相同界限可用，衝突、無效或不完整界限回報 `MACHINE_SPECIFICATION_INCONSISTENT`。單側規格可用。
+- 報表不再預設捏造 source semantics；缺少時標示「未保存／不可稽核」，並禁止研究核准。
+- `approve_research` 改為版本與研究主檔雙 CAS 更新；只有版本 `submitted -> approved` 成功的交易才建立 AuditLog。失敗交易重讀後僅對既有 approved 冪等回傳，其他狀態回穩定 conflict。
+- PostgreSQL migration integration test 在本機因未提供 PostgreSQL integration 設定而 skipped；SQLite CAS rowcount 契約測試已涵蓋失敗交易不寫 AuditLog。

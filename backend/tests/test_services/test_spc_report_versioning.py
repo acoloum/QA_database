@@ -119,6 +119,7 @@ def test_machine_report_uses_research_semantics_without_control_limits(app, db_s
                 "index_family": "machine", "n": 50, "pm": 2.0, "pmk": 1.67,
                 "pmu": 1.7, "pml": 1.67, "targets": {"pm": 2.0, "pmk": 1.67},
                 "quantiles": {"q_0_135": 9.5, "q_50": 10.0, "q_99_865": 10.5},
+                "evidence": {"source_semantics": "patrol_min_max_observations"},
             }, status="approved",
         )
         db_session.add(version)
@@ -137,3 +138,26 @@ def test_machine_report_uses_research_semantics_without_control_limits(app, db_s
         rows = _sheet_values(workbook, "機器績效摘要")
         assert ("資料來源語意", "patrol_min_max_observations") in rows
         assert ("Pm", 2.0) in rows
+
+
+def test_machine_report_marks_missing_source_semantics_as_not_auditable(app, db_session):
+    with app.app_context():
+        study = SpcStudy(
+            source="patrol", study_type="retrospective", analysis_family="machine",
+            process_stream_key="machine-missing-evidence", characteristic="外徑", filters={}, status="draft",
+        )
+        db_session.add(study)
+        db_session.flush()
+        version = SpcStudyVersion(
+            study_id=study.id, version_no=1, method_version="2026.2", data_hash="z" * 64,
+            analysis_options={"conditions_confirmed": True, "condition_reason": "條件"},
+            capability_result={"index_family": "machine", "n": 50}, status="draft",
+        )
+        db_session.add(version)
+        db_session.commit()
+
+        workbook = load_workbook(SpcReportService.generate_version_report(version.id))
+        rows = _sheet_values(workbook, "機器績效摘要")
+
+        assert ("資料來源語意", "未保存／不可稽核") in rows
+        assert any(name == "限制說明" and "不可稽核" in value for name, value in rows)

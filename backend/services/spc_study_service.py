@@ -10,7 +10,7 @@ import os
 from typing import Any, Callable, Mapping
 
 import numpy as np
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
@@ -368,6 +368,11 @@ def _calculate_machine_results(study_input: SpcStudyInput) -> dict[str, Any]:
             "approvable": False,
             "reason_code": "MACHINE_CONDITIONS_UNCONFIRMED",
         })
+    if study_input.metadata.get("source_semantics") != "patrol_min_max_observations":
+        capability.update({
+            "approvable": False,
+            "reason_code": "SOURCE_SEMANTICS_UNAUDITABLE",
+        })
     capability["evidence"] = {
         "source_semantics": study_input.metadata.get("source_semantics"),
         "operators": list(study_input.metadata.get("operators") or []),
@@ -717,6 +722,10 @@ def _assert_research_approvable(version: SpcStudyVersion) -> None:
             )
         return
     capability = version.capability_result or {}
+    if (capability.get("evidence") or {}).get("source_semantics") != "patrol_min_max_observations":
+        raise SpcValidationError(
+            "SOURCE_SEMANTICS_UNAUDITABLE", "來源觀測語意未保存，不能核准機器研究"
+        )
     if (version.analysis_options or {}).get("conditions_confirmed") is not True:
         raise SpcValidationError("MACHINE_CONDITIONS_UNCONFIRMED", "尚未確認機器研究條件")
     if len([value for sample in version.samples for value in (sample.distribution_values or sample.values or [])]) < 50:
@@ -725,7 +734,10 @@ def _assert_research_approvable(version: SpcStudyVersion) -> None:
         raise SpcValidationError("DISTRIBUTION_UNCONFIRMED", "分布尚未確認，不能核准機器研究")
     specification = version.specification_snapshot or {}
     if not specification.get("found") or specification.get("consistent") is False:
-        raise SpcValidationError("SPECIFICATION_UNCONFIRMED", "規格未確認或已漂移，不能核准機器研究")
+        raise SpcValidationError(
+            specification.get("reason_code") or "SPECIFICATION_UNCONFIRMED",
+            "規格未確認、衝突或已漂移，不能核准機器研究",
+        )
     if not capability.get("available") or not capability.get("approvable"):
         raise SpcValidationError(
             capability.get("reason_code") or "MACHINE_RESEARCH_UNAPPROVABLE",
@@ -1366,14 +1378,36 @@ class SpcStudyService:
             raise SpcConflict("INVALID_STUDY_STATE", "只有已送審研究可以核准")
         _assert_source_unchanged(version)
         _assert_research_approvable(version)
-        version.status = "approved"
-        version.study.status = "approved"
+        transitioned = db.session.execute(
+            update(SpcStudyVersion)
+            .where(
+                SpcStudyVersion.id == version.id,
+                SpcStudyVersion.status == "submitted",
+            )
+            .values(status="approved")
+            .execution_options(synchronize_session=False)
+        )
+        if transitioned.rowcount != 1:
+            db.session.rollback()
+            current = _get_version(version_id)
+            if current.status == "approved":
+                return current
+            raise SpcConflict("INVALID_STUDY_STATE", "研究狀態已變更，請重新整理")
+        study_transitioned = db.session.execute(
+            update(SpcStudy)
+            .where(SpcStudy.id == version.study_id, SpcStudy.status == "submitted")
+            .values(status="approved")
+        )
+        if study_transitioned.rowcount != 1:
+            db.session.rollback()
+            raise SpcConflict("INVALID_STUDY_STATE", "研究主檔狀態已變更，請重新整理")
         log_audit(
             actor_id, "approve_research", "spc_study", version.id,
             old_val={"status": "submitted"},
             new_val={"status": "approved", "reason": reason},
         )
         db.session.commit()
+        db.session.expire(version)
         return version
 
     @staticmethod

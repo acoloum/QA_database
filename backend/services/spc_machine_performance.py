@@ -32,6 +32,7 @@ def _result(
     return {
         "available": available,
         "index_family": "machine",
+        "method": "G",
         "n": count,
         "preliminary": preliminary,
         "reason_code": reason_code,
@@ -82,7 +83,8 @@ def calculate_machine_performance(
     if not specification.get("found") or specification.get("consistent") is False:
         return _result(
             values=numeric, characteristic_class=characteristic_class, available=False,
-            reason_code="SPECIFICATION_UNCONFIRMED", distribution=distribution,
+            reason_code=specification.get("reason_code") or "SPECIFICATION_UNCONFIRMED",
+            distribution=distribution,
             specification=specification,
         )
 
