@@ -417,7 +417,7 @@ def test_confirm_time_model_recomputes_capability_indices(
     app, db_session, monkeypatch
 ):
     with app.app_context():
-        _role(db_session, "qa_supervisor", {"spc.manage": True})
+        _role(db_session, "qa_supervisor", {"spc.manage": True, "spc.approve": True})
         manager = _user(db_session, "manager-confirm-model", "qa_supervisor")
         monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: _input())
         def confirmable_results(study_input):
@@ -443,10 +443,134 @@ def test_confirm_time_model_recomputes_capability_indices(
         assert confirmed.id != version.id
         assert confirmed.version_no == 2
         assert db_session.get(SpcStudyVersion, version.id).time_model_result["confirmed"] is False
+        assert confirmed.time_model_result["system_candidate"] == "A1"
+        assert confirmed.time_model_result["overridden"] is False
+        assert confirmed.time_model_result["confirmation_reason"] == "工程與統計證據一致"
         assert len(confirmed.samples) == len(version.samples)
         assert confirmed.capability_result["cpk"] is not None
         assert confirmed.capability_result["time_model"]["confirmed"] is True
         assert confirmed.capability_result["applicable"] == "capability"
+
+        submitted = SpcStudyService.submit(
+            confirmed.id, manager.id, reason="送交生產基準核准"
+        )
+        limit = SpcStudyService.approve_and_activate(
+            submitted.id, manager.id, reason="A1 證據符合生產基準"
+        )
+        assert limit.status == "active"
+        assert limit.study_version_id == confirmed.id
+
+
+def test_bc_d_confirmation_requires_approve_reason_and_preserves_successor(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        _role(db_session, "qa_supervisor", {"spc.manage": True})
+        _role(db_session, "qc_manager", {"spc.approve": True})
+        manager = _user(db_session, "manager-bcd", "qa_supervisor")
+        approver = _user(db_session, "approver-bcd", "qc_manager")
+        monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: _input())
+
+        def b_candidate(study_input):
+            results = _approvable_results(study_input)
+            results["time_model_result"] = {"candidate": "B", "confirmed": False, "diagnostic_version": "2026.2", "reason_code": None}
+            return results
+
+        monkeypatch.setattr(spc_study_module, "_calculate_results", b_candidate)
+        original = SpcStudyService.analyze("shipping", {}, manager.id)
+        snapshot = dict(original.time_model_result)
+        with pytest.raises(SpcForbidden) as forbidden:
+            SpcStudyService.confirm_time_model(original.id, manager.id, model="B", reason="變異證據")
+        assert forbidden.value.code == "SPC_APPROVE_FORBIDDEN"
+        with pytest.raises(SpcValidationError) as missing_reason:
+            SpcStudyService.confirm_time_model(original.id, approver.id, model="B", reason=" ")
+        assert missing_reason.value.code == "REASON_REQUIRED"
+
+        confirmed = SpcStudyService.confirm_time_model(original.id, approver.id, model="C4", reason="已核對批次切換紀錄")
+        assert original.time_model_result == snapshot
+        assert original.status == "superseded"
+        assert confirmed.time_model_result["system_candidate"] == "B"
+        assert confirmed.time_model_result["overridden"] is True
+        assert confirmed.time_model_result["model"] == "C4"
+        assert confirmed.time_model_result["confirmation_reason"] == "已核對批次切換紀錄"
+        assert confirmed.time_model_result["confirmed_by"] == approver.id
+        assert confirmed.time_model_result["confirmed_at"]
+        assert confirmed.data_hash == original.data_hash
+        assert confirmed.method_version == original.method_version
+        assert confirmed.code_version == original.code_version
+        assert confirmed.analysis_options == original.analysis_options
+        assert confirmed.specification_snapshot == original.specification_snapshot
+        assert confirmed.chart_result == original.chart_result
+        assert confirmed.stability_result == original.stability_result
+        assert confirmed.distribution_result == original.distribution_result
+        assert confirmed.applicability_result == original.applicability_result
+        assert confirmed.capability_result["cpk"] is None
+        assert confirmed.capability_result["cp"] is None
+        assert len(confirmed.samples) == len(original.samples)
+        assert [sample.source_record_ids for sample in confirmed.samples] == [
+            sample.source_record_ids for sample in original.samples
+        ]
+        assert [sample.source_measurement_ids for sample in confirmed.samples] == [
+            sample.source_measurement_ids for sample in original.samples
+        ]
+        assert [sample.exclusion_snapshot for sample in confirmed.samples] == [
+            sample.exclusion_snapshot for sample in original.samples
+        ]
+
+
+def test_insufficient_time_diagnostic_cannot_create_successor(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        _role(db_session, "qc_manager", {"spc.approve": True})
+        approver = _user(db_session, "insufficient-diagnostic", "qc_manager")
+        monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: _input())
+
+        def insufficient(study_input):
+            results = _approvable_results(study_input)
+            results["time_model_result"] = {
+                "candidate": None,
+                "confirmed": False,
+                "diagnostic_version": "2026.2",
+                "reason_code": "TIME_DIAGNOSTIC_SAMPLE_INSUFFICIENT",
+                "evidence": {"subgroup_count": 24, "minimum_subgroups": 25},
+            }
+            return results
+
+        monkeypatch.setattr(spc_study_module, "_calculate_results", insufficient)
+        original = SpcStudyService.analyze("shipping", {}, approver.id)
+
+        with pytest.raises(SpcValidationError) as error:
+            SpcStudyService.confirm_time_model(
+                original.id, approver.id, model="A1", reason="資料仍不足"
+            )
+
+        assert error.value.code == "TIME_DIAGNOSTIC_SAMPLE_INSUFFICIENT"
+        assert original.status == "draft"
+        assert SpcStudyVersion.query.filter_by(study_id=original.study_id).count() == 1
+
+
+def test_bcd_research_approval_never_creates_production_limits(app, db_session, monkeypatch):
+    with app.app_context():
+        _role(db_session, "qa_supervisor", {"spc.manage": True, "spc.approve": True})
+        actor = _user(db_session, "approver-research", "qa_supervisor")
+        monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: _input())
+
+        def d_candidate(study_input):
+            results = _approvable_results(study_input)
+            results["time_model_result"] = {"candidate": "D", "confirmed": False, "diagnostic_version": "2026.2"}
+            return results
+
+        monkeypatch.setattr(spc_study_module, "_calculate_results", d_candidate)
+        draft = SpcStudyService.analyze("shipping", {}, actor.id)
+        confirmed = SpcStudyService.confirm_time_model(draft.id, actor.id, model="D", reason="位置與變異皆改變")
+        submitted = SpcStudyService.submit(confirmed.id, actor.id, reason="送研究核准")
+        with pytest.raises(SpcValidationError) as production:
+            SpcStudyService.approve_and_activate(submitted.id, actor.id, reason="不可啟用界限")
+        assert production.value.code == "TIME_MODEL_UNCONFIRMED"
+        approved = SpcStudyService.approve_research(submitted.id, actor.id, reason="僅保留研究證據")
+        assert approved.status == "approved"
+        assert SpcLimitVersion.query.count() == 0
 
 
 def test_ongoing_analysis_uses_active_limits_and_creates_formal_events(

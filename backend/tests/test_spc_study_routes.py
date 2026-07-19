@@ -240,6 +240,58 @@ def test_manage_permission_cannot_call_approve_endpoint(
     assert response.status_code == 403
 
 
+def test_time_model_route_requires_approve_permission_and_reason(
+    client, db_session, spc_roles
+):
+    manager = _user(db_session, "time-model-manager", "spc_manager")
+    approver = _user(db_session, "time-model-approver", "spc_approver")
+
+    forbidden = client.post(
+        "/api/spc/study-versions/999/time-model",
+        headers=_headers(manager), json={"model": "A1", "reason": "確認"},
+    )
+    missing_reason = client.post(
+        "/api/spc/study-versions/999/time-model",
+        headers=_headers(approver), json={"model": "A1", "reason": " "},
+    )
+
+    assert forbidden.status_code == 403
+    assert forbidden.get_json()["error"] == "權限不足"
+    assert missing_reason.status_code == 422
+    assert missing_reason.get_json()["code"] == "REASON_REQUIRED"
+
+
+def test_time_model_route_returns_stable_invalid_override_error(
+    client, db_session, spc_roles
+):
+    approver = _user(db_session, "invalid-time-model", "spc_approver")
+    study = SpcStudy(
+        source="shipping", study_type="retrospective", analysis_family="variable",
+        process_stream_key="invalid-model", characteristic="外徑", filters={},
+        created_by=approver.id,
+    )
+    version = SpcStudyVersion(
+        study=study, version_no=1, method_version="2026.2", data_hash="a" * 64,
+        analysis_options={}, specification_snapshot={}, chart_result={},
+        stability_result={}, distribution_result={}, capability_result={},
+        applicability_result={}, status="draft", created_by=approver.id,
+        time_model_result={
+            "candidate": "B", "confirmed": False,
+            "diagnostic_version": "2026.2", "reason_code": None,
+        },
+    )
+    db_session.add(version)
+    db_session.commit()
+
+    response = client.post(
+        f"/api/spc/study-versions/{version.id}/time-model",
+        headers=_headers(approver), json={"model": "C9", "reason": "人工檢查"},
+    )
+
+    assert response.status_code == 422
+    assert response.get_json()["code"] == "TIME_MODEL_OVERRIDE_INVALID"
+
+
 def test_legacy_limit_write_endpoints_are_gone(client, db_session, spc_roles):
     manager = _user(db_session, "legacy-manager", "spc_manager")
     for method in (client.post, client.delete):

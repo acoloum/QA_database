@@ -63,7 +63,7 @@ from .spc_errors import (
     SpcValidationError,
 )
 from .spc_stability import evaluate_attribute_stability, evaluate_study_stability
-from .spc_time_model import classify_time_model
+from .spc_time_diagnostics import diagnose_time_model
 
 
 SPC_METHOD_VERSION = "2026.2"
@@ -319,7 +319,7 @@ def _calculate_results(study_input: SpcStudyInput) -> dict[str, Any]:
         }
 
     stability = evaluate_study_stability(chart_set)
-    time_model = classify_time_model(chart_set, stability, distribution)
+    time_model = diagnose_time_model(chart_set, study_input.subgroups, distribution)
     location_values = [float(value) for value in chart_set.location.values if value is not None]
     variation_center = float(np.mean(chart_set.variation.cl))
     capability = calculate_process_capability(
@@ -1224,17 +1224,25 @@ class SpcStudyService:
     def confirm_time_model(
         version_id: int, actor_id: int, *, model: str, reason: str
     ) -> SpcStudyVersion:
-        _require_permission(actor_id, "spc.manage")
+        _require_permission(actor_id, "spc.approve")
         reason = _require_reason(reason)
         version = _get_version(version_id)
         if version.status != "draft":
             raise SpcConflict("INVALID_STUDY_STATE", "目前狀態不可確認時間模型")
-        candidate = (version.time_model_result or {}).get("candidate")
-        if model not in {"A1", "A2"} or model != candidate:
-            raise SpcValidationError("TIME_MODEL_MISMATCH", "只能確認系統證據支持的 A1/A2 候選")
+        diagnostic = dict(version.time_model_result or {})
+        candidate = diagnostic.get("candidate")
+        if candidate is None or diagnostic.get("reason_code"):
+            raise SpcValidationError(
+                diagnostic.get("reason_code") or "TIME_MODEL_UNCONFIRMED",
+                "時間模型診斷證據不足，無法確認或改判",
+            )
+        if model not in {"A1", "A2", "B", "C1", "C2", "C3", "C4", "D"}:
+            raise SpcValidationError("TIME_MODEL_OVERRIDE_INVALID", "時間模型改判代碼不受支援")
         confirmed_time_model = {
-            **(version.time_model_result or {}),
+            **diagnostic,
             "model": model,
+            "system_candidate": candidate,
+            "overridden": model != candidate,
             "confirmed": True,
             "confirmed_by": actor_id,
             "confirmed_at": utc_now().isoformat(),
@@ -1272,6 +1280,8 @@ class SpcStudyService:
             new_val={
                 "version_id": confirmed.id,
                 "model": model,
+                "system_candidate": candidate,
+                "overridden": model != candidate,
                 "reason": reason,
             },
         )

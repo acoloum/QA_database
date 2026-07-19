@@ -364,7 +364,7 @@ def submit_study(current_user, version_id):
 
 @spc_studies_bp.post("/api/spc/study-versions/<int:version_id>/time-model")
 @auth_required
-@require_permission("spc.manage")
+@require_permission("spc.approve")
 @_handle_spc_errors
 def confirm_time_model(current_user, version_id):
     body = request.get_json(silent=True) or {}
