@@ -134,6 +134,29 @@ def test_analyze_adds_immutable_version_and_keeps_full_sample_trace(
         assert first.samples[0].exclusion_snapshot[0]["excluded"] is False
 
 
+def test_variable_calculation_passes_formal_stability_into_time_diagnostic(
+    monkeypatch,
+):
+    captured = {}
+
+    def diagnostic(_chart, _groups, _distribution, *, stability):
+        captured["stability"] = stability
+        return {
+            "candidate": None,
+            "confirmed": False,
+            "reason_code": "TIME_DIAGNOSTIC_SAMPLE_INSUFFICIENT",
+        }
+
+    monkeypatch.setattr(spc_study_module, "diagnose_time_model", diagnostic)
+
+    results = _calculate_results(_input())
+
+    assert captured["stability"] is results["stability_result"]
+    assert captured["stability"]["rules_used"] == [
+        "beyond_limits", "run_9_same_side", "trend_6",
+    ]
+
+
 def test_analyze_rejects_unknown_analysis_family(app, db_session, spc_view_user):
     with pytest.raises(SpcValidationError) as error:
         SpcStudyService.analyze(
@@ -548,6 +571,45 @@ def test_insufficient_time_diagnostic_cannot_create_successor(
         assert error.value.code == "TIME_DIAGNOSTIC_SAMPLE_INSUFFICIENT"
         assert original.status == "draft"
         assert SpcStudyVersion.query.filter_by(study_id=original.study_id).count() == 1
+
+
+def test_reconfirming_same_original_returns_stable_conflict_and_one_successor(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        _role(db_session, "qc_manager", {"spc.approve": True})
+        approver = _user(db_session, "time-model-cas", "qc_manager")
+        monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: _input())
+
+        def candidate(study_input):
+            results = _approvable_results(study_input)
+            results["time_model_result"] = {
+                "candidate": "C1",
+                "confirmed": False,
+                "diagnostic_version": "2026.2",
+                "reason_code": None,
+                "evidence": {"source": "controlled"},
+            }
+            return results
+
+        monkeypatch.setattr(spc_study_module, "_calculate_results", candidate)
+        original = SpcStudyService.analyze("shipping", {}, approver.id)
+        confirmed = SpcStudyService.confirm_time_model(
+            original.id, approver.id, model="C1", reason="第一次確認"
+        )
+
+        with pytest.raises(SpcConflict) as conflict:
+            SpcStudyService.confirm_time_model(
+                original.id, approver.id, model="C2", reason="競態重試"
+            )
+
+        assert conflict.value.code == "SPC_TIME_MODEL_CONFIRM_CONFLICT"
+        versions = SpcStudyVersion.query.filter_by(study_id=original.study_id).all()
+        audits = AuditLog.query.filter_by(
+            action="confirm_time_model", module="spc_study"
+        ).all()
+        assert {version.id for version in versions} == {original.id, confirmed.id}
+        assert len(audits) == 1
 
 
 def test_bcd_research_approval_never_creates_production_limits(app, db_session, monkeypatch):

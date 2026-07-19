@@ -319,7 +319,12 @@ def _calculate_results(study_input: SpcStudyInput) -> dict[str, Any]:
         }
 
     stability = evaluate_study_stability(chart_set)
-    time_model = diagnose_time_model(chart_set, study_input.subgroups, distribution)
+    time_model = diagnose_time_model(
+        chart_set,
+        study_input.subgroups,
+        distribution,
+        stability=stability,
+    )
     location_values = [float(value) for value in chart_set.location.values if value is not None]
     variation_center = float(np.mean(chart_set.variation.cl))
     capability = calculate_process_capability(
@@ -1226,9 +1231,22 @@ class SpcStudyService:
     ) -> SpcStudyVersion:
         _require_permission(actor_id, "spc.approve")
         reason = _require_reason(reason)
-        version = _get_version(version_id)
+        study_id = db.session.query(SpcStudyVersion.study_id).filter_by(
+            id=version_id
+        ).scalar()
+        if study_id is None:
+            raise SpcNotFound("SPC_STUDY_VERSION_NOT_FOUND", "找不到 SPC 研究版本")
+        # 先鎖研究主檔，使同一研究的不同原始版本也依序配置 version_no；
+        # 再鎖原始版本並重讀狀態，讓同一 original 的 loser 取得穩定 409。
+        SpcStudy.query.filter_by(id=study_id).with_for_update().one()
+        version = SpcStudyVersion.query.filter_by(
+            id=version_id
+        ).with_for_update().one()
         if version.status != "draft":
-            raise SpcConflict("INVALID_STUDY_STATE", "目前狀態不可確認時間模型")
+            raise SpcConflict(
+                "SPC_TIME_MODEL_CONFIRM_CONFLICT",
+                "時間模型原始版本已被確認或狀態已變更，請重新整理",
+            )
         diagnostic = dict(version.time_model_result or {})
         candidate = diagnostic.get("candidate")
         if candidate is None or diagnostic.get("reason_code"):
@@ -1248,45 +1266,66 @@ class SpcStudyService:
             "confirmed_at": utc_now().isoformat(),
             "confirmation_reason": reason,
         }
-        latest = db.session.query(func.max(SpcStudyVersion.version_no)).filter_by(
-            study_id=version.study_id
-        ).scalar()
-        confirmed_capability = _recalculate_capability(version, confirmed_time_model)
-        confirmed = SpcStudyVersion(
-            study_id=version.study_id,
-            version_no=int(latest or 0) + 1,
-            method_version=version.method_version,
-            code_version=version.code_version,
-            data_hash=version.data_hash,
-            analysis_options=dict(version.analysis_options or {}),
-            specification_snapshot=dict(version.specification_snapshot or {}),
-            chart_result=dict(version.chart_result or {}),
-            stability_result=dict(version.stability_result or {}),
-            distribution_result=dict(version.distribution_result or {}),
-            time_model_result=confirmed_time_model,
-            capability_result=confirmed_capability,
-            applicability_result=dict(version.applicability_result or {}),
-            status="draft",
-            audit_incomplete=version.audit_incomplete,
-            created_by=actor_id,
-        )
-        db.session.add(confirmed)
-        db.session.flush()
-        _copy_saved_samples(version, confirmed)
-        version.status = "superseded"
-        log_audit(
-            actor_id, "confirm_time_model", "spc_study", confirmed.id,
-            old_val={"version_id": version.id, "status": "draft"},
-            new_val={
-                "version_id": confirmed.id,
-                "model": model,
-                "system_candidate": candidate,
-                "overridden": model != candidate,
-                "reason": reason,
-            },
-        )
-        db.session.commit()
-        return confirmed
+        try:
+            latest = db.session.query(func.max(SpcStudyVersion.version_no)).filter_by(
+                study_id=version.study_id
+            ).scalar()
+            confirmed_capability = _recalculate_capability(version, confirmed_time_model)
+            confirmed = SpcStudyVersion(
+                study_id=version.study_id,
+                version_no=int(latest or 0) + 1,
+                method_version=version.method_version,
+                code_version=version.code_version,
+                data_hash=version.data_hash,
+                analysis_options=dict(version.analysis_options or {}),
+                specification_snapshot=dict(version.specification_snapshot or {}),
+                chart_result=dict(version.chart_result or {}),
+                stability_result=dict(version.stability_result or {}),
+                distribution_result=dict(version.distribution_result or {}),
+                time_model_result=confirmed_time_model,
+                capability_result=confirmed_capability,
+                applicability_result=dict(version.applicability_result or {}),
+                status="draft",
+                audit_incomplete=version.audit_incomplete,
+                created_by=actor_id,
+            )
+            db.session.add(confirmed)
+            db.session.flush()
+            _copy_saved_samples(version, confirmed)
+            transitioned = db.session.execute(
+                update(SpcStudyVersion)
+                .where(
+                    SpcStudyVersion.id == version.id,
+                    SpcStudyVersion.status == "draft",
+                )
+                .values(status="superseded")
+                .execution_options(synchronize_session=False)
+            )
+            if transitioned.rowcount != 1:
+                db.session.rollback()
+                raise SpcConflict(
+                    "SPC_TIME_MODEL_CONFIRM_CONFLICT",
+                    "時間模型原始版本已被其他操作確認，請重新整理",
+                )
+            log_audit(
+                actor_id, "confirm_time_model", "spc_study", confirmed.id,
+                old_val={"version_id": version.id, "status": "draft"},
+                new_val={
+                    "version_id": confirmed.id,
+                    "model": model,
+                    "system_candidate": candidate,
+                    "overridden": model != candidate,
+                    "reason": reason,
+                },
+            )
+            db.session.commit()
+            return confirmed
+        except IntegrityError as exc:
+            db.session.rollback()
+            raise SpcConflict(
+                "SPC_TIME_MODEL_CONFIRM_CONFLICT",
+                "時間模型確認版本已由其他操作建立，請重新整理",
+            ) from exc
 
     @staticmethod
     def approve_and_activate(

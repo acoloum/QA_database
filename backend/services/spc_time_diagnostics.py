@@ -10,11 +10,14 @@ import numpy as np
 from scipy import stats as scipy_stats
 
 from .spc_contracts import SpcChartSet, SpcSubgroup
+from .spc_distribution import assess_distribution
+from .spc_stability import evaluate_study_stability
 
 
 DIAGNOSTIC_VERSION = "2026.2"
 MIN_SUBGROUPS = 25
 MIN_SEGMENT = 5
+RANDOM_EFFECT_THRESHOLD = 0.05
 TIME_MODELS = ("A1", "A2", "B", "C1", "C2", "C3", "C4", "D")
 
 
@@ -105,27 +108,6 @@ def _variance(subgroups: Sequence[SpcSubgroup], alpha: float):
     return {"method": "Levene_median_windows", "min_segment": MIN_SEGMENT, "detected": bool(hits), "change_indexes": [int(row["index"]) for row in hits], "windows": hits}, rows
 
 
-def _instantaneous(subgroups: Sequence[SpcSubgroup], alpha: float):
-    residual_groups = [
-        (np.asarray(group.values, dtype=float) - np.mean(group.values))
-        / np.std(group.values, ddof=1)
-        for group in subgroups
-        if len(group.values) > 1 and np.std(group.values, ddof=1) > 1e-12
-    ]
-    if not residual_groups:
-        return {
-            "available": False,
-            "reason_code": "INSTANTANEOUS_DISTRIBUTION_UNAVAILABLE",
-        }, []
-    residuals = np.concatenate(residual_groups)
-    if residuals.size < 8 or np.std(residuals, ddof=1) <= 1e-12:
-        return {"available": False, "reason_code": "INSTANTANEOUS_DISTRIBUTION_UNAVAILABLE"}, []
-    statistic, p_value = scipy_stats.normaltest(residuals)
-    rows = _holm([{"index_start": 0, "index_end": int(residuals.size - 1), "statistic": float(statistic), "raw_p_value": float(p_value)}], alpha)
-    row = rows[0]
-    return {"available": True, "method": "D_Agostino_Pearson", "statistic": row["statistic"], "p_value": row["raw_p_value"], "adjusted_p_value": row["adjusted_p_value"], "threshold": row["threshold"], "normal": not row["reject"]}, rows
-
-
 def _modality(values: np.ndarray):
     if values.size < 8 or not np.all(np.isfinite(values)) or np.std(values, ddof=1) <= 1e-12:
         return {"available": False, "reason_code": "AGGREGATE_MODALITY_UNAVAILABLE"}
@@ -140,53 +122,197 @@ def _modality(values: np.ndarray):
     return {"available": True, "method": "fixed_grid_kde", "grid_points": 512, "bandwidth": float(kde.factor), "peak_indexes": peaks, "peak_values": [float(grid[index]) for index in peaks], "peak_threshold": .1, "peak_count": len(peaks), "unimodal": len(peaks) <= 1}
 
 
-def _chart_limit_evidence(chart_set: SpcChartSet) -> dict[str, Any]:
-    """保存位置圖與變異圖超限點，讓圖表穩定性參與模型分類。"""
+def _instantaneous(subgroups: Sequence[SpcSubgroup], alpha: float):
+    """評估去除各子組位置後的瞬時分布，不使用合成分布答案。"""
 
-    result = {}
+    centered = [
+        np.asarray(group.values, dtype=float) - float(np.mean(group.values))
+        for group in subgroups
+    ]
+    residuals = np.concatenate(centered)
+    scale = float(np.std(residuals, ddof=1))
+    if residuals.size < 20 or scale <= 1e-12:
+        return {
+            "available": False,
+            "accepted": False,
+            "unimodal": False,
+            "normal": None,
+            "reason_code": "INSTANTANEOUS_DISTRIBUTION_UNAVAILABLE",
+        }, []
+    standardized = residuals / scale
+    fitted = assess_distribution(standardized.tolist(), alpha=alpha)
+    modality = _modality(standardized)
+    normal_candidate = next(
+        (item for item in fitted.get("candidates", []) if item.get("model") == "normal"),
+        None,
+    )
+    if normal_candidate is None:
+        return {
+            "available": False,
+            "accepted": False,
+            "unimodal": False,
+            "normal": None,
+            "reason_code": "INSTANTANEOUS_DISTRIBUTION_UNAVAILABLE",
+        }, []
+    rows = _holm([{
+        "index_start": 0,
+        "index_end": int(standardized.size - 1),
+        "statistic": float(normal_candidate["statistic"]),
+        "raw_p_value": float(normal_candidate["p_value"]),
+    }], alpha)
+    row = rows[0]
+    normal = not row["reject"]
+    unimodal = bool(modality.get("available") and modality.get("unimodal"))
+    # A2 不要求另一個參數分布已配適；充分樣本、拒絕常態且 KDE 單峰，
+    # 即是可確認的「非常態單峰瞬時分布」證據。
+    accepted = unimodal
+    return {
+        "available": True,
+        "accepted": accepted,
+        "unimodal": unimodal,
+        "normal": normal,
+        "method": "centered_residual_anderson_darling",
+        "statistic": row["statistic"],
+        "p_value": row["raw_p_value"],
+        "adjusted_p_value": row["adjusted_p_value"],
+        "threshold": row["threshold"],
+        "residual_scale": scale,
+        "sample_count": int(standardized.size),
+        "acceptance_method": "normal_fit_or_unimodal_shape",
+        "modality": modality,
+        "reason_code": None if accepted else "INSTANTANEOUS_DISTRIBUTION_UNAVAILABLE",
+    }, rows
+
+
+def _validate_chart_lengths(chart_set: SpcChartSet, subgroup_count: int) -> None:
+    """公開診斷契約不得以 zip 靜默截斷不一致的管制圖序列。"""
+
+    expected = subgroup_count
     for name, series in (
         ("location", chart_set.location),
         ("variation", chart_set.variation),
     ):
-        points = []
-        for index, (value, lower, upper) in enumerate(
-            zip(series.values, series.lcl, series.ucl)
-        ):
-            numeric = tuple(
-                float(item) if item is not None else float("nan")
-                for item in (value, lower, upper)
-            )
-            if not all(isfinite(item) for item in numeric):
-                continue
-            observed, lcl, ucl = numeric
-            if observed < lcl or observed > ucl:
-                points.append({
-                    "index": index,
-                    "value": observed,
-                    "lcl": lcl,
-                    "ucl": ucl,
-                })
+        for field in ("values", "cl", "ucl", "lcl"):
+            if len(getattr(series, field)) != expected:
+                raise ValueError(f"{name}.{field} 長度必須與子組數一致")
+    if len(chart_set.subgroup_sizes) != expected:
+        raise ValueError("subgroup_sizes 長度必須與子組數一致")
+    if chart_set.variation_source_pairs and len(chart_set.variation_source_pairs) != expected:
+        raise ValueError("variation_source_pairs 長度必須與子組數一致")
+
+
+def _random_location_effect(
+    subgroups: Sequence[SpcSubgroup], alpha: float
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """以實際 n_i 的 one-way F 與 omega-squared 判斷隨機位置效應。"""
+
+    arrays = [np.asarray(group.values, dtype=float) for group in subgroups]
+    sizes = [int(values.size) for values in arrays]
+    count = sum(sizes)
+    grand_mean = float(sum(float(np.sum(values)) for values in arrays) / count)
+    means = [float(np.mean(values)) for values in arrays]
+    ss_between = float(sum(
+        size * (mean - grand_mean) ** 2
+        for size, mean in zip(sizes, means)
+    ))
+    ss_within = float(sum(
+        float(np.sum((values - mean) ** 2))
+        for values, mean in zip(arrays, means)
+    ))
+    df_between = len(arrays) - 1
+    df_within = count - len(arrays)
+    ms_between = ss_between / df_between
+    ms_within = ss_within / df_within if df_within > 0 else 0.0
+    if ms_within <= 1e-12:
+        statistic = 0.0 if ms_between <= 1e-12 else float("inf")
+        p_value = 1.0 if statistic == 0 else 0.0
+    else:
+        statistic = ms_between / ms_within
+        p_value = float(scipy_stats.f.sf(statistic, df_between, df_within))
+    total = ss_between + ss_within
+    omega_squared = max(
+        0.0,
+        (ss_between - df_between * ms_within) / (total + ms_within)
+        if total + ms_within > 0 else 0.0,
+    )
+    rows = _holm([{
+        "statistic": float(statistic) if isfinite(statistic) else None,
+        "raw_p_value": p_value,
+        "df_between": df_between,
+        "df_within": df_within,
+    }], alpha)
+    row = rows[0]
+    reject = bool(row["reject"] and omega_squared >= RANDOM_EFFECT_THRESHOLD)
+    evidence = {
+        "method": "one_way_random_effect_f",
+        "statistic": row["statistic"],
+        "raw_p_value": row["raw_p_value"],
+        "adjusted_p_value": row["adjusted_p_value"],
+        "threshold": row["threshold"],
+        "statistical_reject": row["reject"],
+        "omega_squared": float(omega_squared),
+        "effect_threshold": RANDOM_EFFECT_THRESHOLD,
+        "reject": reject,
+        "subgroup_sizes": sizes,
+        "grand_mean": grand_mean,
+        "ss_between": ss_between,
+        "ss_within": ss_within,
+        "df_between": df_between,
+        "df_within": df_within,
+    }
+    return evidence, rows
+
+
+def _formal_stability_evidence(stability: Mapping[str, Any]) -> dict[str, Any]:
+    result = {
+        "evaluated": bool(stability.get("evaluated")),
+        "stable": stability.get("stable"),
+        "rules_used": list(stability.get("rules_used") or []),
+    }
+    for name in ("location", "variation"):
+        chart = stability.get(name) or {}
         result[name] = {
-            "method": "point_specific_control_limits",
-            "detected": bool(points),
-            "indexes": [point["index"] for point in points],
-            "points": points,
+            "evaluated": bool(chart.get("evaluated")),
+            "stable": chart.get("stable"),
+            "rules_used": list(chart.get("rules_used") or []),
+            "violations": [dict(item) for item in chart.get("violations") or []],
         }
     return result
 
 
-def diagnose_time_model(chart_set: SpcChartSet, subgroups: Iterable[SpcSubgroup], distribution: Mapping[str, Any], *, alpha: float = .05) -> dict[str, Any]:
+def _aggregate_distribution_available(
+    distribution: Mapping[str, Any], modality: Mapping[str, Any]
+) -> bool:
+    return bool(
+        distribution.get("accepted")
+        and modality.get("available")
+        and modality.get("unimodal")
+    )
+
+
+def diagnose_time_model(
+    chart_set: SpcChartSet,
+    subgroups: Iterable[SpcSubgroup],
+    distribution: Mapping[str, Any],
+    *,
+    stability: Mapping[str, Any] | None = None,
+    alpha: float = .05,
+) -> dict[str, Any]:
     """產生含完整可稽核證據的 A1/A2/B/C1-C4/D 候選，不自動確認。"""
+
     alpha = _validate_alpha(alpha)
     groups = tuple(subgroups)
+    _validate_chart_lengths(chart_set, len(groups))
     means = np.asarray(chart_set.location.values, dtype=float)
     base = {"diagnostic_version": DIAGNOSTIC_VERSION, "alpha": alpha, "candidate": None, "candidate_options": [], "confirmed": False, "statistically_controlled": False}
     if len(groups) < MIN_SUBGROUPS:
         return {**base, "reason_code": "TIME_DIAGNOSTIC_SAMPLE_INSUFFICIENT", "evidence": {"subgroup_count": len(groups), "minimum_subgroups": MIN_SUBGROUPS}}
-    if means.size != len(groups):
-        raise ValueError("管制圖位置點數必須與子組數一致")
     if not np.all(np.isfinite(means)):
         raise ValueError("管制圖位置資料必須全部為有限數值")
+    for name, series in (("location", chart_set.location), ("variation", chart_set.variation)):
+        for field in ("cl", "ucl", "lcl"):
+            if not np.all(np.isfinite(np.asarray(getattr(series, field), dtype=float))):
+                raise ValueError(f"{name}.{field} 必須全部為有限數值")
     for group in groups:
         values = np.asarray(group.values, dtype=float)
         distribution_values = np.asarray(
@@ -199,33 +325,53 @@ def diagnose_time_model(chart_set: SpcChartSet, subgroups: Iterable[SpcSubgroup]
     trend, trend_rows = _trend(means, alpha)
     changes, change_rows = _recursive_welch(means, alpha)
     variance, variance_rows = _variance(groups, alpha)
-    values = np.concatenate([np.asarray(group.distribution_values or group.values, dtype=float) for group in groups])
-    between_scale = float(np.std(means, ddof=1))
-    within_scales = [
-        float(np.std(group.values, ddof=1)) if len(group.values) > 1 else 0.0
+    random_location, random_location_rows = _random_location_effect(groups, alpha)
+    values = np.concatenate([
+        np.asarray(group.distribution_values or group.values, dtype=float)
         for group in groups
-    ]
-    location_threshold = max(1e-12, float(np.median(within_scales)) * .25)
-    random_location = bool(between_scale > location_threshold)
-    location_change = {
-        "method": "between_within_scale_ratio",
-        "observed": between_scale,
-        "threshold": location_threshold,
-        "within_scale_median": float(np.median(within_scales)),
-        "detected": random_location,
-    }
+    ])
     instantaneous, instantaneous_rows = _instantaneous(groups, alpha)
-    chart_stability = _chart_limit_evidence(chart_set)
-    evidence = {"trend": trend, "change_points": changes, "variance_change": variance, "location_change": location_change, "chart_stability": chart_stability, "instantaneous_distribution": instantaneous, "aggregate_modality": _modality(values), "multiple_testing": {"method": "Holm", "families": {"trend": trend_rows, "mean_change": change_rows, "variance_change": variance_rows, "instantaneous_distribution": instantaneous_rows}}, "thresholds": {"alpha": alpha, "minimum_subgroups": MIN_SUBGROUPS, "min_segment": MIN_SEGMENT, "random_location_within_scale_ratio": .25}, "subgroup_count": len(groups)}
+    modality = _modality(values)
+    formal = _formal_stability_evidence(
+        stability if stability is not None else evaluate_study_stability(chart_set)
+    )
+    evidence = {
+        "trend": trend,
+        "change_points": changes,
+        "variance_change": variance,
+        "random_location": random_location,
+        "formal_stability": formal,
+        "instantaneous_distribution": instantaneous,
+        "aggregate_modality": modality,
+        "aggregate_distribution": dict(distribution),
+        "multiple_testing": {
+            "method": "Holm",
+            "families": {
+                "trend": trend_rows,
+                "mean_change": change_rows,
+                "variance_change": variance_rows,
+                "random_location": random_location_rows,
+                "instantaneous_distribution": instantaneous_rows,
+            },
+        },
+        "thresholds": {
+            "alpha": alpha,
+            "minimum_subgroups": MIN_SUBGROUPS,
+            "min_segment": MIN_SEGMENT,
+            "random_location_omega_squared": RANDOM_EFFECT_THRESHOLD,
+        },
+        "subgroup_count": len(groups),
+    }
     location_changed = bool(
-        trend["detected"]
+        formal["location"]["stable"] is False
+        or trend["detected"]
         or changes["detected"]
-        or random_location
-        or chart_stability["location"]["detected"]
+        or random_location["reject"]
     )
     variance_changed = bool(
-        variance["detected"] or chart_stability["variation"]["detected"]
+        formal["variation"]["stable"] is False or variance["detected"]
     )
+    reason_code = None
     if variance_changed and location_changed:
         candidate = "D"
     elif variance_changed:
@@ -235,7 +381,26 @@ def diagnose_time_model(chart_set: SpcChartSet, subgroups: Iterable[SpcSubgroup]
     elif changes["detected"]:
         candidate = "C4"
     elif location_changed:
-        candidate = "C1" if distribution.get("normal_ok") else "C2"
+        if not _aggregate_distribution_available(distribution, modality):
+            candidate = None
+            reason_code = "TIME_DIAGNOSTIC_DISTRIBUTION_UNAVAILABLE"
+        else:
+            candidate = "C1" if distribution.get("normal_ok") else "C2"
+    elif formal.get("stable") is not True:
+        candidate = None
+        reason_code = "TIME_DIAGNOSTIC_STABILITY_UNAVAILABLE"
+    elif not instantaneous.get("available") or not instantaneous.get("accepted"):
+        candidate = None
+        reason_code = "TIME_DIAGNOSTIC_DISTRIBUTION_UNAVAILABLE"
     else:
-        candidate = "A1" if distribution.get("normal_ok") else "A2"
-    return {**base, "candidate": candidate, "candidate_options": list(TIME_MODELS), "statistically_controlled": candidate in {"A1", "A2"}, "reason_code": None, "evidence": evidence}
+        candidate = "A1" if instantaneous.get("normal") else "A2"
+    return {
+        **base,
+        "candidate": candidate,
+        "candidate_options": list(TIME_MODELS) if candidate is not None else [],
+        "statistically_controlled": bool(
+            formal.get("stable") is True and candidate in {"A1", "A2"}
+        ),
+        "reason_code": reason_code,
+        "evidence": evidence,
+    }
