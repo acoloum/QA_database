@@ -461,7 +461,7 @@ def test_event_serialization_context_batches_version_and_sample_queries(app, db_
                 db_session.add(sample); db_session.flush()
                 db_session.add(SpcEvent(limit_version_id=limit.id, study_version_id=version.id, sample_id=sample.id, chart_kind="location", rule_code="beyond_limits", point_index=point, source_point_key=f"{number}-{point}", observed_value=0.1))
         db_session.commit(); db_session.expire_all()
-        loaded_limit = SpcLimitVersion.query.options(__import__("sqlalchemy.orm", fromlist=["selectinload"]).selectinload(SpcLimitVersion.events)).get(limit.id)
+        loaded_limit = SpcLimitVersion.query.options(__import__("sqlalchemy.orm", fromlist=["selectinload"]).selectinload(SpcLimitVersion.events)).filter_by(id=limit.id).first()
         count = [0]
         def listener(_conn, _cursor, statement, *_args):
             if statement.lstrip().upper().startswith("SELECT"): count[0] += 1
