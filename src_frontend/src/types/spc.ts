@@ -140,6 +140,28 @@ export interface SpcTransformationDecision extends SpcTransformationCandidate {
   original_model: string | null;
 }
 
+/** 舊版匯入可能保存空 JSON 物件；呼叫端必須先以執行期守衛辨識。 */
+export type SpcLegacyEmptyPayload = Record<string, never>;
+export type SpcDistributionPayload = SpcDistributionAssessment | SpcLegacyEmptyPayload;
+
+export const isSpcDistributionAssessment = (
+  value: SpcDistributionPayload | null | undefined,
+): value is SpcDistributionAssessment => Boolean(
+  value && typeof value.accepted === 'boolean' && Array.isArray(value.candidates),
+);
+
+export const isSpcTransformationCandidate = (
+  value: unknown,
+): value is SpcTransformationCandidate => {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<SpcTransformationCandidate>;
+  return typeof candidate.model === 'string'
+    && typeof candidate.label === 'string'
+    && typeof candidate.accepted === 'boolean'
+    && Boolean(candidate.params && typeof candidate.params === 'object')
+    && Array.isArray(candidate.tail_quantiles);
+};
+
 export interface SpcDistributionAssessment {
   model: string | null;
   label: string;
@@ -352,6 +374,14 @@ export interface ProcessCapability {
   transformation_decision?: SpcTransformationDecision;
 }
 
+export type SpcTimeModelPayload = SpcTimeModel | SpcLegacyEmptyPayload;
+
+export const isSpcTimeModel = (
+  value: SpcTimeModelPayload | null | undefined,
+): value is SpcTimeModel => Boolean(
+  value && typeof value.confirmed === 'boolean' && 'candidate' in value,
+);
+
 /** 機器績效研究的後端結果；不與製程 Cp/Cpk 共用欄位。 */
 export interface MachineStudyEvidence {
   source_semantics: 'patrol_min_max_observations' | string | null;
@@ -515,8 +545,8 @@ export interface SpcStudyResult {
   specification: ToleranceLimits;
   charts: SpcChartSet | SpcAttributeChartData | null;
   stability: SpcStability;
-  distribution: SpcDistributionAssessment;
-  time_model: SpcTimeModel;
+  distribution: SpcDistributionPayload;
+  time_model: SpcTimeModelPayload;
   capability: ProcessCapability | MachinePerformanceResult;
   applicability: SpcApplicability;
   status: 'draft' | 'submitted' | 'approved' | 'active' | 'retired' | 'rejected' | 'superseded' | 'legacy_imported';

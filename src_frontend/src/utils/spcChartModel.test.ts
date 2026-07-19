@@ -220,4 +220,29 @@ describe('buildSpcChartModel', () => {
     expect(merged).toBe(preview);
     expect(merged?.charts?.location.values).toEqual(statsData.charts?.location.values);
   });
+
+  it('舊版空診斷 payload 不會覆蓋目前預覽的完整診斷資料', () => {
+    const preview = {
+      ...statsData,
+      process_stream_key: 'stream-a',
+      data_hash: 'same-hash',
+      distribution: {
+        model: 'normal', label: '常態', params: [], accepted: true,
+        normal_ok: true, unimodal: true, reason_code: null,
+        candidates: [], fit_method: 'validated', alpha: 0.05,
+      },
+      time_model: { candidate: 'A1', model: 'A1', confirmed: true, statistically_controlled: true },
+    } as SpcChartData;
+    const ongoing = {
+      study_type: 'ongoing', process_stream_key: 'stream-a', data_hash: 'same-hash',
+      charts: statsData.charts, stability: statsData.stability,
+      distribution: {}, time_model: {}, capability: { available: false },
+      applicability: { applicable: true },
+    };
+
+    const merged = mergeOngoingStudyForDisplay(preview, ongoing as never);
+
+    expect(merged?.distribution).toEqual(preview.distribution);
+    expect(merged?.time_model).toEqual(preview.time_model);
+  });
 });

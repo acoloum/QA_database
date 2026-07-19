@@ -3,7 +3,7 @@ import { Alert, Badge, Button, Card } from 'react-bootstrap';
 import { useAuth } from '../../context/useAuth';
 import {
   fetchSpcEvent, useAnalyzeSpcStudy, useApproveSpcStudy, useConfirmSpcTimeModel,
-  useRejectSpcStudy, useRetireSpcLimit, useSaveSpcOcap, useSpcAssignees,
+  useApproveSpcResearch, useRejectSpcStudy, useRetireSpcLimit, useSaveSpcOcap, useSpcAssignees,
   useSpcStudies, useSpcStudy, useSubmitSpcStudy,
 } from '../../hooks/useSpcStudies';
 import type {
@@ -40,6 +40,7 @@ const SpcStudyPanel = ({
   const submit = useSubmitSpcStudy();
   const confirmTimeModel = useConfirmSpcTimeModel();
   const approve = useApproveSpcStudy();
+  const approveResearch = useApproveSpcResearch();
   const reject = useRejectSpcStudy();
   const retire = useRetireSpcLimit();
   const { data: studies = [] } = useSpcStudies();
@@ -57,8 +58,9 @@ const SpcStudyPanel = ({
   );
   const version = versionMatchesPreview ? selectedVersion : null;
   const detailStudyId = version?.study_id ?? matchingStudy?.id ?? null;
-  const { data: savedStudy } = useSpcStudy(detailStudyId);
+  const { data: savedStudy, refetch: refetchStudy } = useSpcStudy(detailStudyId);
   const [modalAction, setModalAction] = useState<SpcWorkflowAction | null>(null);
+  const [workflowError, setWorkflowError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<SpcEventSummary | null>(null);
   const displayedVersionRef = useRef({
@@ -102,6 +104,7 @@ const SpcStudyPanel = ({
     ? capability : null;
   const applicability = version?.applicability ?? preview?.applicability;
   const pending = submit.isPending || confirmTimeModel.isPending || approve.isPending
+    || approveResearch.isPending
     || reject.isPending || retire.isPending;
   const activeLimit = version?.monitoring_limit
     ?? version?.limit_versions?.find(limit => limit.status === 'active');
@@ -137,32 +140,47 @@ const SpcStudyPanel = ({
 
   const handleAction = async (reason: string, model?: 'A1' | 'A2') => {
     if (!version || !modalAction) return;
-    if (modalAction === 'time-model' && model) {
-      const updated = await confirmTimeModel.mutateAsync({ versionId: version.id, studyId: version.study_id, model, reason });
-      onVersionChange({ ...version, ...updated, samples: version.samples });
-    } else if (modalAction === 'submit') {
-      const updated = await submit.mutateAsync({ versionId: version.id, studyId: version.study_id, reason });
-      onVersionChange({ ...version, ...updated, samples: version.samples });
-    } else if (modalAction === 'reject') {
-      const updated = await reject.mutateAsync({ versionId: version.id, studyId: version.study_id, reason });
-      onVersionChange({ ...version, ...updated, samples: version.samples });
-    } else if (modalAction === 'approve') {
-      const limit = await approve.mutateAsync({ versionId: version.id, studyId: version.study_id, reason });
-      onVersionChange({
-        ...version,
-        status: 'active',
-        limit_versions: [{ ...limit, events: limit.events ?? [] }],
-      });
-    } else if (modalAction === 'retire' && activeLimit) {
-      await retire.mutateAsync({ limitId: activeLimit.id, studyId: version.study_id, reason });
-      onVersionChange({
-        ...version,
-        status: 'retired',
-        limit_versions: version.limit_versions?.map(limit =>
-          limit.id === activeLimit.id ? { ...limit, status: 'retired' } : limit),
-      });
+    const action = modalAction;
+    setWorkflowError(null);
+    try {
+      if (action === 'time-model' && model) {
+        const updated = await confirmTimeModel.mutateAsync({ versionId: version.id, studyId: version.study_id, model, reason });
+        onVersionChange({ ...version, ...updated, samples: version.samples });
+      } else if (action === 'submit') {
+        const updated = await submit.mutateAsync({ versionId: version.id, studyId: version.study_id, reason });
+        onVersionChange({ ...version, ...updated, samples: version.samples });
+      } else if (action === 'reject') {
+        const updated = await reject.mutateAsync({ versionId: version.id, studyId: version.study_id, reason });
+        onVersionChange({ ...version, ...updated, samples: version.samples });
+      } else if (action === 'approve') {
+        const limit = await approve.mutateAsync({ versionId: version.id, studyId: version.study_id, reason });
+        onVersionChange({
+          ...version,
+          status: 'active',
+          limit_versions: [{ ...limit, events: limit.events ?? [] }],
+        });
+      } else if (action === 'approve-research') {
+        const updated = await approveResearch.mutateAsync({ versionId: version.id, studyId: version.study_id, reason });
+        onVersionChange({ ...version, ...updated, samples: version.samples });
+      } else if (action === 'retire' && activeLimit) {
+        await retire.mutateAsync({ limitId: activeLimit.id, studyId: version.study_id, reason });
+        onVersionChange({
+          ...version,
+          status: 'retired',
+          limit_versions: version.limit_versions?.map(limit =>
+            limit.id === activeLimit.id ? { ...limit, status: 'retired' } : limit),
+        });
+      }
+      setModalAction(null);
+    } catch (error) {
+      setWorkflowError(error instanceof Error ? error.message : 'SPC 流程操作失敗，請重新整理後再試。');
+      if (action === 'approve-research') {
+        setModalAction(null);
+        const refreshed = await refetchStudy();
+        const versions = refreshed.data?.versions ?? [];
+        onVersionChange(versions[versions.length - 1] ?? null);
+      }
     }
-    setModalAction(null);
   };
 
   const reasons = applicability?.reasons ?? [];
@@ -171,7 +189,7 @@ const SpcStudyPanel = ({
       <Card.Body>
         <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
           <div>
-            <div className="spc-eyebrow">AIAG &amp; VDA SPC · 2026.1</div>
+            <div className="spc-eyebrow">AIAG &amp; VDA SPC · {version?.method_version ?? preview?.schema_version ?? '2026.2'}</div>
             <div className="d-flex align-items-center gap-2 flex-wrap">
               <h5 className="mb-0">SPC 研究與基準</h5>
               <Badge bg={effectiveStudyType === 'ongoing' ? 'success' : 'secondary'}>
@@ -241,6 +259,12 @@ const SpcStudyPanel = ({
         {reasons.length > 0 && (
           <Alert variant="warning" className="mt-3 mb-0 py-2">
             <strong>目前資料不可建立正式基準：</strong>{reasons.map(reason => reason.message).join('；')}
+          </Alert>
+        )}
+
+        {workflowError && (
+          <Alert variant="danger" className="mt-3 mb-0" role="alert" aria-live="assertive">
+            SPC 流程操作失敗：{workflowError}
           </Alert>
         )}
 

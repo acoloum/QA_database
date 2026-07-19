@@ -1,9 +1,11 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SpcStudyResult } from '../../types';
 import SpcStudyPanel from './SpcStudyPanel';
 
 const analyzeMock = vi.hoisted(() => vi.fn());
+const approveResearchMock = vi.hoisted(() => vi.fn());
+const approveResearchState = vi.hoisted(() => ({ isPending: false }));
 const saveOcapMock = vi.hoisted(() => vi.fn());
 const resetSaveOcapMock = vi.hoisted(() => vi.fn());
 const saveOcapState = vi.hoisted(() => ({ isPending: false, isError: false }));
@@ -41,6 +43,7 @@ vi.mock('../../hooks/useSpcStudies', () => ({
   useSubmitSpcStudy: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useConfirmSpcTimeModel: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useApproveSpcStudy: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useApproveSpcResearch: () => ({ mutateAsync: approveResearchMock, isPending: approveResearchState.isPending }),
   useRejectSpcStudy: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRetireSpcLimit: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSaveSpcOcap: () => ({
@@ -173,6 +176,8 @@ const createOngoingVersion = ({
 describe('SpcStudyPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    approveResearchMock.mockReset();
+    approveResearchState.isPending = false;
     saveOcapMock.mockReset();
     resetSaveOcapMock.mockReset();
     fetchSpcEventMock.mockReset();
@@ -206,6 +211,74 @@ describe('SpcStudyPanel', () => {
     expect(screen.getByText('位置圖穩定')).toBeInTheDocument();
     expect(screen.getByText('變異圖失控')).toBeInTheDocument();
     expect(screen.queryByText(/Cp\/Cpk/)).not.toBeInTheDocument();
+    expect(screen.getByText('AIAG & VDA SPC · 2026.1')).toBeInTheDocument();
+  });
+
+  it.each(['B', 'C3', 'D'] as const)('已確認 %s 研究可從既有面板呼叫研究核准並更新結果', async model => {
+    const researchVersion = {
+      ...version,
+      method_version: '2026.2',
+      analysis_family: 'variable',
+      status: 'submitted',
+      charts: null,
+      time_model: {
+        candidate: model, model, system_candidate: model,
+        confirmed: true, statistically_controlled: false,
+        confirmed_by: 2, confirmed_at: '2026-07-19T10:00:00Z',
+        confirmation_reason: '已核對時間證據',
+      },
+    } as SpcStudyResult;
+    const approvedVersion = { ...researchVersion, status: 'approved' as const };
+    approveResearchMock.mockResolvedValue(approvedVersion);
+    const onVersionChange = vi.fn();
+    render(<SpcStudyPanel source="shipping" filters={researchVersion.filters} preview={{ process_stream_key: 'stream-a' } as never} version={researchVersion} onVersionChange={onVersionChange} />);
+
+    expect(screen.getByText('AIAG & VDA SPC · 2026.2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '核准研究結果' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('核准理由'), { target: { value: '已複核研究證據' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '核准研究結果' }));
+
+    await waitFor(() => expect(approveResearchMock).toHaveBeenCalledWith({
+      versionId: researchVersion.id,
+      studyId: researchVersion.study_id,
+      reason: '已複核研究證據',
+    }));
+    expect(onVersionChange).toHaveBeenCalledWith(expect.objectContaining({ status: 'approved', samples: researchVersion.samples }));
+    expect(screen.queryByText(/Cp\/Cpk/)).not.toBeInTheDocument();
+  });
+
+  it('研究核准處理中時鎖定 modal，避免重複送出', () => {
+    approveResearchState.isPending = true;
+    const researchVersion = {
+      ...version, method_version: '2026.2', analysis_family: 'variable', status: 'submitted', charts: null,
+      time_model: { candidate: 'B', model: 'B', confirmed: true, statistically_controlled: false },
+    } as SpcStudyResult;
+    render(<SpcStudyPanel source="shipping" filters={researchVersion.filters} preview={{ process_stream_key: 'stream-a' } as never} version={researchVersion} onVersionChange={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '核准研究結果' }));
+
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: '處理中…' })).toBeDisabled();
+  });
+
+  it('研究核准失敗時顯示錯誤並重新取得研究，不能靜默留在過期狀態', async () => {
+    const researchVersion = {
+      ...version, method_version: '2026.2', analysis_family: 'variable', status: 'submitted', charts: null,
+      time_model: { candidate: 'C3', model: 'C3', confirmed: true, statistically_controlled: false },
+    } as SpcStudyResult;
+    approveResearchMock.mockRejectedValue(new Error('研究版本已變更'));
+    refetchStudyMock.mockResolvedValue({ data: null });
+    const onVersionChange = vi.fn();
+    render(<SpcStudyPanel source="shipping" filters={researchVersion.filters} preview={{ process_stream_key: 'stream-a' } as never} version={researchVersion} onVersionChange={onVersionChange} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '核准研究結果' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('核准理由'), { target: { value: '已複核研究證據' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '核准研究結果' }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('研究版本已變更'));
+    expect(refetchStudyMock).toHaveBeenCalledTimes(1);
+    expect(onVersionChange).toHaveBeenCalledWith(null);
   });
 
   it('切換製程流後立即清除舊版本，避免在新篩選操作舊研究', async () => {

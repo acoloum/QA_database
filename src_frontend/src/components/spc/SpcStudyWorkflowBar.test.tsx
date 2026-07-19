@@ -49,4 +49,52 @@ describe('SpcStudyWorkflowBar 機器研究', () => {
     expect(screen.getByRole('button', { name: '重建候選' })).toBeDisabled();
     expect(screen.getByText('重建候選前必須重新完成固定機台與受控條件。')).toBeInTheDocument();
   });
+
+  it('時間模型確認入口只依核准權限顯示，管理權限不會重複授權', () => {
+    const candidateVersion: SpcStudyResult = {
+      ...machineVersion(), analysis_family: 'variable', status: 'draft',
+      capability: { available: false },
+      time_model: { candidate: 'A1', confirmed: false, statistically_controlled: false },
+    };
+    const manageOnly = render(<SpcStudyWorkflowBar version={candidateVersion} canView canManage canApprove={false} onAnalyze={vi.fn()} onAction={vi.fn()} onShowHistory={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: '確認 A1' })).not.toBeInTheDocument();
+
+    manageOnly.rerender(<SpcStudyWorkflowBar version={candidateVersion} canView canManage={false} canApprove onAnalyze={vi.fn()} onAction={vi.fn()} onShowHistory={vi.fn()} />);
+    expect(screen.getAllByRole('button', { name: '確認 A1' })).toHaveLength(1);
+  });
+
+  it('可關閉舊時間模型入口，避免與進階診斷面板重複', () => {
+    const candidateVersion: SpcStudyResult = {
+      ...machineVersion(), analysis_family: 'variable', status: 'draft',
+      capability: { available: false },
+      time_model: { candidate: 'A2', confirmed: false, statistically_controlled: false },
+    };
+    render(<SpcStudyWorkflowBar version={candidateVersion} canView canManage canApprove showTimeModelAction={false} onAnalyze={vi.fn()} onAction={vi.fn()} onShowHistory={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: '確認 A2' })).not.toBeInTheDocument();
+  });
+
+  it('未確認時間模型的變數研究不可送審並顯示原因', () => {
+    const candidateVersion: SpcStudyResult = {
+      ...machineVersion(), analysis_family: 'variable', status: 'draft',
+      capability: { available: false },
+      time_model: { candidate: 'C3', confirmed: false, statistically_controlled: false },
+    };
+    render(<SpcStudyWorkflowBar version={candidateVersion} canView canManage canApprove onAnalyze={vi.fn()} onAction={vi.fn()} onShowHistory={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: '送審' })).not.toBeInTheDocument();
+    expect(screen.getByText('請先由具核准權限者確認時間模型，再送交審查。')).toBeInTheDocument();
+  });
+
+  it.each(['A1', 'A2'] as const)('已確認 %s 後管理者可送審正式基準', model => {
+    const confirmedVersion: SpcStudyResult = {
+      ...machineVersion(), analysis_family: 'variable', status: 'draft',
+      capability: { available: true },
+      time_model: { candidate: model, model, confirmed: true, statistically_controlled: true },
+    };
+    render(<SpcStudyWorkflowBar version={confirmedVersion} canView canManage canApprove={false} onAnalyze={vi.fn()} onAction={vi.fn()} onShowHistory={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: '送審' })).toBeInTheDocument();
+    expect(screen.queryByText('請先由具核准權限者確認時間模型，再送交審查。')).not.toBeInTheDocument();
+  });
 });

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Alert, Badge, Button, Card, Col, Form, Row, Table } from 'react-bootstrap';
-import type { SpcStudyResult, SpcTransformationCandidate, SpcTransformationModel } from '../../../types';
-import { isMachinePerformanceResult } from '../../../types/spc';
+import type { SpcDistributionAssessment, SpcStudyResult, SpcTransformationCandidate, SpcTransformationModel } from '../../../types';
+import { isMachinePerformanceResult, isSpcDistributionAssessment, isSpcTransformationCandidate } from '../../../types/spc';
 
 const MIN_REASON_LENGTH = 2;
 const MAX_REASON_LENGTH = 500;
@@ -27,11 +27,20 @@ const CandidateEvidence = ({ candidate }: { candidate: SpcTransformationCandidat
   {candidate.fit_error && <div>配適錯誤：{candidate.fit_error}</div>}
 </div>;
 
+const EMPTY_DISTRIBUTION: SpcDistributionAssessment = {
+  model: null, label: '舊版未提供', params: [], accepted: false, normal_ok: false,
+  unimodal: false, reason_code: 'LEGACY_DISTRIBUTION_UNAVAILABLE', candidates: [],
+  fit_method: null, alpha: 0.05,
+};
+
 const TransformationPanelContent = ({
   version, canApprove, pending = false, error = null, onConfirm,
 }: TransformationPanelProps) => {
-  const distribution = version.distribution;
-  const candidates = distribution.transformation_candidates ?? [];
+  const validDistribution = isSpcDistributionAssessment(version.distribution);
+  const distribution = validDistribution ? version.distribution : EMPTY_DISTRIBUTION;
+  const legacyReadOnly = version.method_version !== '2026.2';
+  const candidates = (distribution.transformation_candidates ?? [])
+    .filter(isSpcTransformationCandidate);
   const accepted = candidates.filter(candidate => candidate.accepted);
   const decision = distribution.transformation_decision;
   const transformed = distribution.scale === 'transformed' && decision?.confirmed === true;
@@ -45,7 +54,8 @@ const TransformationPanelContent = ({
 
   const reasonLength = reason.trim().length;
   const selected = accepted.find(candidate => candidate.model === model);
-  const canSubmit = canApprove && version.status === 'draft' && Boolean(selected)
+  const canSubmit = !legacyReadOnly && validDistribution && canApprove
+    && version.status === 'draft' && Boolean(selected)
     && reasonLength >= MIN_REASON_LENGTH && reasonLength <= MAX_REASON_LENGTH && !pending;
 
   return <Card className="mb-3">
@@ -58,7 +68,14 @@ const TransformationPanelContent = ({
     <Card.Body>
       <div className="mb-3"><strong>目前尺度：{transformed ? '轉換尺度' : '原始尺度'}</strong>{transformed && <span>；原始模型：{distribution.original_model ?? '未確認'}</span>}</div>
 
-      {transformed && decision ? <div className="border rounded p-3" aria-label="轉換確認證據">
+      {legacyReadOnly && <Alert variant="warning" role="alert">
+        舊版方法 {version.method_version} 僅供唯讀；請以 2026.2 重建候選後再確認分布轉換。
+      </Alert>}
+      {!legacyReadOnly && !validDistribution && <Alert variant="warning" role="alert">
+        2026.2 分布轉換資料格式不完整，請重新建立候選。
+      </Alert>}
+
+      {!legacyReadOnly && transformed && decision ? <div className="border rounded p-3" aria-label="轉換確認證據">
         <div><strong>採用轉換：{decision.label}</strong></div>
         <CandidateEvidence candidate={decision} />
         {originalScale && <div className="small mt-2 border-top pt-2">
@@ -74,15 +91,15 @@ const TransformationPanelContent = ({
         {distribution.transformation_evidence && <Alert variant={distribution.transformation_evidence.available ? 'info' : 'warning'}>
           樣本數 {distribution.transformation_evidence.n}；最低 {distribution.transformation_evidence.minimum_sample_size}；α={distribution.transformation_evidence.alpha}。{distribution.transformation_evidence.fit_bias_note}
         </Alert>}
-        <Table responsive bordered hover className="align-middle">
+        {!legacyReadOnly && <Table responsive bordered hover className="align-middle">
           <thead><tr><th scope="col">選擇／候選</th><th scope="col">證據</th></tr></thead>
           <tbody>{candidates.map(candidate => <tr key={candidate.model} className={candidate.accepted ? '' : 'table-light'}>
-            <td style={{ minWidth: 190 }}>{candidate.accepted ? <Form.Check type="radio" name={`transformation-${version.id}`} id={`transformation-${version.id}-${candidate.model}`} label={`${candidate.label}${candidate.rank ? `（排序 ${candidate.rank}）` : ''}`} checked={model === candidate.model} onChange={() => setModel(candidate.model)} disabled={!canApprove || pending} /> : <><strong>{candidate.label}</strong><Badge bg="secondary" className="ms-2">不可確認</Badge></>}</td>
+            <td style={{ minWidth: 190 }}><Form.Check type="radio" name={`transformation-${version.id}`} id={`transformation-${version.id}-${candidate.model}`} label={`${candidate.label}${candidate.rank ? `（排序 ${candidate.rank}）` : ''}`} checked={candidate.accepted && model === candidate.model} onChange={() => { if (candidate.accepted) setModel(candidate.model); }} disabled={!candidate.accepted || !canApprove || pending} />{!candidate.accepted && <Badge bg="secondary" className="ms-4">不可確認</Badge>}</td>
             <td><CandidateEvidence candidate={candidate} /></td>
           </tr>)}</tbody>
-        </Table>
-        {candidates.length === 0 && <Alert variant="warning">未提供轉換候選：<code>{distribution.transformation_reason_code ?? distribution.reason_code ?? 'TRANSFORMATION_UNAVAILABLE'}</code></Alert>}
-        {accepted.length > 0 && <Form onSubmit={event => {
+        </Table>}
+        {!legacyReadOnly && candidates.length === 0 && <Alert variant="warning">未提供轉換候選：<code>{distribution.transformation_reason_code ?? distribution.reason_code ?? 'TRANSFORMATION_UNAVAILABLE'}</code></Alert>}
+        {!legacyReadOnly && accepted.length > 0 && <Form onSubmit={event => {
           event.preventDefault();
           if (canSubmit && selected) onConfirm(selected.model, reason.trim());
         }}>

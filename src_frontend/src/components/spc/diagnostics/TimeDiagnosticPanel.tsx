@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Alert, Badge, Button, Card, Col, Form, Row } from 'react-bootstrap';
-import type { SpcStudyResult, SpcTimeModelCode } from '../../../types';
+import { Alert, Badge, Button, Card, Col, Form, Row, Table } from 'react-bootstrap';
+import type { SpcHolmEvidenceRow, SpcStudyResult, SpcTimeModel, SpcTimeModelCode } from '../../../types';
+import { isSpcTimeModel } from '../../../types/spc';
 
 const TIME_MODELS: SpcTimeModelCode[] = ['A1', 'A2', 'B', 'C1', 'C2', 'C3', 'C4', 'D'];
 const MIN_REASON_LENGTH = 2;
@@ -22,17 +23,41 @@ const valueText = (value: number | null | undefined) => (
   value == null ? '—' : Number.isInteger(value) ? String(value) : String(Number(value.toPrecision(5)))
 );
 
+const EMPTY_DIAGNOSTIC: SpcTimeModel = {
+  candidate: null, confirmed: false, statistically_controlled: false,
+};
+
+const numericField = (row: SpcHolmEvidenceRow, key: string) => (
+  typeof row[key] === 'number' ? row[key] as number : null
+);
+
+const comparisonRange = (row: SpcHolmEvidenceRow) => {
+  const start = numericField(row, 'window_start') ?? numericField(row, 'index_start');
+  const end = numericField(row, 'window_end') ?? numericField(row, 'index_end');
+  return start == null || end == null ? '—' : `${start}–${end}`;
+};
+
+const comparisonEffect = (row: SpcHolmEvidenceRow) => {
+  const tau = numericField(row, 'tau');
+  const slope = numericField(row, 'slope');
+  if (tau != null || slope != null) return `τ=${valueText(tau)}；slope=${valueText(slope)}`;
+  return valueText(numericField(row, 'statistic'));
+};
+
 const TimeDiagnosticPanelContent = ({
   version, canApprove, pending = false, error = null, onConfirm,
 }: TimeDiagnosticPanelProps) => {
-  const diagnostic = version.time_model;
+  const validDiagnostic = isSpcTimeModel(version.time_model);
+  const diagnostic = validDiagnostic ? version.time_model : EMPTY_DIAGNOSTIC;
+  const legacyReadOnly = version.method_version !== '2026.2';
   const evidence = diagnostic.evidence;
   const systemCandidate = diagnostic.system_candidate ?? diagnostic.candidate;
   const [model, setModel] = useState<SpcTimeModelCode>(systemCandidate ?? 'A1');
   const [reason, setReason] = useState('');
 
   const reasonLength = reason.trim().length;
-  const diagnosticAvailable = Boolean(
+  const diagnosticAvailable = Boolean(!legacyReadOnly && validDiagnostic
+    &&
     systemCandidate && !diagnostic.reason_code
       && (diagnostic.candidate_options ?? TIME_MODELS).includes(systemCandidate),
   );
@@ -46,6 +71,13 @@ const TimeDiagnosticPanelContent = ({
   const multipleFamilies = evidence?.multiple_testing?.families ?? {};
   const multipleComparisonCount = Object.values(multipleFamilies)
     .reduce((total, rows) => total + rows.length, 0);
+  const holmRows = Object.entries(multipleFamilies).flatMap(([family, rows]) => (
+    rows.map(row => ({ family, row }))
+  ));
+  const formalViolations = [
+    ...(formal?.location?.violations ?? []).map(violation => ({ chart: '位置圖', violation })),
+    ...(formal?.variation?.violations ?? []).map(violation => ({ chart: '變異圖', violation })),
+  ];
 
   return <Card className="mb-3">
     <Card.Header className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
@@ -62,6 +94,13 @@ const TimeDiagnosticPanelContent = ({
         </Badge>
       </div>
 
+      {legacyReadOnly && <Alert variant="warning" role="alert">
+        舊版方法 {version.method_version} 僅供唯讀；請以 2026.2 重建候選後再確認時間模型。
+      </Alert>}
+      {!legacyReadOnly && !validDiagnostic && <Alert variant="warning" role="alert">
+        2026.2 時間診斷資料格式不完整，請重新建立候選。
+      </Alert>}
+
       {diagnostic.reason_code && <Alert variant="warning" role="status">
         診斷目前不可用：<code>{diagnostic.reason_code}</code>
         {evidence?.subgroup_count != null && <div>有效子組 {evidence.subgroup_count}；最低需求 {evidence.minimum_subgroups ?? 25}。</div>}
@@ -75,10 +114,30 @@ const TimeDiagnosticPanelContent = ({
         <Col sm={6} xl={3}><div className="border rounded p-2 h-100"><strong>瞬時分布：{instantaneous?.normal == null ? '無法判定' : instantaneous.normal ? '常態' : '非常態'}</strong><div className="small text-muted">{instantaneous?.accepted ? '已接受' : '未接受'}；AD p {valueText(instantaneous?.p_value)}；Holm p {valueText(instantaneous?.adjusted_p_value)}；門檻 {valueText(instantaneous?.threshold)}</div></div></Col>
         <Col sm={6} xl={3}><div className="border rounded p-2 h-100"><strong>合成分布：{modality?.unimodal == null ? '無法判定' : modality.unimodal ? '單峰' : '多峰'}</strong><div className="small text-muted">{aggregateNormality?.normal == null ? '常態性無法判定' : aggregateNormality.normal ? '常態' : '非常態'}；峰數 {valueText(modality?.peak_count)}；頻寬 {valueText(modality?.bandwidth)}；p {valueText(aggregateNormality?.p_value)}</div></div></Col>
         <Col sm={6} xl={3}><div className="border rounded p-2 h-100"><strong>多重檢定：{evidence.multiple_testing?.method ?? '未提供'}</strong><div className="small text-muted">檢定族別 {Object.keys(multipleFamilies).length}；比較 {multipleComparisonCount} 項</div></div></Col>
-        <Col sm={6} xl={3}><div className="border rounded p-2 h-100"><strong>正式穩定性：{formal?.stable == null ? '無法判定' : formal.stable ? '穩定' : '不穩定'}</strong><div className="small text-muted">位置 {yesNo(formal?.location.stable, '穩定', '不穩定')}（異常 {formal?.location.violations.length ?? 0}）；變異 {yesNo(formal?.variation.stable, '穩定', '不穩定')}（異常 {formal?.variation.violations.length ?? 0}）</div></div></Col>
+        <Col sm={6} xl={3}><div className="border rounded p-2 h-100"><strong>正式穩定性：{formal?.stable == null ? '無法判定' : formal.stable ? '穩定' : '不穩定'}</strong><div className="small text-muted">位置 {yesNo(formal?.location?.stable, '穩定', '不穩定')}（異常 {formal?.location?.violations?.length ?? 0}）；變異 {yesNo(formal?.variation?.stable, '穩定', '不穩定')}（異常 {formal?.variation?.violations?.length ?? 0}）</div></div></Col>
       </Row>}
 
-      {diagnostic.confirmed ? <div className="border rounded p-3" aria-label="時間模型確認證據">
+      {holmRows.length > 0 && <details className="mb-3">
+        <summary className="fw-semibold">完整 Holm 多重檢定證據（{holmRows.length} 項）</summary>
+        <Table responsive bordered size="sm" className="mt-2 align-middle">
+          <caption className="visually-hidden">Holm 多重檢定逐項證據</caption>
+          <thead><tr><th scope="col">族別</th><th scope="col">視窗</th><th scope="col">索引</th><th scope="col">統計量／效果</th><th scope="col">原始 p</th><th scope="col">校正 p</th><th scope="col">門檻</th><th scope="col">判定</th></tr></thead>
+          <tbody>{holmRows.map(({ family, row }, index) => <tr key={`${family}-${index}`}>
+            <th scope="row">{family}</th><td>{comparisonRange(row)}</td><td>{valueText(numericField(row, 'index'))}</td><td>{comparisonEffect(row)}</td><td>{valueText(row.raw_p_value)}</td><td>{valueText(row.adjusted_p_value)}</td><td>{valueText(row.threshold)}</td><td>{row.reject ? '拒絕' : '不拒絕'}</td>
+          </tr>)}</tbody>
+        </Table>
+      </details>}
+
+      {formalViolations.length > 0 && <details className="mb-3">
+        <summary className="fw-semibold">正式穩定性違規（{formalViolations.length} 項）</summary>
+        <Table responsive bordered size="sm" className="mt-2 align-middle">
+          <caption className="visually-hidden">正式穩定性違規逐項證據</caption>
+          <thead><tr><th scope="col">圖別</th><th scope="col">索引</th><th scope="col">視窗</th><th scope="col">規則</th><th scope="col">說明</th></tr></thead>
+          <tbody>{formalViolations.map(({ chart, violation }, index) => <tr key={`${chart}-${violation.rule}-${index}`}><th scope="row">{chart}</th><td>{violation.index}</td><td>{violation.window_start}–{violation.window_end}</td><td>{violation.rule}</td><td>{violation.label}</td></tr>)}</tbody>
+        </Table>
+      </details>}
+
+      {!legacyReadOnly && diagnostic.confirmed ? <div className="border rounded p-3" aria-label="時間模型確認證據">
         <div className="d-flex gap-2 flex-wrap"><strong>確認模型：{diagnostic.model ?? systemCandidate}</strong>{diagnostic.overridden && <Badge bg="warning" text="dark">人工改判</Badge>}</div>
         <div className="small text-muted mt-1">確認者：{diagnostic.confirmed_by ?? '—'}；確認時間：{diagnostic.confirmed_at ?? '—'}</div>
         <div className="mt-2">{diagnostic.confirmation_reason ?? '未保存確認理由'}</div>

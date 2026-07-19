@@ -1,5 +1,7 @@
 import type { ChartData } from 'chart.js';
-import { isMachinePerformanceResult, isSpcChartSet } from '../types/spc';
+import {
+  isMachinePerformanceResult, isSpcChartSet, isSpcDistributionAssessment, isSpcTimeModel,
+} from '../types/spc';
 import type {
   CpkTrend,
   DistributionStats,
@@ -79,8 +81,10 @@ export const mergeOngoingStudyForDisplay = (
     ...preview,
     charts: version.charts,
     stability: version.stability,
-    distribution: version.distribution,
-    time_model: version.time_model,
+    distribution: isSpcDistributionAssessment(version.distribution)
+      ? version.distribution : preview.distribution,
+    time_model: isSpcTimeModel(version.time_model)
+      ? version.time_model : preview.time_model,
     capability: version.capability,
     process_capability: version.capability,
     applicability: version.applicability,

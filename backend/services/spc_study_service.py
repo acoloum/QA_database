@@ -1495,6 +1495,14 @@ class SpcStudyService:
         if version.status != "draft":
             raise SpcConflict("INVALID_STUDY_STATE", "只有草稿研究可以送審")
         _assert_source_unchanged(version)
+        if (
+            version.study.analysis_family == "variable"
+            and (version.time_model_result or {}).get("confirmed") is not True
+        ):
+            raise SpcValidationError(
+                "TIME_MODEL_UNCONFIRMED",
+                "變數研究必須先確認時間模型才能送審",
+            )
         version.status = "submitted"
         version.study.status = "submitted"
         log_audit(

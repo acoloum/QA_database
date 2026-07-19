@@ -245,8 +245,10 @@ def test_analyze_snapshots_options_and_includes_them_in_hash(
             input_contract_version="2026.2",
         )
 
-        submitted = SpcStudyService.submit(version.id, manager.id, reason="選項已確認")
-        assert submitted.status == "submitted"
+        with pytest.raises(SpcValidationError) as unconfirmed:
+            SpcStudyService.submit(version.id, manager.id, reason="選項已確認")
+        assert unconfirmed.value.code == "TIME_MODEL_UNCONFIRMED"
+        assert version.status == "draft"
 
 
 def test_legacy_2026_1_version_can_submit_and_approve_with_historical_hash(
@@ -385,10 +387,6 @@ def test_submit_approve_and_activate_writes_audit_and_limit(
 @pytest.mark.parametrize(
     ("mutation", "expected_code"),
     [
-        (lambda results: results.update(time_model_result={
-            **results["time_model_result"], "confirmed": False,
-        }),
-         "TIME_MODEL_UNCONFIRMED"),
         (lambda results: results.update(stability_result={
                 **results["stability_result"],
                 "variation": {
@@ -544,6 +542,47 @@ def test_bc_d_confirmation_requires_approve_reason_and_preserves_successor(
         assert [sample.exclusion_snapshot for sample in confirmed.samples] == [
             sample.exclusion_snapshot for sample in original.samples
         ]
+
+
+def test_unconfirmed_c3_cannot_submit_then_confirmed_successor_can_approve_research(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        _role(db_session, "spc_workflow", {"spc.manage": True, "spc.approve": True})
+        actor = _user(db_session, "c3-workflow", "spc_workflow")
+        monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: _input())
+
+        def c3_candidate(study_input):
+            results = _approvable_results(study_input)
+            results["time_model_result"] = {
+                "candidate": "C3", "confirmed": False,
+                "statistically_controlled": False,
+                "diagnostic_version": "2026.2", "reason_code": None,
+            }
+            return results
+
+        monkeypatch.setattr(spc_study_module, "_calculate_results", c3_candidate)
+        draft = SpcStudyService.analyze("shipping", {}, actor.id)
+
+        with pytest.raises(SpcValidationError) as unconfirmed:
+            SpcStudyService.submit(draft.id, actor.id, reason="不可跳過時間確認")
+        assert unconfirmed.value.code == "TIME_MODEL_UNCONFIRMED"
+        assert draft.status == "draft"
+
+        confirmed = SpcStudyService.confirm_time_model(
+            draft.id, actor.id, model="C3", reason="已核對長期時間序列"
+        )
+        submitted = SpcStudyService.submit(
+            confirmed.id, actor.id, reason="送交研究核准"
+        )
+        approved = SpcStudyService.approve_research(
+            submitted.id, actor.id, reason="只核准研究證據"
+        )
+
+        assert approved.status == "approved"
+        assert approved.time_model_result["confirmed"] is True
+        assert approved.time_model_result["model"] == "C3"
+        assert SpcLimitVersion.query.count() == 0
 
 
 def test_insufficient_time_diagnostic_cannot_create_successor(

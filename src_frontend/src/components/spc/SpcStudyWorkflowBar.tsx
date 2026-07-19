@@ -11,6 +11,7 @@ interface SpcStudyWorkflowBarProps {
   analyzing?: boolean;
   canAnalyze?: boolean;
   analyzeDisabledReason?: string;
+  showTimeModelAction?: boolean;
   onAnalyze: () => void;
   onAction: (action: SpcWorkflowAction) => void;
   onShowHistory: () => void;
@@ -37,7 +38,7 @@ const stageIndex = (status: SpcStudyResult['status'] | undefined, research: bool
 
 const SpcStudyWorkflowBar = ({
   version, canView, canManage, canApprove, analyzing = false, canAnalyze = true, analyzeDisabledReason,
-  onAnalyze, onAction, onShowHistory,
+  showTimeModelAction = true, onAnalyze, onAction, onShowHistory,
 }: SpcStudyWorkflowBarProps) => {
   const confirmedModel = version?.time_model.model;
   const research = version?.analysis_family === 'machine'
@@ -53,6 +54,8 @@ const SpcStudyWorkflowBar = ({
   const canConfirmTimeModel = version?.status === 'draft'
     && !version.time_model.confirmed
     && (candidate === 'A1' || candidate === 'A2');
+  const variableTimeModelUnconfirmed = version?.analysis_family === 'variable'
+    && version.status === 'draft' && version.time_model.confirmed !== true;
 
   return (
     <div className="spc-workflow">
@@ -79,12 +82,12 @@ const SpcStudyWorkflowBar = ({
           {!canAnalyze && analyzeDisabledReason && <span id="spc-rebuild-disabled-reason" className="visually-hidden">{analyzeDisabledReason}</span>}
           </span>
         )}
-        {!research && canManage && canConfirmTimeModel && (
+        {!research && canApprove && showTimeModelAction && canConfirmTimeModel && (
           <Button size="sm" variant="outline-primary" onClick={() => onAction('time-model')}>
             確認 {candidate}
           </Button>
         )}
-        {canManage && version?.status === 'draft' && (
+        {canManage && version?.status === 'draft' && !variableTimeModelUnconfirmed && (
           <Button size="sm" variant="primary" onClick={() => onAction('submit')}>送審</Button>
         )}
         {canApprove && version?.status === 'submitted' && (!research || researchApprovable) && (
@@ -97,6 +100,11 @@ const SpcStudyWorkflowBar = ({
           <Button size="sm" variant="outline-danger" onClick={() => onAction('retire')}>停用／重建</Button>
         )}
       </div>
+      {variableTimeModelUnconfirmed && (
+        <div className="small text-warning mt-2" role="status">
+          請先由具核准權限者確認時間模型，再送交審查。
+        </div>
+      )}
     </div>
   );
 };

@@ -9,6 +9,7 @@ const approveResearchMock = vi.hoisted(() => vi.fn());
 const submitMock = vi.hoisted(() => vi.fn());
 const confirmTimeMock = vi.hoisted(() => vi.fn());
 const confirmTransformationMock = vi.hoisted(() => vi.fn());
+const workflowPropsMock = vi.hoisted(() => vi.fn());
 
 const savedAttributeVersion = {
   id: 51, study_id: 9, source: 'shipping', study_type: 'retrospective', analysis_family: 'attribute',
@@ -42,7 +43,10 @@ vi.mock('../../hooks/useSpcStudies', () => ({
   useRejectSpcStudy: () => ({ isPending: false }), useRetireSpcLimit: () => ({ isPending: false }),
 }));
 vi.mock('../../components/spc/SpcStudyWorkflowBar', () => ({
-  default: (props: { onAction: (action: 'submit' | 'approve-research') => void; onAnalyze: () => void }) => <><button onClick={() => props.onAction('submit')}>開啟送審</button><button onClick={() => props.onAction('approve-research')}>開啟研究核准</button><button onClick={props.onAnalyze}>重建候選</button></>,
+  default: (props: { onAction: (action: 'submit' | 'approve-research') => void; onAnalyze: () => void; showTimeModelAction?: boolean }) => {
+    workflowPropsMock(props);
+    return <><button onClick={() => props.onAction('submit')}>開啟送審</button><button onClick={() => props.onAction('approve-research')}>開啟研究核准</button><button onClick={props.onAnalyze}>重建候選</button>{props.showTimeModelAction !== false && <button>舊時間模型入口</button>}</>;
+  },
 }));
 vi.mock('../../components/spc/SpcBaselineApprovalModal', () => ({
   default: (props: { filters: Record<string, unknown>; onConfirm: (reason: string) => void }) => <div>核准快照廠商：{String(props.filters.vendor)}<button onClick={() => props.onConfirm('已完成研究複核')}>確認流程</button></div>,
@@ -64,6 +68,7 @@ describe('AdvancedSpcPage', () => {
     authMock.mockReset();
     confirmTimeMock.mockReset();
     confirmTransformationMock.mockReset();
+    workflowPropsMock.mockClear();
   });
 
   it('從 query 載入出貨屬性研究條件', () => {
@@ -163,6 +168,37 @@ describe('AdvancedSpcPage', () => {
     });
   });
 
+  it('machine deep link 將來源上下文正規化保留在 URL 與畫面，但不送入機器分析 API', async () => {
+    authMock.mockReturnValue({ hasPermission: () => true });
+    analyzeMock.mockResolvedValue({ ...savedAttributeVersion, source: 'patrol', analysis_family: 'machine', filters: { m_id: 7, mat: '6061', spec: '10x1', item: '外徑', pos: 'A' }, options: { conditions_confirmed: true, condition_reason: '已確認機台設定與治具狀態' } });
+    window.history.replaceState({}, '', '/spc/advanced?family=machine&m_id=7&op_id=9&cust_id=3&mat=6061&spec=10x1&item=外徑&pos=A&s=2026-07-01&e=2026-07-31&conditions_confirmed=true&reason=不得保留');
+    render(<QueryClientProvider client={new QueryClient()}><BrowserRouter><AdvancedSpcPage /></BrowserRouter></QueryClientProvider>);
+
+    expect(screen.getByLabelText('來源操作員 ID')).toHaveValue('9');
+    expect(screen.getByLabelText('來源客戶 ID')).toHaveValue('3');
+    expect(screen.getByLabelText('來源開始日期')).toHaveValue('2026-07-01');
+    expect(screen.getByLabelText('來源結束日期')).toHaveValue('2026-07-31');
+    fireEvent.change(screen.getByLabelText('位置'), { target: { value: 'B' } });
+
+    const canonical = new URLSearchParams(window.location.search);
+    expect(canonical.get('op_id')).toBe('9');
+    expect(canonical.get('cust_id')).toBe('3');
+    expect(canonical.get('s_date')).toBe('2026-07-01');
+    expect(canonical.get('e_date')).toBe('2026-07-31');
+    expect(canonical.has('s')).toBe(false);
+    expect(canonical.has('e')).toBe(false);
+    expect(canonical.has('reason')).toBe(false);
+
+    fireEvent.change(screen.getByLabelText('研究條件確認理由'), { target: { value: '已確認機台設定與治具狀態' } });
+    fireEvent.click(screen.getByRole('button', { name: '分析機器績效' }));
+    await waitFor(() => expect(analyzeMock).toHaveBeenCalledWith({
+      source: 'patrol', analysis_family: 'machine',
+      filters: { m_id: 7, mat: '6061', spec: '10x1', item: '外徑', pos: 'B' },
+      options: { conditions_confirmed: true, condition_reason: '已確認機台設定與治具狀態' },
+    }));
+    window.history.replaceState({}, '', '/');
+  });
+
   it('切換工作區會清除前一族別 query，避免將屬性條件送入機器研究', () => {
     authMock.mockReturnValue({ hasPermission: () => true });
     renderPage('/spc/advanced?family=attribute&source=shipping&vendor=甲&material=6061');
@@ -239,6 +275,8 @@ describe('AdvancedSpcPage', () => {
     expect(screen.getByLabelText('檢驗特性')).toHaveValue('外徑');
     fireEvent.click(screen.getByRole('button', { name: '建立變數研究' }));
     await screen.findByText('系統候選：C3');
+    expect(screen.queryByRole('button', { name: '舊時間模型入口' })).not.toBeInTheDocument();
+    expect(workflowPropsMock).toHaveBeenLastCalledWith(expect.objectContaining({ showTimeModelAction: false }));
     expect(screen.getByText('分布轉換候選')).toBeInTheDocument();
     expect(analyzeMock).toHaveBeenCalledWith({
       source: 'shipping', analysis_family: 'variable',

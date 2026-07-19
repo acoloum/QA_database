@@ -40,7 +40,7 @@ describe('TransformationPanel', () => {
     render(<TransformationPanel version={version(originalDistribution)} canApprove onConfirm={onConfirm} />);
 
     expect(screen.getByRole('radio', { name: /Johnson SU/ })).toBeEnabled();
-    expect(screen.queryByRole('radio', { name: /Box-Cox/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Box-Cox/ })).toBeDisabled();
     expect(screen.getByText(/a=1/)).toBeInTheDocument();
     expect(screen.getByText(/AD p.*0.42/)).toBeInTheDocument();
     expect(screen.getByText(/尾端分位數.*1.*3.*8/)).toBeInTheDocument();
@@ -79,6 +79,13 @@ describe('TransformationPanel', () => {
     expect(screen.getByText('已複核配適及尾端風險')).toBeInTheDocument();
     expect(screen.getByText(/原始尺度分位數：1／3／8/)).toBeInTheDocument();
     expect(screen.getByText(/原始尺度 PPM：上側 12；下側 8；合計 20/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '確認轉換' })).not.toBeInTheDocument();
+  });
+
+  it('舊版空分布物件只顯示唯讀提示且不可確認', () => {
+    render(<TransformationPanel version={{ ...version(originalDistribution), method_version: '2026.1', distribution: {} }} canApprove onConfirm={vi.fn()} />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('舊版方法 2026.1 僅供唯讀');
     expect(screen.queryByRole('button', { name: '確認轉換' })).not.toBeInTheDocument();
   });
 });
