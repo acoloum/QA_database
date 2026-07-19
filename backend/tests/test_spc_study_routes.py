@@ -292,6 +292,29 @@ def test_time_model_route_returns_stable_invalid_override_error(
     assert response.get_json()["code"] == "TIME_MODEL_OVERRIDE_INVALID"
 
 
+def test_transformation_route_requires_approve_permission_and_reason(
+    client, db_session, spc_roles
+):
+    manager = _user(db_session, "transformation-manager", "spc_manager")
+    approver = _user(db_session, "transformation-approver", "spc_approver")
+
+    forbidden = client.post(
+        "/api/spc/study-versions/999/transformation",
+        headers=_headers(manager),
+        json={"model": "johnson_su", "reason": "確認"},
+    )
+    missing_reason = client.post(
+        "/api/spc/study-versions/999/transformation",
+        headers=_headers(approver),
+        json={"model": "johnson_su", "reason": " "},
+    )
+
+    assert forbidden.status_code == 403
+    assert forbidden.get_json()["error"] == "權限不足"
+    assert missing_reason.status_code == 422
+    assert missing_reason.get_json()["code"] == "REASON_REQUIRED"
+
+
 def test_legacy_limit_write_endpoints_are_gone(client, db_session, spc_roles):
     manager = _user(db_session, "legacy-manager", "spc_manager")
     for method in (client.post, client.delete):

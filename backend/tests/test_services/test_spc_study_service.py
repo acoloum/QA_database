@@ -3,6 +3,8 @@
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
+import numpy as np
+from scipy import stats as scipy_stats
 
 import backend.services.spc_study_service as spc_study_module
 from backend.models import (
@@ -610,6 +612,106 @@ def test_reconfirming_same_original_returns_stable_conflict_and_one_successor(
         ).all()
         assert {version.id for version in versions} == {original.id, confirmed.id}
         assert len(audits) == 1
+
+
+def _transformation_input(data_hash="e" * 64):
+    probabilities = np.linspace(0.01, 0.99, 50)
+    values = scipy_stats.lognorm.ppf(
+        probabilities, 0.7, loc=0.0, scale=np.exp(1.0)
+    )
+    subgroups = tuple(
+        SpcSubgroup(
+            key=f"transform:{index}",
+            timestamp=date(2026, 7, index + 1),
+            values=(float(values[index * 2]), float(values[index * 2 + 1])),
+            record_ids=(index + 1,),
+            measurement_ids=(500 + index,),
+        )
+        for index in range(25)
+    )
+    return SpcStudyInput(
+        source="shipping",
+        filters={"field": "外徑"},
+        process_stream_key="transform-stream",
+        characteristic="外徑",
+        subgroups=subgroups,
+        specification={"found": True, "LSL": 0.8, "USL": 12.0},
+        data_hash=data_hash,
+    )
+
+
+def test_confirm_transformation_creates_immutable_transformed_successor(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        _role(db_session, "transform_approver", {"spc.manage": True, "spc.approve": True})
+        approver = _user(db_session, "transform-user", "transform_approver")
+        monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: _transformation_input())
+        original = SpcStudyService.analyze("shipping", {"field": "外徑"}, approver.id)
+        original_samples = [list(sample.values) for sample in original.samples]
+        original_chart = dict(original.chart_result)
+        original_time_model = dict(original.time_model_result)
+
+        successor = SpcStudyService.confirm_transformation(
+            original.id,
+            approver.id,
+            model="johnson_sl",
+            reason="原始尺度偏態，採用對數常態轉換",
+        )
+
+        assert original.status == "superseded"
+        assert original.chart_result == original_chart
+        assert successor.version_no == original.version_no + 1
+        assert successor.data_hash == original.data_hash
+        assert successor.analysis_options == original.analysis_options
+        assert successor.specification_snapshot == original.specification_snapshot
+        assert [sample.values for sample in successor.samples] == original_samples
+        assert successor.chart_result["scale"] == "transformed"
+        assert successor.capability_result["scale"] == "transformed"
+        assert successor.capability_result["original_scale"]["quantiles"]
+        assert successor.distribution_result["transformation_decision"]["model"] == "johnson_sl"
+        assert successor.distribution_result["transformation_decision"]["confirmed_by"] == approver.id
+        assert successor.distribution_result["transformation_decision"]["confirmation_reason"]
+        assert successor.distribution_result["original_model"] == original.distribution_result["model"]
+        assert successor.time_model_result == original_time_model
+
+
+def test_transformation_requires_approve_accepted_candidate_reason_and_stable_conflict(
+    app, db_session, monkeypatch
+):
+    with app.app_context():
+        _role(db_session, "transform_manager", {"spc.manage": True})
+        _role(db_session, "transform_qc", {"spc.approve": True})
+        manager = _user(db_session, "transform-manager", "transform_manager")
+        approver = _user(db_session, "transform-approver", "transform_qc")
+        monkeypatch.setitem(ADAPTERS, "shipping", lambda _filters: _transformation_input())
+        original = SpcStudyService.analyze("shipping", {}, manager.id)
+
+        with pytest.raises(SpcForbidden) as forbidden:
+            SpcStudyService.confirm_transformation(
+                original.id, manager.id, model="johnson_sl", reason="無權確認"
+            )
+        assert forbidden.value.code == "SPC_APPROVE_FORBIDDEN"
+        with pytest.raises(SpcValidationError) as reason_error:
+            SpcStudyService.confirm_transformation(
+                original.id, approver.id, model="johnson_sl", reason=" "
+            )
+        assert reason_error.value.code == "REASON_REQUIRED"
+        with pytest.raises(SpcValidationError) as candidate_error:
+            SpcStudyService.confirm_transformation(
+                original.id, approver.id, model="not-a-candidate", reason="測試"
+            )
+        assert candidate_error.value.code == "TRANSFORMATION_UNCONFIRMED"
+
+        successor = SpcStudyService.confirm_transformation(
+            original.id, approver.id, model="johnson_sl", reason="正式確認"
+        )
+        with pytest.raises(SpcConflict) as conflict:
+            SpcStudyService.confirm_transformation(
+                original.id, approver.id, model="johnson_sl", reason="競態重試"
+            )
+        assert conflict.value.code == "SPC_TRANSFORMATION_CONFIRM_CONFLICT"
+        assert successor.status == "draft"
 
 
 def test_bcd_research_approval_never_creates_production_limits(app, db_session, monkeypatch):

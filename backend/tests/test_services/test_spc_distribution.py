@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from scipy import stats as scipy_stats
 
 from backend.services.spc_distribution import assess_distribution, dist_quantiles, tail_ppm
 
@@ -74,3 +75,30 @@ def test_tail_ppm_reflects_spec_distance():
     near = tail_ppm(d, usl=10.5, lsl=9.5)
     far = tail_ppm(d, usl=13, lsl=7)
     assert near["total"] > far["total"]
+
+
+def test_original_accepted_distribution_suppresses_transformation_recommendation():
+    rng = np.random.default_rng(42)
+    result = assess_distribution(rng.normal(10, 0.5, 300).tolist())
+
+    assert result["accepted"] is True
+    assert len(result["transformation_candidates"]) == 4
+    assert result["transformation_recommendation"] is None
+    assert result["transformation_reason_code"] == "ORIGINAL_DISTRIBUTION_ACCEPTED"
+
+
+def test_unconfirmed_distribution_recommends_best_accepted_transformation():
+    probabilities = np.linspace(0.01, 0.99, 99)
+    values = scipy_stats.johnsonsu.ppf(
+        probabilities, 1.2, 1.8, loc=-2.0, scale=1.5
+    ).tolist()
+
+    result = assess_distribution(values)
+    accepted = [
+        item for item in result["transformation_candidates"] if item["accepted"]
+    ]
+    if result["accepted"]:
+        assert result["transformation_recommendation"] is None
+    else:
+        assert accepted
+        assert result["transformation_recommendation"]["model"] == accepted[0]["model"]

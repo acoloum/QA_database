@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from scipy import stats as scipy_stats
 
+from .spc_transformations import evaluate_transformations
+
 
 SHAPE_FIELDS = {"同心度", "真圓度", "真直度", "圓度", "平面度", "直線度"}
 MIN_DISTRIBUTION_SAMPLE = 20
@@ -32,7 +34,30 @@ def _base_result(n: int, alpha: float) -> Dict[str, Any]:
         "fit_method": None,
         "alpha": alpha,
         "n": n,
+        "transformation_candidates": [],
+        "transformation_recommendation": None,
+        "transformation_reason_code": None,
     }
+
+
+def _attach_transformations(
+    result: Dict[str, Any], arr: np.ndarray, alpha: float
+) -> Dict[str, Any]:
+    """保存候選證據；原始分布已通過時不主動推薦轉換。"""
+
+    evaluation = evaluate_transformations(arr, alpha=alpha)
+    result["transformation_candidates"] = evaluation["candidates"]
+    result["transformation_evidence"] = {
+        key: value for key, value in evaluation.items()
+        if key not in {"candidates", "recommended"}
+    }
+    if result.get("accepted"):
+        result["transformation_recommendation"] = None
+        result["transformation_reason_code"] = "ORIGINAL_DISTRIBUTION_ACCEPTED"
+    else:
+        result["transformation_recommendation"] = evaluation["recommended"]
+        result["transformation_reason_code"] = evaluation["reason_code"]
+    return result
 
 
 def _candidate(
@@ -74,6 +99,7 @@ def assess_distribution(
     field: Optional[str] = None,
     *,
     alpha: float = DEFAULT_ALPHA,
+    include_transformations: bool = True,
 ) -> Dict[str, Any]:
     """評估可接受的分布；沒有候選通過時不回退到常態。"""
 
@@ -89,7 +115,7 @@ def assess_distribution(
     if field in SHAPE_FIELDS:
         if np.any(arr < 0):
             result["reason_code"] = "SHAPE_DISTRIBUTION_NEGATIVE_VALUE"
-            return result
+            return _attach_transformations(result, arr, alpha) if include_transformations else result
         params = tuple(float(value) for value in scipy_stats.foldnorm.fit(arr, floc=0))
         fit = scipy_stats.kstest(arr, scipy_stats.foldnorm.cdf, args=params)
         folded = _candidate(
@@ -97,7 +123,9 @@ def assess_distribution(
             "kolmogorov_smirnov", alpha,
         )
         result["candidates"].append(folded)
-        return _accept(result, folded, normal_ok=False) if folded["accepted"] else result
+        if folded["accepted"]:
+            _accept(result, folded, normal_ok=False)
+        return _attach_transformations(result, arr, alpha) if include_transformations else result
 
     mean = float(np.mean(arr))
     std = float(np.std(arr, ddof=1))
@@ -113,7 +141,8 @@ def assess_distribution(
     result["ad_stat"] = float(ad.statistic)
     result["candidates"].append(normal)
     if normal["accepted"]:
-        return _accept(result, normal, normal_ok=True)
+        _accept(result, normal, normal_ok=True)
+        return _attach_transformations(result, arr, alpha) if include_transformations else result
 
     if np.all(arr > 0):
         params = tuple(float(value) for value in scipy_stats.lognorm.fit(arr, floc=0))
@@ -124,9 +153,10 @@ def assess_distribution(
         )
         result["candidates"].append(lognormal)
         if lognormal["accepted"]:
-            return _accept(result, lognormal, normal_ok=False)
+            _accept(result, lognormal, normal_ok=False)
+            return _attach_transformations(result, arr, alpha) if include_transformations else result
 
-    return result
+    return _attach_transformations(result, arr, alpha) if include_transformations else result
 
 
 def _frozen(dist: Dict[str, Any]):

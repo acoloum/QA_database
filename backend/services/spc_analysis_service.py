@@ -77,6 +77,9 @@ def calculate_process_capability(
         "candidates": dist.get("candidates", []),
         "fit_method": dist.get("fit_method"),
         "alpha": dist.get("alpha"),
+        "scale": dist.get("scale", "original"),
+        "original_model": dist.get("original_model"),
+        "transformation_decision": dist.get("transformation_decision"),
     }
     if not dist.get("accepted"):
         process_capability.update({
@@ -92,6 +95,7 @@ def calculate_process_capability(
             "time_model": time_model,
             "distribution": process_capability_dist,
             "ppm": {"upper": None, "lower": None, "total": None},
+            "scale": dist.get("scale", "original"),
         })
         return process_capability
     use_percentile = dist["model"] != "normal"
@@ -186,6 +190,7 @@ def calculate_process_capability(
         "achieved": achieved,
         # 手冊建議 n≥125、k≥25 子組（表 6-4）；不足時標示為初步值
         "preliminary": len(all_values) < 125 or len(avgs) < 25,
+        "scale": dist.get("scale", "original"),
     })
     return process_capability
 

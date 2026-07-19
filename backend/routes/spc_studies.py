@@ -400,6 +400,21 @@ def approve_research(current_user, version_id):
     return _success(serialize_version(version))
 
 
+@spc_studies_bp.post("/api/spc/study-versions/<int:version_id>/transformation")
+@auth_required
+@require_permission("spc.approve")
+@_handle_spc_errors
+def confirm_transformation(current_user, version_id):
+    body = request.get_json(silent=True) or {}
+    version = SpcStudyService.confirm_transformation(
+        version_id,
+        current_user.id,
+        model=body.get("model"),
+        reason=body.get("reason"),
+    )
+    return _success(serialize_version(version))
+
+
 @spc_studies_bp.post("/api/spc/study-versions/<int:version_id>/reject")
 @auth_required
 @require_permission("spc.approve")

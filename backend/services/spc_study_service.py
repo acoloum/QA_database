@@ -10,6 +10,7 @@ import os
 from typing import Any, Callable, Mapping
 
 import numpy as np
+from scipy import stats as scipy_stats
 from sqlalchemy import func, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -64,6 +65,7 @@ from .spc_errors import (
 )
 from .spc_stability import evaluate_attribute_stability, evaluate_study_stability
 from .spc_time_diagnostics import diagnose_time_model
+from .spc_transformations import inverse_values, transform_values
 
 
 SPC_METHOD_VERSION = "2026.2"
@@ -790,6 +792,174 @@ def _recalculate_capability(
     )
 
 
+def _transformation_candidate(
+    version: SpcStudyVersion, model: str
+) -> dict[str, Any]:
+    """只允許確認原版本已保存且通過全部門檻的候選。"""
+
+    distribution = dict(version.distribution_result or {})
+    if distribution.get("transformation_decision"):
+        raise SpcValidationError("TRANSFORMATION_UNCONFIRMED", "此版本已套用分布轉換")
+    candidates = distribution.get("transformation_candidates") or []
+    candidate = next(
+        (
+            dict(item) for item in candidates
+            if isinstance(item, Mapping) and item.get("model") == model
+        ),
+        None,
+    )
+    if candidate is None or candidate.get("accepted") is not True:
+        raise SpcValidationError(
+            "TRANSFORMATION_UNCONFIRMED",
+            "指定的分布轉換候選不存在或未通過受控門檻",
+        )
+    return candidate
+
+
+def _transformed_specification(
+    specification: Mapping[str, Any], candidate: Mapping[str, Any]
+) -> dict[str, Any]:
+    """依嚴格單調轉換映射規格；原始規格快照仍由版本欄位保存。"""
+
+    transformed = dict(specification)
+    for key in ("LSL", "USL", "nominal"):
+        value = specification.get(key)
+        if value is None:
+            continue
+        try:
+            transformed[key] = float(transform_values(float(value), candidate))
+        except ValueError as exc:
+            raise SpcValidationError(
+                "TRANSFORMATION_SPECIFICATION_INVALID",
+                f"規格 {key} 無法依指定模型轉換",
+                details={"key": key, "model": candidate.get("model")},
+            ) from exc
+    transformed["scale"] = "transformed"
+    transformed["transformation_model"] = candidate.get("model")
+    return transformed
+
+
+def _original_scale_evidence(
+    candidate: Mapping[str, Any], specification: Mapping[str, Any]
+) -> dict[str, Any]:
+    """以候選配適模型在原尺度回傳 G 法分位數與規格外風險。"""
+
+    quantiles = [float(value) for value in candidate.get("tail_quantiles") or []]
+    model = candidate.get("model")
+    params = candidate.get("params") or {}
+
+    def cumulative(value: float) -> float:
+        transformed = float(transform_values(value, candidate))
+        if model == "boxcox":
+            return float(scipy_stats.norm.cdf(
+                transformed,
+                loc=float(params["transformed_mean"]),
+                scale=float(params["transformed_std"]),
+            ))
+        return float(scipy_stats.norm.cdf(transformed))
+
+    usl = specification.get("USL")
+    lsl = specification.get("LSL")
+    one_sided = specification.get("one_sided")
+    try:
+        upper = (1.0 - cumulative(float(usl))) * 1_000_000 if usl is not None else 0.0
+        lower = cumulative(float(lsl)) * 1_000_000 if lsl is not None and one_sided != "upper" else 0.0
+        ppm = {
+            "upper": round(upper, 1),
+            "lower": round(lower, 1),
+            "total": round(upper + lower, 1),
+        }
+    except (ValueError, KeyError, TypeError):
+        ppm = {"upper": None, "lower": None, "total": None}
+    return {
+        "scale": "original",
+        "quantiles": quantiles,
+        "ppm": ppm,
+        "model": model,
+    }
+
+
+def _calculate_transformed_results(
+    version: SpcStudyVersion, candidate: Mapping[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """由不可變原始樣本重算轉換尺度圖表、穩定性、分布與能力。"""
+
+    if version.study.analysis_family != "variable":
+        raise SpcValidationError(
+            "TRANSFORMATION_UNCONFIRMED", "目前只支援計量型研究的分布轉換"
+        )
+    groups = []
+    for sample in sorted(version.samples, key=lambda item: item.subgroup_order):
+        original_values = list(sample.values or [])
+        original_distribution = list(sample.distribution_values or original_values)
+        groups.append(SpcSubgroup(
+            key=sample.subgroup_key,
+            timestamp=sample.sample_timestamp,
+            values=tuple(float(value) for value in transform_values(original_values, candidate)),
+            distribution_values=tuple(
+                float(value) for value in transform_values(original_distribution, candidate)
+            ),
+            record_ids=tuple(sample.source_record_ids or []),
+            measurement_ids=tuple(sample.source_measurement_ids or []),
+            exclusion_snapshot=tuple(sample.exclusion_snapshot or []),
+        ))
+    try:
+        chart_set = calculate_chart_set(tuple(groups))
+    except (SpcChartNotApplicable, ValueError) as exc:
+        raise SpcValidationError(
+            "TRANSFORMATION_UNCONFIRMED", "轉換後資料無法建立有效管制圖"
+        ) from exc
+    chart = _chart_result(chart_set)
+    chart.update({
+        "scale": "transformed",
+        "transformation_model": candidate.get("model"),
+    })
+    stability = evaluate_study_stability(chart_set)
+    stability["scale"] = "transformed"
+    all_values = [
+        value for group in groups for value in (group.distribution_values or group.values)
+    ]
+    distribution = assess_distribution(
+        all_values, field=version.study.characteristic, include_transformations=False
+    )
+    if not distribution.get("accepted") or distribution.get("model") != "normal":
+        raise SpcValidationError(
+            "TRANSFORMATION_UNCONFIRMED", "轉換後資料未通過常態分布確認"
+        )
+    distribution.update({
+        "scale": "transformed",
+        "original_model": (version.distribution_result or {}).get("model"),
+        "transformation_decision": dict(candidate),
+    })
+    specification = _transformed_specification(
+        dict(version.specification_snapshot or {}), candidate
+    )
+    location_values = [
+        float(value) for value in chart_set.location.values if value is not None
+    ]
+    variation_center = float(np.mean(chart_set.variation.cl))
+    capability = calculate_process_capability(
+        avgs=location_values,
+        all_values=all_values,
+        r_cl=variation_center,
+        d2=(variation_center / chart_set.sigma_within if chart_set.sigma_within > 0 else 1.0),
+        tolerance_limits=specification,
+        stability=stability,
+        field=version.study.characteristic,
+        dist=distribution,
+        time_model=dict(version.time_model_result or {}),
+        characteristic_class=str(
+            (version.specification_snapshot or {}).get("characteristic_class") or "其他"
+        ),
+    )
+    capability["scale"] = "transformed"
+    capability["transformed_specification"] = specification
+    capability["original_scale"] = _original_scale_evidence(
+        candidate, dict(version.specification_snapshot or {})
+    )
+    return chart, stability, distribution, capability
+
+
 def _add_input_samples(
     version: SpcStudyVersion, source: str, study_input: SpcStudyInput
 ) -> None:
@@ -1325,6 +1495,129 @@ class SpcStudyService:
             raise SpcConflict(
                 "SPC_TIME_MODEL_CONFIRM_CONFLICT",
                 "時間模型確認版本已由其他操作建立，請重新整理",
+            ) from exc
+
+    @staticmethod
+    def confirm_transformation(
+        version_id: int, actor_id: int, *, model: str, reason: str
+    ) -> SpcStudyVersion:
+        """確認已通過候選，建立轉換尺度的不可變後繼版本。"""
+
+        _require_permission(actor_id, "spc.approve")
+        reason = _require_reason(reason)
+        study_id = db.session.query(SpcStudyVersion.study_id).filter_by(
+            id=version_id
+        ).scalar()
+        if study_id is None:
+            raise SpcNotFound("SPC_STUDY_VERSION_NOT_FOUND", "找不到 SPC 研究版本")
+        SpcStudy.query.filter_by(id=study_id).with_for_update().one()
+        version = SpcStudyVersion.query.options(
+            selectinload(SpcStudyVersion.samples),
+            selectinload(SpcStudyVersion.study),
+        ).filter_by(id=version_id).with_for_update().one()
+        if version.status != "draft":
+            raise SpcConflict(
+                "SPC_TRANSFORMATION_CONFIRM_CONFLICT",
+                "分布轉換原始版本已被確認或狀態已變更，請重新整理",
+            )
+        candidate = _transformation_candidate(version, model)
+        try:
+            chart, stability, transformed_distribution, capability = (
+                _calculate_transformed_results(version, candidate)
+            )
+        except ValueError as exc:
+            raise SpcValidationError(
+                "TRANSFORMATION_UNCONFIRMED", "分布轉換候選參數無效"
+            ) from exc
+        now = utc_now()
+        original_distribution = dict(version.distribution_result or {})
+        decision = {
+            **candidate,
+            "model": model,
+            "confirmed": True,
+            "confirmed_by": actor_id,
+            "confirmed_at": now.isoformat(),
+            "confirmation_reason": reason,
+            "original_model": original_distribution.get("model"),
+        }
+        transformed_distribution.update({
+            "scale": "transformed",
+            "original_model": original_distribution.get("model"),
+            "original_distribution": original_distribution,
+            "transformation_candidates": original_distribution.get(
+                "transformation_candidates", []
+            ),
+            "transformation_recommendation": original_distribution.get(
+                "transformation_recommendation"
+            ),
+            "transformation_decision": decision,
+        })
+        capability["transformation_decision"] = decision
+        try:
+            latest = db.session.query(func.max(SpcStudyVersion.version_no)).filter_by(
+                study_id=version.study_id
+            ).scalar()
+            successor = SpcStudyVersion(
+                study_id=version.study_id,
+                version_no=int(latest or 0) + 1,
+                method_version=version.method_version,
+                code_version=version.code_version,
+                data_hash=version.data_hash,
+                analysis_options=dict(version.analysis_options or {}),
+                specification_snapshot=dict(version.specification_snapshot or {}),
+                chart_result=chart,
+                stability_result=stability,
+                distribution_result=transformed_distribution,
+                # 時間模型身分始終依原始尺度資料，轉換不得把 A2 改標為 A1。
+                time_model_result=dict(version.time_model_result or {}),
+                capability_result=capability,
+                applicability_result=dict(version.applicability_result or {}),
+                status="draft",
+                audit_incomplete=version.audit_incomplete,
+                created_by=actor_id,
+            )
+            db.session.add(successor)
+            db.session.flush()
+            _copy_saved_samples(version, successor)
+            transitioned = db.session.execute(
+                update(SpcStudyVersion)
+                .where(
+                    SpcStudyVersion.id == version.id,
+                    SpcStudyVersion.status == "draft",
+                )
+                .values(status="superseded")
+                .execution_options(synchronize_session=False)
+            )
+            if transitioned.rowcount != 1:
+                db.session.rollback()
+                raise SpcConflict(
+                    "SPC_TRANSFORMATION_CONFIRM_CONFLICT",
+                    "分布轉換原始版本已被其他操作確認，請重新整理",
+                )
+            log_audit(
+                actor_id,
+                "confirm_transformation",
+                "spc_study",
+                successor.id,
+                old_val={
+                    "version_id": version.id,
+                    "status": "draft",
+                    "distribution_model": original_distribution.get("model"),
+                },
+                new_val={
+                    "version_id": successor.id,
+                    "model": model,
+                    "reason": reason,
+                    "scale": "transformed",
+                },
+            )
+            db.session.commit()
+            return successor
+        except IntegrityError as exc:
+            db.session.rollback()
+            raise SpcConflict(
+                "SPC_TRANSFORMATION_CONFIRM_CONFLICT",
+                "分布轉換確認版本已由其他操作建立，請重新整理",
             ) from exc
 
     @staticmethod
