@@ -105,4 +105,27 @@ describe('SpcOcapOffcanvas', () => {
     expect(screen.getByText('OCAP 儲存失敗，已保留目前輸入，請確認資料後再試。')).toBeInTheDocument();
     expect(screen.getByLabelText('製程調整')).toHaveValue('保留的調整內容');
   });
+
+  it('儲存中阻止標頭、取消、背景與 Escape 關閉', () => {
+    const onHide = vi.fn();
+    const { container } = render(
+      <SpcOcapOffcanvas
+        show
+        eventId={81}
+        pending
+        onHide={onHide}
+        onSave={vi.fn()}
+      />,
+    );
+
+    expect(container.ownerDocument.querySelector('.btn-close')).not.toBeInTheDocument();
+    const cancel = screen.getByRole('button', { name: '取消' });
+    expect(cancel).toBeDisabled();
+    fireEvent.click(cancel);
+    fireEvent.keyDown(document, { key: 'Escape', code: 'Escape' });
+    const backdrop = container.ownerDocument.querySelector('.offcanvas-backdrop');
+    if (backdrop) fireEvent.click(backdrop);
+
+    expect(onHide).not.toHaveBeenCalled();
+  });
 });

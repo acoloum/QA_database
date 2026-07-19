@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert, Badge, Button, Card } from 'react-bootstrap';
 import { useAuth } from '../../context/useAuth';
 import {
@@ -72,7 +72,6 @@ const SpcStudyPanel = ({
     study.source === source
     && study.study_type === studyType
     && study.process_stream_key === preview?.process_stream_key);
-  const { data: savedStudy } = useSpcStudy(matchingStudy?.id ?? null);
   const versionMatchesPreview = !selectedVersion || Boolean(
     preview?.process_stream_key
     && selectedVersion.process_stream_key === preview.process_stream_key
@@ -82,9 +81,26 @@ const SpcStudyPanel = ({
     )
   );
   const version = versionMatchesPreview ? selectedVersion : null;
+  const detailStudyId = version?.study_id ?? matchingStudy?.id ?? null;
+  const { data: savedStudy, refetch: refetchStudy } = useSpcStudy(detailStudyId);
   const [modalAction, setModalAction] = useState<SpcWorkflowAction | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<SpcEventSummary | null>(null);
+  const displayedVersionRef = useRef({
+    studyId: version?.study_id ?? null,
+    versionId: version?.id ?? null,
+    processStreamKey: version?.process_stream_key ?? null,
+  });
+  const editingEventIdRef = useRef<number | null>(selectedEvent?.id ?? null);
+
+  useLayoutEffect(() => {
+    displayedVersionRef.current = {
+      studyId: version?.study_id ?? null,
+      versionId: version?.id ?? null,
+      processStreamKey: version?.process_stream_key ?? null,
+    };
+    editingEventIdRef.current = selectedEvent?.id ?? null;
+  }, [selectedEvent?.id, version?.id, version?.process_stream_key, version?.study_id]);
 
   useEffect(() => {
     if (!versionMatchesPreview) {
@@ -113,6 +129,24 @@ const SpcStudyPanel = ({
   const activeLimit = version?.monitoring_limit
     ?? version?.limit_versions?.find(limit => limit.status === 'active');
   const effectiveStudyType = version?.study_type ?? matchingStudy?.study_type ?? studyType;
+
+  const handleSelectEvent = (event: SpcEventSummary) => {
+    saveOcap.reset();
+    setSelectedEvent(event);
+  };
+
+  const handleOcapHide = () => {
+    if (saveOcap.isPending) return;
+    saveOcap.reset();
+    setSelectedEvent(null);
+  };
+
+  const isCurrentVersion = (studyId: number, versionId: number, processStreamKey: string) => {
+    const current = displayedVersionRef.current;
+    return current.studyId === studyId
+      && current.versionId === versionId
+      && current.processStreamKey === processStreamKey;
+  };
 
   const handleAnalyze = async () => {
     const created = await analyze.mutateAsync({ source, filters, study_type: studyType });
@@ -238,7 +272,7 @@ const SpcStudyPanel = ({
             <strong className="small">正式失控事件</strong>
             <div className="d-flex gap-2 flex-wrap mt-2">
               {activeLimit.events.map(event => (
-                <Button key={event.id} size="sm" variant={event.status === 'closed' ? 'outline-success' : 'outline-danger'} onClick={() => setSelectedEvent(event)}>
+                <Button key={event.id} size="sm" variant={event.status === 'closed' ? 'outline-success' : 'outline-danger'} onClick={() => handleSelectEvent(event)}>
                   事件 #{event.id} · {event.chart_kind === 'location' ? '位置圖' : '變異圖'} · {event.rule_code}
                 </Button>
               ))}
@@ -264,6 +298,7 @@ const SpcStudyPanel = ({
       )}
       {selectedEvent && (
         <SpcOcapOffcanvas
+          key={selectedEvent.id}
           show
           eventId={selectedEvent.id}
           ocapId={selectedEvent.ocap?.id}
@@ -273,15 +308,44 @@ const SpcStudyPanel = ({
           assignees={assignees.data ?? []}
           assigneesLoading={assignees.isLoading}
           assigneesError={assignees.isError}
-          onHide={() => setSelectedEvent(null)}
-          onSave={input => saveOcap.mutate(input, {
-            onSuccess: ocap => {
-              if (version) {
-                onVersionChange(replaceEventOcap(version, selectedEvent.id, ocap));
-              }
-              setSelectedEvent(null);
-            },
-          })}
+          onHide={handleOcapHide}
+          onSave={input => {
+            if (!version) return;
+            const savedVersion = version;
+            const savedContext = {
+              eventId: input.eventId,
+              studyId: savedVersion.study_id,
+              versionId: savedVersion.id,
+              processStreamKey: savedVersion.process_stream_key,
+            };
+            saveOcap.mutate(input, {
+              onSuccess: async ocap => {
+                if (
+                  ocap.event_id !== savedContext.eventId
+                  || editingEventIdRef.current !== savedContext.eventId
+                  || !isCurrentVersion(
+                    savedContext.studyId,
+                    savedContext.versionId,
+                    savedContext.processStreamKey,
+                  )
+                ) return;
+
+                onVersionChange(replaceEventOcap(savedVersion, savedContext.eventId, ocap));
+                setSelectedEvent(null);
+
+                const refreshed = await refetchStudy();
+                if (!isCurrentVersion(
+                  savedContext.studyId,
+                  savedContext.versionId,
+                  savedContext.processStreamKey,
+                )) return;
+                const serverVersion = refreshed.data?.versions?.find(
+                  item => item.id === savedContext.versionId,
+                );
+                if (serverVersion) onVersionChange(serverVersion);
+              },
+            });
+          }}
         />
       )}
     </Card>

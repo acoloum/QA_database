@@ -1,14 +1,20 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SpcStudyResult } from '../../types';
 import SpcStudyPanel from './SpcStudyPanel';
 
 const analyzeMock = vi.hoisted(() => vi.fn());
 const saveOcapMock = vi.hoisted(() => vi.fn());
+const resetSaveOcapMock = vi.hoisted(() => vi.fn());
+const saveOcapState = vi.hoisted(() => ({ isPending: false, isError: false }));
 const assigneesState = vi.hoisted(() => ({
   data: [{ id: 8, username: 'qa-user', role: 'qa_supervisor', role_name: 'QA主管' }],
 }));
-const useSpcStudyMock = vi.hoisted(() => vi.fn((_id: number | null) => ({ data: null })));
+const refetchStudyMock = vi.hoisted(() => vi.fn());
+const useSpcStudyMock = vi.hoisted(() => vi.fn((_id: number | null) => ({
+  data: null,
+  refetch: refetchStudyMock,
+})));
 const studiesState = vi.hoisted(() => ({ value: [] as Array<Record<string, unknown>> }));
 
 beforeAll(() => {
@@ -36,7 +42,10 @@ vi.mock('../../hooks/useSpcStudies', () => ({
   useRejectSpcStudy: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRetireSpcLimit: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useSaveSpcOcap: () => ({
-    mutate: saveOcapMock, isPending: false, isError: false,
+    mutate: saveOcapMock,
+    reset: resetSaveOcapMock,
+    isPending: saveOcapState.isPending,
+    isError: saveOcapState.isError,
   }),
   useSpcAssignees: () => ({
     data: assigneesState.data, isLoading: false, isError: false,
@@ -92,7 +101,90 @@ const version = {
   samples: [],
 } as unknown as SpcStudyResult;
 
+const createOcapEvent = (eventId: number, studyVersionId = version.id) => {
+  const ocap = {
+    id: eventId - 78,
+    event_id: eventId,
+    investigation_6m: { summary: '舊原因' },
+    remeasurement: null,
+    process_adjustment: '舊調整',
+    product_disposition: null,
+    owner_id: 8,
+    effectiveness: null,
+    status: 'open',
+    created_by: 1,
+    updated_by: 1,
+    created_at: '2026-07-19T01:00:00Z',
+    updated_at: '2026-07-19T01:00:00Z',
+  };
+  return {
+    id: eventId,
+    limit_version_id: 8,
+    study_version_id: studyVersionId,
+    sample_id: null,
+    chart_kind: 'variation' as const,
+    rule_code: 'beyond_limits',
+    point_index: 4,
+    observed_value: 0.8,
+    status: 'investigating',
+    created_at: '2026-07-19T00:00:00Z',
+    ocap,
+  };
+};
+
+const createOngoingVersion = ({
+  studyId = 9,
+  versionId = 32,
+  stream = 'stream-a',
+  eventIds = [81],
+}: {
+  studyId?: number;
+  versionId?: number;
+  stream?: string;
+  eventIds?: number[];
+} = {}) => {
+  const events = eventIds.map(eventId => createOcapEvent(eventId, versionId));
+  const limit = {
+    id: 8,
+    study_version_id: versionId,
+    revision: 1,
+    chart_type: 'xbar_s' as const,
+    limits: {},
+    status: 'active' as const,
+    approved_by: 1,
+    approved_at: '2026-07-18',
+    events,
+  };
+  return {
+    ...version,
+    id: versionId,
+    study_id: studyId,
+    study_type: 'ongoing',
+    process_stream_key: stream,
+    status: 'active',
+    data_hash: `${stream}-hash`,
+    monitoring_limit: limit,
+    limit_versions: [limit],
+  } as SpcStudyResult;
+};
+
 describe('SpcStudyPanel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    saveOcapMock.mockReset();
+    resetSaveOcapMock.mockReset();
+    refetchStudyMock.mockReset();
+    useSpcStudyMock.mockReset();
+    saveOcapState.isPending = false;
+    saveOcapState.isError = false;
+    studiesState.value = [];
+    refetchStudyMock.mockResolvedValue({ data: null });
+    useSpcStudyMock.mockImplementation(() => ({
+      data: null,
+      refetch: refetchStudyMock,
+    }));
+  });
+
   it('顯示回溯模式、時間模型候選、分布原因及兩張圖的個別穩定性', () => {
     render(
       <SpcStudyPanel
@@ -164,6 +256,28 @@ describe('SpcStudyPanel', () => {
     studiesState.value = [];
   });
 
+  it('已顯示持續版本時 detail query 觀察該版本的研究', () => {
+    const ongoing = createOngoingVersion();
+    studiesState.value = [{
+      id: 11,
+      source: 'shipping',
+      study_type: 'retrospective',
+      process_stream_key: 'stream-a',
+    }];
+
+    render(
+      <SpcStudyPanel
+        source="shipping"
+        filters={ongoing.filters}
+        preview={{ process_stream_key: 'stream-a', data_hash: 'stream-a-hash' } as never}
+        version={ongoing}
+        onVersionChange={vi.fn()}
+      />,
+    );
+
+    expect(useSpcStudyMock).toHaveBeenLastCalledWith(ongoing.study_id);
+  });
+
   it('生效基準可直接啟動持續 SPC 並使用正式界限', async () => {
     analyzeMock.mockResolvedValue({ ...version, id: 32, study_type: 'ongoing' });
     const activeVersion = {
@@ -216,47 +330,43 @@ describe('SpcStudyPanel', () => {
     expect(onVersionChange).toHaveBeenCalledWith(null);
   });
 
-  it('OCAP 儲存後立即替換事件資料，重新開啟不需重新整理', async () => {
-    const oldOcap = {
-      id: 3, event_id: 81, investigation_6m: { summary: '舊原因' },
-      remeasurement: null, process_adjustment: '舊調整', product_disposition: null,
-      owner_id: 8, effectiveness: null, status: 'open', created_by: 1,
-      updated_by: 1, created_at: '2026-07-19T01:00:00Z',
-      updated_at: '2026-07-19T01:00:00Z',
-    };
+  it('OCAP 儲存後先本地更新結案狀態，再 refetch 持續研究回補伺服器版本', async () => {
+    const ongoing = createOngoingVersion();
+    const oldOcap = ongoing.monitoring_limit?.events[0].ocap;
     const newOcap = {
-      ...oldOcap, process_adjustment: '新調整',
+      ...oldOcap,
+      process_adjustment: '新調整',
+      effectiveness: '連續三批未再發生',
+      status: 'closed',
       updated_at: '2026-07-19T02:00:00Z',
     };
-    const event = {
-      id: 81, limit_version_id: 8, study_version_id: version.id,
-      sample_id: null, chart_kind: 'variation', rule_code: 'beyond_limits',
-      point_index: 4, observed_value: 0.8, status: 'investigating',
-      created_at: '2026-07-19T00:00:00Z', ocap: oldOcap,
+    const serverOcap = { ...newOcap, process_adjustment: '伺服器正規化調整' };
+    const serverEvent = {
+      ...ongoing.monitoring_limit?.events[0],
+      status: 'closed',
+      ocap: serverOcap,
     };
-    const limit = {
-      id: 8, study_version_id: version.id, revision: 1, chart_type: 'xbar_s',
-      limits: {}, status: 'active', approved_by: 1, approved_at: '2026-07-18',
-      events: [event],
+    const serverLimit = {
+      ...ongoing.monitoring_limit,
+      events: [serverEvent],
     };
-    const ongoing = {
-      ...version,
-      study_type: 'ongoing',
-      status: 'active',
-      data_hash: 'current-hash',
-      monitoring_limit: limit,
-      limit_versions: [limit],
+    const serverVersion = {
+      ...ongoing,
+      monitoring_limit: serverLimit,
+      limit_versions: [serverLimit],
     } as SpcStudyResult;
-    let latest = ongoing;
-    const onVersionChange = vi.fn((value: SpcStudyResult | null) => {
-      if (value) latest = value;
+    refetchStudyMock.mockResolvedValue({
+      data: { versions: [serverVersion] },
     });
-    saveOcapMock.mockImplementation((_input, options) => options.onSuccess(newOcap));
-    const view = render(
+    const onVersionChange = vi.fn();
+    saveOcapMock.mockImplementation((_input, options) => {
+      void options.onSuccess(newOcap);
+    });
+    render(
       <SpcStudyPanel
         source="shipping"
         filters={ongoing.filters}
-        preview={{ process_stream_key: 'stream-a', data_hash: 'current-hash' } as never}
+        preview={{ process_stream_key: 'stream-a', data_hash: 'stream-a-hash' } as never}
         version={ongoing}
         onVersionChange={onVersionChange}
       />,
@@ -264,23 +374,160 @@ describe('SpcStudyPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /事件 #81/ }));
     expect(screen.getByLabelText('製程調整')).toHaveValue('舊調整');
+    fireEvent.click(screen.getByLabelText('結案'));
+    fireEvent.change(screen.getByLabelText('有效性確認'), {
+      target: { value: '連續三批未再發生' },
+    });
     fireEvent.click(screen.getByRole('button', { name: '儲存 OCAP' }));
 
-    await waitFor(() => expect(onVersionChange).toHaveBeenCalled());
-    expect(latest.monitoring_limit?.events[0].ocap?.process_adjustment).toBe('新調整');
-    expect(latest.limit_versions?.[0].events[0].ocap?.process_adjustment).toBe('新調整');
-    expect(ongoing.monitoring_limit?.events[0].ocap?.process_adjustment).toBe('舊調整');
+    await waitFor(() => expect(refetchStudyMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onVersionChange).toHaveBeenCalledTimes(2));
+    const localVersion = onVersionChange.mock.calls[0][0] as SpcStudyResult;
+    expect(localVersion.monitoring_limit?.events[0].status).toBe('closed');
+    expect(localVersion.limit_versions?.[0].events[0].status).toBe('closed');
+    expect(localVersion.monitoring_limit?.events[0].ocap?.process_adjustment).toBe('新調整');
+    expect(ongoing.monitoring_limit?.events[0].status).toBe('investigating');
+    expect(onVersionChange.mock.calls[1][0]).toBe(serverVersion);
+  });
 
+  it('儲存 A 期間選取另一事件後，A 的延遲成功不回寫或關閉 B', async () => {
+    const ongoing = createOngoingVersion({ eventIds: [81, 82] });
+    const onVersionChange = vi.fn();
+    let delayedSuccess: ((ocap: unknown) => unknown) | undefined;
+    saveOcapMock.mockImplementation((_input, options) => {
+      delayedSuccess = options.onSuccess;
+    });
+    const view = render(
+      <SpcStudyPanel
+        source="shipping"
+        filters={ongoing.filters}
+        preview={{ process_stream_key: 'stream-a', data_hash: 'stream-a-hash' } as never}
+        version={ongoing}
+        onVersionChange={onVersionChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /事件 #81/ }));
+    fireEvent.click(screen.getByRole('button', { name: '儲存 OCAP' }));
+    saveOcapState.isPending = true;
     view.rerender(
       <SpcStudyPanel
         source="shipping"
         filters={ongoing.filters}
-        preview={{ process_stream_key: 'stream-a', data_hash: 'current-hash' } as never}
-        version={latest}
+        preview={{ process_stream_key: 'stream-a', data_hash: 'stream-a-hash' } as never}
+        version={ongoing}
+        onVersionChange={onVersionChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /事件 #82/ }));
+    onVersionChange.mockClear();
+
+    await act(async () => {
+      await delayedSuccess?.({
+        ...createOcapEvent(81).ocap,
+        process_adjustment: 'A 延遲結果',
+      });
+    });
+
+    expect(onVersionChange).not.toHaveBeenCalled();
+    expect(screen.getByText('失控反應計畫 · 事件 #82')).toBeInTheDocument();
+  });
+
+  it('儲存 A 期間切換研究版本後，A 的延遲成功不回寫舊版本', async () => {
+    const ongoingA = createOngoingVersion();
+    const ongoingB = createOngoingVersion({
+      studyId: 10,
+      versionId: 33,
+      stream: 'stream-b',
+    });
+    const onVersionChange = vi.fn();
+    let delayedSuccess: ((ocap: unknown) => unknown) | undefined;
+    saveOcapMock.mockImplementation((_input, options) => {
+      delayedSuccess = options.onSuccess;
+    });
+    const view = render(
+      <SpcStudyPanel
+        source="shipping"
+        filters={ongoingA.filters}
+        preview={{ process_stream_key: 'stream-a', data_hash: 'stream-a-hash' } as never}
+        version={ongoingA}
         onVersionChange={onVersionChange}
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: /事件 #81/ }));
-    expect(screen.getByLabelText('製程調整')).toHaveValue('新調整');
+    fireEvent.click(screen.getByRole('button', { name: '儲存 OCAP' }));
+
+    view.rerender(
+      <SpcStudyPanel
+        source="shipping"
+        filters={ongoingB.filters}
+        preview={{ process_stream_key: 'stream-b', data_hash: 'stream-b-hash' } as never}
+        version={ongoingB}
+        onVersionChange={onVersionChange}
+      />,
+    );
+    onVersionChange.mockClear();
+    await act(async () => {
+      await delayedSuccess?.({
+        ...createOcapEvent(81).ocap,
+        process_adjustment: 'A 延遲結果',
+      });
+    });
+
+    expect(onVersionChange).not.toHaveBeenCalled();
+    expect(refetchStudyMock).not.toHaveBeenCalled();
+  });
+
+  it('關閉失敗的 OCAP 後 reset，重新開啟不顯示前一筆錯誤', () => {
+    const ongoing = createOngoingVersion();
+    resetSaveOcapMock.mockImplementation(() => {
+      saveOcapState.isError = false;
+    });
+    const view = render(
+      <SpcStudyPanel
+        source="shipping"
+        filters={ongoing.filters}
+        preview={{ process_stream_key: 'stream-a', data_hash: 'stream-a-hash' } as never}
+        version={ongoing}
+        onVersionChange={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /事件 #81/ }));
+    saveOcapState.isError = true;
+    view.rerender(
+      <SpcStudyPanel
+        source="shipping"
+        filters={ongoing.filters}
+        preview={{ process_stream_key: 'stream-a', data_hash: 'stream-a-hash' } as never}
+        version={ongoing}
+        onVersionChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/OCAP 儲存失敗/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    fireEvent.click(screen.getByRole('button', { name: /事件 #81/ }));
+
+    expect(resetSaveOcapMock).toHaveBeenCalled();
+    expect(screen.queryByText(/OCAP 儲存失敗/)).not.toBeInTheDocument();
+  });
+
+  it('選取另一事件時 reset 前一筆 mutation 狀態', () => {
+    const ongoing = createOngoingVersion({ eventIds: [81, 82] });
+    render(
+      <SpcStudyPanel
+        source="shipping"
+        filters={ongoing.filters}
+        preview={{ process_stream_key: 'stream-a', data_hash: 'stream-a-hash' } as never}
+        version={ongoing}
+        onVersionChange={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /事件 #81/ }));
+    resetSaveOcapMock.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: /事件 #82/ }));
+
+    expect(resetSaveOcapMock).toHaveBeenCalledTimes(1);
   });
 });

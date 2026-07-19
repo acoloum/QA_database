@@ -88,6 +88,16 @@ describe('SPC 研究 hooks', () => {
     expect(result.current.data?.[0].role_name).toBe('QA主管');
   });
 
+  it('停用責任人查詢時不會呼叫 API', () => {
+    const queryClient = new QueryClient();
+    const { result } = renderHook(() => useSpcAssignees(false), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    expect(result.current.fetchStatus).toBe('idle');
+    expect(api.get).not.toHaveBeenCalled();
+  });
+
   it('儲存 OCAP 後回傳完整資料並失效化實際研究快取', async () => {
     const ocap = {
       id: 3, event_id: 81, investigation_6m: { summary: '模具磨耗' },

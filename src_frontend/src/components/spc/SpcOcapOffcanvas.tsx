@@ -54,9 +54,20 @@ const SpcOcapOffcanvas = ({
     onSave(input);
   };
 
+  const handleHide = () => {
+    if (!pending) onHide();
+  };
+
   return (
-    <Offcanvas show={show} onHide={onHide} placement="end" className="spc-ocap-canvas">
-      <Offcanvas.Header closeButton>
+    <Offcanvas
+      show={show}
+      onHide={handleHide}
+      backdrop={pending ? 'static' : true}
+      keyboard={!pending}
+      placement="end"
+      className="spc-ocap-canvas"
+    >
+      <Offcanvas.Header closeButton={!pending}>
         <div>
           <div className="spc-eyebrow">失控反應計畫 · 事件 #{eventId}</div>
           <Offcanvas.Title>OCAP 調查與處置</Offcanvas.Title>
@@ -124,7 +135,7 @@ const SpcOcapOffcanvas = ({
             </Alert>
           )}
           <div className="d-flex justify-content-end gap-2">
-            <Button variant="outline-secondary" onClick={onHide}>取消</Button>
+            <Button variant="outline-secondary" disabled={pending} onClick={handleHide}>取消</Button>
             <Button variant="primary" disabled={pending || (closed && !effectiveness.trim())} onClick={handleSave}>
               {pending ? '儲存中…' : '儲存 OCAP'}
             </Button>

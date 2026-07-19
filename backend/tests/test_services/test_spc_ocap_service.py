@@ -144,6 +144,41 @@ def test_unchanged_historical_owner_does_not_block_other_edits(app, db_session):
         assert updated.process_adjustment == "調整壓力參數"
 
 
+def test_existing_owner_cannot_change_to_disabled_user_without_audit(
+    app, db_session
+):
+    with app.app_context():
+        actor = _actor(db_session)
+        disabled_owner = _user(
+            db_session, "disabled-owner", actor.role, active=False
+        )
+        _, version, limit = _study_limit(db_session, actor)
+        event = SpcOcapService.sync_events(limit.id, version.id, [{
+            "chart_kind": "variation", "rule_code": "beyond_limits",
+            "point_index": 3, "observed_value": 0.7,
+        }])[0]
+        created = SpcOcapService.save_ocap(event.id, actor.id, {
+            "owner_id": actor.id,
+            "process_adjustment": "原調整內容",
+            "status": "open",
+        })
+        original_log_count = AuditLog.query.filter_by(module="spc_ocap").count()
+
+        with pytest.raises(SpcValidationError) as exc:
+            SpcOcapService.save_ocap(event.id, actor.id, {
+                "owner_id": disabled_owner.id,
+                "process_adjustment": "不應儲存的內容",
+                "status": "open",
+            })
+
+        db_session.expire_all()
+        persisted = db_session.get(SpcOcap, created.id)
+        assert exc.value.code == "SPC_OCAP_OWNER_NOT_ASSIGNABLE"
+        assert persisted.owner_id == actor.id
+        assert persisted.process_adjustment == "原調整內容"
+        assert AuditLog.query.filter_by(module="spc_ocap").count() == original_log_count
+
+
 def test_ongoing_event_sync_is_idempotent_and_ocap_keeps_full_record(
     app, db_session
 ):
