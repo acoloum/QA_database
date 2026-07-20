@@ -8,7 +8,9 @@ from backend.models import (
     Machine, Operator, Inspector, PatrolMain, PatrolDetail,
     ExtrusionToleranceMain, ExtrusionToleranceDetail,
     VendorToleranceMain, VendorToleranceDetail, Vendor,
+    SpcStudy, SpcStudyVersion, SpcLimitVersion,
 )
+from backend.services.spc_adapters.common import canonical_process_stream
 
 
 def test_get_history_is_ng_true(app, db_session):
@@ -618,3 +620,111 @@ def test_get_live_limits_not_found_without_active_limit(app, db_session):
             'mat': 'SUS304', 'spec': '10*2', 'item': '外徑', 'pos': '前段',
         })
         assert result == {'found': False}
+
+
+def _approved_patrol_limit(db_session, *, mat, spec, item, pos, scale='original'):
+    """建立一組生效中的巡檢管制界限（比照 approve_study 產出的資料形狀）。
+
+    scale 於建立當下即決定，不可事後修改：SpcLimitVersion.limits 屬 SPC
+    不可變證據，ORM 層的 before_update 事件會擋下原地修改（見
+    backend/models.py 的 _block_spc_immutable_update / _SPC_MUTABLE_FIELDS）。
+    """
+    filters = {
+        'm_id': None, 'op_id': None, 'cust_id': None,
+        'mat': mat, 'spec': spec, 'item': item, 'pos': pos,
+        's_date': '', 'e_date': '',
+    }
+    stream = canonical_process_stream('patrol', filters)
+    study = SpcStudy(
+        source='patrol', study_type='ongoing', analysis_family='variable',
+        process_stream_key=stream.key, characteristic=item, filters={},
+        status='active',
+    )
+    db_session.add(study)
+    db_session.flush()
+    version = SpcStudyVersion(
+        study_id=study.id, version_no=1, method_version='2026.2',
+        analysis_options={}, specification_snapshot={}, chart_result={},
+        stability_result={}, distribution_result={}, capability_result={},
+        applicability_result={}, time_model_result={}, status='active',
+    )
+    db_session.add(version)
+    db_session.flush()
+    limit = SpcLimitVersion(
+        study_version_id=version.id, analysis_family='variable',
+        process_stream_key=stream.key, characteristic=item, revision=1,
+        chart_type='xbar_r',
+        limits={
+            'location': {'cl': 85.0, 'ucl': 85.6, 'lcl': 84.4},
+            'variation': {'cl': 0.3, 'ucl': 0.7, 'lcl': 0.0},
+            'subgroup_sizes': [2], 'scale': scale,
+        },
+        status='active',
+    )
+    db_session.add(limit)
+    db_session.commit()
+    return limit
+
+
+def test_get_live_limits_found_returns_limits_and_recent_values(app, db_session):
+    """有生效核准界限時，回傳巢狀界限攤平後的數值與最近歷史 min/max 配對"""
+    with app.app_context():
+        _approved_patrol_limit(db_session, mat='SUS304', spec='10*2', item='外徑', pos='前段')
+
+        patrol = PatrolMain(date=date(2026, 1, 1), material='SUS304', spec='10*2')
+        db_session.add(patrol)
+        db_session.flush()
+        db_session.add(PatrolDetail(
+            main_id=patrol.id, group=1, item='外徑', position='前段',
+            min_val=84.9, max_val=85.3,
+        ))
+        db_session.commit()
+
+        result = PatrolService.get_live_limits({
+            'mat': 'SUS304', 'spec': '10*2', 'item': '外徑', 'pos': '前段',
+        })
+
+        assert result['found'] is True
+        assert result['x_cl'] == 85.0
+        assert result['x_ucl'] == 85.6
+        assert result['x_lcl'] == 84.4
+        assert result['r_cl'] == 0.3
+        assert result['r_ucl'] == 0.7
+        assert result['recent_values'] == [{'min': 84.9, 'max': 85.3}]
+
+
+def test_get_live_limits_transformed_scale_not_supported(app, db_session):
+    """轉換尺度界限不支援即時比對，回傳 found=False 而非套用錯誤尺度"""
+    with app.app_context():
+        _approved_patrol_limit(
+            db_session, mat='SUS304', spec='10*2', item='厚度', pos='前段',
+            scale='transformed',
+        )
+
+        result = PatrolService.get_live_limits({
+            'mat': 'SUS304', 'spec': '10*2', 'item': '厚度', 'pos': '前段',
+        })
+
+        assert result == {'found': False, 'reason': 'transformed_scale_unsupported'}
+
+
+def test_get_live_limits_excludes_main_id_when_editing(app, db_session):
+    """編輯既有記錄時排除自己，避免歷史序列納入編輯前的舊值"""
+    with app.app_context():
+        _approved_patrol_limit(db_session, mat='SUS304', spec='10*2', item='外徑', pos='前段')
+
+        editing = PatrolMain(date=date(2026, 1, 1), material='SUS304', spec='10*2')
+        db_session.add(editing)
+        db_session.flush()
+        db_session.add(PatrolDetail(
+            main_id=editing.id, group=1, item='外徑', position='前段',
+            min_val=99.0, max_val=99.0,
+        ))
+        db_session.commit()
+
+        result = PatrolService.get_live_limits({
+            'mat': 'SUS304', 'spec': '10*2', 'item': '外徑', 'pos': '前段',
+            'exclude_main_id': editing.id,
+        })
+
+        assert result['recent_values'] == []
