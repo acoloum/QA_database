@@ -116,12 +116,12 @@ describe('PatrolModal 即時模式存檔後的正式異常事件面板（Bug 1 �
         inspectors: [{ id: 3, name: 'Insp1' }],
         customers: [],
       },
-    } as ReturnType<typeof usePatrolHooks.usePatrolOptions>);
+    } as unknown as ReturnType<typeof usePatrolHooks.usePatrolOptions>);
 
     const createMutateAsync = vi.fn().mockResolvedValue({ id: 100 });
     vi.mocked(usePatrolHooks.useCreatePatrol).mockReturnValue({
       mutateAsync: createMutateAsync, isPending: false,
-    } as ReturnType<typeof usePatrolHooks.useCreatePatrol>);
+    } as unknown as ReturnType<typeof usePatrolHooks.useCreatePatrol>);
 
     // 讓「前段/外徑」量測格失焦時查到已存在的即時界限，且數值必定超出上限觸發違規
     const liveLimitsMock = vi.fn((params: { pos: string; item: string }) => {
@@ -138,7 +138,9 @@ describe('PatrolModal 即時模式存檔後的正式異常事件面板（Bug 1 �
       }
       return { data: { found: false }, isFetching: false };
     });
-    vi.mocked(usePatrolHooks.usePatrolLiveLimits).mockImplementation(liveLimitsMock);
+    vi.mocked(usePatrolHooks.usePatrolLiveLimits).mockImplementation(
+      liveLimitsMock as unknown as typeof usePatrolHooks.usePatrolLiveLimits,
+    );
 
     // 存檔後觸發的正式 SPC 判定，回傳一筆開放中的異常事件
     const analyzeOngoingMock = vi.fn().mockResolvedValue({
@@ -162,7 +164,7 @@ describe('PatrolModal 即時模式存檔後的正式異常事件面板（Bug 1 �
     });
     vi.mocked(useSpcStudiesHooks.useAnalyzeSpcStudy).mockReturnValue({
       mutateAsync: analyzeOngoingMock, isPending: false,
-    } as ReturnType<typeof useSpcStudiesHooks.useAnalyzeSpcStudy>);
+    } as unknown as ReturnType<typeof useSpcStudiesHooks.useAnalyzeSpcStudy>);
 
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
