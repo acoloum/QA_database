@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildLiveGroupSeries,
   buildPatrolPayload,
   buildPatrolUpdatePayload,
   calcPatrolLimits,
+  evaluatePatrolLiveStability,
   isPatrolCellNG,
   isPatrolConcentricityNG,
   type PatrolDetailInput,
@@ -145,5 +147,48 @@ describe('patrolFormUtils', () => {
     expect(payload.id).toBe(12);
     expect(payload).not.toHaveProperty('識別碼');
     expect(payload.details).toHaveLength(2);
+  });
+
+  it('組裝即時序列：歷史值 + 本次表單已填完整（min 與 max 皆有值）的組別，依組別順序排列', () => {
+    const liveDetails: PatrolDetailInput[] = [
+      { group: '第1組', pos: '前段', item: '外徑', min: '85.0', max: '85.4' },
+      { group: '第2組', pos: '前段', item: '外徑', min: '85.1', max: '' }, // 尚未填完整，排除
+      { group: '第2組', pos: '中段', item: '外徑', min: '90', max: '90' }, // 不同 position，排除
+    ];
+
+    const series = buildLiveGroupSeries({
+      recentValues: [{ min: 84.8, max: 85.2 }],
+      details: liveDetails,
+      pos: '前段',
+      item: '外徑',
+      groupCount: 2,
+    });
+
+    expect(series.means).toEqual([85.0, 85.2]);
+    expect(series.ranges).toEqual([0.4, 0.4]);
+  });
+
+  it('即時穩定性判讀：組合序列違反規則時回傳對應圖別的提示', () => {
+    const result = evaluatePatrolLiveStability({
+      means: [85, 85.1, 85.2, 85.3, 85.4, 85.5],
+      ranges: [0.2, 0.2, 0.2, 0.2, 0.2, 0.2],
+      xCl: 85, xUcl: 86, xLcl: 84,
+      rCl: 0.3, rUcl: 0.7, rLcl: 0,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.chartKind).toBe('location');
+    expect(result?.hint).toContain('模具間隙');
+  });
+
+  it('即時穩定性判讀：序列在界限內時回傳 null（不示警）', () => {
+    const result = evaluatePatrolLiveStability({
+      means: [85, 85, 85, 85, 85, 85],
+      ranges: [0.2, 0.2, 0.2, 0.2, 0.2, 0.2],
+      xCl: 85, xUcl: 86, xLcl: 84,
+      rCl: 0.3, rUcl: 0.7, rLcl: 0,
+    });
+
+    expect(result).toBeNull();
   });
 });
