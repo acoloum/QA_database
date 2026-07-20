@@ -104,6 +104,42 @@ describe('PatrolModal 即時模式', () => {
     );
     expect(enabledCall).toBeDefined();
   });
+
+  it('切換材質時清空即時界限快取，同一 item/position 再次失焦會重新查詢（而非沿用快取）', async () => {
+    const liveLimitsMock = vi.fn().mockReturnValue({
+      data: { found: false }, isFetching: false,
+    });
+    vi.mocked(usePatrolHooks.usePatrolLiveLimits).mockImplementation(liveLimitsMock);
+
+    renderPatrolModal();
+
+    await userEvent.click(screen.getByRole('checkbox', { name: '即時模式' }));
+
+    const minInputs = screen.getAllByRole('spinbutton');
+    // 表格第一組「前段/外徑」的 MIN 欄位失焦，觸發第一次查詢並快取結果
+    await userEvent.click(minInputs[0]);
+    await userEvent.tab();
+
+    const firstEnabledIndex = liveLimitsMock.mock.calls.findIndex(
+      ([params, enabled]) => enabled === true && params.pos === '前段' && params.item === '外徑',
+    );
+    expect(firstEnabledIndex).toBeGreaterThanOrEqual(0);
+
+    // 切換材質欄位（Form.Control 文字輸入，依 JSX 渲染順序「材質」為第一個 textbox）
+    const textInputs = screen.getAllByRole('textbox');
+    await userEvent.type(textInputs[0], 'A6061');
+
+    // 再次讓「前段/外徑」失焦：若快取未被清空，enabled 會因該 key 已在
+    // liveLimitsCache 中而維持 false，永遠不再查詢——這正是本次要修的 bug
+    await userEvent.click(minInputs[0]);
+    await userEvent.tab();
+
+    const secondEnabledIndex = liveLimitsMock.mock.calls.findIndex(
+      ([params, enabled], index) => index > firstEnabledIndex
+        && enabled === true && params.pos === '前段' && params.item === '外徑',
+    );
+    expect(secondEnabledIndex).toBeGreaterThanOrEqual(0);
+  });
 });
 
 describe('PatrolModal 即時模式存檔後的正式異常事件面板（Bug 1 回歸測試）', () => {
