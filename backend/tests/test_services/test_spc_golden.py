@@ -1,6 +1,8 @@
 """SPC 2026 黃金資料回歸：鎖定圖表選型、時間模型與指標門檻。"""
 
+from copy import deepcopy
 from datetime import date, timedelta
+import math
 
 import pytest
 
@@ -13,6 +15,26 @@ from backend.scripts.spc_advanced_regression import (
     _compare,
     _load_baseline,
 )
+
+
+def _numeric_paths(value, path=""):
+    if isinstance(value, bool) or value is None:
+        return []
+    if isinstance(value, (int, float)):
+        return [path]
+    if isinstance(value, dict):
+        return [
+            child
+            for key, item in value.items()
+            for child in _numeric_paths(item, f"{path}.{key}" if path else key)
+        ]
+    if isinstance(value, list):
+        return [
+            child
+            for index, item in enumerate(value)
+            for child in _numeric_paths(item, f"{path}[{index}]")
+        ]
+    return []
 
 
 def _groups(sizes):
@@ -191,3 +213,66 @@ def test_advanced_fixed_baseline_reports_value_drift_and_missing_tolerance():
         row == {"path": "machine.pmk", "error": "數值基準缺少明確容許誤差"}
         for row in _compare(expected, _build_actual(), missing)
     )
+
+
+def test_advanced_golden_covers_full_internal_evidence_and_tolerances():
+    expected, tolerances = _load_baseline()
+    actual = _build_actual()
+
+    for chart_type in ("p", "np"):
+        chart = actual["attribute"][chart_type]
+        assert {
+            "values", "cl", "lcl", "ucl", "n", "x", "lower_counts",
+            "upper_counts", "pearson_residuals",
+        } <= set(chart)
+        assert len(chart["lcl"]) == len(chart["ucl"]) == len(chart["x"])
+
+    machine = actual["machine"]
+    assert {
+        "pm", "pmk", "pmu", "pml", "targets", "eligibility",
+        "source_semantics", "quantiles",
+    } <= set(machine)
+    for model in ("A1", "A2", "B", "C1", "C2", "C3", "C4", "D"):
+        evidence = actual["time_models"][model]
+        assert {
+            "candidate", "trend", "welch_holm", "levene_holm",
+            "change_indexes", "peak_count", "formal",
+        } <= set(evidence)
+        assert {"tau", "slope", "raw_p_value", "adjusted_p_value", "threshold"} <= set(evidence["trend"])
+        assert {"location_stable", "variation_stable", "reason_code"} <= set(evidence["formal"])
+
+    for model in ("boxcox", "johnson_su", "johnson_sb", "johnson_sl"):
+        candidate = actual["transformations"][model]
+        assert {
+            "params", "tail_quantiles", "monotonic", "rank", "reason_code",
+            "ad_statistic", "ad_p_value", "roundtrip_relative_error",
+        } <= set(candidate)
+        assert list(candidate["params"]) == sorted(candidate["params"])
+
+    assert set(_numeric_paths(expected)) == set(tolerances)
+    assert _compare(expected, actual, tolerances) == []
+
+
+def test_same_time_candidate_with_internal_diagnostic_drift_fails():
+    expected, tolerances = _load_baseline()
+    actual = _build_actual()
+    assert actual["time_models"]["C3"]["candidate"] == "C3"
+    actual["time_models"]["C3"]["trend"]["tau"] += 0.1
+
+    differences = _compare(expected, actual, tolerances)
+
+    assert any(row["path"] == "time_models.C3.trend.tau" for row in differences)
+
+
+def test_optimizer_tolerances_are_portable_without_weakening_acceptance_threshold():
+    _, tolerances = _load_baseline()
+    optimizer_paths = [
+        path for path in tolerances
+        if path.startswith("transformations.")
+        and any(name in path for name in ("params", "ad_statistic", "tail_quantiles"))
+    ]
+    assert optimizer_paths
+    assert all(1e-8 <= tolerances[path]["abs"] <= 1e-7 for path in optimizer_paths)
+    for model in ("boxcox", "johnson_su", "johnson_sb", "johnson_sl"):
+        error = _build_actual()["transformations"][model]["roundtrip_relative_error"]
+        assert math.isfinite(error) and error <= 1e-9

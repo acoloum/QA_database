@@ -5,8 +5,10 @@ from pathlib import Path
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+import backend.scripts.spc_advanced_regression as advanced_regression
 from backend.models import (
     PatrolDetail,
+    Role,
     ShippingMeasurement,
     SpcEvent,
     SpcLimitVersion,
@@ -18,6 +20,7 @@ from backend.models import (
     User,
 )
 from backend.scripts.spc_advanced_regression import run_advanced_regression
+from backend.routes.spc_studies import serialize_validation_run
 from backend.seeds.seed_roles import ROLES
 
 
@@ -117,7 +120,8 @@ def test_spc_audit_entities_roundtrip_and_keep_relationships(app, db_session):
             expected={"cpk": 1.5},
             actual={"cpk": 1.5},
             tolerances={"cpk": 1e-6},
-            result="passed",
+            result="PASS",
+            details=[],
             executed_by=user.id,
         )
         db_session.add_all([ocap, validation])
@@ -128,13 +132,19 @@ def test_spc_audit_entities_roundtrip_and_keep_relationships(app, db_session):
         assert version.limit_versions == [limit]
         assert limit.events == [event]
         assert event.ocap is ocap
+        assert serialize_validation_run(validation)["details"] == []
 
 
 def test_advanced_regression_persists_validation_run(app, db_session):
     """進階固定基準通過時必須保存完整且可稽核的確效紀錄。"""
 
     with app.app_context():
+        db_session.add(Role(
+            code="advanced_validator", name="進階確效核准者",
+            permissions={"spc.approve": True},
+        ))
         actor = _user(db_session, "advanced-validation-user")
+        actor.role = "advanced_validator"
         db_session.commit()
 
         result = run_advanced_regression(executed_by=actor.id, persist=True)
@@ -149,11 +159,86 @@ def test_advanced_regression_persists_validation_run(app, db_session):
         assert saved.actual["attribute"]["p"]["chart_type"] == "p"
         assert saved.actual["attribute"]["np"]["chart_type"] == "np"
         assert saved.actual["machine"]["pmk"] is not None
-        assert saved.actual["time_models"]["D"] == "D"
+        assert saved.actual["time_models"]["D"]["candidate"] == "D"
         assert set(saved.actual["transformations"]) == {
             "boxcox", "johnson_su", "johnson_sb", "johnson_sl",
         }
         assert saved.expected and saved.tolerances
+        assert saved.details == []
+        assert serialize_validation_run(saved)["result"] == "PASS"
+
+
+def test_validation_run_result_is_limited_to_pass_or_fail(app, db_session):
+    with app.app_context():
+        actor = _user(db_session, "invalid-validation-result")
+        db_session.add(SpcValidationRun(
+            dataset_version="invalid", method_version="2026.2",
+            code_version="2026.2", expected={}, actual={}, tolerances={},
+            result="passed", details=[], executed_by=actor.id,
+        ))
+        with pytest.raises(IntegrityError):
+            db_session.commit()
+
+
+@pytest.mark.parametrize("failure_kind", ("drift", "nan", "inf", "missing_tolerance", "exception"))
+def test_advanced_regression_persists_controlled_fail_details(
+    app, db_session, monkeypatch, failure_kind
+):
+    with app.app_context():
+        db_session.add(Role(
+            code="failure_validator", name="失敗確效核准者",
+            permissions={"spc.approve": True},
+        ))
+        actor = _user(db_session, f"failure-validator-{failure_kind}")
+        actor.role = "failure_validator"
+        db_session.commit()
+        expected, tolerances = advanced_regression._load_baseline()
+        actual = advanced_regression._build_actual()
+
+        if failure_kind == "drift":
+            actual["attribute"]["p"]["center"] += 0.1
+            monkeypatch.setattr(advanced_regression, "_build_actual", lambda: actual)
+        elif failure_kind in {"nan", "inf"}:
+            actual["machine"]["pmk"] = (
+                float("nan") if failure_kind == "nan" else float("inf")
+            )
+            monkeypatch.setattr(advanced_regression, "_build_actual", lambda: actual)
+        elif failure_kind == "missing_tolerance":
+            incomplete = dict(tolerances)
+            incomplete.pop("machine.pmk")
+            monkeypatch.setattr(
+                advanced_regression,
+                "_load_baseline",
+                lambda: (expected, incomplete),
+            )
+        else:
+            def fail_calculation():
+                raise RuntimeError("固定資料計算器測試例外")
+
+            monkeypatch.setattr(advanced_regression, "_build_actual", fail_calculation)
+
+        result = run_advanced_regression(executed_by=actor.id, persist=True)
+        saved = SpcValidationRun.query.order_by(SpcValidationRun.id.desc()).first()
+
+        assert result["result"] == "FAIL"
+        assert result["details"]
+        assert saved is not None and saved.result == "FAIL"
+        assert saved.details == result["details"]
+        assert serialize_validation_run(saved)["details"] == result["details"]
+
+
+def test_validation_persistence_requires_active_approver(app, db_session):
+    with app.app_context():
+        unauthorized = _user(db_session, "unauthorized-validator")
+        db_session.commit()
+
+        with pytest.raises(Exception):
+            run_advanced_regression(executed_by=unauthorized.id, persist=True)
+        assert SpcValidationRun.query.count() == 0
+
+        with pytest.raises(Exception):
+            run_advanced_regression(persist=True)
+        assert SpcValidationRun.query.count() == 0
 
 
 def test_study_version_number_is_unique_within_study(app, db_session):

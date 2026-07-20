@@ -1123,10 +1123,32 @@ def test_stable_transformed_baseline_reaches_approved_ongoing_without_gate_patch
 
         assert controlled.stability_result["stable"] is True
         assert limit.status == "active"
+        assert limit.study_version_id == controlled.id
         assert limit.limits["scale"] == "transformed"
+        assert limit.limits["transformation_decision"]["params"] == (
+            controlled.distribution_result["transformation_decision"]["params"]
+        )
         assert ongoing.status == "active"
         assert ongoing.chart_result["scale"] == "transformed"
         assert ongoing.time_model_result["reason_code"] == "ONGOING_USES_APPROVED_LIMITS"
+        assert ongoing.time_model_result["limit_version_id"] == limit.id
+        assert ongoing.data_hash != controlled.data_hash
+        assert ongoing.samples[-1].values == [8.0, 8.5, 9.0]
+        assert ongoing.samples[-1].source_record_ids == [new_record.id]
+        assert len(ongoing.samples[-1].source_measurement_ids) == 3
+        decision = controlled.distribution_result["transformation_decision"]
+        expected_transformed = float(np.mean(transform_values([8.0, 8.5, 9.0], decision)))
+        assert ongoing.chart_result["location"]["values"][-1] == pytest.approx(
+            expected_transformed
+        )
+        assert ongoing.chart_result["location"]["cl"] == [
+            limit.limits["location"]["cl"][0]
+        ] * len(ongoing.samples)
+        assert ongoing.chart_result["transformation_decision"]["params"] == decision["params"]
+        assert [row.action for row in AuditLog.query.filter_by(module="spc_study").all()] == [
+            "analyze", "confirm_transformation", "confirm_time_model", "submit",
+            "approve_activate", "analyze",
+        ]
 
 
 def test_bcd_research_approval_never_creates_production_limits(app, db_session, monkeypatch):

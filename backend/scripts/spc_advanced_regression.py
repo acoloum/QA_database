@@ -29,7 +29,11 @@ from backend.services.spc_contracts import SpcChartSeries, SpcChartSet, SpcSubgr
 from backend.services.spc_distribution import assess_distribution
 from backend.services.spc_machine_performance import calculate_machine_performance
 from backend.services.spc_stability import evaluate_study_stability
-from backend.services.spc_study_service import SPC_CODE_VERSION, SPC_METHOD_VERSION
+from backend.services.spc_study_service import (
+    SPC_CODE_VERSION,
+    SPC_METHOD_VERSION,
+    _require_permission,
+)
 from backend.services.spc_time_diagnostics import diagnose_time_model
 from backend.services.spc_transformations import evaluate_transformations
 
@@ -55,6 +59,30 @@ def _assert_no_nonfinite(value: Any, path: str = "root") -> None:
             _assert_no_nonfinite(item, f"{path}[{index}]")
 
 
+def _json_safe(value: Any) -> Any:
+    """將錯誤路徑上的 NumPy 與非有限值轉為可保存的明確 JSON 證據。"""
+
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, float) and not math.isfinite(value):
+        if math.isnan(value):
+            return "NaN"
+        return "Infinity" if value > 0 else "-Infinity"
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return value
+
+
+def _error_detail(stage: str, exc: Exception) -> dict[str, str]:
+    return {
+        "stage": stage,
+        "error_type": type(exc).__name__,
+        "message": str(exc),
+    }
+
+
 def _attribute_actual() -> dict[str, Any]:
     p_chart = calculate_attribute_chart(
         (
@@ -77,8 +105,15 @@ def _attribute_actual() -> dict[str, Any]:
         return {
             "chart_type": chart["chart_type"],
             "center": chart["center"],
-            "first_lcl": chart["lcl"][0],
-            "first_ucl": chart["ucl"][0],
+            "values": list(chart["values"]),
+            "cl": list(chart["cl"]),
+            "lcl": list(chart["lcl"]),
+            "ucl": list(chart["ucl"]),
+            "n": list(chart["n"]),
+            "x": list(chart["x"]),
+            "lower_counts": list(chart["lower_counts"]),
+            "upper_counts": list(chart["upper_counts"]),
+            "pearson_residuals": list(chart["pearson_residuals"]),
             "total_inspected": chart["total_inspected"],
             "total_nonconforming": chart["total_nonconforming"],
         }
@@ -101,10 +136,17 @@ def _machine_actual() -> dict[str, Any]:
         "n": result["n"],
         "pm": result["pm"],
         "pmk": result["pmk"],
-        "q_0_135": result["quantiles"]["q_0_135"],
-        "q_50": result["quantiles"]["q_50"],
-        "q_99_865": result["quantiles"]["q_99_865"],
-        "approvable": result["approvable"],
+        "pmu": result["pmu"],
+        "pml": result["pml"],
+        "quantiles": dict(result["quantiles"]),
+        "targets": dict(result["targets"]),
+        "eligibility": {
+            "available": result["available"],
+            "preliminary": result["preliminary"],
+            "approvable": result["approvable"],
+            "reason_code": result["reason_code"],
+        },
+        "source_semantics": "patrol_min_max_observations",
     }
 
 
@@ -205,8 +247,20 @@ def _time_dataset(model: str) -> tuple[SpcChartSet, tuple[SpcSubgroup, ...], dic
     return chart, groups, assess_distribution(values)
 
 
-def _time_actual() -> dict[str, str | None]:
-    results: dict[str, str | None] = {}
+def _holm_summary(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
+    adjusted = [float(row["adjusted_p_value"]) for row in rows]
+    rejected = [float(row["adjusted_p_value"]) for row in rows if row["reject"]]
+    return {
+        "method": "Holm",
+        "comparison_count": len(rows),
+        "minimum_adjusted_p_value": min(adjusted) if adjusted else None,
+        "maximum_rejected_adjusted_p_value": max(rejected) if rejected else None,
+        "rejected_count": len(rejected),
+    }
+
+
+def _time_actual() -> dict[str, dict[str, Any]]:
+    results: dict[str, dict[str, Any]] = {}
     for model in TIME_MODELS:
         chart, groups, distribution = _time_dataset(model)
         diagnostic = diagnose_time_model(
@@ -215,7 +269,45 @@ def _time_actual() -> dict[str, str | None]:
             distribution,
             stability=evaluate_study_stability(chart),
         )
-        results[model] = diagnostic["candidate"]
+        evidence = diagnostic["evidence"]
+        families = evidence["multiple_testing"]["families"]
+        trend_row = families["trend"][0]
+        formal = evidence["formal_stability"]
+        location_stable = formal["location"]["stable"]
+        variation_stable = formal["variation"]["stable"]
+        if location_stable is True and variation_stable is True:
+            formal_reason = None
+        elif location_stable is False and variation_stable is False:
+            formal_reason = "LOCATION_AND_VARIATION_UNSTABLE"
+        elif location_stable is False:
+            formal_reason = "LOCATION_UNSTABLE"
+        else:
+            formal_reason = "VARIATION_UNSTABLE"
+        results[model] = {
+            "candidate": diagnostic["candidate"],
+            "reason_code": diagnostic.get("reason_code"),
+            "trend": {
+                "tau": trend_row["tau"],
+                "slope": trend_row["slope"],
+                "raw_p_value": trend_row["raw_p_value"],
+                "adjusted_p_value": trend_row["adjusted_p_value"],
+                "threshold": trend_row["threshold"],
+                "detected": evidence["trend"]["detected"],
+            },
+            "welch_holm": _holm_summary(families["mean_change"]),
+            "levene_holm": _holm_summary(families["variance_change"]),
+            "change_indexes": {
+                "welch": list(evidence["change_points"]["change_points"]),
+                "levene": list(evidence["variance_change"]["change_indexes"]),
+            },
+            "peak_count": evidence["aggregate_modality"].get("peak_count"),
+            "formal": {
+                "stable": formal["stable"],
+                "location_stable": location_stable,
+                "variation_stable": variation_stable,
+                "reason_code": formal_reason,
+            },
+        }
     return results
 
 
@@ -241,9 +333,19 @@ def _transformation_actual() -> dict[str, Any]:
         actual[model] = {
             "model": candidate["model"],
             "accepted": candidate["accepted"],
+            "params": {
+                key: candidate["params"][key]
+                for key in sorted(candidate["params"])
+            },
+            "epsilon": candidate["epsilon"],
+            "fit_method": candidate["fit_method"],
             "ad_statistic": candidate["ad_statistic"],
             "ad_p_value": candidate["ad_p_value"],
+            "tail_quantiles": list(candidate["tail_quantiles"]),
+            "monotonic": candidate["monotonic"],
             "roundtrip_relative_error": candidate["roundtrip_relative_error"],
+            "rank": candidate["rank"],
+            "reason_code": candidate["reason_code"],
         }
     return actual
 
@@ -328,32 +430,50 @@ def run_advanced_regression(
     executed_by: int | None = None,
     persist: bool = False,
 ) -> dict[str, Any]:
-    """執行固定資料確效；persist=True 時將 PASS／FAIL 證據保存到目前資料庫。"""
+    """執行固定資料確效；persist=True 時將 PASS／FAIL 證據保存到目前資料庫。
 
-    expected, tolerances = _load_baseline()
-    actual = _build_actual()
-    differences = _compare(expected, actual, tolerances)
+    計算或基準載入本身失敗（例如例外、NaN/Infinity）不得讓呼叫端整個崩潰，
+    而必須轉為可持久化的 FAIL 明細，讓稽核紀錄留下確切證據。
+    """
+
+    if persist:
+        _require_permission(executed_by, "spc.approve")
+
+    expected: dict[str, Any] = {}
+    tolerances: dict[str, Any] = {}
+    actual: dict[str, Any] = {}
+    try:
+        expected, tolerances = _load_baseline()
+        actual = _build_actual()
+        differences = _compare(expected, actual, tolerances)
+    except Exception as exc:  # noqa: BLE001 - 需將任何計算失敗轉為可持久化證據
+        differences = [_error_detail("run_advanced_regression", exc)]
+
     result = "PASS" if not differences else "FAIL"
+    safe_expected = _json_safe(expected)
+    safe_actual = _json_safe(actual)
+    safe_tolerances = _json_safe(tolerances)
+    safe_details = _json_safe(differences)
     payload = {
         "dataset_version": DATASET_VERSION,
         "method_version": SPC_METHOD_VERSION,
         "code_version": SPC_CODE_VERSION,
-        "expected": expected,
-        "actual": actual,
-        "tolerances": tolerances,
+        "expected": safe_expected,
+        "actual": safe_actual,
+        "tolerances": safe_tolerances,
         "result": result,
-        "details": differences,
+        "details": safe_details,
     }
-    _assert_no_nonfinite(payload)
     if persist:
         row = SpcValidationRun(
             dataset_version=DATASET_VERSION,
             method_version=SPC_METHOD_VERSION,
             code_version=SPC_CODE_VERSION,
-            expected=expected,
-            actual=actual,
-            tolerances=tolerances,
+            expected=safe_expected,
+            actual=safe_actual,
+            tolerances=safe_tolerances,
             result=result,
+            details=safe_details,
             executed_by=executed_by,
         )
         db.session.add(row)

@@ -67,7 +67,7 @@ def test_report_rebuilds_from_saved_version_after_source_changes(app, db_session
         assert audit["研究版本ID"] == version.id
         assert audit["資料雜湊"] == version.data_hash
         assert audit["方法版本"] == "2026.2"
-        assert audit["程式版本"] == "2026.1"
+        assert audit["程式版本"] == "2026.2"
         assert audit["圖表選型"] == "xbar_s"
         assert audit["完整篩選條件"]
         assert audit["規格快照"]

@@ -550,6 +550,12 @@ class SpcValidationRun(db.Model):
     """SPC 軟體確效執行結果，保存基準資料與容許誤差以供稽核。"""
 
     __tablename__ = 'SPC軟體確效執行'
+    __table_args__ = (
+        db.CheckConstraint(
+            '"執行結果" IN (\'PASS\', \'FAIL\')',
+            name='ck_spc_validation_result',
+        ),
+    )
 
     id = db.Column('識別碼', db.Integer, primary_key=True)
     dataset_version = db.Column('基準資料版本', db.String(80), nullable=False)
@@ -559,6 +565,7 @@ class SpcValidationRun(db.Model):
     actual = db.Column('實際結果', JsonType, nullable=False)
     tolerances = db.Column('容許誤差', JsonType, nullable=False)
     result = db.Column('執行結果', db.String(20), nullable=False)
+    details = db.Column('差異明細', JsonType, nullable=False, default=list)
     executed_by = db.Column(
         '執行者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
     )

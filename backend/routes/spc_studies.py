@@ -8,7 +8,10 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy.orm import selectinload
 
 from ..extensions import db
-from ..models import SpcLimitVersion, SpcOcap, SpcStudySample, SpcStudyVersion
+from ..models import (
+    SpcLimitVersion, SpcOcap, SpcStudySample, SpcStudyVersion,
+    SpcValidationRun,
+)
 from ..services.spc_errors import SpcServiceError, SpcValidationError
 from ..services.spc_ocap_service import SpcOcapService
 from ..services.spc_study_service import SpcStudyService, _validate_monitoring_limit_ownership
@@ -124,6 +127,24 @@ def serialize_limit_version(limit, *, versions_by_id=None, samples_by_id=None):
         "retired_by": limit.retired_by,
         "retired_at": limit.retired_at,
         "events": [serialize_event(event, versions_by_id=versions_by_id, samples_by_id=samples_by_id) for event in limit.events],
+    })
+
+
+def serialize_validation_run(run: SpcValidationRun) -> dict:
+    """序列化不可變軟體確效證據，包含精確差異與執行者追溯。"""
+
+    return _json_value({
+        "id": run.id,
+        "dataset_version": run.dataset_version,
+        "method_version": run.method_version,
+        "code_version": run.code_version,
+        "expected": run.expected,
+        "actual": run.actual,
+        "tolerances": run.tolerances,
+        "result": run.result,
+        "details": run.details,
+        "executed_by": run.executed_by,
+        "executed_at": run.executed_at,
     })
 
 

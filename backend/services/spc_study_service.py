@@ -69,7 +69,7 @@ from .spc_transformations import inverse_values, transform_values
 
 
 SPC_METHOD_VERSION = "2026.2"
-SPC_CODE_VERSION = os.environ.get("SPC_CODE_VERSION", "2026.1")
+SPC_CODE_VERSION = os.environ.get("SPC_CODE_VERSION", "2026.2")
 ANALYSIS_FAMILIES = {"variable", "attribute", "machine"}
 ADAPTERS: dict[str, Callable[[Mapping[str, Any]], SpcStudyInput]] = {
     "shipping": build_shipping_study_input,
