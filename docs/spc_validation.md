@@ -79,12 +79,20 @@ C:\QC_Database\venv\Scripts\python.exe backend\scripts\spc_advanced_regression.p
 [PASS] SPC 2026.2 進階分析確效通過；屬性圖、機器績效、時間模型與分布轉換皆符合固定基準。
 ```
 
-2026-07-19 對正式 `qa_database` 執行 `--persist --executed-by 1` 已 PASS，保存
-`SpcValidationRun.id=1`；dataset `spc-advanced-golden-2026.2`、method `2026.2`、
-code `2026.1`、expected／actual／tolerances 均為 JSON object。此 ID 是該環境的
-稽核證據，不是可跨環境假設的固定 ID。
+2026-07-19 對正式 `qa_database` 執行 `--persist --executed-by 1` 曾保存
+`SpcValidationRun.id=1`，但該次程式版本誤標為 `2026.1`、且尚未具備可持久化的
+FAIL 明細與執行者授權檢查；此紀錄予以保留作為稽核歷程，不予刪改。
 
-完整發版驗證另包含：後端全量 pytest、兩個 regression runner、前端
-lint/build/test、`npm audit`、`git diff --check`，以及依
-[migration 38 runbook](migrations/38-spc-analysis-family-runbook.md) 執行 PostgreSQL
-rollback dry-run、正式套用、idempotent 重跑與 schema/preflight 查核。
+2026-07-20 補強執行者授權、FAIL 明細與不可變約束（見
+[migration 39 runbook](migrations/39-harden-spc-validation-runs-runbook.md)）後，
+重新對正式 `qa_database` 執行 `--persist --executed-by 1`，保存
+`SpcValidationRun.id=2`；dataset `spc-advanced-golden-2026.2`、method `2026.2`、
+code `2026.2`、`執行結果=PASS`、`差異明細=[]`。此 ID 是該環境的稽核證據，不是
+可跨環境假設的固定 ID。
+
+完整發版驗證另包含：後端全量 pytest（504 通過／2 略過）、兩個 regression
+runner、前端 lint/build/test（355 測試通過）、`npm audit`（0 個弱點）、
+`git diff --check`，以及依
+[migration 38 runbook](migrations/38-spc-analysis-family-runbook.md) 與
+[migration 39 runbook](migrations/39-harden-spc-validation-runs-runbook.md)
+執行 PostgreSQL rollback dry-run、正式套用、idempotent 重跑與 schema 查核。
