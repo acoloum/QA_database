@@ -84,13 +84,15 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     const [liveLimitsCache, setLiveLimitsCache] = useState<Record<string, PatrolLiveLimits>>({});
     const [liveTouchedKey, setLiveTouchedKey] = useState<string | null>(null);
 
-    // 切換機台/材質/規格/客戶時清空即時界限快取並重新抓取，
+    // 切換機台/主機手/材質/規格/客戶時清空即時界限快取並重新抓取，
     // 避免沿用已快取但已不對應目前製程流（process_stream_key）的判定結果，
     // 造成該 item/position 組合在表單剩餘時間內永遠不再查詢的靜默失效
+    // （op_id 與 cust_id 皆是 process_stream_key 的一部分，見後端
+    // canonical_process_stream／usePatrolLiveLimits 呼叫時傳入的 op_id）
     useEffect(() => {
         setLiveLimitsCache({});
         setLiveTouchedKey(null);
-    }, [machine, material, spec, customer]);
+    }, [machine, operator, material, spec, customer]);
 
     const resetForm = useCallback(() => {
         setDate(formatLocalDate());
