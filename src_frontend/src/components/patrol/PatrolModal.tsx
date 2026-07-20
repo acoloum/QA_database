@@ -11,6 +11,7 @@ import {
     type PatrolLiveLimits,
 } from '../../hooks/usePatrol';
 import { useExtrusionToleranceCheck } from '../../hooks/useExtrusionTolerance';
+import { useAnalyzeSpcStudy, useSaveSpcOcap, useSpcAssignees } from '../../hooks/useSpcStudies';
 import { parseSpec } from '../../utils/parseSpec';
 import {
     buildPatrolPayload,
@@ -24,6 +25,8 @@ import {
 import { formatLocalDate } from '../../utils/dateUtils';
 import { ToleranceBadgeList } from '../common/toleranceDisplay';
 import PatrolMeasurementTable from './PatrolMeasurementTable';
+import SpcOcapOffcanvas from '../spc/SpcOcapOffcanvas';
+import type { SpcEventSummary } from '../../types/spc';
 
 interface PatrolModalProps {
     show: boolean;
@@ -44,6 +47,11 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
 
     const createMutation = useCreatePatrol();
     const updateMutation = useUpdatePatrol();
+    const analyzeOngoing = useAnalyzeSpcStudy();
+    const saveOcap = useSaveSpcOcap();
+    const [openEvents, setOpenEvents] = useState<SpcEventSummary[]>([]);
+    const [selectedEvent, setSelectedEvent] = useState<SpcEventSummary | null>(null);
+    const assignees = useSpcAssignees(Boolean(selectedEvent));
 
     // Form State
     const [date, setDate] = useState(formatLocalDate());
@@ -190,6 +198,34 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         return violations;
     }, [liveMode, liveLimitsCache, details, groupCount]);
 
+    const triggerOngoingAnalysisForTouchedStreams = async () => {
+        const touchedStreams = new Set(
+            Object.keys(liveViolations).map(key => key.split('|').slice(0, 2).join('|')),
+        );
+        const newEvents: SpcEventSummary[] = [];
+        for (const streamKey of touchedStreams) {
+            const [pos, item] = streamKey.split('|');
+            try {
+                const result = await analyzeOngoing.mutateAsync({
+                    source: 'patrol',
+                    filters: { m_id: machine, op_id: operator, cust_id: customer, mat: material, spec, item, pos },
+                    study_type: 'ongoing',
+                });
+                const activeLimit = result.monitoring_limit
+                    ?? result.limit_versions?.find(limit => limit.status === 'active');
+                for (const event of activeLimit?.events ?? []) {
+                    if (event.status === 'open') newEvents.push(event);
+                }
+            } catch (error) {
+                console.error(`巡檢正式 SPC 判定失敗（${item}/${pos}）`, error);
+            }
+        }
+        if (newEvents.length > 0) {
+            setOpenEvents(newEvents);
+            toast(`本次觸發 ${newEvents.length} 項製程異常，可查看建議處置`, { icon: '⚠️' });
+        }
+    };
+
     const handleSubmit = async () => {
         // Client-side required field validation
         const missingFields: string[] = [];
@@ -228,6 +264,9 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                 await updateMutation.mutateAsync({ id: editId, data: buildPatrolUpdatePayload({ ...payloadValues, editId }) });
             } else {
                 await createMutation.mutateAsync(buildPatrolPayload(payloadValues));
+            }
+            if (liveMode && Object.keys(liveViolations).length > 0) {
+                await triggerOngoingAnalysisForTouchedStreams();
             }
             onSuccess();
             handleClose();
@@ -353,6 +392,35 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                     </Modal.Footer>
                 </div>
             </div>
+            {openEvents.length > 0 && (
+                <div className="position-fixed bottom-0 end-0 m-3 p-2 bg-white border rounded shadow" style={{ zIndex: 1060 }}>
+                    <div className="small fw-bold mb-1">本次觸發的製程異常</div>
+                    {openEvents.map(event => (
+                        <Button key={event.id} size="sm" variant="outline-danger" className="d-block mb-1" onClick={() => setSelectedEvent(event)}>
+                            事件 #{event.id} · {event.chart_kind === 'location' ? '位置圖' : '變異圖'} · 查看建議
+                        </Button>
+                    ))}
+                </div>
+            )}
+            {selectedEvent && (
+                <SpcOcapOffcanvas
+                    show
+                    eventId={selectedEvent.id}
+                    ocapId={selectedEvent.ocap?.id}
+                    initialValue={selectedEvent.ocap}
+                    onHide={() => setSelectedEvent(null)}
+                    onSave={input => {
+                        saveOcap.mutate(input, {
+                            onSuccess: () => setSelectedEvent(null),
+                        });
+                    }}
+                    pending={saveOcap.isPending}
+                    saveError={saveOcap.isError}
+                    assignees={assignees.data ?? []}
+                    assigneesLoading={assignees.isLoading}
+                    assigneesError={assignees.isError}
+                />
+            )}
         </Modal>
     );
 };
