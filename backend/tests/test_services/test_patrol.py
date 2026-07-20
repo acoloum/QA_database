@@ -609,3 +609,12 @@ def test_get_spc_null_value_and_excluded_row_does_not_double_count(app, db_sessi
         result = PatrolService.get_spc({'item': '外徑', 'pos': '前段', 'mat': '6061', 'spec': '10*2'})
         assert result['excluded_count'] == 0
         assert result['avgs'] == []
+
+
+def test_get_live_limits_not_found_without_active_limit(app, db_session):
+    """該製程流尚未有生效核准界限時，回傳 found=False，不擅自估算界限"""
+    with app.app_context():
+        result = PatrolService.get_live_limits({
+            'mat': 'SUS304', 'spec': '10*2', 'item': '外徑', 'pos': '前段',
+        })
+        assert result == {'found': False}

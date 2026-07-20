@@ -6,7 +6,10 @@ from typing import List, Dict, Any, Optional, Union
 from sqlalchemy import func, text
 from sqlalchemy.orm import selectinload
 from ..extensions import db
-from ..models import PatrolMain, PatrolDetail, Machine, Operator, Inspector, Vendor, SPCCache
+from ..models import (
+    PatrolMain, PatrolDetail, Machine, Operator, Inspector, Vendor, SPCCache,
+    SpcLimitVersion,
+)
 from .extrusion_tolerance_service import ExtrusionToleranceService
 from .patrol_excel_utils import (
     build_patrol_measurements_from_row,
@@ -79,6 +82,92 @@ class PatrolService:
         from .spc_study_service import SpcStudyService
 
         return SpcStudyService.preview("patrol", args)
+
+    @staticmethod
+    def get_live_limits(args: Dict[str, Any]) -> Dict[str, Any]:
+        """巡檢即時模式：查詢生效中的管制界限與最近歷史值（唯讀，不建立稽核紀錄）。
+
+        僅供前端即時提示使用，非正式判定；正式判定仍由存檔後的
+        POST /api/spc/studies/analyze（ongoing）產生。
+        """
+        from collections import OrderedDict
+        from .spc_adapters.common import canonical_process_stream
+
+        filters = {
+            'm_id': args.get('m_id') or None,
+            'op_id': args.get('op_id') or None,
+            'cust_id': args.get('cust_id') or None,
+            'mat': args.get('mat') or '',
+            'spec': args.get('spec') or '',
+            'item': args.get('item') or '',
+            'pos': args.get('pos') or '',
+            's_date': '',
+            'e_date': '',
+        }
+        stream = canonical_process_stream('patrol', filters)
+        item = stream.filters['item']
+
+        limit = SpcLimitVersion.query.filter_by(
+            analysis_family='variable',
+            process_stream_key=stream.key,
+            characteristic=item,
+            status='active',
+        ).first()
+        if limit is None:
+            return {'found': False}
+
+        limits = limit.limits or {}
+        if limits.get('scale') == 'transformed':
+            return {'found': False, 'reason': 'transformed_scale_unsupported'}
+
+        location = limits.get('location') or {}
+        variation = limits.get('variation') or {}
+
+        query = (
+            PatrolDetail.query.join(PatrolMain)
+            .filter(PatrolDetail.item == item, PatrolDetail.excluded.is_(False))
+        )
+        if stream.filters['pos']:
+            query = query.filter(PatrolDetail.position == stream.filters['pos'])
+        if stream.filters['m_id'] is not None:
+            query = query.filter(PatrolMain.machine_id == stream.filters['m_id'])
+        if stream.filters['mat']:
+            query = query.filter(PatrolMain.material.contains(stream.filters['mat']))
+        if stream.filters['spec']:
+            query = query.filter(PatrolMain.spec.contains(stream.filters['spec']))
+        exclude_main_id = args.get('exclude_main_id')
+        if exclude_main_id:
+            query = query.filter(PatrolMain.id != int(exclude_main_id))
+        details = query.order_by(
+            PatrolMain.date.asc(), PatrolDetail.main_id.asc(),
+            PatrolDetail.group.asc(), PatrolDetail.id.asc(),
+        ).all()
+
+        grouped: 'OrderedDict[tuple, list]' = OrderedDict()
+        for detail in details:
+            grouped.setdefault((detail.main_id, detail.group), []).append(detail)
+
+        recent_values = []
+        for group_details in list(grouped.values())[-14:]:
+            values = [
+                float(v) for v in (
+                    group_details[0].min_val, group_details[0].max_val,
+                )
+                if v is not None
+            ]
+            if len(values) == 2:
+                recent_values.append({'min': min(values), 'max': max(values)})
+
+        return {
+            'found': True,
+            'x_cl': float(location['cl']) if location.get('cl') is not None else None,
+            'x_ucl': float(location['ucl']) if location.get('ucl') is not None else None,
+            'x_lcl': float(location['lcl']) if location.get('lcl') is not None else None,
+            'r_cl': float(variation['cl']) if variation.get('cl') is not None else None,
+            'r_ucl': float(variation['ucl']) if variation.get('ucl') is not None else None,
+            'r_lcl': float(variation['lcl']) if variation.get('lcl') is not None else None,
+            'recent_values': recent_values,
+        }
 
     @staticmethod
     def get_patrol_details(main_id: int) -> List[Dict[str, Any]]:
