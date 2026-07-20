@@ -346,6 +346,11 @@ h6 {
   }
 }
 
+.patrol-live-warning {
+    border-color: #ffc107 !important;
+    background-color: #fff8e1 !important;
+}
+
 /* SPC Stats Card Gradient */
 .bg-stats-gradient {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
