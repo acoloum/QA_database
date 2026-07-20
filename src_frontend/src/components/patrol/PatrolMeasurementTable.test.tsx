@@ -31,6 +31,7 @@ describe('PatrolMeasurementTable', () => {
   it('即時模式有違規時，標記黃框並顯示提示文字；沒有違規的儲存格不受影響', () => {
     const details: PatrolDetailInput[] = [
       { group: '第1組', pos: '前段', item: '外徑', min: '85', max: '85.4' },
+      { group: '第1組', pos: '前段', item: '厚度', min: '2.5', max: '3.0' },
     ];
 
     render(
@@ -49,5 +50,7 @@ describe('PatrolMeasurementTable', () => {
 
     expect(screen.getByDisplayValue('85')).toHaveClass('patrol-live-warning');
     expect(screen.getByText(/單點急劇偏移/)).toBeInTheDocument();
+    // 沒有對應 liveViolations key 的儲存格（前段｜厚度）不應被標記黃框
+    expect(screen.getByDisplayValue('2.5')).not.toHaveClass('patrol-live-warning');
   });
 });

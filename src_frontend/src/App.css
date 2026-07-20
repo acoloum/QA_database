@@ -346,6 +346,10 @@ h6 {
   }
 }
 
+/* 若儲存格同時超規格（is-invalid-breathing）與即時模式不穩定（patrol-live-warning），
+   前者的選擇器優先度較高（.patrol-input.is-invalid-breathing 為兩個 class），
+   兩者皆有 !important 時紅色樣式會視覺優先顯示——這是刻意的排序：
+   超出規格公差比製程趨勢不穩定更急迫，不需額外調整 */
 .patrol-live-warning {
     border-color: #ffc107 !important;
     background-color: #fff8e1 !important;
