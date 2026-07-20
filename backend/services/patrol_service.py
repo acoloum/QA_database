@@ -131,6 +131,10 @@ class PatrolService:
             query = query.filter(PatrolDetail.position == stream.filters['pos'])
         if stream.filters['m_id'] is not None:
             query = query.filter(PatrolMain.machine_id == stream.filters['m_id'])
+        if stream.filters['op_id'] is not None:
+            query = query.filter(PatrolMain.operator_id == stream.filters['op_id'])
+        if stream.filters['cust_id'] is not None:
+            query = query.filter(PatrolMain.customer_id == stream.filters['cust_id'])
         if stream.filters['mat']:
             query = query.filter(PatrolMain.material.contains(stream.filters['mat']))
         if stream.filters['spec']:

@@ -622,7 +622,7 @@ def test_get_live_limits_not_found_without_active_limit(app, db_session):
         assert result == {'found': False}
 
 
-def _approved_patrol_limit(db_session, *, mat, spec, item, pos, scale='original'):
+def _approved_patrol_limit(db_session, *, mat, spec, item, pos, scale='original', op_id=None, cust_id=None):
     """建立一組生效中的巡檢管制界限（比照 approve_study 產出的資料形狀）。
 
     scale 於建立當下即決定，不可事後修改：SpcLimitVersion.limits 屬 SPC
@@ -630,7 +630,7 @@ def _approved_patrol_limit(db_session, *, mat, spec, item, pos, scale='original'
     backend/models.py 的 _block_spc_immutable_update / _SPC_MUTABLE_FIELDS）。
     """
     filters = {
-        'm_id': None, 'op_id': None, 'cust_id': None,
+        'm_id': None, 'op_id': op_id, 'cust_id': cust_id,
         'mat': mat, 'spec': spec, 'item': item, 'pos': pos,
         's_date': '', 'e_date': '',
     }
@@ -758,3 +758,52 @@ def test_get_live_limits_recent_values_truncates_to_last_14(app, db_session):
         assert recent_values[0] == {'min': pytest.approx(3.0), 'max': pytest.approx(3.1)}
         # 保留的最後一筆為最新（第 16 天）
         assert recent_values[-1] == {'min': pytest.approx(16.0), 'max': pytest.approx(16.1)}
+
+
+def test_get_live_limits_recent_values_scoped_to_operator(app, db_session):
+    """核准界限限定特定主機手時，recent_values 不應納入其他主機手的歷史子組
+
+    製程流識別（canonical_process_stream）已把 op_id/cust_id 納入界限查找，
+    但 recent_values 的歷史序列查詢先前漏了這兩個篩選條件，導致同機台/
+    材質/規格/項目/位置但不同主機手的資料也被算進趨勢判讀，產生失真的
+    即時提示。
+    """
+    with app.app_context():
+        op_a = Operator(name='主機手甲')
+        op_b = Operator(name='主機手乙')
+        db_session.add_all([op_a, op_b])
+        db_session.flush()
+
+        # 核准界限限定 op_a
+        _approved_patrol_limit(
+            db_session, mat='SUS304', spec='10*2', item='外徑', pos='前段',
+            op_id=op_a.id,
+        )
+
+        patrol_a = PatrolMain(
+            date=date(2026, 1, 1), material='SUS304', spec='10*2',
+            operator_id=op_a.id,
+        )
+        patrol_b = PatrolMain(
+            date=date(2026, 1, 2), material='SUS304', spec='10*2',
+            operator_id=op_b.id,
+        )
+        db_session.add_all([patrol_a, patrol_b])
+        db_session.flush()
+        db_session.add(PatrolDetail(
+            main_id=patrol_a.id, group=1, item='外徑', position='前段',
+            min_val=84.9, max_val=85.3,
+        ))
+        db_session.add(PatrolDetail(
+            main_id=patrol_b.id, group=1, item='外徑', position='前段',
+            min_val=50.0, max_val=51.0,
+        ))
+        db_session.commit()
+
+        result = PatrolService.get_live_limits({
+            'mat': 'SUS304', 'spec': '10*2', 'item': '外徑', 'pos': '前段',
+            'op_id': op_a.id,
+        })
+
+        assert result['found'] is True
+        assert result['recent_values'] == [{'min': 84.9, 'max': 85.3}]
