@@ -217,6 +217,8 @@ export interface PatrolLiveViolation {
   hint: string;
 }
 
+// 此處的鍵值對應 spcAnalysis.ts 的 analyzeWECO reasons 硬編碼文字；
+// 若該檔案的規則文字異動，這裡也需要同步更新，否則會靜默 fallback 到預設提示
 const LOCATION_HINTS: Record<string, string> = {
   'Rule 1: 超出控制限': '單點急劇偏移，先重量一次確認非量測失誤；屬實則檢查機頭壓力/料溫瞬間波動',
   'Rule 2: 連續9點同側': '製程中心已偏移，非單純波動，建議依 5M（人機料法環）排查後調整模具定位',
