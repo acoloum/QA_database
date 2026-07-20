@@ -37,6 +37,29 @@ export interface PatrolOptions {
     customers: { id: number; name: string }[];
 }
 
+export interface PatrolLiveLimitsParams {
+    m_id?: string;
+    op_id?: string;
+    cust_id?: string;
+    mat: string;
+    spec: string;
+    item: string;
+    pos: string;
+    exclude_main_id?: number;
+}
+
+export interface PatrolLiveLimits {
+    found: boolean;
+    reason?: string;
+    x_cl?: number;
+    x_ucl?: number;
+    x_lcl?: number;
+    r_cl?: number;
+    r_ucl?: number;
+    r_lcl?: number;
+    recent_values?: { min: number; max: number }[];
+}
+
 // --- Queries ---
 
 export const usePatrolOptions = () => {
@@ -108,6 +131,28 @@ export const usePatrolStats = (params: PatrolStatsParams) => {
         // Only fetch if item is provided (pos can be empty for "全段")
         enabled: !!params.item,
         staleTime: 5 * 60 * 1000,
+    });
+};
+
+export const usePatrolLiveLimits = (params: PatrolLiveLimitsParams, enabled: boolean) => {
+    return useQuery({
+        queryKey: ['patrolLiveLimits', params],
+        queryFn: async () => {
+            const queryParams = new URLSearchParams();
+            if (params.m_id) queryParams.append('m_id', params.m_id);
+            if (params.op_id) queryParams.append('op_id', params.op_id);
+            if (params.cust_id) queryParams.append('cust_id', params.cust_id);
+            queryParams.append('mat', params.mat);
+            queryParams.append('spec', params.spec);
+            queryParams.append('item', params.item);
+            queryParams.append('pos', params.pos);
+            if (params.exclude_main_id) queryParams.append('exclude_main_id', params.exclude_main_id.toString());
+
+            const res = await api.get<PatrolLiveLimits>(`/patrol/live-limits?${queryParams.toString()}`);
+            return res.data;
+        },
+        enabled: enabled && !!params.mat && !!params.item,
+        staleTime: 60 * 1000,
     });
 };
 
