@@ -728,3 +728,33 @@ def test_get_live_limits_excludes_main_id_when_editing(app, db_session):
         })
 
         assert result['recent_values'] == []
+
+
+def test_get_live_limits_recent_values_truncates_to_last_14(app, db_session):
+    """歷史子組超過 14 筆時，recent_values 只保留最新的 14 筆（非最舊的 14 筆）
+    以 min_val/max_val 與日期序號綁定（第 i 天 → min=i, max=i+0.1），
+    確保能明確驗證「保留哪 14 筆」而非只驗證數量。
+    """
+    with app.app_context():
+        _approved_patrol_limit(db_session, mat='SUS304', spec='10*2', item='外徑', pos='前段')
+
+        for i in range(1, 17):  # 16 筆，日期 2026-01-01 ~ 2026-01-16
+            patrol = PatrolMain(date=date(2026, 1, i), material='SUS304', spec='10*2')
+            db_session.add(patrol)
+            db_session.flush()
+            db_session.add(PatrolDetail(
+                main_id=patrol.id, group=1, item='外徑', position='前段',
+                min_val=float(i), max_val=float(i) + 0.1,
+            ))
+        db_session.commit()
+
+        result = PatrolService.get_live_limits({
+            'mat': 'SUS304', 'spec': '10*2', 'item': '外徑', 'pos': '前段',
+        })
+
+        recent_values = result['recent_values']
+        assert len(recent_values) == 14
+        # 最舊 2 筆（第 1、2 天）應被捨棄；保留的第一筆為第 3 天（3rd-oldest）
+        assert recent_values[0] == {'min': pytest.approx(3.0), 'max': pytest.approx(3.1)}
+        # 保留的最後一筆為最新（第 16 天）
+        assert recent_values[-1] == {'min': pytest.approx(16.0), 'max': pytest.approx(16.1)}
