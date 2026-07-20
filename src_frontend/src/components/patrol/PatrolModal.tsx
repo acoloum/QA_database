@@ -6,15 +6,20 @@ import {
     usePatrolOptions,
     usePatrolDetail,
     useCreatePatrol,
-    useUpdatePatrol
+    useUpdatePatrol,
+    usePatrolLiveLimits,
+    type PatrolLiveLimits,
 } from '../../hooks/usePatrol';
 import { useExtrusionToleranceCheck } from '../../hooks/useExtrusionTolerance';
 import { parseSpec } from '../../utils/parseSpec';
 import {
     buildPatrolPayload,
     buildPatrolUpdatePayload,
+    buildLiveGroupSeries,
+    evaluatePatrolLiveStability,
     getValidPatrolDetails,
     type PatrolDetailInput,
+    type PatrolLiveViolation,
 } from './patrolFormUtils';
 import { formatLocalDate } from '../../utils/dateUtils';
 import { ToleranceBadgeList } from '../common/toleranceDisplay';
@@ -55,6 +60,11 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     const [details, setDetails] = useState<PatrolDetailInput[]>([]);
     const [showInner, setShowInner] = useState(false);
 
+    // 即時模式 State
+    const [liveMode, setLiveMode] = useState(false);
+    const [liveLimitsCache, setLiveLimitsCache] = useState<Record<string, PatrolLiveLimits>>({});
+    const [liveTouchedKey, setLiveTouchedKey] = useState<string | null>(null);
+
     const resetForm = useCallback(() => {
         setDate(formatLocalDate());
         setMachine('');
@@ -67,6 +77,9 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         setGroupCount(1);
         setDetails([]);
         setShowInner(false);
+        setLiveMode(false);
+        setLiveLimitsCache({});
+        setLiveTouchedKey(null);
     }, []);
 
     // Populate form when detailData loads or when modal opens
@@ -126,6 +139,56 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
             }
         });
     };
+
+    const handleDetailBlur = (pos: string, item: string) => {
+        if (!liveMode) return;
+        setLiveTouchedKey(`${pos}|${item}`);
+    };
+
+    const liveLimitsKey = liveTouchedKey ? liveTouchedKey.split('|') as [string, string] : null;
+    const [liveLimitsPos, liveLimitsItem] = liveLimitsKey ?? ['', ''];
+    const liveLimitsQuery = usePatrolLiveLimits(
+        {
+            m_id: machine, op_id: operator, cust_id: customer,
+            mat: material, spec, item: liveLimitsItem, pos: liveLimitsPos,
+            exclude_main_id: editId ?? undefined,
+        },
+        liveMode && !!liveTouchedKey && !(liveTouchedKey in liveLimitsCache),
+    );
+
+    useEffect(() => {
+        if (liveTouchedKey && liveLimitsQuery.data && !(liveTouchedKey in liveLimitsCache)) {
+            setLiveLimitsCache(prev => ({ ...prev, [liveTouchedKey]: liveLimitsQuery.data! }));
+        }
+    }, [liveTouchedKey, liveLimitsQuery.data, liveLimitsCache]);
+
+    const liveViolations = useMemo(() => {
+        if (!liveMode) return {};
+        const violations: Record<string, PatrolLiveViolation> = {};
+        for (const pos of ['前段', '中段', '後段']) {
+            for (const item of ['外徑', '內徑', '厚度']) {
+                const cached = liveLimitsCache[`${pos}|${item}`];
+                if (!cached?.found) continue;
+                for (let g = 1; g <= groupCount; g += 1) {
+                    const group = `第${g}組`;
+                    const { means, ranges } = buildLiveGroupSeries({
+                        recentValues: cached.recent_values ?? [],
+                        details, pos, item, groupCount: g,
+                    });
+                    if (means.length === 0) continue;
+                    const violation = evaluatePatrolLiveStability({
+                        means, ranges,
+                        xCl: cached.x_cl!, xUcl: cached.x_ucl!, xLcl: cached.x_lcl!,
+                        rCl: cached.r_cl!, rUcl: cached.r_ucl!, rLcl: cached.r_lcl!,
+                    });
+                    if (violation) {
+                        violations[`${pos}|${item}|${group}`] = violation;
+                    }
+                }
+            }
+        }
+        return violations;
+    }, [liveMode, liveLimitsCache, details, groupCount]);
 
     const handleSubmit = async () => {
         // Client-side required field validation
@@ -246,6 +309,15 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                                         </Alert>
                                     )}
 
+                                    <Form.Check
+                                        type="switch"
+                                        id="patrol-live-mode"
+                                        label="即時模式"
+                                        checked={liveMode}
+                                        onChange={e => setLiveMode(e.target.checked)}
+                                        className="mb-2"
+                                    />
+
                                     <PatrolMeasurementTable
                                         groupCount={groupCount}
                                         showInner={showInner}
@@ -253,6 +325,8 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                                         tolerances={tolerances}
                                         specStdValues={specStdValues}
                                         onDetailChange={handleDetailChange}
+                                        liveViolations={liveViolations}
+                                        onCellBlur={handleDetailBlur}
                                     />
 
                                     <div className="d-flex gap-2 mt-3">

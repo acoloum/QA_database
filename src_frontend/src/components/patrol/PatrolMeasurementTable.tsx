@@ -18,6 +18,7 @@ interface PatrolMeasurementTableProps {
     specStdValues: Record<string, number>;
     onDetailChange: (group: string, pos: string, item: string, type: 'min' | 'max', value: string) => void;
     liveViolations?: Record<string, PatrolLiveViolation>;
+    onCellBlur?: (pos: string, item: string) => void;
 }
 
 const POSITIONS = ['前段', '中段', '後段'];
@@ -31,6 +32,7 @@ const PatrolMeasurementTable = ({
     specStdValues,
     onDetailChange,
     liveViolations = {},
+    onCellBlur,
 }: PatrolMeasurementTableProps) => {
     const isCellNG = (pos: string, item: string, type: 'min' | 'max', group: string) => isPatrolCellNG({
         details,
@@ -101,6 +103,7 @@ const PatrolMeasurementTable = ({
                                                         step="0.01"
                                                         value={getPatrolDetailValue(details, group, pos, item, 'min')}
                                                         onChange={e => onDetailChange(group, pos, item, 'min', e.target.value)}
+                                                        onBlur={() => onCellBlur?.(pos, item)}
                                                         className={`patrol-input${minNG ? ' is-invalid-breathing' : ''}${liveViolation ? ' patrol-live-warning' : ''}`}
                                                     />
                                                 </td>
@@ -111,6 +114,7 @@ const PatrolMeasurementTable = ({
                                                         step="0.01"
                                                         value={getPatrolDetailValue(details, group, pos, item, 'max')}
                                                         onChange={e => onDetailChange(group, pos, item, 'max', e.target.value)}
+                                                        onBlur={() => onCellBlur?.(pos, item)}
                                                         className={`patrol-input${maxNG ? ' is-invalid-breathing' : ''}${liveViolation ? ' patrol-live-warning' : ''}`}
                                                     />
                                                     {liveViolation && (
