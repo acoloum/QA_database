@@ -27,4 +27,27 @@ describe('PatrolMeasurementTable', () => {
     expect(screen.getByDisplayValue('84')).toHaveClass('is-invalid-breathing');
     expect(screen.queryByText('內徑')).not.toBeInTheDocument();
   });
+
+  it('即時模式有違規時，標記黃框並顯示提示文字；沒有違規的儲存格不受影響', () => {
+    const details: PatrolDetailInput[] = [
+      { group: '第1組', pos: '前段', item: '外徑', min: '85', max: '85.4' },
+    ];
+
+    render(
+      <PatrolMeasurementTable
+        groupCount={1}
+        showInner={false}
+        details={details}
+        tolerances={[]}
+        specStdValues={{}}
+        onDetailChange={vi.fn()}
+        liveViolations={{
+          '前段|外徑|第1組': { chartKind: 'location', label: 'Rule 1: 超出控制限', hint: '單點急劇偏移，先重量一次確認非量測失誤' },
+        }}
+      />,
+    );
+
+    expect(screen.getByDisplayValue('85')).toHaveClass('patrol-live-warning');
+    expect(screen.getByText(/單點急劇偏移/)).toBeInTheDocument();
+  });
 });
