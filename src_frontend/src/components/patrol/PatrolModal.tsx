@@ -6,19 +6,27 @@ import {
     usePatrolOptions,
     usePatrolDetail,
     useCreatePatrol,
-    useUpdatePatrol
+    useUpdatePatrol,
+    usePatrolLiveLimits,
+    type PatrolLiveLimits,
 } from '../../hooks/usePatrol';
 import { useExtrusionToleranceCheck } from '../../hooks/useExtrusionTolerance';
+import { useAnalyzeSpcStudy, useSaveSpcOcap, useSpcAssignees } from '../../hooks/useSpcStudies';
 import { parseSpec } from '../../utils/parseSpec';
 import {
     buildPatrolPayload,
     buildPatrolUpdatePayload,
+    buildLiveGroupSeries,
+    evaluatePatrolLiveStability,
     getValidPatrolDetails,
     type PatrolDetailInput,
+    type PatrolLiveViolation,
 } from './patrolFormUtils';
 import { formatLocalDate } from '../../utils/dateUtils';
 import { ToleranceBadgeList } from '../common/toleranceDisplay';
 import PatrolMeasurementTable from './PatrolMeasurementTable';
+import SpcOcapOffcanvas from '../spc/SpcOcapOffcanvas';
+import type { SpcEventSummary } from '../../types/spc';
 
 interface PatrolModalProps {
     show: boolean;
@@ -39,6 +47,22 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
 
     const createMutation = useCreatePatrol();
     const updateMutation = useUpdatePatrol();
+    const analyzeOngoing = useAnalyzeSpcStudy();
+    const saveOcap = useSaveSpcOcap();
+    const [openEvents, setOpenEvents] = useState<SpcEventSummary[]>([]);
+    const [selectedEvent, setSelectedEvent] = useState<SpcEventSummary | null>(null);
+    const assignees = useSpcAssignees(Boolean(selectedEvent));
+
+    const handleSelectEvent = (event: SpcEventSummary) => {
+        saveOcap.reset();
+        setSelectedEvent(event);
+    };
+
+    const handleOcapHide = () => {
+        if (saveOcap.isPending) return;
+        saveOcap.reset();
+        setSelectedEvent(null);
+    };
 
     // Form State
     const [date, setDate] = useState(formatLocalDate());
@@ -55,6 +79,21 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     const [details, setDetails] = useState<PatrolDetailInput[]>([]);
     const [showInner, setShowInner] = useState(false);
 
+    // 即時模式 State
+    const [liveMode, setLiveMode] = useState(false);
+    const [liveLimitsCache, setLiveLimitsCache] = useState<Record<string, PatrolLiveLimits>>({});
+    const [liveTouchedKey, setLiveTouchedKey] = useState<string | null>(null);
+
+    // 切換機台/主機手/材質/規格/客戶時清空即時界限快取並重新抓取，
+    // 避免沿用已快取但已不對應目前製程流（process_stream_key）的判定結果，
+    // 造成該 item/position 組合在表單剩餘時間內永遠不再查詢的靜默失效
+    // （op_id 與 cust_id 皆是 process_stream_key 的一部分，見後端
+    // canonical_process_stream／usePatrolLiveLimits 呼叫時傳入的 op_id）
+    useEffect(() => {
+        setLiveLimitsCache({});
+        setLiveTouchedKey(null);
+    }, [machine, operator, material, spec, customer]);
+
     const resetForm = useCallback(() => {
         setDate(formatLocalDate());
         setMachine('');
@@ -67,6 +106,11 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         setGroupCount(1);
         setDetails([]);
         setShowInner(false);
+        setLiveMode(false);
+        setLiveLimitsCache({});
+        setLiveTouchedKey(null);
+        setOpenEvents([]);
+        setSelectedEvent(null);
     }, []);
 
     // Populate form when detailData loads or when modal opens
@@ -74,6 +118,8 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         let cancelled = false;
 
         if (show) {
+            setOpenEvents([]);
+            setSelectedEvent(null);
             if (editId && detailData) {
                 const d = detailData;
                 queueMicrotask(() => {
@@ -127,6 +173,88 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         });
     };
 
+    const handleDetailBlur = (pos: string, item: string) => {
+        if (!liveMode) return;
+        setLiveTouchedKey(`${pos}|${item}`);
+    };
+
+    const liveLimitsKey = liveTouchedKey ? liveTouchedKey.split('|') as [string, string] : null;
+    const [liveLimitsPos, liveLimitsItem] = liveLimitsKey ?? ['', ''];
+    const liveLimitsQuery = usePatrolLiveLimits(
+        {
+            m_id: machine, op_id: operator, cust_id: customer,
+            mat: material, spec, item: liveLimitsItem, pos: liveLimitsPos,
+            exclude_main_id: editId ?? undefined,
+        },
+        liveMode && !!liveTouchedKey && !(liveTouchedKey in liveLimitsCache),
+    );
+
+    useEffect(() => {
+        if (liveTouchedKey && liveLimitsQuery.data && !(liveTouchedKey in liveLimitsCache)) {
+            setLiveLimitsCache(prev => ({ ...prev, [liveTouchedKey]: liveLimitsQuery.data! }));
+        }
+    }, [liveTouchedKey, liveLimitsQuery.data, liveLimitsCache]);
+
+    const liveViolations = useMemo(() => {
+        if (!liveMode) return {};
+        const violations: Record<string, PatrolLiveViolation> = {};
+        for (const pos of ['前段', '中段', '後段']) {
+            for (const item of ['外徑', '內徑', '厚度']) {
+                const cached = liveLimitsCache[`${pos}|${item}`];
+                if (!cached?.found) continue;
+                for (let g = 1; g <= groupCount; g += 1) {
+                    const group = `第${g}組`;
+                    const { means, ranges } = buildLiveGroupSeries({
+                        recentValues: cached.recent_values ?? [],
+                        details, pos, item, groupCount: g,
+                    });
+                    if (means.length === 0) continue;
+                    const violation = evaluatePatrolLiveStability({
+                        means, ranges,
+                        xCl: cached.x_cl!, xUcl: cached.x_ucl!, xLcl: cached.x_lcl!,
+                        rCl: cached.r_cl!, rUcl: cached.r_ucl!, rLcl: cached.r_lcl!,
+                    });
+                    if (violation) {
+                        violations[`${pos}|${item}|${group}`] = violation;
+                    }
+                }
+            }
+        }
+        return violations;
+    }, [liveMode, liveLimitsCache, details, groupCount]);
+
+    const triggerOngoingAnalysisForTouchedStreams = async () => {
+        const touchedStreams = new Set(
+            Object.keys(liveViolations).map(key => key.split('|').slice(0, 2).join('|')),
+        );
+        const newEvents: SpcEventSummary[] = [];
+        let failureCount = 0;
+        for (const streamKey of touchedStreams) {
+            const [pos, item] = streamKey.split('|');
+            try {
+                const result = await analyzeOngoing.mutateAsync({
+                    source: 'patrol',
+                    filters: { m_id: machine, op_id: operator, cust_id: customer, mat: material, spec, item, pos },
+                    study_type: 'ongoing',
+                });
+                const activeLimit = result.monitoring_limit
+                    ?? result.limit_versions?.find(limit => limit.status === 'active');
+                for (const event of activeLimit?.events ?? []) {
+                    if (event.status === 'open') newEvents.push(event);
+                }
+            } catch (error) {
+                failureCount += 1;
+                console.error(`巡檢正式 SPC 判定失敗（${item}/${pos}）`, error);
+            }
+        }
+        if (newEvents.length > 0) {
+            setOpenEvents(newEvents);
+            toast(`本次觸發 ${newEvents.length} 項製程異常，可查看建議處置`, { icon: '⚠️' });
+        } else if (failureCount > 0 && failureCount === touchedStreams.size) {
+            toast.error('巡檢已存檔，但即時提示的正式判定執行失敗，請至 SPC 研究頁面確認製程狀態');
+        }
+    };
+
     const handleSubmit = async () => {
         // Client-side required field validation
         const missingFields: string[] = [];
@@ -166,6 +294,9 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
             } else {
                 await createMutation.mutateAsync(buildPatrolPayload(payloadValues));
             }
+            if (liveMode && Object.keys(liveViolations).length > 0) {
+                await triggerOngoingAnalysisForTouchedStreams();
+            }
             onSuccess();
             handleClose();
         } catch (error) {
@@ -185,6 +316,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     const isSaving = createMutation.isPending || updateMutation.isPending;
 
     return (
+        <>
         <Modal show={show} onHide={handleClose} dialogClassName="modal-patrol-wide" backdrop="static">
             <div className="modal-dialog" style={{ maxWidth: '1600px', width: '99%', overflowX: 'auto' }}>
                 <div className="modal-content" style={{ overflowX: 'auto' }}>
@@ -246,6 +378,15 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                                         </Alert>
                                     )}
 
+                                    <Form.Check
+                                        type="switch"
+                                        id="patrol-live-mode"
+                                        label="即時模式"
+                                        checked={liveMode}
+                                        onChange={e => setLiveMode(e.target.checked)}
+                                        className="mb-2"
+                                    />
+
                                     <PatrolMeasurementTable
                                         groupCount={groupCount}
                                         showInner={showInner}
@@ -253,6 +394,8 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                                         tolerances={tolerances}
                                         specStdValues={specStdValues}
                                         onDetailChange={handleDetailChange}
+                                        liveViolations={liveViolations}
+                                        onCellBlur={handleDetailBlur}
                                     />
 
                                     <div className="d-flex gap-2 mt-3">
@@ -280,6 +423,37 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                 </div>
             </div>
         </Modal>
+        {openEvents.length > 0 && (
+            <div className="position-fixed bottom-0 end-0 m-3 p-2 bg-white border rounded shadow" style={{ zIndex: 1060 }}>
+                <div className="small fw-bold mb-1">本次觸發的製程異常</div>
+                {openEvents.map(event => (
+                    <Button key={event.id} size="sm" variant="outline-danger" className="d-block mb-1" onClick={() => handleSelectEvent(event)}>
+                        事件 #{event.id} · {event.chart_kind === 'location' ? '位置圖' : '變異圖'} · 查看建議
+                    </Button>
+                ))}
+            </div>
+        )}
+        {selectedEvent && (
+            <SpcOcapOffcanvas
+                key={selectedEvent.id}
+                show
+                eventId={selectedEvent.id}
+                ocapId={selectedEvent.ocap?.id}
+                initialValue={selectedEvent.ocap}
+                onHide={handleOcapHide}
+                onSave={input => {
+                    saveOcap.mutate(input, {
+                        onSuccess: () => setSelectedEvent(null),
+                    });
+                }}
+                pending={saveOcap.isPending}
+                saveError={saveOcap.isError}
+                assignees={assignees.data ?? []}
+                assigneesLoading={assignees.isLoading}
+                assigneesError={assignees.isError}
+            />
+        )}
+        </>
     );
 };
 

@@ -8,7 +8,9 @@ from backend.models import (
     Machine, Operator, Inspector, PatrolMain, PatrolDetail,
     ExtrusionToleranceMain, ExtrusionToleranceDetail,
     VendorToleranceMain, VendorToleranceDetail, Vendor,
+    SpcStudy, SpcStudyVersion, SpcLimitVersion,
 )
+from backend.services.spc_adapters.common import canonical_process_stream
 
 
 def test_get_history_is_ng_true(app, db_session):
@@ -609,3 +611,199 @@ def test_get_spc_null_value_and_excluded_row_does_not_double_count(app, db_sessi
         result = PatrolService.get_spc({'item': '外徑', 'pos': '前段', 'mat': '6061', 'spec': '10*2'})
         assert result['excluded_count'] == 0
         assert result['avgs'] == []
+
+
+def test_get_live_limits_not_found_without_active_limit(app, db_session):
+    """該製程流尚未有生效核准界限時，回傳 found=False，不擅自估算界限"""
+    with app.app_context():
+        result = PatrolService.get_live_limits({
+            'mat': 'SUS304', 'spec': '10*2', 'item': '外徑', 'pos': '前段',
+        })
+        assert result == {'found': False}
+
+
+def _approved_patrol_limit(db_session, *, mat, spec, item, pos, scale='original', op_id=None, cust_id=None):
+    """建立一組生效中的巡檢管制界限（比照 approve_study 產出的資料形狀）。
+
+    scale 於建立當下即決定，不可事後修改：SpcLimitVersion.limits 屬 SPC
+    不可變證據，ORM 層的 before_update 事件會擋下原地修改（見
+    backend/models.py 的 _block_spc_immutable_update / _SPC_MUTABLE_FIELDS）。
+    """
+    filters = {
+        'm_id': None, 'op_id': op_id, 'cust_id': cust_id,
+        'mat': mat, 'spec': spec, 'item': item, 'pos': pos,
+        's_date': '', 'e_date': '',
+    }
+    stream = canonical_process_stream('patrol', filters)
+    study = SpcStudy(
+        source='patrol', study_type='ongoing', analysis_family='variable',
+        process_stream_key=stream.key, characteristic=item, filters={},
+        status='active',
+    )
+    db_session.add(study)
+    db_session.flush()
+    version = SpcStudyVersion(
+        study_id=study.id, version_no=1, method_version='2026.2',
+        analysis_options={}, specification_snapshot={}, chart_result={},
+        stability_result={}, distribution_result={}, capability_result={},
+        applicability_result={}, time_model_result={}, status='active',
+    )
+    db_session.add(version)
+    db_session.flush()
+    limit = SpcLimitVersion(
+        study_version_id=version.id, analysis_family='variable',
+        process_stream_key=stream.key, characteristic=item, revision=1,
+        chart_type='xbar_r',
+        limits={
+            'location': {'cl': 85.0, 'ucl': 85.6, 'lcl': 84.4},
+            'variation': {'cl': 0.3, 'ucl': 0.7, 'lcl': 0.0},
+            'subgroup_sizes': [2], 'scale': scale,
+        },
+        status='active',
+    )
+    db_session.add(limit)
+    db_session.commit()
+    return limit
+
+
+def test_get_live_limits_found_returns_limits_and_recent_values(app, db_session):
+    """有生效核准界限時，回傳巢狀界限攤平後的數值與最近歷史 min/max 配對"""
+    with app.app_context():
+        _approved_patrol_limit(db_session, mat='SUS304', spec='10*2', item='外徑', pos='前段')
+
+        patrol = PatrolMain(date=date(2026, 1, 1), material='SUS304', spec='10*2')
+        db_session.add(patrol)
+        db_session.flush()
+        db_session.add(PatrolDetail(
+            main_id=patrol.id, group=1, item='外徑', position='前段',
+            min_val=84.9, max_val=85.3,
+        ))
+        db_session.commit()
+
+        result = PatrolService.get_live_limits({
+            'mat': 'SUS304', 'spec': '10*2', 'item': '外徑', 'pos': '前段',
+        })
+
+        assert result['found'] is True
+        assert result['x_cl'] == 85.0
+        assert result['x_ucl'] == 85.6
+        assert result['x_lcl'] == 84.4
+        assert result['r_cl'] == 0.3
+        assert result['r_ucl'] == 0.7
+        assert result['recent_values'] == [{'min': 84.9, 'max': 85.3}]
+
+
+def test_get_live_limits_transformed_scale_not_supported(app, db_session):
+    """轉換尺度界限不支援即時比對，回傳 found=False 而非套用錯誤尺度"""
+    with app.app_context():
+        _approved_patrol_limit(
+            db_session, mat='SUS304', spec='10*2', item='厚度', pos='前段',
+            scale='transformed',
+        )
+
+        result = PatrolService.get_live_limits({
+            'mat': 'SUS304', 'spec': '10*2', 'item': '厚度', 'pos': '前段',
+        })
+
+        assert result == {'found': False, 'reason': 'transformed_scale_unsupported'}
+
+
+def test_get_live_limits_excludes_main_id_when_editing(app, db_session):
+    """編輯既有記錄時排除自己，避免歷史序列納入編輯前的舊值"""
+    with app.app_context():
+        _approved_patrol_limit(db_session, mat='SUS304', spec='10*2', item='外徑', pos='前段')
+
+        editing = PatrolMain(date=date(2026, 1, 1), material='SUS304', spec='10*2')
+        db_session.add(editing)
+        db_session.flush()
+        db_session.add(PatrolDetail(
+            main_id=editing.id, group=1, item='外徑', position='前段',
+            min_val=99.0, max_val=99.0,
+        ))
+        db_session.commit()
+
+        result = PatrolService.get_live_limits({
+            'mat': 'SUS304', 'spec': '10*2', 'item': '外徑', 'pos': '前段',
+            'exclude_main_id': editing.id,
+        })
+
+        assert result['recent_values'] == []
+
+
+def test_get_live_limits_recent_values_truncates_to_last_14(app, db_session):
+    """歷史子組超過 14 筆時，recent_values 只保留最新的 14 筆（非最舊的 14 筆）
+    以 min_val/max_val 與日期序號綁定（第 i 天 → min=i, max=i+0.1），
+    確保能明確驗證「保留哪 14 筆」而非只驗證數量。
+    """
+    with app.app_context():
+        _approved_patrol_limit(db_session, mat='SUS304', spec='10*2', item='外徑', pos='前段')
+
+        for i in range(1, 17):  # 16 筆，日期 2026-01-01 ~ 2026-01-16
+            patrol = PatrolMain(date=date(2026, 1, i), material='SUS304', spec='10*2')
+            db_session.add(patrol)
+            db_session.flush()
+            db_session.add(PatrolDetail(
+                main_id=patrol.id, group=1, item='外徑', position='前段',
+                min_val=float(i), max_val=float(i) + 0.1,
+            ))
+        db_session.commit()
+
+        result = PatrolService.get_live_limits({
+            'mat': 'SUS304', 'spec': '10*2', 'item': '外徑', 'pos': '前段',
+        })
+
+        recent_values = result['recent_values']
+        assert len(recent_values) == 14
+        # 最舊 2 筆（第 1、2 天）應被捨棄；保留的第一筆為第 3 天（3rd-oldest）
+        assert recent_values[0] == {'min': pytest.approx(3.0), 'max': pytest.approx(3.1)}
+        # 保留的最後一筆為最新（第 16 天）
+        assert recent_values[-1] == {'min': pytest.approx(16.0), 'max': pytest.approx(16.1)}
+
+
+def test_get_live_limits_recent_values_scoped_to_operator(app, db_session):
+    """核准界限限定特定主機手時，recent_values 不應納入其他主機手的歷史子組
+
+    製程流識別（canonical_process_stream）已把 op_id/cust_id 納入界限查找，
+    但 recent_values 的歷史序列查詢先前漏了這兩個篩選條件，導致同機台/
+    材質/規格/項目/位置但不同主機手的資料也被算進趨勢判讀，產生失真的
+    即時提示。
+    """
+    with app.app_context():
+        op_a = Operator(name='主機手甲')
+        op_b = Operator(name='主機手乙')
+        db_session.add_all([op_a, op_b])
+        db_session.flush()
+
+        # 核准界限限定 op_a
+        _approved_patrol_limit(
+            db_session, mat='SUS304', spec='10*2', item='外徑', pos='前段',
+            op_id=op_a.id,
+        )
+
+        patrol_a = PatrolMain(
+            date=date(2026, 1, 1), material='SUS304', spec='10*2',
+            operator_id=op_a.id,
+        )
+        patrol_b = PatrolMain(
+            date=date(2026, 1, 2), material='SUS304', spec='10*2',
+            operator_id=op_b.id,
+        )
+        db_session.add_all([patrol_a, patrol_b])
+        db_session.flush()
+        db_session.add(PatrolDetail(
+            main_id=patrol_a.id, group=1, item='外徑', position='前段',
+            min_val=84.9, max_val=85.3,
+        ))
+        db_session.add(PatrolDetail(
+            main_id=patrol_b.id, group=1, item='外徑', position='前段',
+            min_val=50.0, max_val=51.0,
+        ))
+        db_session.commit()
+
+        result = PatrolService.get_live_limits({
+            'mat': 'SUS304', 'spec': '10*2', 'item': '外徑', 'pos': '前段',
+            'op_id': op_a.id,
+        })
+
+        assert result['found'] is True
+        assert result['recent_values'] == [{'min': 84.9, 'max': 85.3}]

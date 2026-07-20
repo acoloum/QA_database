@@ -6,6 +6,7 @@ import {
     isPatrolCellNG,
     isPatrolConcentricityNG,
     type PatrolDetailInput,
+    type PatrolLiveViolation,
     type PatrolTolerance,
 } from './patrolFormUtils';
 
@@ -16,6 +17,8 @@ interface PatrolMeasurementTableProps {
     tolerances: PatrolTolerance[];
     specStdValues: Record<string, number>;
     onDetailChange: (group: string, pos: string, item: string, type: 'min' | 'max', value: string) => void;
+    liveViolations?: Record<string, PatrolLiveViolation>;
+    onCellBlur?: (pos: string, item: string) => void;
 }
 
 const POSITIONS = ['前段', '中段', '後段'];
@@ -28,6 +31,8 @@ const PatrolMeasurementTable = ({
     tolerances,
     specStdValues,
     onDetailChange,
+    liveViolations = {},
+    onCellBlur,
 }: PatrolMeasurementTableProps) => {
     const isCellNG = (pos: string, item: string, type: 'min' | 'max', group: string) => isPatrolCellNG({
         details,
@@ -46,6 +51,9 @@ const PatrolMeasurementTable = ({
         group,
         pos,
     });
+
+    const getLiveViolation = (pos: string, item: string, group: string) =>
+        liveViolations[`${pos}|${item}|${group}`];
 
     return (
         <div className="table-responsive" style={{ overflow: 'auto', maxHeight: '50vh', display: 'block' }}>
@@ -85,6 +93,7 @@ const PatrolMeasurementTable = ({
                                         if (item === '內徑' && !showInner) return null;
                                         const minNG = isCellNG(pos, item, 'min', group) || (item === '厚度' && isConcentricityNG(pos, group));
                                         const maxNG = isCellNG(pos, item, 'max', group) || (item === '厚度' && isConcentricityNG(pos, group));
+                                        const liveViolation = getLiveViolation(pos, item, group);
                                         return (
                                             <Fragment key={`${pos}-${item}`}>
                                                 <td style={{ padding: '2px' }}>
@@ -94,7 +103,8 @@ const PatrolMeasurementTable = ({
                                                         step="0.01"
                                                         value={getPatrolDetailValue(details, group, pos, item, 'min')}
                                                         onChange={e => onDetailChange(group, pos, item, 'min', e.target.value)}
-                                                        className={`patrol-input${minNG ? ' is-invalid-breathing' : ''}`}
+                                                        onBlur={() => onCellBlur?.(pos, item)}
+                                                        className={`patrol-input${minNG ? ' is-invalid-breathing' : ''}${liveViolation ? ' patrol-live-warning' : ''}`}
                                                     />
                                                 </td>
                                                 <td style={{ padding: '2px' }}>
@@ -104,8 +114,14 @@ const PatrolMeasurementTable = ({
                                                         step="0.01"
                                                         value={getPatrolDetailValue(details, group, pos, item, 'max')}
                                                         onChange={e => onDetailChange(group, pos, item, 'max', e.target.value)}
-                                                        className={`patrol-input${maxNG ? ' is-invalid-breathing' : ''}`}
+                                                        onBlur={() => onCellBlur?.(pos, item)}
+                                                        className={`patrol-input${maxNG ? ' is-invalid-breathing' : ''}${liveViolation ? ' patrol-live-warning' : ''}`}
                                                     />
+                                                    {liveViolation && (
+                                                        <div className="small text-warning-emphasis" style={{ whiteSpace: 'normal', maxWidth: '160px' }}>
+                                                            ⚠️ {liveViolation.hint}
+                                                        </div>
+                                                    )}
                                                 </td>
                                             </Fragment>
                                         );

@@ -1,5 +1,6 @@
 import type { PatrolCreateInput, PatrolUpdateInput } from '../../types';
 import type { ExtrusionToleranceCheckResult } from '../../hooks/useExtrusionTolerance';
+import { analyzeWECO, analyzeRChartWECO } from '../../utils/spcAnalysis';
 
 export interface PatrolDetailInput {
   group: string;
@@ -171,4 +172,99 @@ export const buildPatrolUpdatePayload = (params: BuildPatrolPayloadParams & { ed
     ...payload,
     id: params.editId,
   };
+};
+
+const GROUP_LABELS = (count: number) => Array.from({ length: count }, (_, i) => `第${i + 1}組`);
+
+// 修正浮點數減法誤差（如 85.2 - 84.8 會得到 0.4000000000000057），量測值僅需保留至微米等級精度
+const roundMeasurement = (value: number): number => Math.round(value * 1e6) / 1e6;
+
+interface BuildLiveGroupSeriesParams {
+  recentValues: { min: number; max: number }[];
+  details: PatrolDetailInput[];
+  pos: string;
+  item: string;
+  groupCount: number;
+}
+
+export const buildLiveGroupSeries = ({
+  recentValues, details, pos, item, groupCount,
+}: BuildLiveGroupSeriesParams): { means: number[]; ranges: number[] } => {
+  const history = recentValues.map(({ min, max }) => ({ min, max }));
+
+  const currentGroups = GROUP_LABELS(groupCount)
+    .map(group => {
+      const minText = getPatrolDetailValue(details, group, pos, item, 'min');
+      const maxText = getPatrolDetailValue(details, group, pos, item, 'max');
+      if (minText === '' || maxText === '') return null;
+      const min = parsePatrolMeasurement(minText);
+      const max = parsePatrolMeasurement(maxText);
+      if (min === null || max === null) return null;
+      return { min, max };
+    })
+    .filter((pair): pair is { min: number; max: number } => pair !== null);
+
+  const combined = [...history, ...currentGroups];
+  return {
+    means: combined.map(({ min, max }) => roundMeasurement((min + max) / 2)),
+    ranges: combined.map(({ min, max }) => roundMeasurement(Math.abs(max - min))),
+  };
+};
+
+export interface PatrolLiveViolation {
+  chartKind: 'location' | 'variation';
+  label: string;
+  hint: string;
+}
+
+// 此處的鍵值對應 spcAnalysis.ts 的 analyzeWECO reasons 硬編碼文字；
+// 若該檔案的規則文字異動，這裡也需要同步更新，否則會靜默 fallback 到預設提示
+const LOCATION_HINTS: Record<string, string> = {
+  'Rule 1: 超出控制限': '單點急劇偏移，先重量一次確認非量測失誤；屬實則檢查機頭壓力/料溫瞬間波動',
+  'Rule 2: 連續9點同側': '製程中心已偏移，非單純波動，建議依 5M（人機料法環）排查後調整模具定位',
+  'Rule 3: 連續6點趨勢': '持續漂移，典型成因是模具磨耗或螺桿轉速緩慢飄移，建議檢查/微調模具間隙與牽引速度',
+};
+
+const VARIATION_HINT = '量測值波動變大，較可能是設備穩定度或原料問題，非模具位置問題';
+
+interface EvaluatePatrolLiveStabilityParams {
+  means: number[];
+  ranges: number[];
+  xCl: number;
+  xUcl: number;
+  xLcl: number;
+  rCl: number;
+  rUcl: number;
+  rLcl: number;
+}
+
+export const evaluatePatrolLiveStability = ({
+  means, ranges, xCl, xUcl, xLcl, rCl, rUcl, rLcl: _rLcl,
+}: EvaluatePatrolLiveStabilityParams): PatrolLiveViolation | null => {
+  if (means.length === 0) return null;
+  const lastIndex = means.length - 1;
+  const labels = means.map((_, i) => String(i));
+
+  const location = analyzeWECO(means, xCl, xUcl, xLcl, labels);
+  const lastLocationViolation = location.violations.find(v => v.label === labels[lastIndex]);
+  if (lastLocationViolation) {
+    const reason = lastLocationViolation.reasons[0];
+    return {
+      chartKind: 'location',
+      label: reason,
+      hint: LOCATION_HINTS[reason] ?? LOCATION_HINTS['Rule 1: 超出控制限'],
+    };
+  }
+
+  const variation = analyzeRChartWECO(ranges, rCl, rUcl, labels);
+  const lastVariationViolation = variation.violations.find(v => v.label === labels[lastIndex]);
+  if (lastVariationViolation) {
+    return {
+      chartKind: 'variation',
+      label: lastVariationViolation.reasons[0],
+      hint: VARIATION_HINT,
+    };
+  }
+
+  return null;
 };

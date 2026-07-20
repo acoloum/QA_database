@@ -22,6 +22,17 @@ def patrol_spc():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@patrol_bp.route('/api/patrol/live-limits')
+@auth_required
+@require_perm('spc.view')
+def patrol_live_limits():
+    """巡檢即時模式：查詢生效中的 SPC 管制界限與最近歷史值（唯讀，供前端即時提示）"""
+    try:
+        data = PatrolService.get_live_limits(request.args)
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @patrol_bp.route('/api/patrol/detail/<int:id>')
 @auth_required
 def patrol_detail(id):
