@@ -53,6 +53,17 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     const [selectedEvent, setSelectedEvent] = useState<SpcEventSummary | null>(null);
     const assignees = useSpcAssignees(Boolean(selectedEvent));
 
+    const handleSelectEvent = (event: SpcEventSummary) => {
+        saveOcap.reset();
+        setSelectedEvent(event);
+    };
+
+    const handleOcapHide = () => {
+        if (saveOcap.isPending) return;
+        saveOcap.reset();
+        setSelectedEvent(null);
+    };
+
     // Form State
     const [date, setDate] = useState(formatLocalDate());
     const [machine, setMachine] = useState('');
@@ -88,6 +99,8 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         setLiveMode(false);
         setLiveLimitsCache({});
         setLiveTouchedKey(null);
+        setOpenEvents([]);
+        setSelectedEvent(null);
     }, []);
 
     // Populate form when detailData loads or when modal opens
@@ -95,6 +108,8 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         let cancelled = false;
 
         if (show) {
+            setOpenEvents([]);
+            setSelectedEvent(null);
             if (editId && detailData) {
                 const d = detailData;
                 queueMicrotask(() => {
@@ -203,6 +218,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
             Object.keys(liveViolations).map(key => key.split('|').slice(0, 2).join('|')),
         );
         const newEvents: SpcEventSummary[] = [];
+        let failureCount = 0;
         for (const streamKey of touchedStreams) {
             const [pos, item] = streamKey.split('|');
             try {
@@ -217,12 +233,15 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                     if (event.status === 'open') newEvents.push(event);
                 }
             } catch (error) {
+                failureCount += 1;
                 console.error(`巡檢正式 SPC 判定失敗（${item}/${pos}）`, error);
             }
         }
         if (newEvents.length > 0) {
             setOpenEvents(newEvents);
             toast(`本次觸發 ${newEvents.length} 項製程異常，可查看建議處置`, { icon: '⚠️' });
+        } else if (failureCount > 0 && failureCount === touchedStreams.size) {
+            toast.error('巡檢已存檔，但即時提示的正式判定執行失敗，請至 SPC 研究頁面確認製程狀態');
         }
     };
 
@@ -287,6 +306,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     const isSaving = createMutation.isPending || updateMutation.isPending;
 
     return (
+        <>
         <Modal show={show} onHide={handleClose} dialogClassName="modal-patrol-wide" backdrop="static">
             <div className="modal-dialog" style={{ maxWidth: '1600px', width: '99%', overflowX: 'auto' }}>
                 <div className="modal-content" style={{ overflowX: 'auto' }}>
@@ -392,36 +412,38 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                     </Modal.Footer>
                 </div>
             </div>
-            {openEvents.length > 0 && (
-                <div className="position-fixed bottom-0 end-0 m-3 p-2 bg-white border rounded shadow" style={{ zIndex: 1060 }}>
-                    <div className="small fw-bold mb-1">本次觸發的製程異常</div>
-                    {openEvents.map(event => (
-                        <Button key={event.id} size="sm" variant="outline-danger" className="d-block mb-1" onClick={() => setSelectedEvent(event)}>
-                            事件 #{event.id} · {event.chart_kind === 'location' ? '位置圖' : '變異圖'} · 查看建議
-                        </Button>
-                    ))}
-                </div>
-            )}
-            {selectedEvent && (
-                <SpcOcapOffcanvas
-                    show
-                    eventId={selectedEvent.id}
-                    ocapId={selectedEvent.ocap?.id}
-                    initialValue={selectedEvent.ocap}
-                    onHide={() => setSelectedEvent(null)}
-                    onSave={input => {
-                        saveOcap.mutate(input, {
-                            onSuccess: () => setSelectedEvent(null),
-                        });
-                    }}
-                    pending={saveOcap.isPending}
-                    saveError={saveOcap.isError}
-                    assignees={assignees.data ?? []}
-                    assigneesLoading={assignees.isLoading}
-                    assigneesError={assignees.isError}
-                />
-            )}
         </Modal>
+        {openEvents.length > 0 && (
+            <div className="position-fixed bottom-0 end-0 m-3 p-2 bg-white border rounded shadow" style={{ zIndex: 1060 }}>
+                <div className="small fw-bold mb-1">本次觸發的製程異常</div>
+                {openEvents.map(event => (
+                    <Button key={event.id} size="sm" variant="outline-danger" className="d-block mb-1" onClick={() => handleSelectEvent(event)}>
+                        事件 #{event.id} · {event.chart_kind === 'location' ? '位置圖' : '變異圖'} · 查看建議
+                    </Button>
+                ))}
+            </div>
+        )}
+        {selectedEvent && (
+            <SpcOcapOffcanvas
+                key={selectedEvent.id}
+                show
+                eventId={selectedEvent.id}
+                ocapId={selectedEvent.ocap?.id}
+                initialValue={selectedEvent.ocap}
+                onHide={handleOcapHide}
+                onSave={input => {
+                    saveOcap.mutate(input, {
+                        onSuccess: () => setSelectedEvent(null),
+                    });
+                }}
+                pending={saveOcap.isPending}
+                saveError={saveOcap.isError}
+                assignees={assignees.data ?? []}
+                assigneesLoading={assignees.isLoading}
+                assigneesError={assignees.isError}
+            />
+        )}
+        </>
     );
 };
 
