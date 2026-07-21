@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import PaginationBar from '../../components/common/PaginationBar';
 import { usePatrolList, usePatrolOptions, useDeletePatrol, useExportPatrolRawData } from '../../hooks/usePatrol';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 
 const PatrolPage = () => {
     const navigate = useNavigate();
@@ -21,6 +22,11 @@ const PatrolPage = () => {
     const [customer, setCustomer] = useState('');
     const [material, setMaterial] = useState('');
     const [spec, setSpec] = useState('');
+
+    // 文字篩選欄位做防抖：輸入框即時顯示，但送進查詢的值延遲更新，
+    // 避免每個按鍵都觸發清單與 SPC 圖表的連鎖請求。
+    const debouncedMaterial = useDebouncedValue(material);
+    const debouncedSpec = useDebouncedValue(spec);
 
     // Hooks
     const { data: optionsData } = usePatrolOptions();
@@ -36,8 +42,8 @@ const PatrolPage = () => {
         m_id: machine,
         op_id: operator,
         cust_id: customer,
-        mat: material,
-        spec: spec
+        mat: debouncedMaterial,
+        spec: debouncedSpec
     });
 
     const deleteMutation = useDeletePatrol();
@@ -166,8 +172,8 @@ const PatrolPage = () => {
                 machine={machine}
                 operator={operator}
                 customer={customer}
-                material={material}
-                spec={spec}
+                material={debouncedMaterial}
+                spec={debouncedSpec}
                 startDate={startDate}
                 endDate={endDate}
                 onEditPoint={handleEdit}

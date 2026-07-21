@@ -6,6 +6,7 @@ import ImportModal from '../../components/shipping/ImportModal';
 import ShippingCharts from '../../components/shipping/ShippingCharts';
 import { useShippingList, useDeleteShipping, useExportShippingData } from '../../hooks/useShipping';
 import { useShippingToleranceMap } from '../../hooks/useShippingToleranceMap';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { evaluateShippingViolation } from '../../components/shipping/shippingViolationUtils';
 import PaginationBar from '../../components/common/PaginationBar';
 
@@ -26,14 +27,20 @@ const ShippingPage = () => {
     const [material, setMaterial] = useState('');
     const [spec, setSpec] = useState('');
 
+    // 文字篩選欄位做防抖：輸入框即時顯示，但送進查詢的值延遲更新，
+    // 避免每個按鍵都觸發清單、公差比對與 SPC 圖表的連鎖請求。
+    const debouncedVendor = useDebouncedValue(vendor);
+    const debouncedMaterial = useDebouncedValue(material);
+    const debouncedSpec = useDebouncedValue(spec);
+
     // Hooks
     const searchParams = {
         page,
         start_date: startDate,
         end_date: endDate,
-        vendor,
-        material,
-        spec
+        vendor: debouncedVendor,
+        material: debouncedMaterial,
+        spec: debouncedSpec
     };
 
     const { data: searchResult, isLoading } = useShippingList(searchParams);
@@ -171,12 +178,12 @@ const ShippingPage = () => {
             </div>
 
             {/* Charts Section */}
-            {(vendor || material || spec) && (
+            {(debouncedVendor || debouncedMaterial || debouncedSpec) && (
                 <div className="mb-4">
                     <ShippingCharts
-                        vendor={vendor}
-                        material={material}
-                        spec={spec}
+                        vendor={debouncedVendor}
+                        material={debouncedMaterial}
+                        spec={debouncedSpec}
                         startDate={startDate}
                         endDate={endDate}
                         onPointClick={handleEdit}
