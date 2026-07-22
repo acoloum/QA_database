@@ -52,6 +52,10 @@ vi.mock('../../components/spc/SpcBaselineApprovalModal', () => ({
   default: (props: { filters: Record<string, unknown>; onConfirm: (reason: string) => void }) => <div>核准快照廠商：{String(props.filters.vendor)}<button onClick={() => props.onConfirm('已完成研究複核')}>確認流程</button></div>,
 }));
 vi.mock('../../components/spc/SpcStudyHistoryOffcanvas', () => ({ default: () => null }));
+vi.mock('../../hooks/useShipping', () => ({ useVendors: () => ({ data: [] }) }));
+vi.mock('../../hooks/usePatrol', () => ({
+  usePatrolOptions: () => ({ data: { machines: [], operators: [], inspectors: [], customers: [] } }),
+}));
 
 import AdvancedSpcPage from './AdvancedSpcPage';
 
