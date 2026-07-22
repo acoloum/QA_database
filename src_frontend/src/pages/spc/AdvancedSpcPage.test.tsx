@@ -182,7 +182,7 @@ describe('AdvancedSpcPage', () => {
     expect(screen.getByLabelText('來源客戶 ID')).toHaveValue('3');
     expect(screen.getByLabelText('來源開始日期')).toHaveValue('2026-07-01');
     expect(screen.getByLabelText('來源結束日期')).toHaveValue('2026-07-31');
-    fireEvent.change(screen.getByLabelText('位置'), { target: { value: 'B' } });
+    fireEvent.change(screen.getByLabelText('位置'), { target: { value: '中段' } });
 
     const canonical = new URLSearchParams(window.location.search);
     expect(canonical.get('op_id')).toBe('9');
@@ -197,7 +197,7 @@ describe('AdvancedSpcPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '分析機器績效' }));
     await waitFor(() => expect(analyzeMock).toHaveBeenCalledWith({
       source: 'patrol', analysis_family: 'machine',
-      filters: { m_id: 7, mat: '6061', spec: '10x1', item: '外徑', pos: 'B' },
+      filters: { m_id: 7, mat: '6061', spec: '10x1', item: '外徑', pos: '中段' },
       options: { conditions_confirmed: true, condition_reason: '已確認機台設定與治具狀態' },
     }));
     window.history.replaceState({}, '', '/');
