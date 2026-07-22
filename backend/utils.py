@@ -294,7 +294,12 @@ def validate_upload_file(
 def parse_spec_nominals(spec: Optional[str]) -> Dict[str, float]:
     """
     從規格字串解析各尺寸名義值（shipping/patrol 共用）
-    例：'31.9*2.2*589' → {'外徑': 31.9, '厚度': 2.2, '內徑': 27.5, '長度': 589.0}
+
+    支援兩種格式：
+      三段式 '外徑*厚度或內徑*長度'（如 '31.9*2.2*589'）：第二值以外徑一半為界推斷是厚度或內徑，
+             再幾何回推另一項。
+      四段式 '外徑*內徑*厚度*長度'（如 '33*26.5*2.0*244'）：內徑與厚度皆為明列值，直接讀取，
+             不再幾何回推（避免把明寫的厚度誤算成 (外徑-內徑)/2）。
     """
     result: Dict[str, float] = {}
     if not spec:
@@ -305,7 +310,13 @@ def parse_spec_nominals(spec: Optional[str]) -> Dict[str, float]:
     parts = s.split('*')
     try:
         nums = [float(p.strip()) for p in parts if p.strip()]
-        if len(nums) >= 2:
+        if len(nums) >= 4:
+            # 四段式：外徑*內徑*厚度*長度，內徑與厚度直接取用明列值
+            result['外徑'] = nums[0]
+            result['內徑'] = nums[1]
+            result['厚度'] = nums[2]
+            result['長度'] = nums[3]
+        elif len(nums) >= 2:
             result['外徑'] = nums[0]
             val2 = nums[1]
             if val2 < (nums[0] / 2):

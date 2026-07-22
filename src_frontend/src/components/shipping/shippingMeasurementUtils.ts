@@ -1,6 +1,6 @@
 import type { ShippingMeasurementItem, ToleranceResult } from '../../types';
 import { parseSpec } from '../../utils/parseSpec';
-import { isMeasurementOutOfTolerance } from './shippingMeasurementNumber';
+import { ZERO_AS_UNMEASURED_ITEMS, isMeasurementOutOfTolerance } from './shippingMeasurementNumber';
 
 export interface ShippingItemConfig {
   label: string;
@@ -79,14 +79,15 @@ export const calculateShippingViolations = ({
       const measItem = groups[gKey]?.[item.key];
       if (!measItem) return;
 
+      const zeroUnmeasured = ZERO_AS_UNMEASURED_ITEMS.has(toleranceItemKey) || ZERO_AS_UNMEASURED_ITEMS.has(item.key);
       if (item.type === 'minmax') {
         const minKey = `${gKey}:${item.key}:value_min`;
         const maxKey = `${gKey}:${item.key}:value_max`;
-        if (isMeasurementOutOfTolerance(measItem.value_min, { lsl, usl })) violations[minKey] = true;
-        if (isMeasurementOutOfTolerance(measItem.value_max, { lsl, usl })) violations[maxKey] = true;
+        if (isMeasurementOutOfTolerance(measItem.value_min, { lsl, usl }, zeroUnmeasured)) violations[minKey] = true;
+        if (isMeasurementOutOfTolerance(measItem.value_max, { lsl, usl }, zeroUnmeasured)) violations[maxKey] = true;
       } else {
         const key = `${gKey}:${item.key}:value_single`;
-        if (isMeasurementOutOfTolerance(measItem.value_single, { lsl, usl })) violations[key] = true;
+        if (isMeasurementOutOfTolerance(measItem.value_single, { lsl, usl }, zeroUnmeasured)) violations[key] = true;
       }
     });
   });

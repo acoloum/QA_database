@@ -199,6 +199,10 @@ class ShippingData(db.Model):
 
         # 限定要判定的量測項目（與舊版一致；不含韋伯氏硬度）
         items_to_check = {"外徑", "內徑", "真圓度", "厚度", "同心度", "長度", "硬度", "真直度"}
+        # 以下項目量測值為 0 代表「未量測」（空白被存成 0），非真實量測，須跳過：
+        #   尺寸(外徑/內徑/厚度/長度) 幾何上不可能為 0；硬度實測最小為 1.0，0 為未量測哨兵值。
+        # 真圓度/同心度/真直度的 0 是理想值(真實好值)，不可跳過，故不列入。
+        zero_means_unmeasured = {"外徑", "內徑", "厚度", "長度", "硬度", "韋伯氏硬度"}
         gc = int(self.group_count or 5)
 
         def safe_float(v):
@@ -216,7 +220,12 @@ class ShippingData(db.Model):
                 continue
             for raw in (m.value_min, m.value_max, m.value_single):
                 v = safe_float(raw)
-                if v is not None and (v < tol['lsl'] or v > tol['usl']):
+                if v is None:
+                    continue
+                # 值為 0 視為未量測，跳過（避免空白 0 造成假性超差）
+                if v == 0 and m.item in zero_means_unmeasured:
+                    continue
+                if v < tol['lsl'] or v > tol['usl']:
                     return True
 
         return False

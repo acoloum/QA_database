@@ -1,6 +1,6 @@
 import type { ShippingInspection } from '../../types';
 import type { ShippingToleranceMap } from '../../hooks/useShippingToleranceMap';
-import { isMeasurementOutOfTolerance } from './shippingMeasurementNumber';
+import { ZERO_AS_UNMEASURED_ITEMS, isMeasurementOutOfTolerance } from './shippingMeasurementNumber';
 
 const MINMAX_ITEMS = new Set(['外徑', '內徑', '厚度']);
 const ALL_ITEMS = new Set(['外徑', '內徑', '真圓度', '厚度', '同心度', '長度', '硬度', '真直度', '韋伯氏硬度']);
@@ -33,15 +33,16 @@ export const evaluateShippingViolation = (
                 const tol = std[itemName];
                 if (!tol) continue;
 
+                const zeroUnmeasured = ZERO_AS_UNMEASURED_ITEMS.has(itemName);
                 if (MINMAX_ITEMS.has(itemName)) {
-                    if (isMeasurementOutOfTolerance(measItem.value_min, tol)) {
+                    if (isMeasurementOutOfTolerance(measItem.value_min, tol, zeroUnmeasured)) {
                         return { hasViolation: true, found: true };
                     }
-                    if (isMeasurementOutOfTolerance(measItem.value_max, tol)) {
+                    if (isMeasurementOutOfTolerance(measItem.value_max, tol, zeroUnmeasured)) {
                         return { hasViolation: true, found: true };
                     }
                 } else {
-                    if (isMeasurementOutOfTolerance(measItem.value_single, tol)) {
+                    if (isMeasurementOutOfTolerance(measItem.value_single, tol, zeroUnmeasured)) {
                         return { hasViolation: true, found: true };
                     }
                 }
