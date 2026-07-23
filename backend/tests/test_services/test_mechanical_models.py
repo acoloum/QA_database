@@ -123,6 +123,21 @@ def test_trace_number_check_constraints(
     db_session.rollback()
 
 
+def test_trace_number_rejects_padded_number(db_session):
+    test = MechanicalTest(product_size="36x25.2", material="6061-T651")
+    test.trace_numbers.append(
+        MechanicalTraceNumber(
+            trace_type="擠製編號",
+            seq=1,
+            number=" E001 ",
+        )
+    )
+    db_session.add(test)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
 def test_mechanical_child_foreign_keys_match_cascade_migration():
     trace_number_fk = next(
         iter(

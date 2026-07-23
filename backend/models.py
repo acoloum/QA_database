@@ -1322,7 +1322,8 @@ class MechanicalTraceNumber(db.Model):
             name="ck_mech_trace_seq_positive",
         ),
         db.CheckConstraint(
-            "length(trim(\"編號\")) BETWEEN 1 AND 100",
+            "\"編號\" = trim(\"編號\") "
+            "AND length(trim(\"編號\")) BETWEEN 1 AND 100",
             name="ck_mech_trace_number",
         ),
         db.Index("ix_mech_trace_test_id", "機械性質檢驗_ID"),

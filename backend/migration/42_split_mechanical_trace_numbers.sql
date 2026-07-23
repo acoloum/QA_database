@@ -38,7 +38,10 @@ BEGIN
                 CHECK ("類型" IN ('擠製編號', 'T4爐號')),
             CONSTRAINT ck_mech_trace_seq_positive CHECK ("序號" >= 1),
             CONSTRAINT ck_mech_trace_number
-                CHECK (length(btrim("編號")) BETWEEN 1 AND 100)
+                CHECK (
+                    "編號" = btrim("編號")
+                    AND length(btrim("編號")) BETWEEN 1 AND 100
+                )
         )
     $sql$;
     EXECUTE $sql$

@@ -29,6 +29,12 @@ def test_migration_42_deduplicates_each_type_and_resequences():
     assert "'T4爐號'" in sql
 
 
+def test_migration_42_rejects_padded_trace_numbers():
+    sql = MIGRATION.read_text(encoding="utf-8")
+    assert '"編號" = btrim("編號")' in sql
+    assert 'length(btrim("編號")) BETWEEN 1 AND 100' in sql
+
+
 def test_migration_42_verifies_both_directions_before_drop():
     sql = MIGRATION.read_text(encoding="utf-8")
     assert sql.count("EXCEPT") >= 4
