@@ -82,6 +82,7 @@ const excludedSnapshotId = (item: MechItem, location: MechLocation, sample: numb
 
 const NUMERIC_MAX = 99999999.9999;
 const DECIMAL_VALUE_PATTERN = /^[+-]?(?:(?:\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/;
+const DUPLICATE_TRACE_ERROR = '請移除重複的追溯編號';
 
 const measurementValidationError = (value: string) => {
   const trimmed = value.trim();
@@ -126,6 +127,13 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
   const t4FurnaceDuplicateIndexes = duplicateTraceNumberIndexes(t4FurnaceNumbers);
   const hasDuplicateTraceNumbers =
     extrusionDuplicateIndexes.size > 0 || t4FurnaceDuplicateIndexes.size > 0;
+
+  useEffect(() => {
+    if (hasDuplicateTraceNumbers) return;
+    setValidationError((current) => (
+      current === DUPLICATE_TRACE_ERROR ? '' : current
+    ));
+  }, [hasDuplicateTraceNumbers]);
 
   const {
     data: detail,
@@ -253,7 +261,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
     }
 
     if (hasDuplicateTraceNumbers) {
-      const message = '請移除重複的追溯編號';
+      const message = DUPLICATE_TRACE_ERROR;
       setValidationError(message);
       toast.error(message);
       return;

@@ -22,6 +22,8 @@ BEGIN
         RAISE EXCEPTION '找不到舊機械性質批次資料表，無法安全搬移';
     END IF;
 
+    EXECUTE 'LOCK TABLE "機械性質批次" IN ACCESS EXCLUSIVE MODE';
+
     EXECUTE $sql$
         CREATE TABLE "機械性質追溯編號" (
             "識別碼" SERIAL PRIMARY KEY,

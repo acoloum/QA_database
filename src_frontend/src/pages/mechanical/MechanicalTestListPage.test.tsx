@@ -82,6 +82,20 @@ describe('MechanicalTestListPage', () => {
     expect(screen.getByText('T4-01、T4-02')).toBeInTheDocument();
   });
 
+  it('空資料提示橫跨全部九個欄位', async () => {
+    vi.mocked(mechanicalApi.list).mockResolvedValueOnce({
+      success: true,
+      data: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+      total_pages: 0,
+    });
+    renderPage();
+
+    expect(await screen.findByText('查無資料')).toHaveAttribute('colSpan', '9');
+  });
+
   it('以尺寸、材質、日期區間及僅 NG 條件重新載入清單', async () => {
     renderPage();
 

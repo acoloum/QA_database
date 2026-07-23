@@ -244,6 +244,26 @@ describe('MechanicalTestForm', () => {
     expect(mechanicalApi.create).not.toHaveBeenCalled();
   });
 
+  it('重複送出後刪除重複列會立即清除重複提示', async () => {
+    renderForm();
+    fireEvent.change(screen.getByLabelText('產品尺寸'), {
+      target: { value: '36x25.2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '新增擠製編號' }));
+    fireEvent.change(screen.getByLabelText('擠製編號 1'), {
+      target: { value: 'E001' },
+    });
+    fireEvent.change(screen.getByLabelText('擠製編號 2'), {
+      target: { value: ' E001 ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    expect(await screen.findByText('請移除重複的追溯編號')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '刪除擠製編號 2' }));
+
+    expect(screen.queryByText('請移除重複的追溯編號')).not.toBeInTheDocument();
+  });
+
   it('編輯時只讀新版兩份清單，不讀 deprecated batches', async () => {
     vi.mocked(mechanicalApi.getDetail).mockResolvedValue({
       ...editDetail,

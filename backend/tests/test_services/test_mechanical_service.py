@@ -186,6 +186,53 @@ def test_new_and_legacy_trace_payload_cannot_be_mixed(app, db_session):
         MechanicalService.create(payload, user_id=None)
 
 
+@pytest.mark.parametrize(
+    "missing_field",
+    ["extrusion_numbers", "t4_furnace_numbers"],
+)
+def test_new_trace_payload_requires_both_fields(
+    app, db_session, missing_field
+):
+    payload = _payload()
+    payload.pop(missing_field)
+
+    with pytest.raises(
+        MechanicalValidationError,
+        match="新版追溯編號兩個欄位都必須提供",
+    ):
+        MechanicalService.create(payload, user_id=None)
+
+
+def test_trace_payload_requires_new_fields_or_legacy_batches(
+    app, db_session
+):
+    payload = _payload()
+    payload.pop("extrusion_numbers")
+    payload.pop("t4_furnace_numbers")
+
+    with pytest.raises(
+        MechanicalValidationError,
+        match="必須提供 extrusion_numbers、t4_furnace_numbers 或 batches",
+    ):
+        MechanicalService.create(payload, user_id=None)
+
+
+def test_trace_numbers_preserve_case_distinct_values(app, db_session):
+    payload = _payload()
+    payload["extrusion_numbers"] = [
+        {"序號": 1, "編號": "E001"},
+        {"序號": 2, "編號": "e001"},
+    ]
+
+    test_id = MechanicalService.create(payload, user_id=None)
+    detail = MechanicalService.get_detail(test_id)
+
+    assert [
+        (row["序號"], row["編號"])
+        for row in detail["extrusion_numbers"]
+    ] == [(1, "E001"), (2, "e001")]
+
+
 def test_legacy_batches_split_trim_deduplicate_and_resequence(
     app, db_session
 ):
