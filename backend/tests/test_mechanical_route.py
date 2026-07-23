@@ -21,6 +21,7 @@ def test_create_and_list_via_api(client, db_session):
     db_session.commit()
     payload = {
         "產品尺寸": "36x25.2", "材質": "6061-T651", "測試日期": "2026-01-20",
+        "extrusion_numbers": [], "t4_furnace_numbers": [],
         "measurements": [{"量測項目": "硬度", "測量位置": "爐門", "取樣序": 1, "量測值": 70}],
     }
     r = client.post("/api/mechanical/tests", json=payload, headers=headers)

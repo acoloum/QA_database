@@ -7,7 +7,7 @@ from ..extensions import db
 from ..models import (
     MechanicalTest,
     MechanicalMeasurement,
-    MechanicalBatch,
+    MechanicalTraceNumber,
     Vendor,
     VendorToleranceMain,
 )
@@ -31,6 +31,13 @@ REQUIRED_MEASUREMENT_KEYS = {
     for item in ("硬度", "抗拉強度", "降伏強度", "伸長率")
     for location in ("爐門", "爐頂")
 }
+TRACE_TYPE_EXTRUSION = "擠製編號"
+TRACE_TYPE_T4_FURNACE = "T4爐號"
+NEW_TRACE_FIELDS = {
+    "extrusion_numbers": TRACE_TYPE_EXTRUSION,
+    "t4_furnace_numbers": TRACE_TYPE_T4_FURNACE,
+}
+NormalizedTraceNumbers = Dict[str, list[tuple[int, str]]]
 
 
 def _parse_date(v: Any) -> Optional[date]:
@@ -101,7 +108,105 @@ def parse_vendor_id(value: Any) -> Optional[int]:
     return vendor_id
 
 
-def _validate_payload(data: Dict[str, Any]) -> Optional[int]:
+def _parse_trace_list(value: Any, field: str) -> list[tuple[int, str]]:
+    if not isinstance(value, list):
+        raise MechanicalValidationError(f"{field} 必須為陣列")
+
+    parsed: list[tuple[int, str]] = []
+    seen_numbers: set[str] = set()
+    for expected_sequence, row in enumerate(value, start=1):
+        if not isinstance(row, dict):
+            raise MechanicalValidationError(f"{field} 的項目必須為物件")
+        sequence = row.get("序號")
+        if (
+            isinstance(sequence, bool)
+            or not isinstance(sequence, int)
+            or sequence != expected_sequence
+        ):
+            raise MechanicalValidationError(f"{field} 序號必須從 1 連續排列")
+        number = row.get("編號")
+        if not isinstance(number, str):
+            raise MechanicalValidationError(f"{field} 編號必須為字串")
+        number = number.strip()
+        if not number:
+            raise MechanicalValidationError(f"{field} 編號不得為空")
+        if len(number) > 100:
+            raise MechanicalValidationError(f"{field} 編號不得超過 100 字元")
+        if number in seen_numbers:
+            raise MechanicalValidationError(f"{field} 編號不可重複")
+        seen_numbers.add(number)
+        parsed.append((sequence, number))
+    return parsed
+
+
+def _parse_legacy_batches(value: Any) -> NormalizedTraceNumbers:
+    if not isinstance(value, list):
+        raise MechanicalValidationError("batches 必須為陣列")
+
+    ordered: list[tuple[int, int, dict[str, Any]]] = []
+    seen_sequences: set[int] = set()
+    for index, row in enumerate(value):
+        if not isinstance(row, dict):
+            raise MechanicalValidationError("批次必須為物件")
+        sequence = row.get("序號")
+        if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1:
+            raise MechanicalValidationError("批次序號必須為正整數")
+        if sequence in seen_sequences:
+            raise MechanicalValidationError("批次序號不可重複")
+        seen_sequences.add(sequence)
+        for field in ("擠製編號", "爐具編號"):
+            raw = row.get(field)
+            if raw is not None and not isinstance(raw, str):
+                raise MechanicalValidationError(f"{field}必須為字串")
+            if isinstance(raw, str) and len(raw.strip()) > 100:
+                raise MechanicalValidationError(f"{field}不得超過 100 字元")
+        ordered.append((sequence, index, row))
+
+    output: NormalizedTraceNumbers = {
+        TRACE_TYPE_EXTRUSION: [],
+        TRACE_TYPE_T4_FURNACE: [],
+    }
+    for source_field, trace_type in (
+        ("擠製編號", TRACE_TYPE_EXTRUSION),
+        ("爐具編號", TRACE_TYPE_T4_FURNACE),
+    ):
+        values: list[str] = []
+        seen: set[str] = set()
+        for _, _, row in sorted(ordered):
+            number = (row.get(source_field) or "").strip()
+            if number and number not in seen:
+                seen.add(number)
+                values.append(number)
+        output[trace_type] = [
+            (sequence, number)
+            for sequence, number in enumerate(values, start=1)
+        ]
+    return output
+
+
+def _parse_trace_numbers(data: Dict[str, Any]) -> NormalizedTraceNumbers:
+    new_present = any(field in data for field in NEW_TRACE_FIELDS)
+    legacy_present = "batches" in data
+    if new_present and legacy_present:
+        raise MechanicalValidationError("不得同時提供新版追溯編號與 batches")
+    if new_present:
+        missing = [field for field in NEW_TRACE_FIELDS if field not in data]
+        if missing:
+            raise MechanicalValidationError("新版追溯編號兩個欄位都必須提供")
+        return {
+            trace_type: _parse_trace_list(data[field], field)
+            for field, trace_type in NEW_TRACE_FIELDS.items()
+        }
+    if legacy_present:
+        return _parse_legacy_batches(data["batches"])
+    raise MechanicalValidationError(
+        "必須提供 extrusion_numbers、t4_furnace_numbers 或 batches"
+    )
+
+
+def _validate_payload(
+    data: Dict[str, Any],
+) -> tuple[Optional[int], NormalizedTraceNumbers]:
     if not isinstance(data, dict):
         raise MechanicalValidationError("請求內容必須為物件")
     for field in ("產品尺寸", "材質"):
@@ -111,21 +216,7 @@ def _validate_payload(data: Dict[str, Any]) -> Optional[int]:
     _string_field(data.get("備註"), "備註")
 
     _parse_date(data.get("測試日期"))
-    batches = data.get("batches", [])
-    if not isinstance(batches, list):
-        raise MechanicalValidationError("batches 必須為陣列")
-    seen_sequences = set()
-    for batch in batches:
-        if not isinstance(batch, dict):
-            raise MechanicalValidationError("批次必須為物件")
-        sequence = batch.get("序號")
-        if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1:
-            raise MechanicalValidationError("批次序號必須為正整數")
-        if sequence in seen_sequences:
-            raise MechanicalValidationError("批次序號不可重複")
-        seen_sequences.add(sequence)
-        for field in ("擠製編號", "爐具編號"):
-            _string_field(batch.get(field), field, max_length=100)
+    trace_numbers = _parse_trace_numbers(data)
 
     measurements = data.get("measurements", [])
     if not isinstance(measurements, list):
@@ -152,7 +243,7 @@ def _validate_payload(data: Dict[str, Any]) -> Optional[int]:
     vendor_id = parse_vendor_id(data.get("廠商ID"))
     if vendor_id is not None and db.session.get(Vendor, vendor_id) is None:
         raise MechanicalValidationError("指定的廠商不存在")
-    return vendor_id
+    return vendor_id, trace_numbers
 
 
 def _judgement_status(test: MechanicalTest) -> str:
@@ -191,23 +282,25 @@ class MechanicalService:
         return {"materials": materials, "product_sizes": product_sizes}
 
     @staticmethod
-    def _apply_batches(test: MechanicalTest, data: Dict[str, Any]) -> None:
-        """依 payload 重建批次（擠製編號 + 爐具編號），略過整組皆空者。"""
-        test.batches.clear()
+    def _apply_trace_numbers(
+        test: MechanicalTest,
+        values: NormalizedTraceNumbers,
+    ) -> None:
+        """依正規化結果重建兩類各自排序的追溯編號。"""
+        test.trace_numbers.clear()
         # 先送出孤兒刪除，避免與唯一鍵新增在同一次 flush 中排序不定。
         # 注意：此問題僅在 PostgreSQL（不可延遲的唯一鍵，逐語句檢查）會實際觸發
         # IntegrityError；SQLite 測試環境不會重現，故此行為無法單靠測試鎖定。
         db.session.flush()
-        for i, b in enumerate(data.get("batches", []), start=1):
-            ext = (b.get("擠製編號") or "").strip()
-            fur = (b.get("爐具編號") or "").strip()
-            if not ext and not fur:
-                continue
-            test.batches.append(MechanicalBatch(
-                seq=int(b.get("序號") or i),
-                extrusion_no=ext or None,
-                furnace_no=fur or None,
-            ))
+        for trace_type in (TRACE_TYPE_EXTRUSION, TRACE_TYPE_T4_FURNACE):
+            for sequence, number in values[trace_type]:
+                test.trace_numbers.append(
+                    MechanicalTraceNumber(
+                        trace_type=trace_type,
+                        seq=sequence,
+                        number=number,
+                    )
+                )
 
     @staticmethod
     def _apply_measurements(test: MechanicalTest, data: Dict[str, Any]) -> None:
@@ -252,7 +345,7 @@ class MechanicalService:
     @staticmethod
     def create(data: Dict[str, Any], user_id: Optional[int]) -> int:
         try:
-            vendor_id = _validate_payload(data)
+            vendor_id, trace_numbers = _validate_payload(data)
             test = MechanicalTest(
                 product_size=data.get("產品尺寸").strip(),
                 material=data.get("材質").strip(),
@@ -263,7 +356,7 @@ class MechanicalService:
                 note=data.get("備註") or None,
                 created_by=user_id,
             )
-            MechanicalService._apply_batches(test, data)
+            MechanicalService._apply_trace_numbers(test, trace_numbers)
             MechanicalService._apply_measurements(test, data)
             db.session.add(test)
             db.session.commit()
@@ -278,7 +371,7 @@ class MechanicalService:
             test = db.session.get(MechanicalTest, test_id)
             if not test:
                 raise MechanicalNotFoundError("找不到該筆機械性質檢驗資料")
-            vendor_id = _validate_payload(data)
+            vendor_id, trace_numbers = _validate_payload(data)
             test.product_size = data["產品尺寸"].strip()
             test.material = data["材質"].strip()
             test.vendor_id = vendor_id
@@ -286,7 +379,7 @@ class MechanicalService:
             test.t4_temp_time = data.get("T4溫度時間") or None
             test.t6_temp_time = data.get("T6溫度時間") or None
             test.note = data.get("備註") or None
-            MechanicalService._apply_batches(test, data)
+            MechanicalService._apply_trace_numbers(test, trace_numbers)
             MechanicalService._apply_measurements(test, data)
             db.session.commit()
         except Exception:
@@ -332,9 +425,10 @@ class MechanicalService:
             "產品尺寸": t.product_size,
             "材質": t.material,
             "測試日期": t.test_date.isoformat() if t.test_date else None,
-            # 多組批次以「、」串接為摘要顯示
             "擠製編號": "、".join(
-                b.extrusion_no for b in sorted(t.batches, key=lambda x: x.seq) if b.extrusion_no
+                row.number
+                for row in sorted(t.trace_numbers, key=lambda row: row.seq)
+                if row.trace_type == TRACE_TYPE_EXTRUSION
             ),
             "T4溫度時間": t.t4_temp_time,
             "T6溫度時間": t.t6_temp_time,
@@ -362,12 +456,18 @@ class MechanicalService:
             "是否NG": t.is_ng,
             "判定狀態": _judgement_status(t),
         }
-        batches = [{
-            "識別碼": b.id,
-            "序號": b.seq,
-            "擠製編號": b.extrusion_no,
-            "爐具編號": b.furnace_no,
-        } for b in sorted(t.batches, key=lambda x: x.seq)]
+        trace_numbers = {
+            field: [
+                {
+                    "識別碼": row.id,
+                    "序號": row.seq,
+                    "編號": row.number,
+                }
+                for row in sorted(t.trace_numbers, key=lambda item: item.seq)
+                if row.trace_type == trace_type
+            ]
+            for field, trace_type in NEW_TRACE_FIELDS.items()
+        }
         measurements = [{
             "識別碼": m.id,
             "量測項目": m.item,
@@ -381,4 +481,9 @@ class MechanicalService:
             "排除者ID": m.exclusion_user_id,
             "排除時間": m.excluded_at.isoformat() if m.excluded_at else None,
         } for m in sorted(t.measurements, key=lambda x: (x.item, x.location, x.sample_no))]
-        return {"success": True, "main": main, "batches": batches, "measurements": measurements}
+        return {
+            "success": True,
+            "main": main,
+            **trace_numbers,
+            "measurements": measurements,
+        }

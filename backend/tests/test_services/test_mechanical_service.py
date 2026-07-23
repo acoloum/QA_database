@@ -11,7 +11,10 @@ from backend.models import (
     VendorToleranceDetail,
     VendorToleranceMain,
 )
-from backend.services.mechanical_service import MechanicalService
+from backend.services.mechanical_service import (
+    MechanicalService,
+    MechanicalValidationError,
+)
 
 
 def _seed_spec(db_session):
@@ -31,9 +34,12 @@ def _payload():
         "測試日期": "2026-01-20",
         "T4溫度時間": "530/40MIN",
         "T6溫度時間": "175/6HR",
-        "batches": [
-            {"序號": 1, "擠製編號": "010761 D35", "爐具編號": "011313T42"},
-            {"序號": 2, "擠製編號": "010851 D35", "爐具編號": "011314T42"},
+        "extrusion_numbers": [
+            {"序號": 1, "編號": "010761 D35"},
+        ],
+        "t4_furnace_numbers": [
+            {"序號": 1, "編號": "011313T42"},
+            {"序號": 2, "編號": "011314T42"},
         ],
         "measurements": [
             {"量測項目": "硬度", "測量位置": "爐門", "取樣序": 1, "量測值": 59},
@@ -48,6 +54,12 @@ def _required_measurements(value=70):
         for item in ("硬度", "抗拉強度", "降伏強度", "伸長率")
         for location in ("爐門", "爐頂")
     ]
+
+
+def _replace_trace_numbers_with_legacy(payload, batches):
+    payload.pop("extrusion_numbers")
+    payload.pop("t4_furnace_numbers")
+    payload["batches"] = batches
 
 
 def test_create_computes_ng_from_spec(db_session):
@@ -72,6 +84,91 @@ def test_create_without_spec_is_not_ng(db_session):
     assert all(m.is_ng is False for m in row.measurements)
 
 
+def test_create_accepts_one_extrusion_and_two_t4_furnace_numbers(
+    app, db_session
+):
+    payload = _payload()
+    test_id = MechanicalService.create(payload, user_id=None)
+
+    detail = MechanicalService.get_detail(test_id)
+    assert [row["編號"] for row in detail["extrusion_numbers"]] == [
+        "010761 D35"
+    ]
+    assert [row["編號"] for row in detail["t4_furnace_numbers"]] == [
+        "011313T42",
+        "011314T42",
+    ]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda payload: payload.update({"extrusion_numbers": {}}),
+        lambda payload: payload.update({"t4_furnace_numbers": ["bad"]}),
+        lambda payload: payload.update(
+            {"extrusion_numbers": [{"序號": 0, "編號": "E1"}]}
+        ),
+        lambda payload: payload.update(
+            {"t4_furnace_numbers": [{"序號": 2, "編號": "T4-1"}]}
+        ),
+        lambda payload: payload.update(
+            {
+                "extrusion_numbers": [
+                    {"序號": 1, "編號": " E1 "},
+                    {"序號": 2, "編號": "E1"},
+                ]
+            }
+        ),
+        lambda payload: payload.update(
+            {"t4_furnace_numbers": [{"序號": 1, "編號": " "}]}
+        ),
+        lambda payload: payload.update(
+            {"extrusion_numbers": [{"序號": 1, "編號": "x" * 101}]}
+        ),
+    ],
+)
+def test_new_trace_number_payload_rejects_invalid_values(
+    app, db_session, mutate
+):
+    payload = _payload()
+    mutate(payload)
+    with pytest.raises(MechanicalValidationError):
+        MechanicalService.create(payload, user_id=None)
+
+
+def test_new_and_legacy_trace_payload_cannot_be_mixed(app, db_session):
+    payload = _payload()
+    payload["batches"] = []
+    with pytest.raises(
+        MechanicalValidationError,
+        match="不得同時提供新版追溯編號與 batches",
+    ):
+        MechanicalService.create(payload, user_id=None)
+
+
+def test_legacy_batches_split_trim_deduplicate_and_resequence(
+    app, db_session
+):
+    payload = _payload()
+    payload.pop("extrusion_numbers")
+    payload.pop("t4_furnace_numbers")
+    payload["batches"] = [
+        {"序號": 2, "擠製編號": " E1 ", "爐具編號": "T4-02"},
+        {"序號": 1, "擠製編號": "E1", "爐具編號": "T4-01"},
+    ]
+
+    test_id = MechanicalService.create(payload, user_id=None)
+    detail = MechanicalService.get_detail(test_id)
+    assert [
+        (row["序號"], row["編號"])
+        for row in detail["extrusion_numbers"]
+    ] == [(1, "E1")]
+    assert [row["編號"] for row in detail["t4_furnace_numbers"]] == [
+        "T4-01",
+        "T4-02",
+    ]
+
+
 def test_list_filters_by_size(db_session):
     MechanicalService.create(_payload(), user_id=None)
     res = MechanicalService.list({"product_size": "36"})
@@ -94,11 +191,36 @@ def test_update_recomputes_ng(db_session):
     assert row.is_ng is False
 
 
+def test_update_replaces_independent_trace_numbers(db_session):
+    test_id = MechanicalService.create(_payload(), user_id=None)
+    payload = _payload()
+    payload["extrusion_numbers"] = [
+        {"序號": 1, "編號": "E2"},
+        {"序號": 2, "編號": "E3"},
+    ]
+    payload["t4_furnace_numbers"] = [
+        {"序號": 1, "編號": "T4-99"},
+    ]
+
+    MechanicalService.update(test_id, payload, user_id=None)
+
+    detail = MechanicalService.get_detail(test_id)
+    assert [
+        (row["序號"], row["編號"])
+        for row in detail["extrusion_numbers"]
+    ] == [(1, "E2"), (2, "E3")]
+    assert [
+        (row["序號"], row["編號"])
+        for row in detail["t4_furnace_numbers"]
+    ] == [(1, "T4-99")]
+
+
 def test_update_twice_with_same_measurement_keys_does_not_raise(db_session):
     """量測明細的 (量測項目, 測量位置, 取樣序) 鍵值不變、僅量測值變動時，
     連續更新兩次應能正確覆蓋量測值（功能面驗證：相同鍵值、值不同，重複更新皆正確）。
 
-    注意：本測試「不能」也「沒有」鎖定 _apply_measurements／_apply_batches 的
+    注意：本測試「不能」也「沒有」鎖定 _apply_measurements／
+    _apply_trace_numbers 的
     flush() 修正所要防範的那個 bug——該 IntegrityError 只在 PostgreSQL
     （不可延遲的唯一鍵，逐語句檢查）才會於 clear() 後、重新 append 前的同一次
     flush 中因排序不定而觸發；測試在 SQLite 記憶體資料庫上執行（見
@@ -131,9 +253,13 @@ def test_get_detail_and_delete(db_session):
     detail = MechanicalService.get_detail(new_id)
     assert detail["main"]["產品尺寸"] == "36x25.2"
     assert len(detail["measurements"]) == 2
-    # 批次保留 2 組並依序號排序
-    assert [b["擠製編號"] for b in detail["batches"]] == ["010761 D35", "010851 D35"]
-    assert detail["batches"][0]["爐具編號"] == "011313T42"
+    assert [row["編號"] for row in detail["extrusion_numbers"]] == [
+        "010761 D35"
+    ]
+    assert [row["編號"] for row in detail["t4_furnace_numbers"]] == [
+        "011313T42",
+        "011314T42",
+    ]
     MechanicalService.delete(new_id)
     assert db_session.get(MechanicalTest, new_id) is None
 
@@ -277,7 +403,8 @@ def test_judgement_status_no_spec_when_one_of_eight_limits_missing(db_session):
 def test_nullable_fields_are_serialized_as_null(db_session):
     payload = _payload()
     payload.update({"測試日期": None, "T4溫度時間": None, "T6溫度時間": None, "備註": None})
-    payload["batches"] = [{"序號": 1, "擠製編號": None, "爐具編號": "F1"}]
+    payload["extrusion_numbers"] = []
+    payload["t4_furnace_numbers"] = [{"序號": 1, "編號": "F1"}]
     payload["measurements"][0]["量測值"] = None
     test_id = MechanicalService.create(payload, user_id=None)
 
@@ -286,7 +413,7 @@ def test_nullable_fields_are_serialized_as_null(db_session):
     assert detail["main"]["測試日期"] is None
     assert detail["main"]["T4溫度時間"] is None
     assert detail["main"]["備註"] is None
-    assert detail["batches"][0]["擠製編號"] is None
+    assert detail["extrusion_numbers"] == []
     assert detail["measurements"][0]["量測值"] is None
     assert detail["measurements"][0]["下限"] is None
     assert listed["測試日期"] is None
@@ -331,11 +458,15 @@ def test_options_are_vendor_scoped_trimmed_and_deduplicated(db_session):
     lambda payload: payload.update({"廠商ID": 0}),
     lambda payload: payload.update({"廠商ID": "invalid-vendor"}),
     lambda payload: payload.update({"廠商ID": 999999}),
-    lambda payload: payload.update({"batches": {}}),
-    lambda payload: payload.update({"batches": ["bad"]}),
-    lambda payload: payload.update({"batches": [{"序號": 0}]}),
-    lambda payload: payload.update({"batches": [{"序號": 1}, {"序號": 1}]}),
-    lambda payload: payload.update({"batches": [{"序號": "1"}]}),
+    lambda payload: _replace_trace_numbers_with_legacy(payload, {}),
+    lambda payload: _replace_trace_numbers_with_legacy(payload, ["bad"]),
+    lambda payload: _replace_trace_numbers_with_legacy(payload, [{"序號": 0}]),
+    lambda payload: _replace_trace_numbers_with_legacy(
+        payload, [{"序號": 1}, {"序號": 1}]
+    ),
+    lambda payload: _replace_trace_numbers_with_legacy(
+        payload, [{"序號": "1"}]
+    ),
     lambda payload: payload.update({"measurements": {}}),
     lambda payload: payload.update({"measurements": ["bad"]}),
     lambda payload: payload["measurements"].append(dict(payload["measurements"][0])),
@@ -344,9 +475,10 @@ def test_options_are_vendor_scoped_trimmed_and_deduplicated(db_session):
     lambda payload: payload.update({"T4溫度時間": "x" * 101}),
     lambda payload: payload.update({"T6溫度時間": 123}),
     lambda payload: payload.update({"備註": 123}),
-    lambda payload: payload.update({
-        "batches": [{"序號": 1, "擠製編號": "x" * 101, "爐具編號": ""}]
-    }),
+    lambda payload: _replace_trace_numbers_with_legacy(
+        payload,
+        [{"序號": 1, "擠製編號": "x" * 101, "爐具編號": ""}],
+    ),
     lambda payload: payload["measurements"][0].update({"量測值": "1e100"}),
 ])
 def test_create_rejects_invalid_payload_without_persisting_data(db_session, mutate):

@@ -1292,10 +1292,6 @@ class MechanicalTest(db.Model):
         cascade="all, delete-orphan",
         order_by="MechanicalTraceNumber.trace_type, MechanicalTraceNumber.seq",
     )
-    # Task 2 完成 service 切換前，暫留舊配對關聯以維持過渡期間可執行。
-    batches = db.relationship(
-        'MechanicalBatch', backref='test', cascade="all, delete-orphan"
-    )
     measurements = db.relationship(
         'MechanicalMeasurement', backref='test', cascade="all, delete-orphan"
     )
@@ -1339,23 +1335,6 @@ class MechanicalTraceNumber(db.Model):
     trace_type = db.Column("類型", db.String(20), nullable=False)
     seq = db.Column("序號", db.Integer, nullable=False)
     number = db.Column("編號", db.String(100), nullable=False)
-
-
-class MechanicalBatch(db.Model):
-    """機械性質批次 — 一列對應一組（擠製編號 + 爐具編號），可多組"""
-    __tablename__ = '機械性質批次'
-    __table_args__ = (
-        db.UniqueConstraint('機械性質檢驗_ID', '序號', name='uq_mech_batch_seq'),
-        db.CheckConstraint('"序號" >= 1', name='ck_mech_batch_seq_positive'),
-        db.Index('idx_mech_batch_test_id', '機械性質檢驗_ID'),
-    )
-
-    id           = db.Column('識別碼',        db.Integer, primary_key=True)
-    test_id      = db.Column('機械性質檢驗_ID', db.Integer,
-                             db.ForeignKey('機械性質檢驗.識別碼', ondelete='CASCADE'), nullable=False)
-    seq          = db.Column('序號',          db.Integer, nullable=False, default=1)
-    extrusion_no = db.Column('擠製編號',      db.String(100), nullable=True)
-    furnace_no   = db.Column('爐具編號',      db.String(100), nullable=True)
 
 
 class MechanicalMeasurement(db.Model):
