@@ -66,13 +66,23 @@ const LOCATION_KEYS: Record<MechLocation, string> = {
 const measurementErrorId = (item: MechItem, location: MechLocation, sample: number, kind: 'format' | 'ng') =>
   `mechanical-measurement-${ITEM_KEYS[item]}-${LOCATION_KEYS[location]}-${sample}-${kind}-error`;
 
+const excludedSnapshotId = (item: MechItem, location: MechLocation, sample: number) =>
+  `mechanical-measurement-${ITEM_KEYS[item]}-${LOCATION_KEYS[location]}-${sample}-excluded-snapshot`;
+
 const NUMERIC_MAX = 99999999.9999;
+const DECIMAL_VALUE_PATTERN = /^[+-]?(?:(?:\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/;
 
 const measurementValidationError = (value: string) => {
-  if (value.trim() === '') return null;
-  const numeric = Number(value.trim());
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  const numeric = Number(trimmed);
   if (!Number.isFinite(numeric)) return '量測值必須為有限數字';
   if (Math.abs(numeric) > NUMERIC_MAX) return '量測值超出 NUMERIC(12,4) 可儲存範圍';
+  const decimalMatch = DECIMAL_VALUE_PATTERN.exec(trimmed);
+  if (!decimalMatch) return '量測值必須為有限數字';
+  const fractionalDigits = (decimalMatch[1] ?? decimalMatch[2] ?? '').length;
+  const exponent = Number(decimalMatch[3] ?? 0);
+  if (fractionalDigits - exponent > 4) return '量測值最多只能有 4 位小數';
   return null;
 };
 
@@ -490,9 +500,11 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                         const lowerLimit = excludedMeasurement
                           ? (excludedMeasurement.下限 ?? undefined)
                           : limits?.[item];
-                        const errorId = hasFormatError
-                          ? measurementErrorId(item, location, sample, 'format')
-                          : isNg ? measurementErrorId(item, location, sample, 'ng') : undefined;
+                        const errorId = excludedMeasurement
+                          ? excludedSnapshotId(item, location, sample)
+                          : hasFormatError
+                            ? measurementErrorId(item, location, sample, 'format')
+                            : isNg ? measurementErrorId(item, location, sample, 'ng') : undefined;
                         return (
                           <td key={`${location}-${sample}`} className={isNg || hasFormatError ? 'bg-danger-subtle' : undefined}>
                             <Form.Control
@@ -519,7 +531,10 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                               </Form.Text>
                             )}
                             {excludedMeasurement && (
-                              <Form.Text className="text-warning-emphasis">
+                              <Form.Text
+                                id={excludedSnapshotId(item, location, sample)}
+                                className="text-warning-emphasis"
+                              >
                                 已排除：{excludedMeasurement.排除原因 || '未填原因'}
                                 {excludedMeasurement.排除時間 ? `（${excludedMeasurement.排除時間}）` : ''}
                                 <span>

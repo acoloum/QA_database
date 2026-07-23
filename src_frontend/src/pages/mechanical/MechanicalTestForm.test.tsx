@@ -264,6 +264,23 @@ describe('MechanicalTestForm', () => {
     expect(mechanicalApi.create).not.toHaveBeenCalled();
   });
 
+  it('超過四位小數的量測值顯示可存取錯誤並阻止建立', async () => {
+    renderForm();
+
+    fireEvent.change(screen.getByLabelText('產品尺寸'), { target: { value: '62.5 x 2.3' } });
+    fireEvent.change(screen.getByLabelText('硬度－爐門－取樣 1'), { target: { value: '59.99996' } });
+    const input = screen.getByLabelText('硬度－爐門－取樣 1');
+
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(input).toHaveAttribute('aria-errormessage', 'mechanical-measurement-hardness-door-1-format-error');
+    expect(document.getElementById('mechanical-measurement-hardness-door-1-format-error'))
+      .toHaveTextContent('量測值最多只能有 4 位小數');
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    expect(toast.error).toHaveBeenCalledWith('請修正量測值格式錯誤');
+    expect(mechanicalApi.create).not.toHaveBeenCalled();
+  });
+
   it('收合的非法 EC 第 2 取樣會在儲存時展開並阻止建立', async () => {
     renderForm();
 
@@ -322,6 +339,7 @@ describe('MechanicalTestForm', () => {
       ...editDetail,
       measurements: [{
         ...editDetail.measurements[0],
+        是否超差: true,
         排除統計: true,
         排除原因: '儀器異常',
         排除者ID: 7,
@@ -332,6 +350,17 @@ describe('MechanicalTestForm', () => {
 
     const input = await screen.findByLabelText('硬度－爐門－取樣 1');
     expect(input).toBeDisabled();
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(input).toHaveAttribute(
+      'aria-describedby',
+      'mechanical-measurement-hardness-door-1-excluded-snapshot',
+    );
+    expect(input).toHaveAttribute(
+      'aria-errormessage',
+      'mechanical-measurement-hardness-door-1-excluded-snapshot',
+    );
+    expect(document.getElementById('mechanical-measurement-hardness-door-1-excluded-snapshot'))
+      .toHaveTextContent('歷史快照');
     expect(screen.getByText(/已排除：儀器異常/)).toBeInTheDocument();
   });
 

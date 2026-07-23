@@ -68,7 +68,9 @@ api.interceptors.response.use(
         // 3. 處理網路或其他錯誤（沒有 error.data 的情況）
         const genericMsg = error.message || '網路連線異常';
         toast.error(genericMsg);
-        return Promise.reject(error);
+        const toastedError = error as Error & { _toasted?: boolean };
+        toastedError._toasted = true;
+        return Promise.reject(toastedError);
     }
 );
 
