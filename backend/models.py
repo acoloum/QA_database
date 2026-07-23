@@ -1278,8 +1278,8 @@ class MechanicalTest(db.Model):
     material      = db.Column('材質',        db.String(50), nullable=False, index=True)
     vendor_id     = db.Column('廠商ID',      db.Integer, db.ForeignKey('廠商資料.識別碼'), nullable=True)
     test_date     = db.Column('測試日期',    db.Date, nullable=True, index=True)
-    t4_temp_time  = db.Column('T4溫度時間',  db.String, nullable=True)
-    t6_temp_time  = db.Column('T6溫度時間',  db.String, nullable=True)
+    t4_temp_time  = db.Column('T4溫度時間',  db.String(100), nullable=True)
+    t6_temp_time  = db.Column('T6溫度時間',  db.String(100), nullable=True)
     note          = db.Column('備註',        db.String, nullable=True)
     is_ng         = db.Column('是否NG',      db.Boolean, default=False, nullable=False)
     created_at    = db.Column('建立日期',    db.DateTime(timezone=True), default=utc_now)
@@ -1308,8 +1308,8 @@ class MechanicalBatch(db.Model):
     test_id      = db.Column('機械性質檢驗_ID', db.Integer,
                              db.ForeignKey('機械性質檢驗.識別碼', ondelete='CASCADE'), nullable=False)
     seq          = db.Column('序號',          db.Integer, nullable=False, default=1)
-    extrusion_no = db.Column('擠製編號',      db.String, nullable=True)
-    furnace_no   = db.Column('爐具編號',      db.String, nullable=True)
+    extrusion_no = db.Column('擠製編號',      db.String(100), nullable=True)
+    furnace_no   = db.Column('爐具編號',      db.String(100), nullable=True)
 
 
 class MechanicalMeasurement(db.Model):

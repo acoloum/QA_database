@@ -130,6 +130,30 @@ def test_get_spec_rejects_missing_vendor(client, db_session):
     assert response.status_code == 400
 
 
+def test_get_options_is_vendor_scoped(client, db_session):
+    headers = _auth_headers(db_session, 'qc', {})
+    vendor = Vendor(name="安泰")
+    other = Vendor(name="宏達")
+    db_session.add_all([vendor, other])
+    db_session.flush()
+    db_session.add_all([
+        VendorToleranceMain(vendor_id=vendor.id, material="6061-T651", spec="36*25.2"),
+        VendorToleranceMain(vendor_id=other.id, material="7075", spec="99*99"),
+    ])
+    db_session.commit()
+
+    response = client.get(
+        f"/api/mechanical/options?vendor_id={vendor.id}", headers=headers
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "success": True,
+        "materials": ["6061-T651"],
+        "product_sizes": ["36*25.2"],
+    }
+
+
 @pytest.mark.parametrize(("body", "content_type"), [
     ("", "application/json"),
     ("{broken", "application/json"),

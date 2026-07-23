@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import pytest
 
@@ -39,6 +40,14 @@ def _payload():
             {"量測項目": "硬度", "測量位置": "爐頂", "取樣序": 1, "量測值": 73},
         ],
     }
+
+
+def _required_measurements(value=70):
+    return [
+        {"量測項目": item, "測量位置": location, "取樣序": 1, "量測值": value}
+        for item in ("硬度", "抗拉強度", "降伏強度", "伸長率")
+        for location in ("爐門", "爐頂")
+    ]
 
 
 def test_create_computes_ng_from_spec(db_session):
@@ -206,7 +215,7 @@ def test_update_keeps_excluded_measurement_omitted_from_general_edit(db_session)
 
 @pytest.mark.parametrize(("measurements", "expected"), [
     ([], "INCOMPLETE"),
-    ([{"量測項目": "硬度", "測量位置": "爐門", "取樣序": 1, "量測值": 70}], "NO_SPEC"),
+    ([{"量測項目": "硬度", "測量位置": "爐門", "取樣序": 1, "量測值": 70}], "INCOMPLETE"),
 ])
 def test_judgement_status_without_complete_spec(db_session, measurements, expected):
     payload = _payload()
@@ -216,16 +225,53 @@ def test_judgement_status_without_complete_spec(db_session, measurements, expect
     assert MechanicalService.list({})["data"][0]["判定狀態"] == expected
 
 
-@pytest.mark.parametrize(("value", "expected"), [(70, "OK"), (59, "NG")])
-def test_judgement_status_with_spec(db_session, value, expected):
+def test_judgement_status_ok_requires_all_eight_required_measurements(db_session):
+    vendor_id = _seed_spec(db_session)
+    main = VendorToleranceMain.query.one()
+    for item, lower in [("抗拉強度", 60), ("降伏強度", 60), ("伸長率", 60)]:
+        db_session.add(VendorToleranceDetail(
+            main_id=main.id, item=item, tolerance_min=lower, unit=""
+        ))
+    db_session.commit()
+    payload = _payload()
+    payload["廠商ID"] = vendor_id
+    payload["measurements"] = _required_measurements()
+    test_id = MechanicalService.create(payload, user_id=None)
+    assert MechanicalService.get_detail(test_id)["main"]["判定狀態"] == "OK"
+
+
+@pytest.mark.parametrize("count", [0, 1, 7])
+def test_judgement_status_is_incomplete_when_required_measurements_missing(db_session, count):
+    payload = _payload()
+    payload["measurements"] = _required_measurements()[:count]
+    test_id = MechanicalService.create(payload, user_id=None)
+    assert MechanicalService.get_detail(test_id)["main"]["判定狀態"] == "INCOMPLETE"
+
+
+def test_judgement_status_ng_takes_priority_over_incomplete(db_session):
     vendor_id = _seed_spec(db_session)
     payload = _payload()
     payload["廠商ID"] = vendor_id
-    payload["measurements"] = [
-        {"量測項目": "硬度", "測量位置": "爐門", "取樣序": 1, "量測值": value}
-    ]
+    payload["measurements"] = _required_measurements(70)[:3]
+    payload["measurements"][0]["量測值"] = 59
     test_id = MechanicalService.create(payload, user_id=None)
-    assert MechanicalService.get_detail(test_id)["main"]["判定狀態"] == expected
+    assert MechanicalService.get_detail(test_id)["main"]["判定狀態"] == "NG"
+
+
+def test_judgement_status_no_spec_requires_all_eight_measurements(db_session):
+    payload = _payload()
+    payload["measurements"] = _required_measurements()
+    test_id = MechanicalService.create(payload, user_id=None)
+    assert MechanicalService.get_detail(test_id)["main"]["判定狀態"] == "NO_SPEC"
+
+
+def test_judgement_status_no_spec_when_one_of_eight_limits_missing(db_session):
+    vendor_id = _seed_spec(db_session)
+    payload = _payload()
+    payload["廠商ID"] = vendor_id
+    payload["measurements"] = _required_measurements()
+    test_id = MechanicalService.create(payload, user_id=None)
+    assert MechanicalService.get_detail(test_id)["main"]["判定狀態"] == "NO_SPEC"
 
 
 def test_nullable_fields_are_serialized_as_null(db_session):
@@ -246,6 +292,26 @@ def test_nullable_fields_are_serialized_as_null(db_session):
     assert listed["測試日期"] is None
     assert listed["T4溫度時間"] is None
     assert listed["備註"] is None
+
+
+def test_options_are_vendor_scoped_trimmed_and_deduplicated(db_session):
+    first = Vendor(name="安泰")
+    second = Vendor(name="宏達")
+    db_session.add_all([first, second])
+    db_session.flush()
+    db_session.add_all([
+        VendorToleranceMain(vendor_id=first.id, material=" 6061-T651 ", spec=" 36*25.2 "),
+        VendorToleranceMain(vendor_id=first.id, material="6061-T651", spec="36*25.2"),
+        VendorToleranceMain(vendor_id=first.id, material="6063", spec=None),
+        VendorToleranceMain(vendor_id=second.id, material="7075", spec="99*99"),
+    ])
+    db_session.commit()
+
+    assert MechanicalService.options(first.id) == {
+        "materials": ["6061-T651", "6063"],
+        "product_sizes": ["36*25.2"],
+    }
+    assert MechanicalService.options(None) == {"materials": [], "product_sizes": []}
 
 
 @pytest.mark.parametrize("mutate", [
@@ -273,6 +339,15 @@ def test_nullable_fields_are_serialized_as_null(db_session):
     lambda payload: payload.update({"measurements": {}}),
     lambda payload: payload.update({"measurements": ["bad"]}),
     lambda payload: payload["measurements"].append(dict(payload["measurements"][0])),
+    lambda payload: payload.update({"產品尺寸": "x" * 51}),
+    lambda payload: payload.update({"材質": "x" * 51}),
+    lambda payload: payload.update({"T4溫度時間": "x" * 101}),
+    lambda payload: payload.update({"T6溫度時間": 123}),
+    lambda payload: payload.update({"備註": 123}),
+    lambda payload: payload.update({
+        "batches": [{"序號": 1, "擠製編號": "x" * 101, "爐具編號": ""}]
+    }),
+    lambda payload: payload["measurements"][0].update({"量測值": "1e100"}),
 ])
 def test_create_rejects_invalid_payload_without_persisting_data(db_session, mutate):
     payload = _payload()
@@ -282,3 +357,20 @@ def test_create_rejects_invalid_payload_without_persisting_data(db_session, muta
         MechanicalService.create(payload, user_id=None)
 
     assert MechanicalTest.query.count() == 0
+
+
+@pytest.mark.parametrize(("raw", "expected"), [
+    ("99999999.9999", Decimal("99999999.9999")),
+    ("1.23456", Decimal("1.2346")),
+    ("-1.23455", Decimal("-1.2346")),
+])
+def test_measurement_numeric_12_4_uses_decimal_rounding(db_session, raw, expected):
+    payload = _payload()
+    payload["measurements"] = [{
+        "量測項目": "硬度", "測量位置": "爐門", "取樣序": 1, "量測值": raw
+    }]
+
+    test_id = MechanicalService.create(payload, user_id=None)
+
+    measurement = db_session.get(MechanicalTest, test_id).measurements[0]
+    assert measurement.value == expected

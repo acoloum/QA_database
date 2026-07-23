@@ -5,8 +5,8 @@ CREATE TABLE IF NOT EXISTS "機械性質檢驗" (
     "材質"         VARCHAR(50) NOT NULL,
     "廠商ID"       INTEGER REFERENCES "廠商資料"("識別碼"),
     "測試日期"     DATE,
-    "T4溫度時間"   VARCHAR,
-    "T6溫度時間"   VARCHAR,
+    "T4溫度時間"   VARCHAR(100),
+    "T6溫度時間"   VARCHAR(100),
     "備註"         VARCHAR,
     "是否NG"       BOOLEAN NOT NULL DEFAULT FALSE,
     "建立日期"     TIMESTAMPTZ DEFAULT NOW(),
@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS "機械性質批次" (
     "識別碼"          SERIAL PRIMARY KEY,
     "機械性質檢驗_ID" INTEGER NOT NULL REFERENCES "機械性質檢驗"("識別碼") ON DELETE CASCADE,
     "序號"            INTEGER NOT NULL DEFAULT 1,
-    "擠製編號"        VARCHAR,
-    "爐具編號"        VARCHAR,
+    "擠製編號"        VARCHAR(100),
+    "爐具編號"        VARCHAR(100),
     CONSTRAINT uq_mech_batch_seq UNIQUE ("機械性質檢驗_ID", "序號"),
     CONSTRAINT ck_mech_batch_seq_positive CHECK ("序號" >= 1)
 );

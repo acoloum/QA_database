@@ -57,7 +57,6 @@ def test_measurement_unique_constraint(db_session):
         db_session.commit()
     db_session.rollback()
 
-
 def test_batch_sequence_constraints(db_session):
     import pytest
     from sqlalchemy.exc import IntegrityError
@@ -78,3 +77,14 @@ def test_batch_sequence_constraints(db_session):
     db_session.add(test)
     with pytest.raises(IntegrityError):
         db_session.commit()
+
+
+def test_mechanical_string_lengths_are_explicit():
+    from backend.models import MechanicalBatch, MechanicalTest
+
+    assert MechanicalTest.product_size.type.length == 50
+    assert MechanicalTest.material.type.length == 50
+    assert MechanicalTest.t4_temp_time.type.length == 100
+    assert MechanicalTest.t6_temp_time.type.length == 100
+    assert MechanicalBatch.extrusion_no.type.length == 100
+    assert MechanicalBatch.furnace_no.type.length == 100

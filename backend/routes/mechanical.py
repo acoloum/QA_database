@@ -109,3 +109,18 @@ def get_spec():
         return jsonify({"success": True, "limits": {k: float(v) for k, v in limits.items()}})
     except Exception as e:
         return _mechanical_error_response(e)
+
+
+@mechanical_bp.route('/api/mechanical/options', methods=['GET'])
+@auth_required
+def get_options():
+    """取得指定廠商公差中受控且去重的材質與尺寸建議。"""
+    try:
+        vendor_id = parse_vendor_id(request.args.get('vendor_id'))
+        if vendor_id is None:
+            return jsonify({"success": True, "materials": [], "product_sizes": []})
+        if db.session.get(Vendor, vendor_id) is None:
+            raise MechanicalValidationError("指定的廠商不存在")
+        return jsonify({"success": True, **MechanicalService.options(vendor_id)})
+    except Exception as e:
+        return _mechanical_error_response(e)

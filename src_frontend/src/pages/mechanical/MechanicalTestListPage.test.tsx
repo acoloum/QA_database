@@ -175,7 +175,7 @@ describe('MechanicalTestListPage', () => {
     await screen.findByText('62.5 x 2.3');
     fireEvent.click(screen.getByRole('button', { name: '刪除' }));
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('刪除失敗，請稍後再試'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('刪除失敗'));
   });
 
   it('刪除遭拒時顯示後端權限訊息', async () => {
@@ -190,6 +190,18 @@ describe('MechanicalTestListPage', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
       '您沒有刪除機械性質檢驗的權限',
     ));
+  });
+
+  it('刪除錯誤相容 interceptor 的標準 Error 並避免重複 toast', async () => {
+    const error = Object.assign(new Error('伺服器已顯示錯誤'), { _toasted: true });
+    vi.mocked(mechanicalApi.remove).mockRejectedValue(error);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPage();
+    await screen.findByText('62.5 x 2.3');
+    fireEvent.click(screen.getByRole('button', { name: '刪除' }));
+
+    await waitFor(() => expect(mechanicalApi.remove).toHaveBeenCalled());
+    expect(toast.error).not.toHaveBeenCalledWith('伺服器已顯示錯誤');
   });
 
   it('查詢失敗時顯示錯誤狀態', async () => {

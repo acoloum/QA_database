@@ -4,6 +4,7 @@ import { Alert, Button, Col, Form, Modal, Row, Table } from 'react-bootstrap';
 import toast from 'react-hot-toast';
 
 import { mechanicalApi } from '../../services/mechanicalApi';
+import { apiErrorMessage, apiErrorNeedsToast } from '../../services/apiError';
 import type { MechItem, MechLocation, MechanicalBatch, MechanicalTestPayload } from '../../types';
 import {
   ALL_ITEMS,
@@ -65,7 +66,17 @@ const LOCATION_KEYS: Record<MechLocation, string> = {
 const measurementErrorId = (item: MechItem, location: MechLocation, sample: number, kind: 'format' | 'ng') =>
   `mechanical-measurement-${ITEM_KEYS[item]}-${LOCATION_KEYS[location]}-${sample}-${kind}-error`;
 
-const isInvalidMeasurement = (value: string) => value.trim() !== '' && !Number.isFinite(Number(value.trim()));
+const NUMERIC_MAX = 99999999.9999;
+
+const measurementValidationError = (value: string) => {
+  if (value.trim() === '') return null;
+  const numeric = Number(value.trim());
+  if (!Number.isFinite(numeric)) return '量測值必須為有限數字';
+  if (Math.abs(numeric) > NUMERIC_MAX) return '量測值超出 NUMERIC(12,4) 可儲存範圍';
+  return null;
+};
+
+const isInvalidMeasurement = (value: string) => measurementValidationError(value) !== null;
 
 const invalidMeasurements = (grid: MechGrid) => ALL_ITEMS.flatMap((item) => (
   LOCATIONS.flatMap((location) => SAMPLES.flatMap((sample) => (
@@ -100,6 +111,12 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
   const { data: vendors = [], isError: isVendorsError } = useQuery({
     queryKey: ['vendors'],
     queryFn: mechanicalApi.getVendors,
+  });
+
+  const { data: options } = useQuery({
+    queryKey: ['mechanical-options', vendorId],
+    queryFn: () => mechanicalApi.getOptions(vendorId as number),
+    enabled: vendorId !== null,
   });
 
   useEffect(() => {
@@ -230,11 +247,9 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
       toast.success('已儲存');
       onSaved();
     } catch (error) {
-      const message = (
-        error as { response?: { data?: { error?: string } } }
-      ).response?.data?.error || '儲存失敗，請稍後再試';
+      const message = apiErrorMessage(error, '儲存失敗，請稍後再試');
       setSaveError(message);
-      toast.error(message);
+      if (apiErrorNeedsToast(error)) toast.error(message);
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -305,10 +320,17 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                 <Form.Label>產品尺寸</Form.Label>
                 <Form.Control
                   required
+                  maxLength={50}
+                  list="mechanical-product-size-options"
                   value={basic.產品尺寸}
                   isInvalid={Boolean(validationError && !basic.產品尺寸.trim())}
                   onChange={(event) => setBasicField('產品尺寸', event.target.value)}
                 />
+                <datalist id="mechanical-product-size-options">
+                  {(options?.product_sizes ?? []).map((value) => (
+                    <option key={value} value={value}>{value}</option>
+                  ))}
+                </datalist>
               </Form.Group>
             </Col>
             <Col md={3}>
@@ -316,10 +338,17 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                 <Form.Label>材質</Form.Label>
                 <Form.Control
                   required
+                  maxLength={50}
+                  list="mechanical-material-options"
                   value={basic.材質}
                   isInvalid={Boolean(validationError && !basic.材質.trim())}
                   onChange={(event) => setBasicField('材質', event.target.value)}
                 />
+                <datalist id="mechanical-material-options">
+                  {(options?.materials ?? []).map((value) => (
+                    <option key={value} value={value}>{value}</option>
+                  ))}
+                </datalist>
               </Form.Group>
             </Col>
             <Col md={3}>
@@ -351,6 +380,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
               <Form.Group controlId="mechanical-form-t4">
                 <Form.Label>T4溫度/時間</Form.Label>
                 <Form.Control
+                  maxLength={100}
                   value={basic.T4溫度時間}
                   onChange={(event) => setBasicField('T4溫度時間', event.target.value)}
                 />
@@ -360,6 +390,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
               <Form.Group controlId="mechanical-form-t6">
                 <Form.Label>T6溫度/時間</Form.Label>
                 <Form.Control
+                  maxLength={100}
                   value={basic.T6溫度時間}
                   onChange={(event) => setBasicField('T6溫度時間', event.target.value)}
                 />
@@ -379,6 +410,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                 <Col xs="auto" className="pb-1 text-muted">{index + 1}.</Col>
                 <Col>
                   <Form.Control
+                    maxLength={100}
                     aria-label={`第 ${index + 1} 組擠製編號`}
                     placeholder="擠製編號"
                     value={batch.擠製編號 ?? ''}
@@ -387,6 +419,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                 </Col>
                 <Col>
                   <Form.Control
+                    maxLength={100}
                     aria-label={`第 ${index + 1} 組爐具編號`}
                     placeholder="爐具編號"
                     value={batch.爐具編號 ?? ''}
@@ -443,15 +476,20 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                       <th scope="row">{item}</th>
                       {LOCATIONS.flatMap((location) => samples.map((sample) => {
                         const value = grid[item][location][sample] ?? '';
-                        const isNg = cellNg(item, value);
-                        const hasFormatError = isInvalidMeasurement(value);
-                        const lowerLimit = limits?.[item];
                         const excludedMeasurement = detail?.measurements.find((measurement) => (
                           measurement.量測項目 === item
                           && measurement.測量位置 === location
                           && measurement.取樣序 === sample
                           && measurement.排除統計
                         ));
+                        const isNg = excludedMeasurement
+                          ? Boolean(excludedMeasurement.是否超差)
+                          : cellNg(item, value);
+                        const validationMessage = measurementValidationError(value);
+                        const hasFormatError = validationMessage !== null;
+                        const lowerLimit = excludedMeasurement
+                          ? (excludedMeasurement.下限 ?? undefined)
+                          : limits?.[item];
                         const errorId = hasFormatError
                           ? measurementErrorId(item, location, sample, 'format')
                           : isNg ? measurementErrorId(item, location, sample, 'ng') : undefined;
@@ -461,6 +499,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                               size="sm"
                               type="text"
                               inputMode="decimal"
+                              maxLength={30}
                               aria-label={cellLabel(item, location, sample)}
                               aria-invalid={hasFormatError || isNg}
                               aria-describedby={errorId}
@@ -472,9 +511,9 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                             />
                             {hasFormatError ? (
                               <Form.Text id={measurementErrorId(item, location, sample, 'format')} className="text-danger" role="alert">
-                                量測值必須為有限數字
+                                {validationMessage}
                               </Form.Text>
-                            ) : isNg && lowerLimit !== undefined && (
+                            ) : !excludedMeasurement && isNg && lowerLimit !== undefined && (
                               <Form.Text id={measurementErrorId(item, location, sample, 'ng')} className="text-danger">
                                 NG：低於下限 {lowerLimit}
                               </Form.Text>
@@ -483,6 +522,9 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                               <Form.Text className="text-warning-emphasis">
                                 已排除：{excludedMeasurement.排除原因 || '未填原因'}
                                 {excludedMeasurement.排除時間 ? `（${excludedMeasurement.排除時間}）` : ''}
+                                <span>
+                                  ；歷史快照：下限 {excludedMeasurement.下限 ?? '無規格'}，判定 {excludedMeasurement.是否超差 ? 'NG' : 'OK'}
+                                </span>
                               </Form.Text>
                             )}
                           </td>

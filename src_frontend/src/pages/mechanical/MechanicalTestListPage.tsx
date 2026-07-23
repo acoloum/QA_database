@@ -4,6 +4,7 @@ import { Button, Card, Col, Form, Row, Table } from 'react-bootstrap';
 import toast from 'react-hot-toast';
 
 import { mechanicalApi } from '../../services/mechanicalApi';
+import { apiErrorMessage, apiErrorNeedsToast } from '../../services/apiError';
 import { useAuth } from '../../context/useAuth';
 import type { MechanicalJudgementStatus } from '../../types';
 import MechanicalTestForm from './MechanicalTestForm';
@@ -57,10 +58,8 @@ export default function MechanicalTestListPage() {
       queryClient.invalidateQueries({ queryKey: ['mechanical-tests'] });
     },
     onError: (error) => {
-      const message = (
-        error as { response?: { data?: { error?: string } } }
-      ).response?.data?.error || '刪除失敗，請稍後再試';
-      toast.error(message);
+      const message = apiErrorMessage(error, '刪除失敗，請稍後再試');
+      if (apiErrorNeedsToast(error)) toast.error(message);
     },
   });
 

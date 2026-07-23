@@ -25,11 +25,9 @@ def lookup_lower_limits(
 ) -> Dict[str, float]:
     """回傳 {機械性質項目: 下限}，查無則不含該項；EC 不查。
 
-    當多筆 VendorToleranceMain 同時匹配（材質 + 產品尺寸皆為模糊比對）時，
-    採兩層優先序以確保結果穩定、可預期：
-      1. 精確層：規格正規化後與輸入完全相同
-      2. 模糊層：僅前兩段相同（_match_spec 的相近匹配）
-    同層內若仍有多筆，依 id 由小到大取第一筆，避免依賴資料庫回傳順序。
+    候選優先序依序為：材質完全相同、規格正規化後完全相同、
+    規格僅前兩段相同（_match_spec 的相近匹配）；相同層級再依 id
+    由小到大取第一筆，避免依賴資料庫回傳順序。
     """
     if not material or not product_size or vendor_id is None:
         return {}

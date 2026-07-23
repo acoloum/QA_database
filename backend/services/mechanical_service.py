@@ -1,10 +1,16 @@
 """機械性質檢驗 CRUD 服務。"""
 from datetime import datetime, date
-import math
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict, Optional
 
 from ..extensions import db
-from ..models import MechanicalTest, MechanicalMeasurement, MechanicalBatch, Vendor
+from ..models import (
+    MechanicalTest,
+    MechanicalMeasurement,
+    MechanicalBatch,
+    Vendor,
+    VendorToleranceMain,
+)
 from ..utils import bounded_int
 from .mechanical_spec import lookup_lower_limits, compute_measurement_ng
 
@@ -20,6 +26,11 @@ class MechanicalNotFoundError(ValueError):
 ALLOWED_MEASUREMENT_ITEMS = {"EC值", "硬度", "抗拉強度", "降伏強度", "伸長率"}
 ALLOWED_MEASUREMENT_LOCATIONS = {"爐門", "爐頂"}
 ALLOWED_SAMPLE_NUMBERS = {1, 2}
+REQUIRED_MEASUREMENT_KEYS = {
+    (item, location, 1)
+    for item in ("硬度", "抗拉強度", "降伏強度", "伸長率")
+    for location in ("爐門", "爐頂")
+}
 
 
 def _parse_date(v: Any) -> Optional[date]:
@@ -35,16 +46,39 @@ def _parse_date(v: Any) -> Optional[date]:
         raise MechanicalValidationError("測試日期格式必須為 YYYY-MM-DD") from exc
 
 
-def _to_float(v: Any) -> Optional[float]:
+NUMERIC_QUANTUM = Decimal("0.0001")
+NUMERIC_MAX = Decimal("99999999.9999")
+
+
+def _to_float(v: Any) -> Optional[Decimal]:
     if v is None or (isinstance(v, str) and not v.strip()):
         return None
+    if isinstance(v, bool):
+        raise MechanicalValidationError("量測值必須為空值或有限數值")
     try:
-        value = float(v)
-    except (TypeError, ValueError):
+        value = Decimal(str(v).strip()).quantize(NUMERIC_QUANTUM, rounding=ROUND_HALF_UP)
+    except (AttributeError, InvalidOperation, TypeError, ValueError):
         raise MechanicalValidationError("量測值必須為空值或有限數值") from None
-    if isinstance(v, bool) or not math.isfinite(value):
+    if not value.is_finite() or abs(value) > NUMERIC_MAX:
         raise MechanicalValidationError("量測值必須為空值或有限數值")
     return value
+
+
+def _string_field(
+    value: Any, field: str, *, required: bool = False, max_length: Optional[int] = None
+) -> Optional[str]:
+    if value is None:
+        if required:
+            raise MechanicalValidationError(f"{field}為必填")
+        return None
+    if not isinstance(value, str):
+        raise MechanicalValidationError(f"{field}必須為字串")
+    normalized = value.strip() if required else value
+    if required and not normalized:
+        raise MechanicalValidationError(f"{field}為必填")
+    if max_length is not None and len(normalized) > max_length:
+        raise MechanicalValidationError(f"{field}不得超過 {max_length} 字元")
+    return normalized
 
 
 def parse_vendor_id(value: Any) -> Optional[int]:
@@ -71,9 +105,10 @@ def _validate_payload(data: Dict[str, Any]) -> Optional[int]:
     if not isinstance(data, dict):
         raise MechanicalValidationError("請求內容必須為物件")
     for field in ("產品尺寸", "材質"):
-        value = data.get(field)
-        if not isinstance(value, str) or not value.strip():
-            raise MechanicalValidationError(f"{field}為必填")
+        _string_field(data.get(field), field, required=True, max_length=50)
+    _string_field(data.get("T4溫度時間"), "T4溫度時間", max_length=100)
+    _string_field(data.get("T6溫度時間"), "T6溫度時間", max_length=100)
+    _string_field(data.get("備註"), "備註")
 
     _parse_date(data.get("測試日期"))
     batches = data.get("batches", [])
@@ -90,8 +125,7 @@ def _validate_payload(data: Dict[str, Any]) -> Optional[int]:
             raise MechanicalValidationError("批次序號不可重複")
         seen_sequences.add(sequence)
         for field in ("擠製編號", "爐具編號"):
-            if batch.get(field) is not None and not isinstance(batch.get(field), str):
-                raise MechanicalValidationError(f"{field}必須為字串或空值")
+            _string_field(batch.get(field), field, max_length=100)
 
     measurements = data.get("measurements", [])
     if not isinstance(measurements, list):
@@ -129,7 +163,11 @@ def _judgement_status(test: MechanicalTest) -> str:
     ]
     if any(measurement.is_ng for measurement in judged):
         return "NG"
-    if not judged:
+    measured_keys = {
+        (measurement.item, measurement.location, measurement.sample_no)
+        for measurement in judged
+    }
+    if not REQUIRED_MEASUREMENT_KEYS.issubset(measured_keys):
         return "INCOMPLETE"
     if any(measurement.lower_limit is None for measurement in judged):
         return "NO_SPEC"
@@ -137,6 +175,20 @@ def _judgement_status(test: MechanicalTest) -> str:
 
 
 class MechanicalService:
+
+    @staticmethod
+    def options(vendor_id: Optional[int]) -> Dict[str, list[str]]:
+        """回傳指定廠商公差中可用的材質與產品尺寸建議。"""
+        if vendor_id is None:
+            return {"materials": [], "product_sizes": []}
+        mains = VendorToleranceMain.query.filter_by(vendor_id=vendor_id).all()
+        materials = sorted({
+            main.material.strip() for main in mains if main.material and main.material.strip()
+        })
+        product_sizes = sorted({
+            main.spec.strip() for main in mains if main.spec and main.spec.strip()
+        })
+        return {"materials": materials, "product_sizes": product_sizes}
 
     @staticmethod
     def _apply_batches(test: MechanicalTest, data: Dict[str, Any]) -> None:
