@@ -1286,6 +1286,13 @@ class MechanicalTest(db.Model):
     created_by    = db.Column('建立者ID',    db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True)
     updated_at    = db.Column('更新日期',    db.DateTime(timezone=True), onupdate=utc_now)
 
+    trace_numbers = db.relationship(
+        "MechanicalTraceNumber",
+        backref="test",
+        cascade="all, delete-orphan",
+        order_by="MechanicalTraceNumber.trace_type, MechanicalTraceNumber.seq",
+    )
+    # Task 2 完成 service 切換前，暫留舊配對關聯以維持過渡期間可執行。
     batches = db.relationship(
         'MechanicalBatch', backref='test', cascade="all, delete-orphan"
     )
@@ -1293,6 +1300,44 @@ class MechanicalTest(db.Model):
         'MechanicalMeasurement', backref='test', cascade="all, delete-orphan"
     )
     vendor = db.relationship('Vendor')
+
+
+class MechanicalTraceNumber(db.Model):
+    """機械性質追溯編號；兩種類型各自排序，不保存彼此配對。"""
+
+    __tablename__ = "機械性質追溯編號"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "機械性質檢驗_ID", "類型", "序號", name="uq_mech_trace_seq"
+        ),
+        db.UniqueConstraint(
+            "機械性質檢驗_ID", "類型", "編號", name="uq_mech_trace_value"
+        ),
+        db.CheckConstraint(
+            "\"類型\" IN ('擠製編號', 'T4爐號')",
+            name="ck_mech_trace_type",
+        ),
+        db.CheckConstraint(
+            "\"序號\" >= 1",
+            name="ck_mech_trace_seq_positive",
+        ),
+        db.CheckConstraint(
+            "length(trim(\"編號\")) BETWEEN 1 AND 100",
+            name="ck_mech_trace_number",
+        ),
+        db.Index("ix_mech_trace_test_id", "機械性質檢驗_ID"),
+    )
+
+    id = db.Column("識別碼", db.Integer, primary_key=True)
+    test_id = db.Column(
+        "機械性質檢驗_ID",
+        db.Integer,
+        db.ForeignKey("機械性質檢驗.識別碼", ondelete="CASCADE"),
+        nullable=False,
+    )
+    trace_type = db.Column("類型", db.String(20), nullable=False)
+    seq = db.Column("序號", db.Integer, nullable=False)
+    number = db.Column("編號", db.String(100), nullable=False)
 
 
 class MechanicalBatch(db.Model):
