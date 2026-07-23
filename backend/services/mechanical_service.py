@@ -23,12 +23,14 @@ ALLOWED_SAMPLE_NUMBERS = {1, 2}
 
 
 def _parse_date(v: Any) -> Optional[date]:
-    if not v:
+    if v is None or v == "":
         return None
     if isinstance(v, date):
         return v
+    if not isinstance(v, str):
+        raise MechanicalValidationError("測試日期格式必須為 YYYY-MM-DD")
     try:
-        return datetime.strptime(str(v)[:10], "%Y-%m-%d").date()
+        return datetime.strptime(v[:10], "%Y-%m-%d").date()
     except (TypeError, ValueError) as exc:
         raise MechanicalValidationError("測試日期格式必須為 YYYY-MM-DD") from exc
 

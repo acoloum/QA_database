@@ -50,6 +50,14 @@ def test_create_requires_permission(client, db_session):
         "measurements": [],
     },
     {
+        "產品尺寸": "36x25.2", "材質": "6061-T651", "測試日期": False,
+        "measurements": [],
+    },
+    {
+        "產品尺寸": "36x25.2", "材質": "6061-T651", "測試日期": 0,
+        "measurements": [],
+    },
+    {
         "產品尺寸": "36x25.2", "材質": "6061-T651",
         "measurements": [{"量測項目": "硬度", "測量位置": "爐門", "取樣序": 1, "量測值": "NaN"}],
     },
