@@ -50,7 +50,9 @@ const editDetail = {
     是否NG: false,
     判定狀態: 'OK' as const,
   },
-  batches: [{ 序號: 1, 擠製編號: 'EX-001', 爐具編號: 'F-001' }],
+  extrusion_numbers: [{ 識別碼: 1, 序號: 1, 編號: 'EX-001' }],
+  t4_furnace_numbers: [{ 識別碼: 2, 序號: 1, 編號: 'T4-01' }],
+  batches: [{ 序號: 1, 擠製編號: '不應顯示', 爐具編號: null }],
   measurements: [
     {
       量測項目: '硬度' as const, 測量位置: '爐門' as const, 取樣序: 1, 量測值: 95,
@@ -103,15 +105,19 @@ describe('MechanicalTestForm', () => {
     expect(screen.getByLabelText('EC值－爐頂－取樣 2')).toBeInTheDocument();
   });
 
-  it('可動態新增並刪除批次', () => {
+  it('兩份追溯編號清單可各自新增與刪除', () => {
     renderForm();
 
-    expect(screen.getAllByPlaceholderText('擠製編號')).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: '新增一組' }));
-    expect(screen.getAllByPlaceholderText('擠製編號')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: '新增擠製編號' }));
+    expect(screen.getByLabelText('擠製編號 2')).toBeInTheDocument();
+    expect(screen.queryByLabelText('T4爐號 2')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole('button', { name: '刪除批次' })[1]);
-    expect(screen.getAllByPlaceholderText('擠製編號')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: '新增T4爐號' }));
+    expect(screen.getByLabelText('T4爐號 2')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '刪除擠製編號 2' }));
+    expect(screen.queryByLabelText('擠製編號 2')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('T4爐號 2')).toBeInTheDocument();
   });
 
   it('缺少產品尺寸時阻止儲存並提示必填欄位', async () => {
@@ -130,8 +136,8 @@ describe('MechanicalTestForm', () => {
     fireEvent.change(screen.getByLabelText('產品尺寸'), { target: { value: '62.5 x 2.3' } });
     fireEvent.change(screen.getByLabelText('廠商'), { target: { value: '42' } });
     fireEvent.change(screen.getByLabelText('測試日期'), { target: { value: '2026-07-23' } });
-    fireEvent.change(screen.getByPlaceholderText('擠製編號'), { target: { value: 'EX-001' } });
-    fireEvent.change(screen.getByPlaceholderText('爐具編號'), { target: { value: 'F-001' } });
+    fireEvent.change(screen.getByLabelText('擠製編號 1'), { target: { value: 'EX-001' } });
+    fireEvent.change(screen.getByLabelText('T4爐號 1'), { target: { value: 'T4-01' } });
     fireEvent.change(screen.getByLabelText('硬度－爐門－取樣 1'), { target: { value: '95' } });
     fireEvent.click(screen.getByRole('button', { name: '儲存' }));
 
@@ -144,7 +150,8 @@ describe('MechanicalTestForm', () => {
         T4溫度時間: '',
         T6溫度時間: '',
         備註: '',
-        batches: [{ 序號: 1, 擠製編號: 'EX-001', 爐具編號: 'F-001' }],
+        extrusion_numbers: [{ 序號: 1, 編號: 'EX-001' }],
+        t4_furnace_numbers: [{ 序號: 1, 編號: 'T4-01' }],
         measurements: [{ 量測項目: '硬度', 測量位置: '爐門', 取樣序: 1, 量測值: 95 }],
       });
     });
@@ -186,6 +193,75 @@ describe('MechanicalTestForm', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '儲存' }));
     await waitFor(() => expect(mechanicalApi.update).toHaveBeenCalledWith(8, expect.objectContaining({ 廠商ID: 42 })));
+  });
+
+  it('可獨立新增一個擠製編號與兩個 T4爐號後送出新版 payload', async () => {
+    renderForm();
+    fireEvent.change(screen.getByLabelText('產品尺寸'), {
+      target: { value: '36x25.2' },
+    });
+    fireEvent.change(screen.getByLabelText('擠製編號 1'), {
+      target: { value: ' E001 ' },
+    });
+    fireEvent.change(screen.getByLabelText('T4爐號 1'), {
+      target: { value: 'T4-01' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '新增T4爐號' }));
+    fireEvent.change(screen.getByLabelText('T4爐號 2'), {
+      target: { value: 'T4-02' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    await waitFor(() => expect(mechanicalApi.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        extrusion_numbers: [{ 序號: 1, 編號: 'E001' }],
+        t4_furnace_numbers: [
+          { 序號: 1, 編號: 'T4-01' },
+          { 序號: 2, 編號: 'T4-02' },
+        ],
+      }),
+    ));
+    expect(mechanicalApi.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ batches: expect.anything() }),
+    );
+  });
+
+  it('同一清單重複時顯示錯誤且禁止儲存', async () => {
+    renderForm();
+    fireEvent.change(screen.getByLabelText('產品尺寸'), {
+      target: { value: '36x25.2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '新增擠製編號' }));
+    fireEvent.change(screen.getByLabelText('擠製編號 1'), {
+      target: { value: 'E001' },
+    });
+    fireEvent.change(screen.getByLabelText('擠製編號 2'), {
+      target: { value: ' E001 ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    expect(await screen.findByText('請移除重複的追溯編號')).toBeInTheDocument();
+    expect(mechanicalApi.create).not.toHaveBeenCalled();
+  });
+
+  it('編輯時只讀新版兩份清單，不讀 deprecated batches', async () => {
+    vi.mocked(mechanicalApi.getDetail).mockResolvedValue({
+      ...editDetail,
+      extrusion_numbers: [{ 識別碼: 1, 序號: 1, 編號: 'E001' }],
+      t4_furnace_numbers: [
+        { 識別碼: 2, 序號: 1, 編號: 'T4-01' },
+        { 識別碼: 3, 序號: 2, 編號: 'T4-02' },
+      ],
+      batches: [
+        { 序號: 1, 擠製編號: '不應顯示', 爐具編號: null },
+      ],
+    });
+    renderForm(8);
+
+    expect(await screen.findByDisplayValue('E001')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('T4-01')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('T4-02')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('不應顯示')).not.toBeInTheDocument();
   });
 
   it('編輯時等待 detail hydrate 前不顯示表單、不查規格，完成後才以廠商 ID 查詢', async () => {

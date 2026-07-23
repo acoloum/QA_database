@@ -1,21 +1,38 @@
-import { useEffect, useRef, useState } from 'react';
+import {
+  type Dispatch,
+  type SetStateAction,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Col, Form, Modal, Row, Table } from 'react-bootstrap';
 import toast from 'react-hot-toast';
 
 import { mechanicalApi } from '../../services/mechanicalApi';
 import { apiErrorMessage, apiErrorNeedsToast } from '../../services/apiError';
-import type { MechItem, MechLocation, MechanicalBatch, MechanicalTestPayload } from '../../types';
+import type {
+  MechItem,
+  MechLocation,
+  MechanicalTestPayload,
+  MechanicalTraceNumber,
+} from '../../types';
 import {
   ALL_ITEMS,
   JUDGED_ITEMS,
   LOCATIONS,
   SAMPLES,
   buildMeasurements,
+  buildTraceNumbers,
+  duplicateTraceNumberIndexes,
   emptyGrid,
+  emptyTraceNumber,
   hydrateGrid,
+  hydrateTraceNumbers,
+  removeTraceNumber,
   type MechGrid,
 } from './mechanicalPayload';
+import MechanicalTraceNumberPanel from './MechanicalTraceNumberPanel';
 
 interface MechanicalTestFormProps {
   testId: number | null;
@@ -40,12 +57,6 @@ const EMPTY_BASIC: BasicFields = {
   T6溫度時間: '',
   備註: '',
 };
-
-const emptyBatch = (sequence: number): MechanicalBatch => ({
-  序號: sequence,
-  擠製編號: '',
-  爐具編號: '',
-});
 
 const cellLabel = (item: MechItem, location: MechLocation, sample: number) =>
   `${item}－${location}－取樣 ${sample}`;
@@ -97,7 +108,12 @@ const invalidMeasurements = (grid: MechGrid) => ALL_ITEMS.flatMap((item) => (
 export default function MechanicalTestForm({ testId, onClose, onSaved }: MechanicalTestFormProps) {
   const [basic, setBasic] = useState<BasicFields>(EMPTY_BASIC);
   const [vendorId, setVendorId] = useState<number | null>(null);
-  const [batches, setBatches] = useState<MechanicalBatch[]>([emptyBatch(1)]);
+  const [extrusionNumbers, setExtrusionNumbers] = useState<MechanicalTraceNumber[]>([
+    emptyTraceNumber(1),
+  ]);
+  const [t4FurnaceNumbers, setT4FurnaceNumbers] = useState<MechanicalTraceNumber[]>([
+    emptyTraceNumber(1),
+  ]);
   const [grid, setGrid] = useState<MechGrid>(emptyGrid());
   const [showSecond, setShowSecond] = useState(false);
   const [showEc, setShowEc] = useState(false);
@@ -106,6 +122,10 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
   const [saveError, setSaveError] = useState('');
   const [hydratedTestId, setHydratedTestId] = useState<number | null>(null);
   const savingRef = useRef(false);
+  const extrusionDuplicateIndexes = duplicateTraceNumberIndexes(extrusionNumbers);
+  const t4FurnaceDuplicateIndexes = duplicateTraceNumberIndexes(t4FurnaceNumbers);
+  const hasDuplicateTraceNumbers =
+    extrusionDuplicateIndexes.size > 0 || t4FurnaceDuplicateIndexes.size > 0;
 
   const {
     data: detail,
@@ -133,7 +153,8 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
     if (testId === null) {
       setBasic(EMPTY_BASIC);
       setVendorId(null);
-      setBatches([emptyBatch(1)]);
+      setExtrusionNumbers([emptyTraceNumber(1)]);
+      setT4FurnaceNumbers([emptyTraceNumber(1)]);
       setGrid(emptyGrid());
       setShowSecond(false);
       setShowEc(false);
@@ -154,11 +175,8 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
       備註: detail.main.備註 ?? '',
     });
     setVendorId(detail.main.廠商ID);
-    setBatches(detail.batches.length > 0 ? detail.batches.map((batch) => ({
-      ...batch,
-      擠製編號: batch.擠製編號 ?? '',
-      爐具編號: batch.爐具編號 ?? '',
-    })) : [emptyBatch(1)]);
+    setExtrusionNumbers(hydrateTraceNumbers(detail.extrusion_numbers));
+    setT4FurnaceNumbers(hydrateTraceNumbers(detail.t4_furnace_numbers));
     setGrid(hydrateGrid(detail.measurements));
     setShowSecond(detail.measurements.some((measurement) => measurement.取樣序 === 2));
     setShowEc(detail.measurements.some((measurement) => measurement.量測項目 === 'EC值'));
@@ -181,22 +199,20 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
     setValidationError('');
   };
 
-  const setBatchField = (index: number, field: '擠製編號' | '爐具編號', value: string) => {
-    setBatches((current) => current.map((batch, batchIndex) => (
-      batchIndex === index ? { ...batch, [field]: value } : batch
+  const setTraceValue = (
+    setter: Dispatch<SetStateAction<MechanicalTraceNumber[]>>,
+    index: number,
+    value: string,
+  ) => {
+    setter((current) => current.map((row, rowIndex) => (
+      rowIndex === index ? { ...row, 編號: value } : row
     )));
+    setValidationError('');
   };
 
-  const addBatch = () => setBatches((current) => [...current, emptyBatch(current.length + 1)]);
-
-  const removeBatch = (index: number) => {
-    setBatches((current) => {
-      if (current.length <= 1) return current;
-      return current
-        .filter((_, batchIndex) => batchIndex !== index)
-        .map((batch, batchIndex) => ({ ...batch, 序號: batchIndex + 1 }));
-    });
-  };
+  const addTraceValue = (
+    setter: Dispatch<SetStateAction<MechanicalTraceNumber[]>>,
+  ) => setter((current) => [...current, emptyTraceNumber(current.length + 1)]);
 
   const setCell = (item: MechItem, location: MechLocation, sample: number, value: string) => {
     setGrid((current) => ({
@@ -236,6 +252,13 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
       return;
     }
 
+    if (hasDuplicateTraceNumbers) {
+      const message = '請移除重複的追溯編號';
+      setValidationError(message);
+      toast.error(message);
+      return;
+    }
+
     const payload: MechanicalTestPayload = {
       產品尺寸: basic.產品尺寸,
       材質: basic.材質,
@@ -244,7 +267,8 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
       T6溫度時間: basic.T6溫度時間,
       備註: basic.備註,
       廠商ID: vendorId,
-      batches: batches.filter((batch) => (batch.擠製編號 ?? '').trim() || (batch.爐具編號 ?? '').trim()),
+      extrusion_numbers: buildTraceNumbers(extrusionNumbers),
+      t4_furnace_numbers: buildTraceNumbers(t4FurnaceNumbers),
       measurements: buildMeasurements(grid),
     };
 
@@ -408,49 +432,36 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
             </Col>
           </Row>
 
-          <section className="mt-4" aria-labelledby="mechanical-batches-heading">
-            <div className="d-flex justify-content-between align-items-center mb-2">
-              <h3 id="mechanical-batches-heading" className="h6 mb-0">擠製編號／爐具編號</h3>
-              <Button type="button" size="sm" variant="outline-primary" onClick={addBatch}>
-                新增一組
-              </Button>
-            </div>
-            {batches.map((batch, index) => (
-              <Row key={`${batch.序號}-${index}`} className="g-2 align-items-end mb-2">
-                <Col xs="auto" className="pb-1 text-muted">{index + 1}.</Col>
-                <Col>
-                  <Form.Control
-                    maxLength={100}
-                    aria-label={`第 ${index + 1} 組擠製編號`}
-                    placeholder="擠製編號"
-                    value={batch.擠製編號 ?? ''}
-                    onChange={(event) => setBatchField(index, '擠製編號', event.target.value)}
-                  />
-                </Col>
-                <Col>
-                  <Form.Control
-                    maxLength={100}
-                    aria-label={`第 ${index + 1} 組爐具編號`}
-                    placeholder="爐具編號"
-                    value={batch.爐具編號 ?? ''}
-                    onChange={(event) => setBatchField(index, '爐具編號', event.target.value)}
-                  />
-                </Col>
-                <Col xs="auto">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline-danger"
-                    aria-label="刪除批次"
-                    disabled={batches.length <= 1}
-                    onClick={() => removeBatch(index)}
-                  >
-                    刪除
-                  </Button>
-                </Col>
-              </Row>
-            ))}
-          </section>
+          <Row className="g-3 mt-1">
+            <Col md={6}>
+              <MechanicalTraceNumberPanel
+                idPrefix="extrusion"
+                title="擠製編號"
+                addLabel="新增擠製編號"
+                values={extrusionNumbers}
+                duplicateIndexes={extrusionDuplicateIndexes}
+                onChange={(index, value) => setTraceValue(setExtrusionNumbers, index, value)}
+                onAdd={() => addTraceValue(setExtrusionNumbers)}
+                onRemove={(index) => setExtrusionNumbers(
+                  (current) => removeTraceNumber(current, index),
+                )}
+              />
+            </Col>
+            <Col md={6}>
+              <MechanicalTraceNumberPanel
+                idPrefix="t4-furnace"
+                title="T4爐號"
+                addLabel="新增T4爐號"
+                values={t4FurnaceNumbers}
+                duplicateIndexes={t4FurnaceDuplicateIndexes}
+                onChange={(index, value) => setTraceValue(setT4FurnaceNumbers, index, value)}
+                onAdd={() => addTraceValue(setT4FurnaceNumbers)}
+                onRemove={(index) => setT4FurnaceNumbers(
+                  (current) => removeTraceNumber(current, index),
+                )}
+              />
+            </Col>
+          </Row>
 
           <div className="d-flex flex-wrap gap-3 mt-4">
             <Form.Check

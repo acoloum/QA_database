@@ -55,7 +55,10 @@ export interface MechanicalTestDetail {
     是否NG: boolean;
     判定狀態: MechanicalJudgementStatus;
   };
-  batches: MechanicalBatch[];
+  extrusion_numbers: MechanicalTraceNumber[];
+  t4_furnace_numbers: MechanicalTraceNumber[];
+  /** @deprecated 舊前端相容欄位。 */
+  batches?: MechanicalBatch[];
   measurements: MechanicalMeasurement[];
 }
 
@@ -67,6 +70,7 @@ export interface MechanicalTestPayload {
   T4溫度時間?: string;
   T6溫度時間?: string;
   備註?: string;
-  batches: MechanicalBatch[];
+  extrusion_numbers: MechanicalTraceNumber[];
+  t4_furnace_numbers: MechanicalTraceNumber[];
   measurements: MechanicalMeasurement[];
 }

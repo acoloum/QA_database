@@ -1,37 +1,73 @@
-# Task 5：巡檢機器績效研究完成報告
+# Task 5 實作報告：兩個獨立追溯編號面板與新增／編輯表單
 
-## 交付範圍
+## 結果
 
-- 新增固定機台巡檢研究的 Pm、Pmk、Pmu、Pml G 法分位數引擎。
-- 僅允許 `source=patrol`，並要求單一機台、材質、規格、項目與位置；研究條件選項採嚴格 canonical contract 且納入資料雜湊。
-- 巡檢 `min_val`、`max_val` 分別保留為觀測值，保存操作者、日期跨度、來源紀錄與量測明細識別碼。
-- 新增研究核准 API；機器及已確認 B/C/D 研究使用不建立生產界限的 `approve_research` 流程。
-- 機器研究報表使用專用摘要，不產生 Xbar/R、持續監控或 OCAP 語意。
+- 機械性質新增／編輯表單已由舊的成對批次列，切換為「擠製編號」與「T4爐號」兩份完全獨立的清單。
+- 兩份清單各自新增、刪除、重排與輸入，不會改變另一份清單。
+- 儲存 payload 只送出 `extrusion_numbers` 與 `t4_furnace_numbers`，不再送出 `batches`。
+- 空白編號會在建立 payload 時排除，送出前會 trim 並重新編為連續序號。
+- 同一份清單內 trim 後的重複值會即時標成錯誤，輸入欄位與錯誤訊息有可存取關聯，並阻擋儲存。
+- 編輯 hydrate 僅讀新版兩份清單；fixture 刻意保留 deprecated `batches`，驗證其內容不會出現在新表單。
 
-## TDD 證據
+## Frontend design 如何影響實作
 
-1. 引擎測試首次執行因 `spc_machine_performance` 模組不存在而 RED。
-2. 研究流程測試首次執行因既有服務拒絕 `machine` 分析族別而 RED。
-3. API 測試首次執行回傳 405，新增路由後 GREEN。
-4. 報表測試首次執行只有一般 SPC 工作表，新增機器專用報表後 GREEN。
-5. B/C/D 研究核准測試首次執行遭 `RESEARCH_APPROVAL_NOT_APPLICABLE` 拒絕，擴充核准條件後 GREEN。
+本功能服務 QC 檢驗人員，單一視覺任務是明確表達「兩種追溯編號互不配對」。因此：
+
+- 使用既有 React Bootstrap 與系統字型、主題色、danger 狀態，沒有新增局部 palette、字型或動畫。
+- 使用兩個同等權重的 `border rounded p-3 h-100` 面板，各自具有標題與新增按鈕，作為唯一的視覺強調。
+- 以 `Row` 搭配兩個 `Col md={6}`：桌面並排，低於 `md` breakpoint 時自然堆疊。
+- 每列序號只表示該清單內順序；沒有跨欄對齊、連線、共用新增按鈕或其他暗示配對的視覺。
+- 錯誤沿用 Bootstrap invalid feedback，並以唯一 ID 連結 `aria-describedby`，讓視覺與輔助科技使用者取得相同錯誤資訊。
+
+## TDD：RED 證據
+
+先新增 `MechanicalTraceNumberPanel.test.tsx`，並先更新表單測試鎖定獨立新增／刪除、新版 payload、重複阻擋與不讀 deprecated `batches`，正式碼尚未修改時執行：
+
+```powershell
+Set-Location src_frontend
+npm test -- --run src/pages/mechanical/MechanicalTraceNumberPanel.test.tsx src/pages/mechanical/MechanicalTestForm.test.tsx
+```
+
+結果：exit code 1；2 個測試檔失敗。面板測試因 `./MechanicalTraceNumberPanel` 尚不存在而無法解析；表單 25 個測試中 6 個失敗、19 個通過，失敗原因為找不到「新增擠製編號」、新版獨立欄位與新版 hydrate 值。這些均為需求尚未實作的預期失敗，不是測試拼字或環境錯誤。
+
+## TDD：GREEN 證據
+
+完成最小實作後執行 brief 指定命令：
+
+```powershell
+Set-Location src_frontend
+npm test -- --run src/pages/mechanical/MechanicalTraceNumberPanel.test.tsx src/pages/mechanical/MechanicalTestForm.test.tsx src/pages/mechanical/mechanicalPayload.test.ts
+```
+
+結果：exit code 0；3 個測試檔、40 個測試全部通過。
 
 ## 驗證
 
-- `backend/tests/test_services/test_spc_machine_performance.py`：3 passed
-- `backend/tests/test_services/test_spc_machine_study.py`：4 passed
-- 完整 SPC 服務與路由回歸：179 passed
-- `git diff --check`：通過
+- 指定測試：3 files / 40 tests PASS。
+- 全前端回歸：`npm test -- --run`，106 files / 428 tests PASS。
+- Lint：`npm run lint -- --max-warnings=0`，exit code 0，0 warnings。
+- Build：`npm run build`，TypeScript 與 Vite production build 均通過。
+- 格式：`git diff --check`，exit code 0。
+- 範圍檢查：表單與面板正式碼已無 `batches`、`MechanicalBatch` 或舊 batch state 操作；`batches` 只保留在 detail 型別的 optional deprecated 相容欄位。
 
-## 已知界線
+## 變更檔案
 
-- 此交付不建立 `SpcLimitVersion`、不提供 ongoing chart，也不為機器研究建立 OCAP。
-- 機器研究規格一致性透過固定材質、規格、項目、位置及不可變規格快照／資料雜湊驗證；來源改變時送審或核准會被拒絕。
+- `src_frontend/src/pages/mechanical/MechanicalTraceNumberPanel.tsx`
+- `src_frontend/src/pages/mechanical/MechanicalTraceNumberPanel.test.tsx`
+- `src_frontend/src/pages/mechanical/MechanicalTestForm.tsx`
+- `src_frontend/src/pages/mechanical/MechanicalTestForm.test.tsx`
+- `src_frontend/src/types/mechanical.ts`
 
-## Review 修正（第二輪）
+## 自審
 
-- 公差解析改為機器研究專用 SQL 精確 resolver。指定 customer 時只接受同一 customer；未指定時只接受通用公差。材質、規格、項目與位置皆採完全相等比對，拒絕既有一般公差服務的模糊、前綴與近似匹配。
-- 同一精確範圍內的所有公差主檔／明細 ID 皆保存；重複且相同界限可用，衝突、無效或不完整界限回報 `MACHINE_SPECIFICATION_INCONSISTENT`。單側規格可用。
-- 報表不再預設捏造 source semantics；缺少時標示「未保存／不可稽核」，並禁止研究核准。
-- `approve_research` 改為版本與研究主檔雙 CAS 更新；只有版本 `submitted -> approved` 成功的交易才建立 AuditLog。失敗交易重讀後僅對既有 approved 冪等回傳，其他狀態回穩定 conflict。
-- PostgreSQL migration integration test 在本機因未提供 PostgreSQL integration 設定而 skipped；SQLite CAS rowcount 契約測試已涵蓋失敗交易不寫 AuditLog。
+- 獨立性：兩面板使用不同 state、setter、duplicate set 與新增／刪除操作。
+- Payload：只組成新版兩清單；既有 helper 統一負責 trim、排除空白與重編序號。
+- Hydrate：只讀 `detail.extrusion_numbers` 與 `detail.t4_furnace_numbers`，沒有 fallback 到 `batches`。
+- 重複防護：忽略空白值，僅在同一清單內比較 trim 後字串；兩列都標錯並在 save 前阻擋 API。
+- 可存取性：面板以 heading 標記 region，輸入有唯一 label，重複錯誤具有唯一 ID 與 `aria-describedby`。
+- 響應式：`Col md={6}` 在桌面等寬並排、手機單欄堆疊；沒有新增自訂 CSS breakpoint。
+- 範圍：未修改後端、Task 6 清單或附件；未納入工作樹既存的 `task-3-report.md` 修改。
+
+## 疑慮
+
+- 本次以元件測試、完整前端回歸、lint 與 production build 驗證；未啟動服務進行瀏覽器實畫面檢查。響應式行為直接使用專案既有 Bootstrap `md` breakpoint，未新增自訂樣式。
