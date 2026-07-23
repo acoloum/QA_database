@@ -89,4 +89,12 @@ export const PERMISSION_GROUPS: { label: string; perms: { key: string; label: st
       { key: 'user.manage', label: '使用者管理' },
     ],
   },
+  {
+    label: '機械性質',
+    perms: [
+      { key: 'mechanical.create', label: '建立' },
+      { key: 'mechanical.edit', label: '編輯' },
+      { key: 'mechanical.delete', label: '刪除' },
+    ],
+  },
 ];

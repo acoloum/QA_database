@@ -8,4 +8,14 @@ describe('管理員權限清單', () => {
       'spc.view', 'spc.manage', 'spc.approve',
     ]);
   });
+
+  it('可設定機械性質的建立、編輯與刪除權限', () => {
+    const mechanical = PERMISSION_GROUPS.find(group => group.label === '機械性質');
+
+    expect(mechanical?.perms).toEqual([
+      { key: 'mechanical.create', label: '建立' },
+      { key: 'mechanical.edit', label: '編輯' },
+      { key: 'mechanical.delete', label: '刪除' },
+    ]);
+  });
 });
