@@ -1304,7 +1304,7 @@ class MechanicalBatch(db.Model):
 
     id           = db.Column('識別碼',        db.Integer, primary_key=True)
     test_id      = db.Column('機械性質檢驗_ID', db.Integer,
-                             db.ForeignKey('機械性質檢驗.識別碼'), nullable=False)
+                             db.ForeignKey('機械性質檢驗.識別碼', ondelete='CASCADE'), nullable=False)
     seq          = db.Column('序號',          db.Integer, nullable=False, default=1)
     extrusion_no = db.Column('擠製編號',      db.String, nullable=True)
     furnace_no   = db.Column('爐具編號',      db.String, nullable=True)
@@ -1321,7 +1321,7 @@ class MechanicalMeasurement(db.Model):
 
     id          = db.Column('識別碼',        db.Integer, primary_key=True)
     test_id     = db.Column('機械性質檢驗_ID', db.Integer,
-                            db.ForeignKey('機械性質檢驗.識別碼'), nullable=False)
+                            db.ForeignKey('機械性質檢驗.識別碼', ondelete='CASCADE'), nullable=False)
     item        = db.Column('量測項目',      db.String(20), nullable=False)
     location    = db.Column('測量位置',      db.String(10), nullable=False)
     sample_no   = db.Column('取樣序',        db.Integer, nullable=False)

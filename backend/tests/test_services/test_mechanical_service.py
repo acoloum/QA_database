@@ -1,4 +1,15 @@
-from backend.models import Vendor, VendorToleranceMain, VendorToleranceDetail, MechanicalTest
+from datetime import datetime, timezone
+
+import pytest
+
+from backend.models import (
+    MechanicalMeasurement,
+    MechanicalTest,
+    User,
+    Vendor,
+    VendorToleranceDetail,
+    VendorToleranceMain,
+)
 from backend.services.mechanical_service import MechanicalService
 
 
@@ -106,3 +117,96 @@ def test_get_detail_and_delete(db_session):
     assert detail["batches"][0]["爐具編號"] == "011313T42"
     MechanicalService.delete(new_id)
     assert db_session.get(MechanicalTest, new_id) is None
+
+
+def test_create_uses_selected_vendor_lower_limit(db_session):
+    first_vendor = Vendor(name="安泰")
+    second_vendor = Vendor(name="宏達")
+    db_session.add_all([first_vendor, second_vendor])
+    db_session.flush()
+    for vendor, lower_limit in [(first_vendor, 60), (second_vendor, 75)]:
+        main = VendorToleranceMain(
+            vendor_id=vendor.id, material="6061-T651", spec="36*25.2"
+        )
+        db_session.add(main)
+        db_session.flush()
+        db_session.add(VendorToleranceDetail(
+            main_id=main.id, item="洛氏硬度", tolerance_min=lower_limit, unit=""
+        ))
+    db_session.commit()
+
+    payload = _payload()
+    payload["廠商ID"] = second_vendor.id
+    payload["measurements"][0]["量測值"] = 70
+    test_id = MechanicalService.create(payload, user_id=None)
+
+    measurement = db_session.get(MechanicalTest, test_id).measurements[0]
+    assert float(measurement.lower_limit) == 75
+    assert measurement.is_ng is True
+
+
+def test_update_preserves_excluded_measurement_evidence(db_session):
+    test_id = MechanicalService.create(_payload(), user_id=None)
+    excluding_user = User(username="exclude-auditor", password="x")
+    db_session.add(excluding_user)
+    db_session.flush()
+    original = db_session.get(MechanicalTest, test_id).measurements[0]
+    original.excluded = True
+    original.exclusion_reason = "儀器異常"
+    original.exclusion_user_id = excluding_user.id
+    original.excluded_at = datetime(2026, 1, 21, tzinfo=timezone.utc)
+    db_session.commit()
+
+    payload = _payload()
+    payload["measurements"][0]["量測值"] = 70
+    MechanicalService.update(test_id, payload, user_id=None)
+
+    updated = MechanicalMeasurement.query.filter_by(
+        test_id=test_id, item="硬度", location="爐門", sample_no=1
+    ).one()
+    assert updated.excluded is True
+    assert updated.exclusion_reason == "儀器異常"
+    assert updated.exclusion_user_id == excluding_user.id
+    assert updated.excluded_at.replace(tzinfo=timezone.utc) == datetime(2026, 1, 21, tzinfo=timezone.utc)
+
+
+def test_update_keeps_excluded_measurement_omitted_from_general_edit(db_session):
+    test_id = MechanicalService.create(_payload(), user_id=None)
+    original = db_session.get(MechanicalTest, test_id).measurements[0]
+    original.excluded = True
+    original.exclusion_reason = "儀器異常"
+    db_session.commit()
+
+    payload = _payload()
+    payload["measurements"] = [payload["measurements"][1]]
+    MechanicalService.update(test_id, payload, user_id=None)
+
+    retained = MechanicalMeasurement.query.filter_by(
+        test_id=test_id, item="硬度", location="爐門", sample_no=1
+    ).one()
+    assert retained.excluded is True
+    assert retained.exclusion_reason == "儀器異常"
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda payload: payload.pop("產品尺寸"),
+    lambda payload: payload.pop("材質"),
+    lambda payload: payload["measurements"][0].update({"量測項目": "未知項目"}),
+    lambda payload: payload["measurements"][0].update({"測量位置": "中央"}),
+    lambda payload: payload["measurements"][0].update({"取樣序": 3}),
+    lambda payload: payload["measurements"][0].update({"量測值": "not-a-number"}),
+    lambda payload: payload["measurements"][0].update({"量測值": "NaN"}),
+    lambda payload: payload["measurements"][0].update({"量測值": "Infinity"}),
+    lambda payload: payload.update({"測試日期": "2026-99-99"}),
+    lambda payload: payload.update({"廠商ID": 0}),
+    lambda payload: payload.update({"廠商ID": "invalid-vendor"}),
+    lambda payload: payload["measurements"].append(dict(payload["measurements"][0])),
+])
+def test_create_rejects_invalid_payload_without_persisting_data(db_session, mutate):
+    payload = _payload()
+    mutate(payload)
+
+    with pytest.raises(ValueError):
+        MechanicalService.create(payload, user_id=None)
+
+    assert MechanicalTest.query.count() == 0

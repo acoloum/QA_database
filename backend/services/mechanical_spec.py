@@ -19,7 +19,9 @@ MECH_ITEM_TO_TOLERANCE: Dict[str, str] = {
 }
 
 
-def lookup_lower_limits(material: str, product_size: str) -> Dict[str, float]:
+def lookup_lower_limits(
+    material: str, product_size: str, vendor_id: Optional[int] = None
+) -> Dict[str, float]:
     """回傳 {機械性質項目: 下限}，查無則不含該項；EC 不查。
 
     當多筆 VendorToleranceMain 同時匹配（材質 + 產品尺寸皆為模糊比對）時，
@@ -35,9 +37,10 @@ def lookup_lower_limits(material: str, product_size: str) -> Dict[str, float]:
     match_spec = ExtrusionToleranceService._match_spec
     normalize_spec = ExtrusionToleranceService._normalize_spec
 
-    mains = VendorToleranceMain.query.filter(
-        VendorToleranceMain.material.isnot(None)
-    ).order_by(VendorToleranceMain.id.asc()).all()
+    query = VendorToleranceMain.query.filter(VendorToleranceMain.material.isnot(None))
+    if vendor_id is not None:
+        query = query.filter(VendorToleranceMain.vendor_id == vendor_id)
+    mains = query.order_by(VendorToleranceMain.id.asc()).all()
 
     normalized_input = normalize_spec(product_size)
     exact_matches = []

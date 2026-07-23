@@ -71,6 +71,29 @@ def test_lookup_prefers_exact_spec_match_over_fuzzy(db_session):
     assert float(limits["硬度"]) == 60
 
 
+def test_lookup_limits_are_scoped_to_requested_vendor(db_session):
+    """同材質尺寸的不同廠商必須只讀取指定廠商的下限。"""
+    first_vendor = Vendor(name="安泰")
+    second_vendor = Vendor(name="宏達")
+    db_session.add_all([first_vendor, second_vendor])
+    db_session.flush()
+
+    for vendor, lower_limit in [(first_vendor, 60), (second_vendor, 75)]:
+        main = VendorToleranceMain(
+            vendor_id=vendor.id, material="6061-T651", spec="36*25.2"
+        )
+        db_session.add(main)
+        db_session.flush()
+        db_session.add(VendorToleranceDetail(
+            main_id=main.id, item="洛氏硬度", tolerance_min=lower_limit, unit=""
+        ))
+    db_session.commit()
+
+    limits = lookup_lower_limits("6061-T651", "36x25.2", vendor_id=second_vendor.id)
+
+    assert float(limits["硬度"]) == 75
+
+
 def test_lookup_returns_empty_when_no_spec(db_session):
     limits = lookup_lower_limits("6061-T651", "99x99")
     assert limits == {}

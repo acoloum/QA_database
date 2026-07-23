@@ -34,6 +34,16 @@ def test_create_mechanical_test_with_children(db_session):
     assert db_session.query(MechanicalBatch).count() == 0
 
 
+def test_mechanical_child_foreign_keys_match_cascade_migration():
+    from backend.models import MechanicalBatch
+
+    batch_fk = next(iter(MechanicalBatch.__table__.columns['機械性質檢驗_ID'].foreign_keys))
+    measurement_fk = next(iter(MechanicalMeasurement.__table__.columns['機械性質檢驗_ID'].foreign_keys))
+
+    assert batch_fk.ondelete == "CASCADE"
+    assert measurement_fk.ondelete == "CASCADE"
+
+
 def test_measurement_unique_constraint(db_session):
     """同一測試中（項目+位置+取樣序）不可重複。"""
     import pytest

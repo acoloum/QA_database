@@ -30,10 +30,10 @@ export const mechanicalApi = {
   remove: (id: number) =>
     api.delete<{ success: boolean }>(`/mechanical/tests/${id}`).then((r) => r.data),
 
-  getSpec: (material: string, product_size: string) =>
+  getSpec: (material: string, product_size: string, vendor_id?: number) =>
     api
       .get<{ success: boolean; limits: Record<string, number> }>('/mechanical/spec', {
-        params: { material, product_size },
+        params: { material, product_size, vendor_id },
       })
       .then((r) => r.data.limits),
 };
