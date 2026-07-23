@@ -84,15 +84,14 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     const [liveLimitsCache, setLiveLimitsCache] = useState<Record<string, PatrolLiveLimits>>({});
     const [liveTouchedKey, setLiveTouchedKey] = useState<string | null>(null);
 
-    // 切換機台/主機手/材質/規格/客戶時清空即時界限快取並重新抓取，
-    // 避免沿用已快取但已不對應目前製程流（process_stream_key）的判定結果，
-    // 造成該 item/position 組合在表單剩餘時間內永遠不再查詢的靜默失效
-    // （op_id 與 cust_id 皆是 process_stream_key 的一部分，見後端
-    // canonical_process_stream／usePatrolLiveLimits 呼叫時傳入的 op_id）
-    useEffect(() => {
+    const updateProcessStreamField = (
+        setter: React.Dispatch<React.SetStateAction<string>>,
+        value: string,
+    ) => {
+        setter(value);
         setLiveLimitsCache({});
         setLiveTouchedKey(null);
-    }, [machine, operator, material, spec, customer]);
+    };
 
     const resetForm = useCallback(() => {
         setDate(formatLocalDate());
@@ -118,12 +117,14 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
         let cancelled = false;
 
         if (show) {
-            setOpenEvents([]);
-            setSelectedEvent(null);
-            if (editId && detailData) {
-                const d = detailData;
-                queueMicrotask(() => {
-                    if (cancelled) return;
+            queueMicrotask(() => {
+                if (cancelled) return;
+                setOpenEvents([]);
+                setSelectedEvent(null);
+                if (editId && detailData) {
+                    const d = detailData;
+                    setLiveLimitsCache({});
+                    setLiveTouchedKey(null);
                     setDate(d.main.檢驗日期);
                     setMachine(d.main.機台);
                     setOperator(d.main.主機手);
@@ -146,12 +147,10 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                     // Determine group count
                     const groups = new Set(newDetails.map(d => d.group));
                     setGroupCount(groups.size || 1);
-                });
-            } else if (!editId) {
-                queueMicrotask(() => {
-                    if (!cancelled) resetForm();
-                });
-            }
+                } else if (!editId) {
+                    resetForm();
+                }
+            });
         }
         return () => {
             cancelled = true;
@@ -190,9 +189,18 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
     );
 
     useEffect(() => {
+        let cancelled = false;
         if (liveTouchedKey && liveLimitsQuery.data && !(liveTouchedKey in liveLimitsCache)) {
-            setLiveLimitsCache(prev => ({ ...prev, [liveTouchedKey]: liveLimitsQuery.data! }));
+            const key = liveTouchedKey;
+            const data = liveLimitsQuery.data;
+            queueMicrotask(() => {
+                if (cancelled) return;
+                setLiveLimitsCache(prev => (key in prev ? prev : { ...prev, [key]: data }));
+            });
         }
+        return () => {
+            cancelled = true;
+        };
     }, [liveTouchedKey, liveLimitsQuery.data, liveLimitsCache]);
 
     const liveViolations = useMemo(() => {
@@ -337,14 +345,14 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                                         <Col md={3}><Form.Label>日期</Form.Label><Form.Control type="date" value={date} onChange={e => setDate(e.target.value)} /></Col>
                                         <Col md={3}>
                                             <Form.Label>機台</Form.Label>
-                                            <Form.Select value={machine} onChange={e => setMachine(e.target.value)}>
+                                            <Form.Select value={machine} onChange={e => updateProcessStreamField(setMachine, e.target.value)}>
                                                 <option value="">請選擇</option>
                                                 {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                             </Form.Select>
                                         </Col>
                                         <Col md={3}>
                                             <Form.Label>主機手</Form.Label>
-                                            <Form.Select value={operator} onChange={e => setOperator(e.target.value)}>
+                                            <Form.Select value={operator} onChange={e => updateProcessStreamField(setOperator, e.target.value)}>
                                                 <option value="">請選擇</option>
                                                 {operators.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                                             </Form.Select>
@@ -358,14 +366,14 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                                         </Col>
                                         <Col md={4}>
                                             <Form.Label>客戶名稱</Form.Label>
-                                            <Form.Select value={customer} onChange={e => setCustomer(e.target.value)} style={{ minWidth: '100%' }}>
+                                            <Form.Select value={customer} onChange={e => updateProcessStreamField(setCustomer, e.target.value)} style={{ minWidth: '100%' }}>
                                                 <option value="">請選擇</option>
                                                 {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                             </Form.Select>
                                         </Col>
-                                        <Col md={4}><Form.Label>材質</Form.Label><Form.Control value={material} onChange={e => setMaterial(e.target.value)} style={{ width: '100%' }} /></Col>
+                                        <Col md={4}><Form.Label>材質</Form.Label><Form.Control value={material} onChange={e => updateProcessStreamField(setMaterial, e.target.value)} style={{ width: '100%' }} /></Col>
                                         <Col md={4}><Form.Label>原料批號</Form.Label><Form.Control value={batch} onChange={e => setBatch(e.target.value)} style={{ width: '100%' }} /></Col>
-                                        <Col md={12}><Form.Label>擠壓規格</Form.Label><Form.Control value={spec} onChange={e => setSpec(e.target.value)} style={{ width: '100%' }} /></Col>
+                                        <Col md={12}><Form.Label>擠壓規格</Form.Label><Form.Control value={spec} onChange={e => updateProcessStreamField(setSpec, e.target.value)} style={{ width: '100%' }} /></Col>
                                     </Row>
 
                                     {/* 公差標準顯示區塊 */}

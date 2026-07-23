@@ -1,9 +1,10 @@
 """SPC 研究版本、界限、事件、OCAP 與確效資料模型測試。"""
 
 from pathlib import Path
+import warnings
 
 import pytest
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SAWarning
 
 import backend.scripts.spc_advanced_regression as advanced_regression
 from backend.models import (
@@ -22,6 +23,7 @@ from backend.models import (
 from backend.scripts.spc_advanced_regression import run_advanced_regression
 from backend.routes.spc_studies import serialize_validation_run
 from backend.seeds.seed_roles import ROLES
+from backend.services.spc_errors import SpcForbidden
 
 
 def _user(db_session, username="spc-user"):
@@ -236,8 +238,10 @@ def test_validation_persistence_requires_active_approver(app, db_session):
             run_advanced_regression(executed_by=unauthorized.id, persist=True)
         assert SpcValidationRun.query.count() == 0
 
-        with pytest.raises(Exception):
-            run_advanced_regression(persist=True)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", SAWarning)
+            with pytest.raises(SpcForbidden):
+                run_advanced_regression(persist=True)
         assert SpcValidationRun.query.count() == 0
 
 
