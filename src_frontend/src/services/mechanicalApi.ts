@@ -14,6 +14,11 @@ export interface MechanicalListResponse {
   total_pages: number;
 }
 
+export interface MechanicalVendorOption {
+  id: number;
+  name: string;
+}
+
 export const mechanicalApi = {
   list: (params: Record<string, string | number | undefined>) =>
     api.get<MechanicalListResponse>('/mechanical/tests', { params }).then((r) => r.data),
@@ -36,4 +41,7 @@ export const mechanicalApi = {
         params: { material, product_size, vendor_id },
       })
       .then((r) => r.data.limits),
+
+  getVendors: () =>
+    api.get<MechanicalVendorOption[]>('/vendors').then((r) => r.data),
 };

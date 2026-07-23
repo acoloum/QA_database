@@ -4,16 +4,33 @@ import { Button, Card, Col, Form, Row, Table } from 'react-bootstrap';
 import toast from 'react-hot-toast';
 
 import { mechanicalApi } from '../../services/mechanicalApi';
+import { useAuth } from '../../context/useAuth';
+import type { MechanicalJudgementStatus } from '../../types';
 import MechanicalTestForm from './MechanicalTestForm';
+
+const judgementDisplay: Record<MechanicalJudgementStatus, { label: string; variant: string }> = {
+  NG: { label: 'NG', variant: 'danger' },
+  OK: { label: 'OK', variant: 'success' },
+  NO_SPEC: { label: '無規格', variant: 'warning' },
+  INCOMPLETE: { label: '未完成', variant: 'secondary' },
+};
 
 export default function MechanicalTestListPage() {
   const queryClient = useQueryClient();
+  const { hasPermission } = useAuth();
   const [size, setSize] = useState('');
   const [material, setMaterial] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [onlyNg, setOnlyNg] = useState(false);
   const [editingId, setEditingId] = useState<number | null | 'new'>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  const changeFilter = <T,>(setter: (value: T) => void, value: T) => {
+    setPage(1);
+    setter(value);
+  };
 
   const params = useMemo(
     () => ({
@@ -22,8 +39,10 @@ export default function MechanicalTestListPage() {
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
       only_ng: onlyNg ? 'true' : undefined,
+      page,
+      page_size: pageSize,
     }),
-    [size, material, dateFrom, dateTo, onlyNg],
+    [size, material, dateFrom, dateTo, onlyNg, page, pageSize],
   );
 
   const { data, isLoading, isError } = useQuery({
@@ -37,20 +56,26 @@ export default function MechanicalTestListPage() {
       toast.success('已刪除');
       queryClient.invalidateQueries({ queryKey: ['mechanical-tests'] });
     },
-    onError: () => {
-      toast.error('刪除失敗，請稍後再試');
+    onError: (error) => {
+      const message = (
+        error as { response?: { data?: { error?: string } } }
+      ).response?.data?.error || '刪除失敗，請稍後再試';
+      toast.error(message);
     },
   });
 
   const rows = data?.data ?? [];
+  const canCreate = hasPermission('mechanical.create');
+  const canEdit = hasPermission('mechanical.edit');
+  const canDelete = hasPermission('mechanical.delete');
 
   return (
     <div>
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h4>機械性質檢驗</h4>
-        <Button size="sm" onClick={() => setEditingId('new')}>
-          + 新增檢驗
-        </Button>
+        {canCreate && (
+          <Button size="sm" onClick={() => setEditingId('new')}>+ 新增檢驗</Button>
+        )}
       </div>
 
       <Card className="mb-3">
@@ -63,7 +88,7 @@ export default function MechanicalTestListPage() {
                 size="sm"
                 placeholder="產品尺寸"
                 value={size}
-                onChange={(event) => setSize(event.target.value)}
+                onChange={(event) => changeFilter(setSize, event.target.value)}
               />
             </Col>
             <Col md={2}>
@@ -73,7 +98,7 @@ export default function MechanicalTestListPage() {
                 size="sm"
                 placeholder="材質"
                 value={material}
-                onChange={(event) => setMaterial(event.target.value)}
+                onChange={(event) => changeFilter(setMaterial, event.target.value)}
               />
             </Col>
             <Col md={2}>
@@ -83,7 +108,7 @@ export default function MechanicalTestListPage() {
                 type="date"
                 size="sm"
                 value={dateFrom}
-                onChange={(event) => setDateFrom(event.target.value)}
+                onChange={(event) => changeFilter(setDateFrom, event.target.value)}
               />
             </Col>
             <Col md={2}>
@@ -93,7 +118,7 @@ export default function MechanicalTestListPage() {
                 type="date"
                 size="sm"
                 value={dateTo}
-                onChange={(event) => setDateTo(event.target.value)}
+                onChange={(event) => changeFilter(setDateTo, event.target.value)}
               />
             </Col>
             <Col md={2} className="d-flex align-items-end">
@@ -101,7 +126,7 @@ export default function MechanicalTestListPage() {
                 id="mechanical-only-ng"
                 label="僅顯示 NG"
                 checked={onlyNg}
-                onChange={(event) => setOnlyNg(event.target.checked)}
+                onChange={(event) => changeFilter(setOnlyNg, event.target.checked)}
               />
             </Col>
           </Row>
@@ -115,7 +140,8 @@ export default function MechanicalTestListPage() {
           ) : isError ? (
             <p role="alert" className="text-danger mb-0">載入機械性質檢驗資料失敗，請稍後再試</p>
           ) : (
-            <Table bordered hover size="sm">
+            <>
+              <Table bordered hover size="sm">
               <thead className="table-secondary">
                 <tr>
                   <th>產品尺寸</th>
@@ -138,22 +164,20 @@ export default function MechanicalTestListPage() {
                     <td>{row.T4溫度時間}</td>
                     <td>{row.T6溫度時間}</td>
                     <td>
-                      {row.是否NG ? (
-                        <span className="badge text-bg-danger">NG</span>
-                      ) : (
-                        <span className="badge text-bg-success">OK</span>
-                      )}
+                      <span className={`badge text-bg-${judgementDisplay[row.判定狀態].variant}`}>
+                        {judgementDisplay[row.判定狀態].label}
+                      </span>
                     </td>
                     <td>
-                      <Button
+                      {canEdit && <Button
                         size="sm"
                         variant="outline-primary"
                         className="me-1"
                         onClick={() => setEditingId(row.識別碼)}
                       >
                         編輯
-                      </Button>
-                      <Button
+                      </Button>}
+                      {canDelete && <Button
                         size="sm"
                         variant="outline-danger"
                         onClick={() => {
@@ -163,7 +187,7 @@ export default function MechanicalTestListPage() {
                         }}
                       >
                         刪除
-                      </Button>
+                      </Button>}
                     </td>
                   </tr>
                 ))}
@@ -173,7 +197,46 @@ export default function MechanicalTestListPage() {
                   </tr>
                 )}
               </tbody>
-            </Table>
+              </Table>
+              {data && (
+              <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span>共 {data.total} 筆</span>
+                <div className="d-flex align-items-center gap-2">
+                  <Form.Label htmlFor="mechanical-page-size" className="mb-0">每頁筆數</Form.Label>
+                  <Form.Select
+                    id="mechanical-page-size"
+                    aria-label="每頁筆數"
+                    size="sm"
+                    value={pageSize}
+                    onChange={(event) => {
+                      setPage(1);
+                      setPageSize(Number(event.target.value));
+                    }}
+                    style={{ width: 80 }}
+                  >
+                    {[20, 50, 100].map((value) => <option key={value} value={value}>{value}</option>)}
+                  </Form.Select>
+                  <Button
+                    size="sm"
+                    variant="outline-secondary"
+                    disabled={page <= 1}
+                    onClick={() => setPage((current) => current - 1)}
+                  >
+                    上一頁
+                  </Button>
+                  <span>第 {data.page} / {Math.max(data.total_pages, 1)} 頁</span>
+                  <Button
+                    size="sm"
+                    variant="outline-secondary"
+                    disabled={page >= data.total_pages}
+                    onClick={() => setPage((current) => current + 1)}
+                  >
+                    下一頁
+                  </Button>
+                </div>
+              </div>
+              )}
+            </>
           )}
         </Card.Body>
       </Card>

@@ -4,8 +4,8 @@ import math
 from typing import Any, Dict, Optional
 
 from ..extensions import db
-from ..models import MechanicalTest, MechanicalMeasurement, MechanicalBatch
-from ..utils import bounded_int, format_value
+from ..models import MechanicalTest, MechanicalMeasurement, MechanicalBatch, Vendor
+from ..utils import bounded_int
 from .mechanical_spec import lookup_lower_limits, compute_measurement_ng
 
 
@@ -30,7 +30,7 @@ def _parse_date(v: Any) -> Optional[date]:
     if not isinstance(v, str):
         raise MechanicalValidationError("測試日期格式必須為 YYYY-MM-DD")
     try:
-        return datetime.strptime(v[:10], "%Y-%m-%d").date()
+        return datetime.strptime(v, "%Y-%m-%d").date()
     except (TypeError, ValueError) as exc:
         raise MechanicalValidationError("測試日期格式必須為 YYYY-MM-DD") from exc
 
@@ -76,6 +76,23 @@ def _validate_payload(data: Dict[str, Any]) -> Optional[int]:
             raise MechanicalValidationError(f"{field}為必填")
 
     _parse_date(data.get("測試日期"))
+    batches = data.get("batches", [])
+    if not isinstance(batches, list):
+        raise MechanicalValidationError("batches 必須為陣列")
+    seen_sequences = set()
+    for batch in batches:
+        if not isinstance(batch, dict):
+            raise MechanicalValidationError("批次必須為物件")
+        sequence = batch.get("序號")
+        if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1:
+            raise MechanicalValidationError("批次序號必須為正整數")
+        if sequence in seen_sequences:
+            raise MechanicalValidationError("批次序號不可重複")
+        seen_sequences.add(sequence)
+        for field in ("擠製編號", "爐具編號"):
+            if batch.get(field) is not None and not isinstance(batch.get(field), str):
+                raise MechanicalValidationError(f"{field}必須為字串或空值")
+
     measurements = data.get("measurements", [])
     if not isinstance(measurements, list):
         raise MechanicalValidationError("measurements 必須為陣列")
@@ -98,7 +115,25 @@ def _validate_payload(data: Dict[str, Any]) -> Optional[int]:
             raise MechanicalValidationError("量測明細不可重複")
         seen_keys.add(key)
         _to_float(measurement.get("量測值"))
-    return parse_vendor_id(data.get("廠商ID"))
+    vendor_id = parse_vendor_id(data.get("廠商ID"))
+    if vendor_id is not None and db.session.get(Vendor, vendor_id) is None:
+        raise MechanicalValidationError("指定的廠商不存在")
+    return vendor_id
+
+
+def _judgement_status(test: MechanicalTest) -> str:
+    """依有效判定量測回傳清單與明細共用的明確判定狀態。"""
+    judged = [
+        measurement for measurement in test.measurements
+        if measurement.item != "EC值" and measurement.value is not None
+    ]
+    if any(measurement.is_ng for measurement in judged):
+        return "NG"
+    if not judged:
+        return "INCOMPLETE"
+    if any(measurement.lower_limit is None for measurement in judged):
+        return "NO_SPEC"
+    return "OK"
 
 
 class MechanicalService:
@@ -152,9 +187,10 @@ class MechanicalService:
                     is_ng=is_ng,
                 ))
                 continue
-            measurement.value = value
-            measurement.lower_limit = lower
-            measurement.is_ng = is_ng
+            if not measurement.excluded:
+                measurement.value = value
+                measurement.lower_limit = lower
+                measurement.is_ng = is_ng
 
         for key, measurement in existing_by_key.items():
             if key not in submitted_keys and not measurement.excluded:
@@ -243,15 +279,16 @@ class MechanicalService:
             "識別碼": t.id,
             "產品尺寸": t.product_size,
             "材質": t.material,
-            "測試日期": format_value(t.test_date),
+            "測試日期": t.test_date.isoformat() if t.test_date else None,
             # 多組批次以「、」串接為摘要顯示
             "擠製編號": "、".join(
                 b.extrusion_no for b in sorted(t.batches, key=lambda x: x.seq) if b.extrusion_no
             ),
-            "T4溫度時間": t.t4_temp_time or "",
-            "T6溫度時間": t.t6_temp_time or "",
+            "T4溫度時間": t.t4_temp_time,
+            "T6溫度時間": t.t6_temp_time,
             "是否NG": t.is_ng,
-            "備註": t.note or "",
+            "判定狀態": _judgement_status(t),
+            "備註": t.note,
         } for t in pagination.items]
         return {"success": True, "data": data, "total": total, "page": page,
                 "page_size": page_size, "total_pages": pagination.pages}
@@ -266,25 +303,30 @@ class MechanicalService:
             "產品尺寸": t.product_size,
             "材質": t.material,
             "廠商ID": t.vendor_id,
-            "測試日期": format_value(t.test_date),
-            "T4溫度時間": t.t4_temp_time or "",
-            "T6溫度時間": t.t6_temp_time or "",
-            "備註": t.note or "",
+            "測試日期": t.test_date.isoformat() if t.test_date else None,
+            "T4溫度時間": t.t4_temp_time,
+            "T6溫度時間": t.t6_temp_time,
+            "備註": t.note,
             "是否NG": t.is_ng,
+            "判定狀態": _judgement_status(t),
         }
         batches = [{
             "識別碼": b.id,
             "序號": b.seq,
-            "擠製編號": b.extrusion_no or "",
-            "爐具編號": b.furnace_no or "",
+            "擠製編號": b.extrusion_no,
+            "爐具編號": b.furnace_no,
         } for b in sorted(t.batches, key=lambda x: x.seq)]
         measurements = [{
             "識別碼": m.id,
             "量測項目": m.item,
             "測量位置": m.location,
             "取樣序": m.sample_no,
-            "量測值": format_value(m.value),
-            "下限": format_value(m.lower_limit),
+            "量測值": float(m.value) if m.value is not None else None,
+            "下限": float(m.lower_limit) if m.lower_limit is not None else None,
             "是否超差": m.is_ng,
+            "排除統計": m.excluded,
+            "排除原因": m.exclusion_reason,
+            "排除者ID": m.exclusion_user_id,
+            "排除時間": m.excluded_at.isoformat() if m.excluded_at else None,
         } for m in sorted(t.measurements, key=lambda x: (x.item, x.location, x.sample_no))]
         return {"success": True, "main": main, "batches": batches, "measurements": measurements}

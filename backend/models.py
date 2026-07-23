@@ -1299,6 +1299,8 @@ class MechanicalBatch(db.Model):
     """機械性質批次 — 一列對應一組（擠製編號 + 爐具編號），可多組"""
     __tablename__ = '機械性質批次'
     __table_args__ = (
+        db.UniqueConstraint('機械性質檢驗_ID', '序號', name='uq_mech_batch_seq'),
+        db.CheckConstraint('"序號" >= 1', name='ck_mech_batch_seq_positive'),
         db.Index('idx_mech_batch_test_id', '機械性質檢驗_ID'),
     )
 
@@ -1316,6 +1318,12 @@ class MechanicalMeasurement(db.Model):
     __table_args__ = (
         db.UniqueConstraint('機械性質檢驗_ID', '量測項目', '測量位置', '取樣序',
                             name='uq_mech_group_item'),
+        db.CheckConstraint(
+            '"量測項目" IN (\'EC值\', \'硬度\', \'抗拉強度\', \'降伏強度\', \'伸長率\')',
+            name='ck_mech_measurement_item',
+        ),
+        db.CheckConstraint('"測量位置" IN (\'爐門\', \'爐頂\')', name='ck_mech_measurement_location'),
+        db.CheckConstraint('"取樣序" IN (1, 2)', name='ck_mech_measurement_sample'),
         db.Index('idx_mech_meas_test_id', '機械性質檢驗_ID'),
     )
 

@@ -56,3 +56,25 @@ def test_measurement_unique_constraint(db_session):
     with pytest.raises(IntegrityError):
         db_session.commit()
     db_session.rollback()
+
+
+def test_batch_sequence_constraints(db_session):
+    import pytest
+    from sqlalchemy.exc import IntegrityError
+    from backend.models import MechanicalBatch
+
+    test = MechanicalTest(product_size="36x25.2", material="6061-T651")
+    test.batches.extend([
+        MechanicalBatch(seq=1),
+        MechanicalBatch(seq=1),
+    ])
+    db_session.add(test)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+    test = MechanicalTest(product_size="36x25.2", material="6061-T651")
+    test.batches.append(MechanicalBatch(seq=0))
+    db_session.add(test)
+    with pytest.raises(IntegrityError):
+        db_session.commit()

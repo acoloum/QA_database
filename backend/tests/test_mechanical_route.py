@@ -116,3 +116,30 @@ def test_get_spec_rejects_invalid_vendor_id(client, db_session):
     )
 
     assert response.status_code == 400
+
+
+def test_get_spec_rejects_missing_vendor(client, db_session):
+    headers = _auth_headers(db_session, 'qc', {})
+    db_session.commit()
+
+    response = client.get(
+        "/api/mechanical/spec?material=6061-T651&product_size=36x25.2&vendor_id=999999",
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.parametrize(("body", "content_type"), [
+    ("", "application/json"),
+    ("{broken", "application/json"),
+    ('{"產品尺寸":"x","材質":"y"}', "text/plain"),
+])
+def test_create_rejects_invalid_json_request(client, db_session, body, content_type):
+    headers = _auth_headers(db_session, 'qc', {'mechanical.create': True})
+    db_session.commit()
+    headers["Content-Type"] = content_type
+
+    response = client.post("/api/mechanical/tests", data=body, headers=headers)
+
+    assert response.status_code == 400

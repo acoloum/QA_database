@@ -1,5 +1,6 @@
 """機械性質檢驗 REST API 路由。"""
 from flask import Blueprint, jsonify, request
+from werkzeug.exceptions import BadRequest, UnsupportedMediaType
 from ..services.mechanical_service import (
     MechanicalNotFoundError,
     MechanicalService,
@@ -7,6 +8,7 @@ from ..services.mechanical_service import (
     parse_vendor_id,
 )
 from ..extensions import db
+from ..models import Vendor
 from ..utils import auth_required, require_perm, handle_db_error
 
 mechanical_bp = Blueprint('mechanical', __name__)
@@ -19,11 +21,21 @@ def _current_user_id():
 
 def _mechanical_error_response(error):
     db.session.rollback()
-    if isinstance(error, MechanicalValidationError):
+    if isinstance(error, (MechanicalValidationError, BadRequest, UnsupportedMediaType)):
         return jsonify({"error": str(error)}), 400
     if isinstance(error, MechanicalNotFoundError):
         return jsonify({"error": str(error)}), 404
     return jsonify({"error": handle_db_error(error)}), 500
+
+
+def _json_object():
+    """只接受有效 JSON 物件；避免空 body／錯誤 MIME 轉成伺服器錯誤。"""
+    if not request.is_json:
+        raise MechanicalValidationError("Content-Type 必須為 application/json")
+    data = request.get_json(silent=False)
+    if not isinstance(data, dict):
+        raise MechanicalValidationError("請求內容必須為物件")
+    return data
 
 
 @mechanical_bp.route('/api/mechanical/tests', methods=['GET'])
@@ -52,7 +64,7 @@ def get_test(test_id):
 def create_test():
     """新增機械性質檢驗"""
     try:
-        new_id = MechanicalService.create(request.json or {}, _current_user_id())
+        new_id = MechanicalService.create(_json_object(), _current_user_id())
         return jsonify({"success": True, "id": new_id})
     except Exception as e:
         return _mechanical_error_response(e)
@@ -64,7 +76,7 @@ def create_test():
 def update_test(test_id):
     """更新機械性質檢驗"""
     try:
-        MechanicalService.update(test_id, request.json or {}, _current_user_id())
+        MechanicalService.update(test_id, _json_object(), _current_user_id())
         return jsonify({"success": True})
     except Exception as e:
         return _mechanical_error_response(e)
@@ -91,6 +103,8 @@ def get_spec():
         material = request.args.get('material', '')
         size = request.args.get('product_size', '')
         vendor_id = parse_vendor_id(request.args.get('vendor_id'))
+        if vendor_id is not None and db.session.get(Vendor, vendor_id) is None:
+            raise MechanicalValidationError("指定的廠商不存在")
         limits = lookup_lower_limits(material, size, vendor_id=vendor_id)
         return jsonify({"success": True, "limits": {k: float(v) for k, v in limits.items()}})
     except Exception as e:

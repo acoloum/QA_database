@@ -34,8 +34,8 @@ def _seed_spec(db_session):
 
 
 def test_lookup_lower_limits_matches_material_and_size(db_session):
-    _seed_spec(db_session)
-    limits = lookup_lower_limits("6061-T651", "36x25.2")
+    vendor_id = _seed_spec(db_session)
+    limits = lookup_lower_limits("6061-T651", "36x25.2", vendor_id=vendor_id)
     # 以機械性質項目名回傳（非廠商公差項目名）
     assert float(limits["硬度"]) == 60
     assert float(limits["抗拉強度"]) == 380
@@ -66,7 +66,7 @@ def test_lookup_prefers_exact_spec_match_over_fuzzy(db_session):
     ))
     db_session.commit()
 
-    limits = lookup_lower_limits("6061-T651", "36x25.2")
+    limits = lookup_lower_limits("6061-T651", "36x25.2", vendor_id=v.id)
     # 應採用精確匹配（exact_main）的下限，而非先插入之模糊匹配（fuzzy_main）
     assert float(limits["硬度"]) == 60
 
@@ -97,6 +97,34 @@ def test_lookup_limits_are_scoped_to_requested_vendor(db_session):
 def test_lookup_returns_empty_when_no_spec(db_session):
     limits = lookup_lower_limits("6061-T651", "99x99")
     assert limits == {}
+
+
+def test_lookup_without_vendor_never_crosses_vendor_boundary(db_session):
+    _seed_spec(db_session)
+    assert lookup_lower_limits("6061-T651", "36x25.2") == {}
+
+
+def test_lookup_prefers_exact_material_and_normalizes_spec_whitespace(db_session):
+    vendor = Vendor(name="安泰")
+    db_session.add(vendor)
+    db_session.flush()
+    for material, spec, lower in [
+        ("6061", "36 * 25.2", 99),
+        ("6061-T651", "36*25.2", 60),
+    ]:
+        main = VendorToleranceMain(vendor_id=vendor.id, material=material, spec=spec)
+        db_session.add(main)
+        db_session.flush()
+        db_session.add(VendorToleranceDetail(
+            main_id=main.id, item="洛氏硬度", tolerance_min=lower, unit=""
+        ))
+    db_session.commit()
+
+    limits = lookup_lower_limits(
+        " 6061-T651 ", " 36 x 25.2 ", vendor_id=vendor.id
+    )
+
+    assert float(limits["硬度"]) == 60
 
 
 def test_compute_measurement_ng_lower_bound_only():

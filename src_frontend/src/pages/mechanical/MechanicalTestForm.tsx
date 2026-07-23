@@ -97,6 +97,11 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
     enabled: testId !== null,
   });
 
+  const { data: vendors = [], isError: isVendorsError } = useQuery({
+    queryKey: ['vendors'],
+    queryFn: mechanicalApi.getVendors,
+  });
+
   useEffect(() => {
     if (testId === null) {
       setBasic(EMPTY_BASIC);
@@ -117,13 +122,16 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
       產品尺寸: detail.main.產品尺寸,
       材質: detail.main.材質,
       測試日期: detail.main.測試日期 ?? '',
-      T4溫度時間: detail.main.T4溫度時間,
-      T6溫度時間: detail.main.T6溫度時間,
-      備註: detail.main.備註,
+      T4溫度時間: detail.main.T4溫度時間 ?? '',
+      T6溫度時間: detail.main.T6溫度時間 ?? '',
+      備註: detail.main.備註 ?? '',
     });
-    // 編輯表單沒有廠商欄位，仍須保留原關聯以維持規格追溯性。
     setVendorId(detail.main.廠商ID);
-    setBatches(detail.batches.length > 0 ? detail.batches : [emptyBatch(1)]);
+    setBatches(detail.batches.length > 0 ? detail.batches.map((batch) => ({
+      ...batch,
+      擠製編號: batch.擠製編號 ?? '',
+      爐具編號: batch.爐具編號 ?? '',
+    })) : [emptyBatch(1)]);
     setGrid(hydrateGrid(detail.measurements));
     setShowSecond(detail.measurements.some((measurement) => measurement.取樣序 === 2));
     setShowEc(detail.measurements.some((measurement) => measurement.量測項目 === 'EC值'));
@@ -138,7 +146,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
   } = useQuery({
     queryKey: ['mechanical-spec', basic.材質, basic.產品尺寸, vendorId],
     queryFn: () => mechanicalApi.getSpec(basic.材質, basic.產品尺寸, vendorId ?? undefined),
-    enabled: Boolean(isEditReady && basic.材質 && basic.產品尺寸),
+    enabled: Boolean(isEditReady && vendorId !== null && basic.材質 && basic.產品尺寸),
   });
 
   const setBasicField = <Key extends keyof BasicFields>(field: Key, value: BasicFields[Key]) => {
@@ -208,10 +216,10 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
       T4溫度時間: basic.T4溫度時間,
       T6溫度時間: basic.T6溫度時間,
       備註: basic.備註,
-      batches: batches.filter((batch) => batch.擠製編號.trim() || batch.爐具編號.trim()),
+      廠商ID: vendorId,
+      batches: batches.filter((batch) => (batch.擠製編號 ?? '').trim() || (batch.爐具編號 ?? '').trim()),
       measurements: buildMeasurements(grid),
     };
-    if (testId !== null) payload.廠商ID = vendorId;
 
     savingRef.current = true;
     setSaving(true);
@@ -221,8 +229,10 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
       else await mechanicalApi.update(testId, payload);
       toast.success('已儲存');
       onSaved();
-    } catch {
-      const message = '儲存失敗，請稍後再試';
+    } catch (error) {
+      const message = (
+        error as { response?: { data?: { error?: string } } }
+      ).response?.data?.error || '儲存失敗，請稍後再試';
       setSaveError(message);
       toast.error(message);
     } finally {
@@ -278,6 +288,9 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
         {isSpecError && (
           <Alert variant="danger" role="alert">載入機械性質規格失敗，請稍後再試</Alert>
         )}
+        {isVendorsError && (
+          <Alert variant="danger" role="alert">載入廠商清單失敗，請稍後再試</Alert>
+        )}
         {validationError && (
           <Alert variant="danger" role="alert">{validationError}</Alert>
         )}
@@ -287,7 +300,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
 
         <Form noValidate>
           <Row className="g-3">
-            <Col md={4}>
+            <Col md={3}>
               <Form.Group controlId="mechanical-form-product-size">
                 <Form.Label>產品尺寸</Form.Label>
                 <Form.Control
@@ -298,7 +311,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                 />
               </Form.Group>
             </Col>
-            <Col md={4}>
+            <Col md={3}>
               <Form.Group controlId="mechanical-form-material">
                 <Form.Label>材質</Form.Label>
                 <Form.Control
@@ -309,7 +322,22 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                 />
               </Form.Group>
             </Col>
-            <Col md={4}>
+            <Col md={3}>
+              <Form.Group controlId="mechanical-form-vendor">
+                <Form.Label>廠商</Form.Label>
+                <Form.Select
+                  aria-label="廠商"
+                  value={vendorId ?? ''}
+                  onChange={(event) => setVendorId(event.target.value ? Number(event.target.value) : null)}
+                >
+                  <option value="">未指定（不套用規格）</option>
+                  {vendors.map((vendor) => (
+                    <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
+                  ))}
+                </Form.Select>
+              </Form.Group>
+            </Col>
+            <Col md={3}>
               <Form.Group controlId="mechanical-form-test-date">
                 <Form.Label>測試日期</Form.Label>
                 <Form.Control
@@ -353,7 +381,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                   <Form.Control
                     aria-label={`第 ${index + 1} 組擠製編號`}
                     placeholder="擠製編號"
-                    value={batch.擠製編號}
+                    value={batch.擠製編號 ?? ''}
                     onChange={(event) => setBatchField(index, '擠製編號', event.target.value)}
                   />
                 </Col>
@@ -361,7 +389,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                   <Form.Control
                     aria-label={`第 ${index + 1} 組爐具編號`}
                     placeholder="爐具編號"
-                    value={batch.爐具編號}
+                    value={batch.爐具編號 ?? ''}
                     onChange={(event) => setBatchField(index, '爐具編號', event.target.value)}
                   />
                 </Col>
@@ -418,6 +446,12 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                         const isNg = cellNg(item, value);
                         const hasFormatError = isInvalidMeasurement(value);
                         const lowerLimit = limits?.[item];
+                        const excludedMeasurement = detail?.measurements.find((measurement) => (
+                          measurement.量測項目 === item
+                          && measurement.測量位置 === location
+                          && measurement.取樣序 === sample
+                          && measurement.排除統計
+                        ));
                         const errorId = hasFormatError
                           ? measurementErrorId(item, location, sample, 'format')
                           : isNg ? measurementErrorId(item, location, sample, 'ng') : undefined;
@@ -432,6 +466,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                               aria-describedby={errorId}
                               aria-errormessage={errorId}
                               isInvalid={hasFormatError || isNg}
+                              disabled={Boolean(excludedMeasurement)}
                               value={value}
                               onChange={(event) => setCell(item, location, sample, event.target.value)}
                             />
@@ -442,6 +477,12 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                             ) : isNg && lowerLimit !== undefined && (
                               <Form.Text id={measurementErrorId(item, location, sample, 'ng')} className="text-danger">
                                 NG：低於下限 {lowerLimit}
+                              </Form.Text>
+                            )}
+                            {excludedMeasurement && (
+                              <Form.Text className="text-warning-emphasis">
+                                已排除：{excludedMeasurement.排除原因 || '未填原因'}
+                                {excludedMeasurement.排除時間 ? `（${excludedMeasurement.排除時間}）` : ''}
                               </Form.Text>
                             )}
                           </td>

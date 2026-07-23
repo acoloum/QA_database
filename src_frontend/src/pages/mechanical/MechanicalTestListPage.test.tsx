@@ -6,6 +6,9 @@ import toast from 'react-hot-toast';
 import { mechanicalApi } from '../../services/mechanicalApi';
 import MechanicalTestListPage from './MechanicalTestListPage';
 
+const authMock = vi.fn();
+vi.mock('../../context/useAuth', () => ({ useAuth: () => authMock() }));
+
 vi.mock('../../services/mechanicalApi', () => ({
   mechanicalApi: {
     list: vi.fn(),
@@ -47,6 +50,7 @@ describe('MechanicalTestListPage', () => {
         T4溫度時間: '190°C / 3h',
         T6溫度時間: '180°C / 5h',
         是否NG: false,
+        判定狀態: 'OK',
         備註: '',
       }],
       total: 1,
@@ -54,6 +58,7 @@ describe('MechanicalTestListPage', () => {
       page_size: 20,
       total_pages: 1,
     });
+    authMock.mockReturnValue({ hasPermission: () => true });
   });
 
   it('載入後顯示機械性質檢驗資料與 OK 判定', async () => {
@@ -90,8 +95,64 @@ describe('MechanicalTestListPage', () => {
         date_from: '2026-07-01',
         date_to: '2026-07-31',
         only_ng: 'true',
+        page: 1,
+        page_size: 20,
       });
     });
+  });
+
+  it.each([
+    ['NG', 'NG'],
+    ['OK', 'OK'],
+    ['NO_SPEC', '無規格'],
+    ['INCOMPLETE', '未完成'],
+  ] as const)('顯示 %s 判定狀態', async (status, label) => {
+    vi.mocked(mechanicalApi.list).mockResolvedValueOnce({
+      success: true,
+      data: [{
+        識別碼: 7, 產品尺寸: 'A', 材質: '6061', 測試日期: null,
+        擠製編號: '', T4溫度時間: null, T6溫度時間: null,
+        是否NG: status === 'NG', 判定狀態: status, 備註: null,
+      }],
+      total: 1, page: 1, page_size: 20, total_pages: 1,
+    });
+    renderPage();
+    expect(await screen.findByText(label)).toBeInTheDocument();
+  });
+
+  it('可翻頁與切換每頁筆數，篩選變更會回到第一頁', async () => {
+    vi.mocked(mechanicalApi.list).mockResolvedValue({
+      success: true, data: [], total: 45, page: 1, page_size: 20, total_pages: 3,
+    });
+    renderPage();
+    await screen.findByText('共 45 筆');
+
+    fireEvent.click(screen.getByRole('button', { name: '下一頁' }));
+    await waitFor(() => expect(mechanicalApi.list).toHaveBeenLastCalledWith(expect.objectContaining({
+      page: 2, page_size: 20,
+    })));
+
+    fireEvent.change(screen.getByPlaceholderText('產品尺寸'), { target: { value: '80' } });
+    await waitFor(() => expect(mechanicalApi.list).toHaveBeenLastCalledWith(expect.objectContaining({
+      product_size: '80', page: 1,
+    })));
+
+    fireEvent.change(screen.getByLabelText('每頁筆數'), { target: { value: '50' } });
+    await waitFor(() => expect(mechanicalApi.list).toHaveBeenLastCalledWith(expect.objectContaining({
+      page: 1, page_size: 50,
+    })));
+  });
+
+  it('依 create/edit/delete 權限控制操作按鈕', async () => {
+    authMock.mockReturnValue({
+      hasPermission: (permission: string) => permission === 'mechanical.edit',
+    });
+    renderPage();
+    await screen.findByText('62.5 x 2.3');
+
+    expect(screen.queryByRole('button', { name: /新增檢驗/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '編輯' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '刪除' })).not.toBeInTheDocument();
   });
 
   it('確認刪除後呼叫刪除 API', async () => {
@@ -115,6 +176,20 @@ describe('MechanicalTestListPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '刪除' }));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('刪除失敗，請稍後再試'));
+  });
+
+  it('刪除遭拒時顯示後端權限訊息', async () => {
+    vi.mocked(mechanicalApi.remove).mockRejectedValue({
+      response: { status: 403, data: { error: '您沒有刪除機械性質檢驗的權限' } },
+    });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderPage();
+    await screen.findByText('62.5 x 2.3');
+    fireEvent.click(screen.getByRole('button', { name: '刪除' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      '您沒有刪除機械性質檢驗的權限',
+    ));
   });
 
   it('查詢失敗時顯示錯誤狀態', async () => {

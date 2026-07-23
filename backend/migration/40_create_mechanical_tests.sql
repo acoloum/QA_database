@@ -23,7 +23,9 @@ CREATE TABLE IF NOT EXISTS "機械性質批次" (
     "機械性質檢驗_ID" INTEGER NOT NULL REFERENCES "機械性質檢驗"("識別碼") ON DELETE CASCADE,
     "序號"            INTEGER NOT NULL DEFAULT 1,
     "擠製編號"        VARCHAR,
-    "爐具編號"        VARCHAR
+    "爐具編號"        VARCHAR,
+    CONSTRAINT uq_mech_batch_seq UNIQUE ("機械性質檢驗_ID", "序號"),
+    CONSTRAINT ck_mech_batch_seq_positive CHECK ("序號" >= 1)
 );
 CREATE INDEX IF NOT EXISTS idx_mech_batch_test_id ON "機械性質批次" ("機械性質檢驗_ID");
 
@@ -40,6 +42,9 @@ CREATE TABLE IF NOT EXISTS "機械性質量測明細" (
     "排除原因"        VARCHAR(200),
     "排除者ID"        INTEGER REFERENCES "使用者"("識別碼"),
     "排除時間"        TIMESTAMPTZ,
-    CONSTRAINT uq_mech_group_item UNIQUE ("機械性質檢驗_ID", "量測項目", "測量位置", "取樣序")
+    CONSTRAINT uq_mech_group_item UNIQUE ("機械性質檢驗_ID", "量測項目", "測量位置", "取樣序"),
+    CONSTRAINT ck_mech_measurement_item CHECK ("量測項目" IN ('EC值', '硬度', '抗拉強度', '降伏強度', '伸長率')),
+    CONSTRAINT ck_mech_measurement_location CHECK ("測量位置" IN ('爐門', '爐頂')),
+    CONSTRAINT ck_mech_measurement_sample CHECK ("取樣序" IN (1, 2))
 );
 CREATE INDEX IF NOT EXISTS idx_mech_meas_test_id ON "機械性質量測明細" ("機械性質檢驗_ID");

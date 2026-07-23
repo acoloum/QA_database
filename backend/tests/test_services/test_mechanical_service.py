@@ -20,6 +20,7 @@ def _seed_spec(db_session):
     db_session.add(main); db_session.flush()
     db_session.add(VendorToleranceDetail(main_id=main.id, item="洛氏硬度", tolerance_min=60, unit=""))
     db_session.commit()
+    return v.id
 
 
 def _payload():
@@ -41,8 +42,10 @@ def _payload():
 
 
 def test_create_computes_ng_from_spec(db_session):
-    _seed_spec(db_session)
-    new_id = MechanicalService.create(_payload(), user_id=None)
+    vendor_id = _seed_spec(db_session)
+    payload = _payload()
+    payload["廠商ID"] = vendor_id
+    new_id = MechanicalService.create(payload, user_id=None)
     row = db_session.get(MechanicalTest, new_id)
     assert row is not None
     # 爐門 59 < 下限 60 → 該明細 NG，主檔 NG
@@ -70,9 +73,12 @@ def test_list_filters_by_size(db_session):
 
 
 def test_update_recomputes_ng(db_session):
-    _seed_spec(db_session)
-    new_id = MechanicalService.create(_payload(), user_id=None)
+    vendor_id = _seed_spec(db_session)
+    initial = _payload()
+    initial["廠商ID"] = vendor_id
+    new_id = MechanicalService.create(initial, user_id=None)
     payload = _payload()
+    payload["廠商ID"] = vendor_id
     payload["measurements"][0]["量測值"] = 70  # 爐門改為 70 ≥ 60 → 不再 NG
     MechanicalService.update(new_id, payload, user_id=None)
     row = db_session.get(MechanicalTest, new_id)
@@ -90,14 +96,18 @@ def test_update_twice_with_same_measurement_keys_does_not_raise(db_session):
     backend/tests/conftest.py），並不會重現此排序問題，因此拿掉 flush() 這
     支測試仍會通過。對正式環境該 bug 的實際防護，來自原始碼中確實存在
     db.session.flush() 這兩行，須以程式碼審查確認，而非本測試的通過與否。"""
-    _seed_spec(db_session)
-    new_id = MechanicalService.create(_payload(), user_id=None)
+    vendor_id = _seed_spec(db_session)
+    initial = _payload()
+    initial["廠商ID"] = vendor_id
+    new_id = MechanicalService.create(initial, user_id=None)
 
     payload = _payload()
+    payload["廠商ID"] = vendor_id
     payload["measurements"][0]["量測值"] = 61  # 鍵值不變，僅改量測值
     MechanicalService.update(new_id, payload, user_id=None)
 
     payload2 = _payload()
+    payload2["廠商ID"] = vendor_id
     payload2["measurements"][0]["量測值"] = 62  # 再次以相同鍵值更新
     MechanicalService.update(new_id, payload2, user_id=None)
 
@@ -155,6 +165,9 @@ def test_update_preserves_excluded_measurement_evidence(db_session):
     original.exclusion_reason = "儀器異常"
     original.exclusion_user_id = excluding_user.id
     original.excluded_at = datetime(2026, 1, 21, tzinfo=timezone.utc)
+    original.value = 59
+    original.lower_limit = 60
+    original.is_ng = True
     db_session.commit()
 
     payload = _payload()
@@ -168,6 +181,9 @@ def test_update_preserves_excluded_measurement_evidence(db_session):
     assert updated.exclusion_reason == "儀器異常"
     assert updated.exclusion_user_id == excluding_user.id
     assert updated.excluded_at.replace(tzinfo=timezone.utc) == datetime(2026, 1, 21, tzinfo=timezone.utc)
+    assert float(updated.value) == 59
+    assert float(updated.lower_limit) == 60
+    assert updated.is_ng is True
 
 
 def test_update_keeps_excluded_measurement_omitted_from_general_edit(db_session):
@@ -188,6 +204,50 @@ def test_update_keeps_excluded_measurement_omitted_from_general_edit(db_session)
     assert retained.exclusion_reason == "儀器異常"
 
 
+@pytest.mark.parametrize(("measurements", "expected"), [
+    ([], "INCOMPLETE"),
+    ([{"量測項目": "硬度", "測量位置": "爐門", "取樣序": 1, "量測值": 70}], "NO_SPEC"),
+])
+def test_judgement_status_without_complete_spec(db_session, measurements, expected):
+    payload = _payload()
+    payload["measurements"] = measurements
+    test_id = MechanicalService.create(payload, user_id=None)
+    assert MechanicalService.get_detail(test_id)["main"]["判定狀態"] == expected
+    assert MechanicalService.list({})["data"][0]["判定狀態"] == expected
+
+
+@pytest.mark.parametrize(("value", "expected"), [(70, "OK"), (59, "NG")])
+def test_judgement_status_with_spec(db_session, value, expected):
+    vendor_id = _seed_spec(db_session)
+    payload = _payload()
+    payload["廠商ID"] = vendor_id
+    payload["measurements"] = [
+        {"量測項目": "硬度", "測量位置": "爐門", "取樣序": 1, "量測值": value}
+    ]
+    test_id = MechanicalService.create(payload, user_id=None)
+    assert MechanicalService.get_detail(test_id)["main"]["判定狀態"] == expected
+
+
+def test_nullable_fields_are_serialized_as_null(db_session):
+    payload = _payload()
+    payload.update({"測試日期": None, "T4溫度時間": None, "T6溫度時間": None, "備註": None})
+    payload["batches"] = [{"序號": 1, "擠製編號": None, "爐具編號": "F1"}]
+    payload["measurements"][0]["量測值"] = None
+    test_id = MechanicalService.create(payload, user_id=None)
+
+    detail = MechanicalService.get_detail(test_id)
+    listed = MechanicalService.list({})["data"][0]
+    assert detail["main"]["測試日期"] is None
+    assert detail["main"]["T4溫度時間"] is None
+    assert detail["main"]["備註"] is None
+    assert detail["batches"][0]["擠製編號"] is None
+    assert detail["measurements"][0]["量測值"] is None
+    assert detail["measurements"][0]["下限"] is None
+    assert listed["測試日期"] is None
+    assert listed["T4溫度時間"] is None
+    assert listed["備註"] is None
+
+
 @pytest.mark.parametrize("mutate", [
     lambda payload: payload.pop("產品尺寸"),
     lambda payload: payload.pop("材質"),
@@ -201,8 +261,17 @@ def test_update_keeps_excluded_measurement_omitted_from_general_edit(db_session)
     lambda payload: payload.update({"測試日期": "2026-99-99"}),
     lambda payload: payload.update({"測試日期": False}),
     lambda payload: payload.update({"測試日期": 0}),
+    lambda payload: payload.update({"測試日期": "2026-01-20garbage"}),
     lambda payload: payload.update({"廠商ID": 0}),
     lambda payload: payload.update({"廠商ID": "invalid-vendor"}),
+    lambda payload: payload.update({"廠商ID": 999999}),
+    lambda payload: payload.update({"batches": {}}),
+    lambda payload: payload.update({"batches": ["bad"]}),
+    lambda payload: payload.update({"batches": [{"序號": 0}]}),
+    lambda payload: payload.update({"batches": [{"序號": 1}, {"序號": 1}]}),
+    lambda payload: payload.update({"batches": [{"序號": "1"}]}),
+    lambda payload: payload.update({"measurements": {}}),
+    lambda payload: payload.update({"measurements": ["bad"]}),
     lambda payload: payload["measurements"].append(dict(payload["measurements"][0])),
 ])
 def test_create_rejects_invalid_payload_without_persisting_data(db_session, mutate):

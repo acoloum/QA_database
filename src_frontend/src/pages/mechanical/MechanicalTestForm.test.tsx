@@ -12,6 +12,7 @@ vi.mock('../../services/mechanicalApi', () => ({
     getSpec: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    getVendors: vi.fn(),
   },
 }));
 
@@ -46,10 +47,14 @@ const editDetail = {
     T6溫度時間: '180°C / 5h',
     備註: '既有備註',
     是否NG: false,
+    判定狀態: 'OK' as const,
   },
   batches: [{ 序號: 1, 擠製編號: 'EX-001', 爐具編號: 'F-001' }],
   measurements: [
-    { 量測項目: '硬度' as const, 測量位置: '爐門' as const, 取樣序: 1, 量測值: 95 },
+    {
+      量測項目: '硬度' as const, 測量位置: '爐門' as const, 取樣序: 1, 量測值: 95,
+      排除統計: false, 排除原因: null, 排除者ID: null, 排除時間: null,
+    },
   ],
 };
 
@@ -64,6 +69,10 @@ describe('MechanicalTestForm', () => {
     });
     vi.mocked(mechanicalApi.create).mockResolvedValue({ success: true, id: 9 });
     vi.mocked(mechanicalApi.update).mockResolvedValue({ success: true });
+    vi.mocked(mechanicalApi.getVendors).mockResolvedValue([
+      { id: 42, name: '安泰' },
+      { id: 51, name: '宏達' },
+    ]);
   });
 
   it('預設只顯示四個判定項目與第 1 取樣', () => {
@@ -112,7 +121,9 @@ describe('MechanicalTestForm', () => {
   it('新增時組成完整 payload 後呼叫建立 API', async () => {
     const { onSaved } = renderForm();
 
+    await screen.findByRole('option', { name: '安泰' });
     fireEvent.change(screen.getByLabelText('產品尺寸'), { target: { value: '62.5 x 2.3' } });
+    fireEvent.change(screen.getByLabelText('廠商'), { target: { value: '42' } });
     fireEvent.change(screen.getByLabelText('測試日期'), { target: { value: '2026-07-23' } });
     fireEvent.change(screen.getByPlaceholderText('擠製編號'), { target: { value: 'EX-001' } });
     fireEvent.change(screen.getByPlaceholderText('爐具編號'), { target: { value: 'F-001' } });
@@ -123,6 +134,7 @@ describe('MechanicalTestForm', () => {
       expect(mechanicalApi.create).toHaveBeenCalledWith({
         產品尺寸: '62.5 x 2.3',
         材質: '6061-T651',
+        廠商ID: 42,
         測試日期: '2026-07-23',
         T4溫度時間: '',
         T6溫度時間: '',
@@ -132,6 +144,16 @@ describe('MechanicalTestForm', () => {
       });
     });
     expect(onSaved).toHaveBeenCalledTimes(1);
+  });
+
+  it('新增與編輯皆顯示廠商選擇器並以所選廠商查規格', async () => {
+    renderForm();
+    expect(await screen.findByRole('option', { name: '安泰' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('廠商'), { target: { value: '51' } });
+    fireEvent.change(screen.getByLabelText('產品尺寸'), { target: { value: '62.5 x 2.3' } });
+    await waitFor(() => expect(mechanicalApi.getSpec).toHaveBeenCalledWith(
+      '6061-T651', '62.5 x 2.3', 51,
+    ));
   });
 
   it('編輯時載入既有資料、以廠商 ID 查規格並在更新 payload 保留該 ID', async () => {
@@ -168,6 +190,8 @@ describe('MechanicalTestForm', () => {
   it('顯示規格下限並即時標示低於下限的 NG 值', async () => {
     renderForm();
 
+    await screen.findByRole('option', { name: '安泰' });
+    fireEvent.change(screen.getByLabelText('廠商'), { target: { value: '42' } });
     fireEvent.change(screen.getByLabelText('產品尺寸'), { target: { value: '62.5 x 2.3' } });
     expect(await screen.findByText('90')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('硬度－爐門－取樣 1'), { target: { value: '89' } });
@@ -196,6 +220,8 @@ describe('MechanicalTestForm', () => {
     vi.mocked(mechanicalApi.create).mockRejectedValue(new Error('儲存失敗'));
     renderForm();
 
+    await screen.findByRole('option', { name: '安泰' });
+    fireEvent.change(screen.getByLabelText('廠商'), { target: { value: '42' } });
     fireEvent.change(screen.getByLabelText('產品尺寸'), { target: { value: '62.5 x 2.3' } });
     expect(await screen.findByRole('alert')).toHaveTextContent('載入機械性質規格失敗，請稍後再試');
 
@@ -270,5 +296,34 @@ describe('MechanicalTestForm', () => {
 
     expect(mechanicalApi.create).toHaveBeenCalledTimes(1);
     resolveCreate?.({ success: true, id: 9 });
+  });
+
+  it('排除量測顯示稽核證據且一般編輯不可修改', async () => {
+    vi.mocked(mechanicalApi.getDetail).mockResolvedValue({
+      ...editDetail,
+      measurements: [{
+        ...editDetail.measurements[0],
+        排除統計: true,
+        排除原因: '儀器異常',
+        排除者ID: 7,
+        排除時間: '2026-07-23T08:00:00+00:00',
+      }],
+    });
+    renderForm(8);
+
+    const input = await screen.findByLabelText('硬度－爐門－取樣 1');
+    expect(input).toBeDisabled();
+    expect(screen.getByText(/已排除：儀器異常/)).toBeInTheDocument();
+  });
+
+  it('儲存失敗時顯示後端提供的 403 訊息', async () => {
+    vi.mocked(mechanicalApi.create).mockRejectedValue({
+      response: { status: 403, data: { error: '您沒有建立機械性質檢驗的權限' } },
+    });
+    renderForm();
+    fireEvent.change(screen.getByLabelText('產品尺寸'), { target: { value: '62.5 x 2.3' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('您沒有建立機械性質檢驗的權限');
   });
 });

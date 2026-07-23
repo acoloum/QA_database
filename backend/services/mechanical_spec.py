@@ -5,6 +5,7 @@
 量測項目對應廠商公差項目採 MECH_ITEM_TO_TOLERANCE 映射。EC 無規格。
 """
 from decimal import Decimal
+import re
 from typing import Dict, Optional
 
 from ..models import VendorToleranceMain, VendorToleranceDetail
@@ -30,33 +31,39 @@ def lookup_lower_limits(
       2. 模糊層：僅前兩段相同（_match_spec 的相近匹配）
     同層內若仍有多筆，依 id 由小到大取第一筆，避免依賴資料庫回傳順序。
     """
-    if not material or not product_size:
+    if not material or not product_size or vendor_id is None:
         return {}
 
     match_material = ExtrusionToleranceService._match_material
     match_spec = ExtrusionToleranceService._match_spec
     normalize_spec = ExtrusionToleranceService._normalize_spec
 
-    query = VendorToleranceMain.query.filter(VendorToleranceMain.material.isnot(None))
-    if vendor_id is not None:
-        query = query.filter(VendorToleranceMain.vendor_id == vendor_id)
+    query = VendorToleranceMain.query.filter(
+        VendorToleranceMain.material.isnot(None),
+        VendorToleranceMain.vendor_id == vendor_id,
+    )
     mains = query.order_by(VendorToleranceMain.id.asc()).all()
 
-    normalized_input = normalize_spec(product_size)
-    exact_matches = []
-    fuzzy_matches = []
+    normalize_compact = lambda value: re.sub(r"\s+", "", normalize_spec(value))
+    normalized_input = normalize_compact(product_size)
+    normalized_material = material.strip().lower()
+    candidates = []
     for m in mains:
         if not match_material(material, m.material):
             continue
         m_spec = m.spec or ""
-        if not match_spec(product_size, m_spec):
+        compact_spec = normalize_compact(m_spec)
+        if not match_spec(normalized_input, compact_spec):
             continue
-        if normalize_spec(m_spec) == normalized_input:
-            exact_matches.append(m)
-        else:
-            fuzzy_matches.append(m)
+        candidates.append((
+            0 if (m.material or "").strip().lower() == normalized_material else 1,
+            0 if compact_spec == normalized_input else 1,
+            m.id,
+            m,
+        ))
 
-    candidate = exact_matches[0] if exact_matches else (fuzzy_matches[0] if fuzzy_matches else None)
+    candidate_entry = min(candidates, default=None, key=lambda entry: entry[:3])
+    candidate = candidate_entry[3] if candidate_entry else None
     if candidate is None:
         return {}
 
