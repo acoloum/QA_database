@@ -46,7 +46,8 @@ describe('MechanicalTestListPage', () => {
         產品尺寸: '62.5 x 2.3',
         材質: '6063',
         測試日期: '2026-07-23',
-        擠製編號: 'EX-20260723-01',
+        擠製編號: 'E001',
+        T4爐號: 'T4-01、T4-02',
         T4溫度時間: '190°C / 3h',
         T6溫度時間: '180°C / 5h',
         是否NG: false,
@@ -66,8 +67,19 @@ describe('MechanicalTestListPage', () => {
 
     expect(screen.getByText('載入中…')).toBeInTheDocument();
     expect(await screen.findByText('62.5 x 2.3')).toBeInTheDocument();
-    expect(screen.getByText('EX-20260723-01')).toBeInTheDocument();
+    expect(screen.getByText('E001')).toBeInTheDocument();
     expect(screen.getByText('OK')).toBeInTheDocument();
+  });
+
+  it('分欄顯示兩種追溯摘要並使用完整溫度時間標題', async () => {
+    renderPage();
+
+    expect(await screen.findByRole('columnheader', { name: '擠製編號' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'T4爐號' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'T4溫度/時間' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'T6溫度/時間' })).toBeInTheDocument();
+    expect(screen.getByText('E001')).toBeInTheDocument();
+    expect(screen.getByText('T4-01、T4-02')).toBeInTheDocument();
   });
 
   it('以尺寸、材質、日期區間及僅 NG 條件重新載入清單', async () => {
@@ -111,7 +123,7 @@ describe('MechanicalTestListPage', () => {
       success: true,
       data: [{
         識別碼: 7, 產品尺寸: 'A', 材質: '6061', 測試日期: null,
-        擠製編號: '', T4溫度時間: null, T6溫度時間: null,
+        擠製編號: '', T4爐號: '', T4溫度時間: null, T6溫度時間: null,
         是否NG: status === 'NG', 判定狀態: status, 備註: null,
       }],
       total: 1, page: 1, page_size: 20, total_pages: 1,

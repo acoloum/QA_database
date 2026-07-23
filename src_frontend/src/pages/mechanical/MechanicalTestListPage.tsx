@@ -147,8 +147,9 @@ export default function MechanicalTestListPage() {
                   <th>材質</th>
                   <th>測試日期</th>
                   <th>擠製編號</th>
-                  <th>T4</th>
-                  <th>T6</th>
+                  <th>T4爐號</th>
+                  <th>T4溫度/時間</th>
+                  <th>T6溫度/時間</th>
                   <th>判定</th>
                   <th>操作</th>
                 </tr>
@@ -160,6 +161,7 @@ export default function MechanicalTestListPage() {
                     <td>{row.材質}</td>
                     <td>{row.測試日期 ?? ''}</td>
                     <td>{row.擠製編號}</td>
+                    <td>{row.T4爐號 || '—'}</td>
                     <td>{row.T4溫度時間}</td>
                     <td>{row.T6溫度時間}</td>
                     <td>
@@ -192,7 +194,7 @@ export default function MechanicalTestListPage() {
                 ))}
                 {data && rows.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="text-center text-muted">查無資料</td>
+                    <td colSpan={9} className="text-center text-muted">查無資料</td>
                   </tr>
                 )}
               </tbody>

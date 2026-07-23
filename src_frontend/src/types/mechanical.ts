@@ -35,6 +35,7 @@ export interface MechanicalTestListItem {
   材質: string;
   測試日期: string | null;
   擠製編號: string;
+  T4爐號: string;
   T4溫度時間: string | null;
   T6溫度時間: string | null;
   是否NG: boolean;
