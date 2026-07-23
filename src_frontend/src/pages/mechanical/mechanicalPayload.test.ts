@@ -2,8 +2,13 @@ import { describe, it, expect } from 'vitest';
 import {
   JUDGED_ITEMS,
   buildMeasurements,
+  buildTraceNumbers,
+  duplicateTraceNumberIndexes,
   emptyGrid,
+  emptyTraceNumber,
   hydrateGrid,
+  hydrateTraceNumbers,
+  removeTraceNumber,
   type MechGrid,
 } from './mechanicalPayload';
 
@@ -74,5 +79,41 @@ describe('mechanicalPayload', () => {
     grid['EC值']['爐門'][1] = '42';
     const out = buildMeasurements(grid);
     expect(out).toContainEqual({ 量測項目: 'EC值', 測量位置: '爐門', 取樣序: 1, 量測值: 42 });
+  });
+});
+
+describe('機械性質追溯編號 helper', () => {
+  it('移除空白、trim 並重新編為連續序號', () => {
+    expect(buildTraceNumbers([
+      { 序號: 1, 編號: ' E001 ' },
+      { 序號: 2, 編號: ' ' },
+      { 序號: 3, 編號: 'E002' },
+    ])).toEqual([
+      { 序號: 1, 編號: 'E001' },
+      { 序號: 2, 編號: 'E002' },
+    ]);
+  });
+
+  it('同清單 trim 後相同值標示所有重複列', () => {
+    expect([...duplicateTraceNumberIndexes([
+      { 序號: 1, 編號: ' E001' },
+      { 序號: 2, 編號: 'E001 ' },
+      { 序號: 3, 編號: 'e001' },
+    ])]).toEqual([0, 1]);
+  });
+
+  it('hydrate 空陣列時保留一列空白輸入', () => {
+    expect(hydrateTraceNumbers([])).toEqual([emptyTraceNumber(1)]);
+  });
+
+  it('刪除後只重排該份清單且至少保留一列', () => {
+    const current = [
+      { 序號: 1, 編號: 'A' },
+      { 序號: 2, 編號: 'B' },
+    ];
+    expect(removeTraceNumber(current, 0)).toEqual([{ 序號: 1, 編號: 'B' }]);
+    expect(removeTraceNumber([{ 序號: 1, 編號: 'A' }], 0)).toEqual([
+      { 序號: 1, 編號: '' },
+    ]);
   });
 });

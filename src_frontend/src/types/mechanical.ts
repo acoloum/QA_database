@@ -3,6 +3,13 @@ export type MechItem = 'EC值' | '硬度' | '抗拉強度' | '降伏強度' | '�
 export type MechLocation = '爐門' | '爐頂';
 export type MechanicalJudgementStatus = 'NG' | 'OK' | 'NO_SPEC' | 'INCOMPLETE';
 
+export interface MechanicalTraceNumber {
+  識別碼?: number;
+  序號: number;
+  編號: string;
+}
+
+/** @deprecated 僅供舊 detail response 相容，新增前端不得使用。 */
 export interface MechanicalBatch {
   序號: number;
   擠製編號: string | null;

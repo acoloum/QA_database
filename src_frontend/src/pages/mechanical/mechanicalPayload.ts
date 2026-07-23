@@ -1,4 +1,9 @@
-import type { MechItem, MechLocation, MechanicalMeasurement } from '../../types';
+import type {
+  MechItem,
+  MechLocation,
+  MechanicalMeasurement,
+  MechanicalTraceNumber,
+} from '../../types';
 
 export const JUDGED_ITEMS: MechItem[] = ['硬度', '抗拉強度', '降伏強度', '伸長率'];
 export const ALL_ITEMS: MechItem[] = ['硬度', '抗拉強度', '降伏強度', '伸長率', 'EC值'];
@@ -52,4 +57,53 @@ export function hydrateGrid(measurements: MechanicalMeasurement[]): MechGrid {
     }
   }
   return grid;
+}
+
+export const emptyTraceNumber = (sequence: number): MechanicalTraceNumber => ({
+  序號: sequence,
+  編號: '',
+});
+
+export function buildTraceNumbers(
+  values: MechanicalTraceNumber[],
+): MechanicalTraceNumber[] {
+  return values
+    .map((value) => value.編號.trim())
+    .filter(Boolean)
+    .map((編號, index) => ({ 序號: index + 1, 編號 }));
+}
+
+export function hydrateTraceNumbers(
+  values: MechanicalTraceNumber[],
+): MechanicalTraceNumber[] {
+  const hydrated = [...values]
+    .sort((left, right) => left.序號 - right.序號)
+    .map((value, index) => ({ 序號: index + 1, 編號: value.編號 }));
+  return hydrated.length > 0 ? hydrated : [emptyTraceNumber(1)];
+}
+
+export function duplicateTraceNumberIndexes(
+  values: MechanicalTraceNumber[],
+): Set<number> {
+  const byNumber = new Map<string, number[]>();
+  values.forEach((value, index) => {
+    const number = value.編號.trim();
+    if (!number) return;
+    byNumber.set(number, [...(byNumber.get(number) ?? []), index]);
+  });
+  return new Set(
+    [...byNumber.values()]
+      .filter((indexes) => indexes.length > 1)
+      .flat(),
+  );
+}
+
+export function removeTraceNumber(
+  values: MechanicalTraceNumber[],
+  removeIndex: number,
+): MechanicalTraceNumber[] {
+  const remaining = values
+    .filter((_, index) => index !== removeIndex)
+    .map((value, index) => ({ ...value, 序號: index + 1 }));
+  return remaining.length > 0 ? remaining : [emptyTraceNumber(1)];
 }
