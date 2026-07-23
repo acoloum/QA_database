@@ -100,6 +100,46 @@ def test_create_accepts_one_extrusion_and_two_t4_furnace_numbers(
     ]
 
 
+def test_detail_returns_new_lists_and_unpaired_legacy_rows(app, db_session):
+    test_id = MechanicalService.create(_payload(), user_id=None)
+
+    detail = MechanicalService.get_detail(test_id)
+
+    assert [row["編號"] for row in detail["extrusion_numbers"]] == [
+        "010761 D35"
+    ]
+    assert [row["編號"] for row in detail["t4_furnace_numbers"]] == [
+        "011313T42",
+        "011314T42",
+    ]
+    assert detail["batches"] == [
+        {
+            "序號": 1,
+            "擠製編號": "010761 D35",
+            "爐具編號": None,
+        },
+        {
+            "序號": 2,
+            "擠製編號": None,
+            "爐具編號": "011313T42",
+        },
+        {
+            "序號": 3,
+            "擠製編號": None,
+            "爐具編號": "011314T42",
+        },
+    ]
+
+
+def test_list_has_independent_trace_summaries(app, db_session):
+    MechanicalService.create(_payload(), user_id=None)
+
+    listed = MechanicalService.list({})["data"][0]
+
+    assert listed["擠製編號"] == "010761 D35"
+    assert listed["T4爐號"] == "011313T42、011314T42"
+
+
 @pytest.mark.parametrize(
     "mutate",
     [

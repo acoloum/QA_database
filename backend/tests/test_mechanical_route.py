@@ -21,7 +21,11 @@ def test_create_and_list_via_api(client, db_session):
     db_session.commit()
     payload = {
         "產品尺寸": "36x25.2", "材質": "6061-T651", "測試日期": "2026-01-20",
-        "extrusion_numbers": [], "t4_furnace_numbers": [],
+        "extrusion_numbers": [{"序號": 1, "編號": "E1"}],
+        "t4_furnace_numbers": [
+            {"序號": 1, "編號": "T4-01"},
+            {"序號": 2, "編號": "T4-02"},
+        ],
         "measurements": [{"量測項目": "硬度", "測量位置": "爐門", "取樣序": 1, "量測值": 70}],
     }
     r = client.post("/api/mechanical/tests", json=payload, headers=headers)
@@ -35,6 +39,12 @@ def test_create_and_list_via_api(client, db_session):
     r3 = client.get(f"/api/mechanical/tests/{new_id}", headers=headers)
     assert r3.status_code == 200
     assert r3.get_json()["main"]["材質"] == "6061-T651"
+    assert r3.get_json()["extrusion_numbers"][0]["編號"] == "E1"
+    assert len(r3.get_json()["t4_furnace_numbers"]) == 2
+
+    payload["batches"] = []
+    invalid = client.post("/api/mechanical/tests", json=payload, headers=headers)
+    assert invalid.status_code == 400
 
 
 def test_create_requires_permission(client, db_session):

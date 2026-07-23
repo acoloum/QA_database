@@ -40,6 +40,32 @@ NEW_TRACE_FIELDS = {
 NormalizedTraceNumbers = Dict[str, list[tuple[int, str]]]
 
 
+def _trace_rows(
+    test: MechanicalTest,
+    trace_type: str,
+) -> list[MechanicalTraceNumber]:
+    """依類型與序號回傳獨立排序的追溯編號。"""
+    return sorted(
+        (
+            row
+            for row in test.trace_numbers
+            if row.trace_type == trace_type
+        ),
+        key=lambda row: row.seq,
+    )
+
+
+def _serialize_trace_rows(
+    test: MechanicalTest,
+    trace_type: str,
+) -> list[Dict[str, Any]]:
+    """序列化指定類型的追溯編號，不與另一類型重新配對。"""
+    return [
+        {"識別碼": row.id, "序號": row.seq, "編號": row.number}
+        for row in _trace_rows(test, trace_type)
+    ]
+
+
 def _parse_date(v: Any) -> Optional[date]:
     if v is None or v == "":
         return None
@@ -426,9 +452,10 @@ class MechanicalService:
             "材質": t.material,
             "測試日期": t.test_date.isoformat() if t.test_date else None,
             "擠製編號": "、".join(
-                row.number
-                for row in sorted(t.trace_numbers, key=lambda row: row.seq)
-                if row.trace_type == TRACE_TYPE_EXTRUSION
+                row.number for row in _trace_rows(t, TRACE_TYPE_EXTRUSION)
+            ),
+            "T4爐號": "、".join(
+                row.number for row in _trace_rows(t, TRACE_TYPE_T4_FURNACE)
             ),
             "T4溫度時間": t.t4_temp_time,
             "T6溫度時間": t.t6_temp_time,
@@ -456,18 +483,25 @@ class MechanicalService:
             "是否NG": t.is_ng,
             "判定狀態": _judgement_status(t),
         }
-        trace_numbers = {
-            field: [
-                {
-                    "識別碼": row.id,
-                    "序號": row.seq,
-                    "編號": row.number,
-                }
-                for row in sorted(t.trace_numbers, key=lambda item: item.seq)
-                if row.trace_type == trace_type
-            ]
-            for field, trace_type in NEW_TRACE_FIELDS.items()
-        }
+        extrusion_numbers = _serialize_trace_rows(
+            t, TRACE_TYPE_EXTRUSION
+        )
+        t4_furnace_numbers = _serialize_trace_rows(
+            t, TRACE_TYPE_T4_FURNACE
+        )
+        batches = []
+        for row in extrusion_numbers:
+            batches.append({
+                "序號": len(batches) + 1,
+                "擠製編號": row["編號"],
+                "爐具編號": None,
+            })
+        for row in t4_furnace_numbers:
+            batches.append({
+                "序號": len(batches) + 1,
+                "擠製編號": None,
+                "爐具編號": row["編號"],
+            })
         measurements = [{
             "識別碼": m.id,
             "量測項目": m.item,
@@ -484,6 +518,8 @@ class MechanicalService:
         return {
             "success": True,
             "main": main,
-            **trace_numbers,
+            "extrusion_numbers": extrusion_numbers,
+            "t4_furnace_numbers": t4_furnace_numbers,
+            "batches": batches,
             "measurements": measurements,
         }
