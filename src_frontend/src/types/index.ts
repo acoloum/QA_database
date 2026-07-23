@@ -12,3 +12,4 @@ export type * from './pyrometry';
 export type * from './rework';
 export type * from './tolerance';
 export type * from './spc';
+export type * from './mechanical';

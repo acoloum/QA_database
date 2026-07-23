@@ -29,6 +29,7 @@ const PyrometryDashboardPage = lazy(() => import('./pages/pyrometry/PyrometryDas
 const RecorderCalibrationPage = lazy(() => import('./pages/pyrometry/RecorderCalibrationPage'));
 const ThermocoupleCalibrationPage = lazy(() => import('./pages/pyrometry/ThermocoupleCalibrationPage'));
 const AdvancedSpcPage = lazy(() => import('./pages/spc/AdvancedSpcPage'));
+const MechanicalTestListPage = lazy(() => import('./pages/mechanical/MechanicalTestListPage'));
 
 const PageFallback = () => (
   <div className="d-flex align-items-center justify-content-center py-5 text-muted">
@@ -69,6 +70,7 @@ function App() {
                 <Route path="/pyrometry/tests" element={<PyrometryTestListPage />} />
                 <Route path="/pyrometry/recorders" element={<RecorderCalibrationPage />} />
                 <Route path="/pyrometry/thermocouples" element={<ThermocoupleCalibrationPage />} />
+                <Route path="/mechanical" element={<MechanicalTestListPage />} />
               </Route>
             </Route>
 

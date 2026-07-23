@@ -22,3 +22,14 @@ describe('Sidebar 的進階 SPC 權限', () => {
     expect(screen.getByRole('link', { name: /進階 SPC/ })).toHaveAttribute('href', '/spc/advanced');
   });
 });
+
+describe('Sidebar 的機械性質選單', () => {
+  it('位於 /mechanical 時顯示作用中的機械性質選單項目', () => {
+    authMock.mockReturnValue({ user: { role: 'user' }, hasPermission: () => false });
+    render(<MemoryRouter initialEntries={['/mechanical']}><Sidebar /></MemoryRouter>);
+
+    const mechanicalLink = screen.getByRole('link', { name: /機械性質/ });
+    expect(mechanicalLink).toHaveAttribute('href', '/mechanical');
+    expect(mechanicalLink).toHaveClass('active');
+  });
+});

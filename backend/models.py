@@ -1267,3 +1267,78 @@ for _spc_model in _SPC_MUTABLE_FIELDS:
 
 # OCAP 內容允許由受控服務逐步補充，但既有處置證據不得刪除。
 event.listen(SpcOcap, "before_delete", _block_spc_immutable_delete)
+
+
+class MechanicalTest(db.Model):
+    """機械性質檢驗 — 一筆對應原 Excel 一欄測試紀錄"""
+    __tablename__ = '機械性質檢驗'
+
+    id            = db.Column('識別碼',      db.Integer, primary_key=True)
+    product_size  = db.Column('產品尺寸',    db.String(50), nullable=False, index=True)
+    material      = db.Column('材質',        db.String(50), nullable=False, index=True)
+    vendor_id     = db.Column('廠商ID',      db.Integer, db.ForeignKey('廠商資料.識別碼'), nullable=True)
+    test_date     = db.Column('測試日期',    db.Date, nullable=True, index=True)
+    t4_temp_time  = db.Column('T4溫度時間',  db.String(100), nullable=True)
+    t6_temp_time  = db.Column('T6溫度時間',  db.String(100), nullable=True)
+    note          = db.Column('備註',        db.String, nullable=True)
+    is_ng         = db.Column('是否NG',      db.Boolean, default=False, nullable=False)
+    created_at    = db.Column('建立日期',    db.DateTime(timezone=True), default=utc_now)
+    created_by    = db.Column('建立者ID',    db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True)
+    updated_at    = db.Column('更新日期',    db.DateTime(timezone=True), onupdate=utc_now)
+
+    batches = db.relationship(
+        'MechanicalBatch', backref='test', cascade="all, delete-orphan"
+    )
+    measurements = db.relationship(
+        'MechanicalMeasurement', backref='test', cascade="all, delete-orphan"
+    )
+    vendor = db.relationship('Vendor')
+
+
+class MechanicalBatch(db.Model):
+    """機械性質批次 — 一列對應一組（擠製編號 + 爐具編號），可多組"""
+    __tablename__ = '機械性質批次'
+    __table_args__ = (
+        db.UniqueConstraint('機械性質檢驗_ID', '序號', name='uq_mech_batch_seq'),
+        db.CheckConstraint('"序號" >= 1', name='ck_mech_batch_seq_positive'),
+        db.Index('idx_mech_batch_test_id', '機械性質檢驗_ID'),
+    )
+
+    id           = db.Column('識別碼',        db.Integer, primary_key=True)
+    test_id      = db.Column('機械性質檢驗_ID', db.Integer,
+                             db.ForeignKey('機械性質檢驗.識別碼', ondelete='CASCADE'), nullable=False)
+    seq          = db.Column('序號',          db.Integer, nullable=False, default=1)
+    extrusion_no = db.Column('擠製編號',      db.String(100), nullable=True)
+    furnace_no   = db.Column('爐具編號',      db.String(100), nullable=True)
+
+
+class MechanicalMeasurement(db.Model):
+    """機械性質量測明細 — 一列對應一個（項目×位置×取樣序）量測值"""
+    __tablename__ = '機械性質量測明細'
+    __table_args__ = (
+        db.UniqueConstraint('機械性質檢驗_ID', '量測項目', '測量位置', '取樣序',
+                            name='uq_mech_group_item'),
+        db.CheckConstraint(
+            '"量測項目" IN (\'EC值\', \'硬度\', \'抗拉強度\', \'降伏強度\', \'伸長率\')',
+            name='ck_mech_measurement_item',
+        ),
+        db.CheckConstraint('"測量位置" IN (\'爐門\', \'爐頂\')', name='ck_mech_measurement_location'),
+        db.CheckConstraint('"取樣序" IN (1, 2)', name='ck_mech_measurement_sample'),
+        db.Index('idx_mech_meas_test_id', '機械性質檢驗_ID'),
+    )
+
+    id          = db.Column('識別碼',        db.Integer, primary_key=True)
+    test_id     = db.Column('機械性質檢驗_ID', db.Integer,
+                            db.ForeignKey('機械性質檢驗.識別碼', ondelete='CASCADE'), nullable=False)
+    item        = db.Column('量測項目',      db.String(20), nullable=False)
+    location    = db.Column('測量位置',      db.String(10), nullable=False)
+    sample_no   = db.Column('取樣序',        db.Integer, nullable=False)
+    value       = db.Column('量測值',        db.Numeric(12, 4), nullable=True)
+    lower_limit = db.Column('下限',          db.Numeric(12, 4), nullable=True)
+    is_ng       = db.Column('是否超差',      db.Boolean, default=False, nullable=False)
+    # §6.6 離群值：標示無效並保留追溯，不得刪除；排除於統計計算之外
+    excluded          = db.Column('排除統計', db.Boolean, default=False, nullable=False)
+    exclusion_reason  = db.Column('排除原因', db.String(200), nullable=True)
+    exclusion_user_id = db.Column('排除者ID', db.Integer,
+                                  db.ForeignKey('使用者.識別碼'), nullable=True)
+    excluded_at       = db.Column('排除時間', db.DateTime(timezone=True), nullable=True)

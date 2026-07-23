@@ -191,7 +191,9 @@ def _assert_current_decision_method(version: SpcStudyVersion) -> None:
         )
 
 
-def _require_permission(actor_id: int, permission: str) -> User:
+def _require_permission(actor_id: int | None, permission: str) -> User:
+    if not isinstance(actor_id, int) or isinstance(actor_id, bool) or actor_id < 1:
+        raise SpcForbidden("SPC_ACTOR_FORBIDDEN", "使用者不存在或已停用")
     actor = db.session.get(User, actor_id)
     if actor is None or not actor.is_active:
         raise SpcForbidden("SPC_ACTOR_FORBIDDEN", "使用者不存在或已停用")
