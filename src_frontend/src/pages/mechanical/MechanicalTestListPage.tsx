@@ -10,14 +10,23 @@ export default function MechanicalTestListPage() {
   const queryClient = useQueryClient();
   const [size, setSize] = useState('');
   const [material, setMaterial] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [onlyNg, setOnlyNg] = useState(false);
   const [editingId, setEditingId] = useState<number | null | 'new'>(null);
 
   const params = useMemo(
-    () => ({ product_size: size || undefined, material: material || undefined }),
-    [size, material],
+    () => ({
+      product_size: size || undefined,
+      material: material || undefined,
+      date_from: dateFrom || undefined,
+      date_to: dateTo || undefined,
+      only_ng: onlyNg ? 'true' : undefined,
+    }),
+    [size, material, dateFrom, dateTo, onlyNg],
   );
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['mechanical-tests', params],
     queryFn: () => mechanicalApi.list(params),
   });
@@ -27,6 +36,9 @@ export default function MechanicalTestListPage() {
     onSuccess: () => {
       toast.success('已刪除');
       queryClient.invalidateQueries({ queryKey: ['mechanical-tests'] });
+    },
+    onError: () => {
+      toast.error('刪除失敗，請稍後再試');
     },
   });
 
@@ -44,20 +56,52 @@ export default function MechanicalTestListPage() {
       <Card className="mb-3">
         <Card.Body>
           <Row className="g-2">
-            <Col md={3}>
+            <Col md={2}>
+              <Form.Label htmlFor="mechanical-product-size">產品尺寸</Form.Label>
               <Form.Control
+                id="mechanical-product-size"
                 size="sm"
                 placeholder="產品尺寸"
                 value={size}
                 onChange={(event) => setSize(event.target.value)}
               />
             </Col>
-            <Col md={3}>
+            <Col md={2}>
+              <Form.Label htmlFor="mechanical-material">材質</Form.Label>
               <Form.Control
+                id="mechanical-material"
                 size="sm"
                 placeholder="材質"
                 value={material}
                 onChange={(event) => setMaterial(event.target.value)}
+              />
+            </Col>
+            <Col md={2}>
+              <Form.Label htmlFor="mechanical-date-from">起始日期</Form.Label>
+              <Form.Control
+                id="mechanical-date-from"
+                type="date"
+                size="sm"
+                value={dateFrom}
+                onChange={(event) => setDateFrom(event.target.value)}
+              />
+            </Col>
+            <Col md={2}>
+              <Form.Label htmlFor="mechanical-date-to">結束日期</Form.Label>
+              <Form.Control
+                id="mechanical-date-to"
+                type="date"
+                size="sm"
+                value={dateTo}
+                onChange={(event) => setDateTo(event.target.value)}
+              />
+            </Col>
+            <Col md={2} className="d-flex align-items-end">
+              <Form.Check
+                id="mechanical-only-ng"
+                label="僅顯示 NG"
+                checked={onlyNg}
+                onChange={(event) => setOnlyNg(event.target.checked)}
               />
             </Col>
           </Row>
@@ -68,6 +112,8 @@ export default function MechanicalTestListPage() {
         <Card.Body>
           {isLoading ? (
             <p>載入中…</p>
+          ) : isError ? (
+            <p role="alert" className="text-danger mb-0">載入機械性質檢驗資料失敗，請稍後再試</p>
           ) : (
             <Table bordered hover size="sm">
               <thead className="table-secondary">
