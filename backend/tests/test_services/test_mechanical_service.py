@@ -68,6 +68,28 @@ def test_update_recomputes_ng(db_session):
     assert row.is_ng is False
 
 
+def test_update_twice_with_same_measurement_keys_does_not_raise(db_session):
+    """量測明細的 (量測項目, 測量位置, 取樣序) 鍵值不變、僅量測值變動時，
+    連續更新兩次不應因唯一鍵 uq_mech_group_item 衝突而拋出 IntegrityError。
+    這鎖定 _apply_measurements／_apply_batches 在 clear() 後、重新 append 前
+    必須先 flush 孤兒刪除，避免刪除與新增在同一次 flush 中排序不定。"""
+    _seed_spec(db_session)
+    new_id = MechanicalService.create(_payload(), user_id=None)
+
+    payload = _payload()
+    payload["measurements"][0]["量測值"] = 61  # 鍵值不變，僅改量測值
+    MechanicalService.update(new_id, payload, user_id=None)
+
+    payload2 = _payload()
+    payload2["measurements"][0]["量測值"] = 62  # 再次以相同鍵值更新
+    MechanicalService.update(new_id, payload2, user_id=None)
+
+    row = db_session.get(MechanicalTest, new_id)
+    values = {(m.item, m.location, m.sample_no): m.value for m in row.measurements}
+    assert values[("硬度", "爐門", 1)] == 62
+    assert values[("硬度", "爐頂", 1)] == 73
+
+
 def test_get_detail_and_delete(db_session):
     new_id = MechanicalService.create(_payload(), user_id=None)
     detail = MechanicalService.get_detail(new_id)

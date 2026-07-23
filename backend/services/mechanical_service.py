@@ -31,6 +31,7 @@ class MechanicalService:
     def _apply_batches(test: MechanicalTest, data: Dict[str, Any]) -> None:
         """依 payload 重建批次（擠製編號 + 爐具編號），略過整組皆空者。"""
         test.batches.clear()
+        db.session.flush()  # 先送出孤兒刪除，避免與唯一鍵新增在同一次 flush 中排序不定
         for i, b in enumerate(data.get("batches", []), start=1):
             ext = (b.get("擠製編號") or "").strip()
             fur = (b.get("爐具編號") or "").strip()
@@ -47,6 +48,7 @@ class MechanicalService:
         """依 payload 重建量測明細並套規格判定 NG。"""
         # 清除既有明細（更新情境）
         test.measurements.clear()
+        db.session.flush()  # 先送出孤兒刪除，避免與唯一鍵新增在同一次 flush 中排序不定
         limits = lookup_lower_limits(test.material, test.product_size)
 
         any_ng = False
