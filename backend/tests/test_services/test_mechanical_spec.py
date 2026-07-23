@@ -22,7 +22,10 @@ def _seed_spec(db_session):
     main = VendorToleranceMain(vendor_id=v.id, material="6061-T651", spec="36*25.2")
     db_session.add(main)
     db_session.flush()
-    for item, low in [("洛氏硬度", 60), ("抗拉強度", 380), ("降伏強度", 350), ("伸長率", 8)]:
+    for item, low in [
+        ("洛氏硬度", 60), ("抗拉強度", 380), ("降伏強度", 350), ("伸長率", 8),
+        ("EC值", 55),
+    ]:
         db_session.add(VendorToleranceDetail(
             main_id=main.id, item=item, tolerance_min=low, unit=""
         ))
@@ -39,6 +42,33 @@ def test_lookup_lower_limits_matches_material_and_size(db_session):
     assert float(limits["降伏強度"]) == 350
     assert float(limits["伸長率"]) == 8
     assert "EC值" not in limits
+
+
+def test_lookup_prefers_exact_spec_match_over_fuzzy(db_session):
+    v = Vendor(name="安泰")
+    db_session.add(v)
+    db_session.flush()
+
+    # 先插入「僅前兩段相同」的模糊匹配資料（規格不同）
+    fuzzy_main = VendorToleranceMain(vendor_id=v.id, material="6061-T651", spec="36*25.2*100")
+    db_session.add(fuzzy_main)
+    db_session.flush()
+    db_session.add(VendorToleranceDetail(
+        main_id=fuzzy_main.id, item="洛氏硬度", tolerance_min=999, unit=""
+    ))
+
+    # 後插入「完全相同」規格的資料
+    exact_main = VendorToleranceMain(vendor_id=v.id, material="6061-T651", spec="36*25.2")
+    db_session.add(exact_main)
+    db_session.flush()
+    db_session.add(VendorToleranceDetail(
+        main_id=exact_main.id, item="洛氏硬度", tolerance_min=60, unit=""
+    ))
+    db_session.commit()
+
+    limits = lookup_lower_limits("6061-T651", "36x25.2")
+    # 應採用精確匹配（exact_main）的下限，而非先插入之模糊匹配（fuzzy_main）
+    assert float(limits["硬度"]) == 60
 
 
 def test_lookup_returns_empty_when_no_spec(db_session):

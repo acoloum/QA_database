@@ -19,28 +19,47 @@ MECH_ITEM_TO_TOLERANCE: Dict[str, str] = {
 }
 
 
-def lookup_lower_limits(material: str, product_size: str) -> Dict[str, Decimal]:
-    """回傳 {機械性質項目: 下限}，查無則不含該項；EC 不查。"""
+def lookup_lower_limits(material: str, product_size: str) -> Dict[str, float]:
+    """回傳 {機械性質項目: 下限}，查無則不含該項；EC 不查。
+
+    當多筆 VendorToleranceMain 同時匹配（材質 + 產品尺寸皆為模糊比對）時，
+    採兩層優先序以確保結果穩定、可預期：
+      1. 精確層：規格正規化後與輸入完全相同
+      2. 模糊層：僅前兩段相同（_match_spec 的相近匹配）
+    同層內若仍有多筆，依 id 由小到大取第一筆，避免依賴資料庫回傳順序。
+    """
     if not material or not product_size:
         return {}
 
     match_material = ExtrusionToleranceService._match_material
     match_spec = ExtrusionToleranceService._match_spec
+    normalize_spec = ExtrusionToleranceService._normalize_spec
 
     mains = VendorToleranceMain.query.filter(
         VendorToleranceMain.material.isnot(None)
-    ).all()
-    candidate = None
+    ).order_by(VendorToleranceMain.id.asc()).all()
+
+    normalized_input = normalize_spec(product_size)
+    exact_matches = []
+    fuzzy_matches = []
     for m in mains:
-        if match_material(material, m.material) and match_spec(product_size, m.spec or ""):
-            candidate = m
-            break
+        if not match_material(material, m.material):
+            continue
+        m_spec = m.spec or ""
+        if not match_spec(product_size, m_spec):
+            continue
+        if normalize_spec(m_spec) == normalized_input:
+            exact_matches.append(m)
+        else:
+            fuzzy_matches.append(m)
+
+    candidate = exact_matches[0] if exact_matches else (fuzzy_matches[0] if fuzzy_matches else None)
     if candidate is None:
         return {}
 
     # 反查：廠商公差項目 → 機械性質項目
     tol_to_mech = {v: k for k, v in MECH_ITEM_TO_TOLERANCE.items()}
-    result: Dict[str, Decimal] = {}
+    result: Dict[str, float] = {}
     details = VendorToleranceDetail.query.filter_by(main_id=candidate.id).all()
     for d in details:
         mech_item = tol_to_mech.get(d.item)
