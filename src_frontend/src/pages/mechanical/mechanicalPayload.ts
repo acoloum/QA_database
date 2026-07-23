@@ -25,14 +25,18 @@ export function buildMeasurements(grid: MechGrid): MechanicalMeasurement[] {
     for (const loc of LOCATIONS) {
       for (const s of SAMPLES) {
         const raw = grid[item]?.[loc]?.[s];
-        if (raw !== undefined && raw !== '') {
-          const num = Number(raw);
-          out.push({
-            量測項目: item,
-            測量位置: loc,
-            取樣序: s,
-            量測值: Number.isFinite(num) ? num : null,
-          });
+        const trimmed = raw?.trim();
+        if (trimmed) {
+          const num = Number(trimmed);
+          // 非數值（如手誤打字）視同空白，不輸出該格
+          if (Number.isFinite(num)) {
+            out.push({
+              量測項目: item,
+              測量位置: loc,
+              取樣序: s,
+              量測值: num,
+            });
+          }
         }
       }
     }
