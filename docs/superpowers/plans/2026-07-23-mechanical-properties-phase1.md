@@ -4,7 +4,7 @@
 
 **Goal:** 在 QC 系統新增「機械性質檢驗」模組的核心 CRUD：資料表、登錄/編輯表單、清單查詢，並依廠商公差下限自動判定 NG。
 
-**Architecture:** 沿用全站三層架構（routes → services → models）。新增 2 張表（主檔 `機械性質檢驗` + 子檔 `機械性質量測明細`）。規格採單邊下限，存檔時依（材質 + 產品尺寸）到既有「廠商公差」撈下限並快照到量測明細，`是否超差 = 量測值 < 下限`。前端沿用 pyrometry 模式（清單 + 表單），EC 區塊與「異常加測（第2取樣）」預設收合。
+**Architecture:** 沿用全站三層架構（routes → services → models）。新增 3 張表（主檔 `機械性質檢驗` + 子檔 `機械性質批次`、`機械性質量測明細`）。擠製編號/爐具編號成對且可多組，存於批次子表。規格採單邊下限，存檔時依（材質 + 產品尺寸）到既有「廠商公差」撈下限並快照到量測明細，`是否超差 = 量測值 < 下限`。前端沿用 pyrometry 模式（清單 + 表單），批次列可動態新增/刪除，EC 區塊與「異常加測（第2取樣）」預設收合。
 
 **Tech Stack:** Flask 3.1 + SQLAlchemy + PostgreSQL（測試用 SQLite in-memory）；React 19 + TypeScript + React Query + Axios + Vitest。
 
@@ -25,7 +25,7 @@
 ## Task 1: 資料模型與 migration
 
 **Files:**
-- Modify: `backend/models.py`（檔尾新增 2 個模型）
+- Modify: `backend/models.py`（檔尾新增 3 個模型：主檔 + 批次 + 量測明細）
 - Create: `backend/migration/40_create_mechanical_tests.sql`
 - Test: `backend/tests/test_services/test_mechanical_models.py`
 
@@ -37,14 +37,18 @@ Create `backend/tests/test_services/test_mechanical_models.py`：
 from backend.models import MechanicalTest, MechanicalMeasurement
 
 
-def test_create_mechanical_test_with_measurements(db_session):
-    """主檔可帶量測明細，關聯與級聯刪除正常。"""
+def test_create_mechanical_test_with_children(db_session):
+    """主檔可帶批次與量測明細，關聯與級聯刪除正常。"""
+    from backend.models import MechanicalBatch
+
     test = MechanicalTest(
         product_size="36x25.2",
         material="6061-T651",
-        extrusion_lot="010761 D35",
         t4_temp_time="530/40MIN",
         t6_temp_time="175/6HR",
+    )
+    test.batches.append(
+        MechanicalBatch(seq=1, extrusion_no="010761 D35", furnace_no="011313T42")
     )
     test.measurements.append(
         MechanicalMeasurement(item="硬度", location="爐門", sample_no=1, value=73.3)
@@ -54,6 +58,8 @@ def test_create_mechanical_test_with_measurements(db_session):
 
     loaded = db_session.get(MechanicalTest, test.id)
     assert loaded.product_size == "36x25.2"
+    assert len(loaded.batches) == 1
+    assert loaded.batches[0].extrusion_no == "010761 D35"
     assert len(loaded.measurements) == 1
     assert loaded.measurements[0].item == "硬度"
 
@@ -61,6 +67,7 @@ def test_create_mechanical_test_with_measurements(db_session):
     db_session.delete(loaded)
     db_session.commit()
     assert db_session.query(MechanicalMeasurement).count() == 0
+    assert db_session.query(MechanicalBatch).count() == 0
 
 
 def test_measurement_unique_constraint(db_session):
@@ -96,8 +103,6 @@ class MechanicalTest(db.Model):
     material      = db.Column('材質',        db.String(50), nullable=False, index=True)
     vendor_id     = db.Column('廠商ID',      db.Integer, db.ForeignKey('廠商資料.識別碼'), nullable=True)
     test_date     = db.Column('測試日期',    db.Date, nullable=True, index=True)
-    extrusion_lot = db.Column('擠製日期批號', db.String, nullable=True)
-    t4_furnace_no = db.Column('T4爐具編號',  db.String, nullable=True)
     t4_temp_time  = db.Column('T4溫度時間',  db.String, nullable=True)
     t6_temp_time  = db.Column('T6溫度時間',  db.String, nullable=True)
     note          = db.Column('備註',        db.String, nullable=True)
@@ -106,10 +111,28 @@ class MechanicalTest(db.Model):
     created_by    = db.Column('建立者ID',    db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True)
     updated_at    = db.Column('更新日期',    db.DateTime(timezone=True), onupdate=datetime.utcnow)
 
+    batches = db.relationship(
+        'MechanicalBatch', backref='test', cascade="all, delete-orphan"
+    )
     measurements = db.relationship(
         'MechanicalMeasurement', backref='test', cascade="all, delete-orphan"
     )
     vendor = db.relationship('Vendor')
+
+
+class MechanicalBatch(db.Model):
+    """機械性質批次 — 一列對應一組（擠製編號 + 爐具編號），可多組"""
+    __tablename__ = '機械性質批次'
+    __table_args__ = (
+        db.Index('idx_mech_batch_test_id', '機械性質檢驗_ID'),
+    )
+
+    id           = db.Column('識別碼',        db.Integer, primary_key=True)
+    test_id      = db.Column('機械性質檢驗_ID', db.Integer,
+                             db.ForeignKey('機械性質檢驗.識別碼'), nullable=False)
+    seq          = db.Column('序號',          db.Integer, nullable=False, default=1)
+    extrusion_no = db.Column('擠製編號',      db.String, nullable=True)
+    furnace_no   = db.Column('爐具編號',      db.String, nullable=True)
 
 
 class MechanicalMeasurement(db.Model):
@@ -150,15 +173,13 @@ Expected: PASS（2 passed）
 Create `backend/migration/40_create_mechanical_tests.sql`：
 
 ```sql
--- 機械性質檢驗模組 Phase 1：主檔 + 量測明細
+-- 機械性質檢驗模組 Phase 1：主檔 + 批次 + 量測明細
 CREATE TABLE IF NOT EXISTS "機械性質檢驗" (
     "識別碼"       SERIAL PRIMARY KEY,
     "產品尺寸"     VARCHAR(50) NOT NULL,
     "材質"         VARCHAR(50) NOT NULL,
     "廠商ID"       INTEGER REFERENCES "廠商資料"("識別碼"),
     "測試日期"     DATE,
-    "擠製日期批號" VARCHAR,
-    "T4爐具編號"   VARCHAR,
     "T4溫度時間"   VARCHAR,
     "T6溫度時間"   VARCHAR,
     "備註"         VARCHAR,
@@ -170,6 +191,16 @@ CREATE TABLE IF NOT EXISTS "機械性質檢驗" (
 CREATE INDEX IF NOT EXISTS idx_mech_test_size     ON "機械性質檢驗" ("產品尺寸");
 CREATE INDEX IF NOT EXISTS idx_mech_test_material ON "機械性質檢驗" ("材質");
 CREATE INDEX IF NOT EXISTS idx_mech_test_date     ON "機械性質檢驗" ("測試日期");
+
+-- 批次：一組 = 擠製編號 + 爐具編號，可多組
+CREATE TABLE IF NOT EXISTS "機械性質批次" (
+    "識別碼"          SERIAL PRIMARY KEY,
+    "機械性質檢驗_ID" INTEGER NOT NULL REFERENCES "機械性質檢驗"("識別碼") ON DELETE CASCADE,
+    "序號"            INTEGER NOT NULL DEFAULT 1,
+    "擠製編號"        VARCHAR,
+    "爐具編號"        VARCHAR
+);
+CREATE INDEX IF NOT EXISTS idx_mech_batch_test_id ON "機械性質批次" ("機械性質檢驗_ID");
 
 CREATE TABLE IF NOT EXISTS "機械性質量測明細" (
     "識別碼"          SERIAL PRIMARY KEY,
@@ -193,7 +224,7 @@ CREATE INDEX IF NOT EXISTS idx_mech_meas_test_id ON "機械性質量測明細" (
 
 ```bash
 git add backend/models.py backend/migration/40_create_mechanical_tests.sql backend/tests/test_services/test_mechanical_models.py
-git commit -m "feat(機械性質): 新增機械性質檢驗主檔與量測明細資料表"
+git commit -m "feat(機械性質): 新增機械性質檢驗主檔、批次與量測明細資料表"
 ```
 
 ---
@@ -384,9 +415,12 @@ def _payload():
         "產品尺寸": "36x25.2",
         "材質": "6061-T651",
         "測試日期": "2026-01-20",
-        "擠製日期批號": "010761 D35",
         "T4溫度時間": "530/40MIN",
         "T6溫度時間": "175/6HR",
+        "batches": [
+            {"序號": 1, "擠製編號": "010761 D35", "爐具編號": "011313T42"},
+            {"序號": 2, "擠製編號": "010851 D35", "爐具編號": "011314T42"},
+        ],
         "measurements": [
             {"量測項目": "硬度", "測量位置": "爐門", "取樣序": 1, "量測值": 59},
             {"量測項目": "硬度", "測量位置": "爐頂", "取樣序": 1, "量測值": 73},
@@ -438,6 +472,9 @@ def test_get_detail_and_delete(db_session):
     detail = MechanicalService.get_detail(new_id)
     assert detail["main"]["產品尺寸"] == "36x25.2"
     assert len(detail["measurements"]) == 2
+    # 批次保留 2 組並依序號排序
+    assert [b["擠製編號"] for b in detail["batches"]] == ["010761 D35", "010851 D35"]
+    assert detail["batches"][0]["爐具編號"] == "011313T42"
     MechanicalService.delete(new_id)
     assert db_session.get(MechanicalTest, new_id) is None
 ```
@@ -457,7 +494,7 @@ from datetime import datetime, date
 from typing import Any, Dict, Optional
 
 from ..extensions import db
-from ..models import MechanicalTest, MechanicalMeasurement
+from ..models import MechanicalTest, MechanicalMeasurement, MechanicalBatch
 from ..utils import bounded_int, format_value
 from .mechanical_spec import lookup_lower_limits, compute_measurement_ng
 
@@ -480,6 +517,21 @@ def _to_float(v: Any) -> Optional[float]:
 
 
 class MechanicalService:
+
+    @staticmethod
+    def _apply_batches(test: MechanicalTest, data: Dict[str, Any]) -> None:
+        """依 payload 重建批次（擠製編號 + 爐具編號），略過整組皆空者。"""
+        test.batches.clear()
+        for i, b in enumerate(data.get("batches", []), start=1):
+            ext = (b.get("擠製編號") or "").strip()
+            fur = (b.get("爐具編號") or "").strip()
+            if not ext and not fur:
+                continue
+            test.batches.append(MechanicalBatch(
+                seq=int(b.get("序號") or i),
+                extrusion_no=ext or None,
+                furnace_no=fur or None,
+            ))
 
     @staticmethod
     def _apply_measurements(test: MechanicalTest, data: Dict[str, Any]) -> None:
@@ -512,13 +564,12 @@ class MechanicalService:
             material=data.get("材質"),
             vendor_id=data.get("廠商ID") or None,
             test_date=_parse_date(data.get("測試日期")),
-            extrusion_lot=data.get("擠製日期批號") or None,
-            t4_furnace_no=data.get("T4爐具編號") or None,
             t4_temp_time=data.get("T4溫度時間") or None,
             t6_temp_time=data.get("T6溫度時間") or None,
             note=data.get("備註") or None,
             created_by=user_id,
         )
+        MechanicalService._apply_batches(test, data)
         MechanicalService._apply_measurements(test, data)
         db.session.add(test)
         db.session.commit()
@@ -533,11 +584,10 @@ class MechanicalService:
         test.material = data.get("材質", test.material)
         test.vendor_id = data.get("廠商ID") or None
         test.test_date = _parse_date(data.get("測試日期"))
-        test.extrusion_lot = data.get("擠製日期批號") or None
-        test.t4_furnace_no = data.get("T4爐具編號") or None
         test.t4_temp_time = data.get("T4溫度時間") or None
         test.t6_temp_time = data.get("T6溫度時間") or None
         test.note = data.get("備註") or None
+        MechanicalService._apply_batches(test, data)
         MechanicalService._apply_measurements(test, data)
         db.session.commit()
 
@@ -576,7 +626,10 @@ class MechanicalService:
             "產品尺寸": t.product_size,
             "材質": t.material,
             "測試日期": format_value(t.test_date),
-            "擠製日期批號": t.extrusion_lot or "",
+            # 多組批次以「、」串接為摘要顯示
+            "擠製編號": "、".join(
+                b.extrusion_no for b in sorted(t.batches, key=lambda x: x.seq) if b.extrusion_no
+            ),
             "T4溫度時間": t.t4_temp_time or "",
             "T6溫度時間": t.t6_temp_time or "",
             "是否NG": t.is_ng,
@@ -596,13 +649,17 @@ class MechanicalService:
             "材質": t.material,
             "廠商ID": t.vendor_id,
             "測試日期": format_value(t.test_date),
-            "擠製日期批號": t.extrusion_lot or "",
-            "T4爐具編號": t.t4_furnace_no or "",
             "T4溫度時間": t.t4_temp_time or "",
             "T6溫度時間": t.t6_temp_time or "",
             "備註": t.note or "",
             "是否NG": t.is_ng,
         }
+        batches = [{
+            "識別碼": b.id,
+            "序號": b.seq,
+            "擠製編號": b.extrusion_no or "",
+            "爐具編號": b.furnace_no or "",
+        } for b in sorted(t.batches, key=lambda x: x.seq)]
         measurements = [{
             "識別碼": m.id,
             "量測項目": m.item,
@@ -612,7 +669,7 @@ class MechanicalService:
             "下限": format_value(m.lower_limit),
             "是否超差": m.is_ng,
         } for m in sorted(t.measurements, key=lambda x: (x.item, x.location, x.sample_no))]
-        return {"success": True, "main": main, "measurements": measurements}
+        return {"success": True, "main": main, "batches": batches, "measurements": measurements}
 ```
 
 > 清理：Step 3 的 `_apply_measurements` 內 `if False else` 是誤植，實作時直接寫 `limits = lookup_lower_limits(test.material, test.product_size)`。
@@ -830,6 +887,12 @@ git commit -m "feat(機械性質): 新增 REST API 端點與權限控管"
 export type MechItem = 'EC值' | '硬度' | '抗拉強度' | '降伏強度' | '伸長率';
 export type MechLocation = '爐門' | '爐頂';
 
+export interface MechanicalBatch {
+  序號: number;
+  擠製編號: string;
+  爐具編號: string;
+}
+
 export interface MechanicalMeasurement {
   量測項目: MechItem;
   測量位置: MechLocation;
@@ -844,7 +907,7 @@ export interface MechanicalTestListItem {
   產品尺寸: string;
   材質: string;
   測試日期: string | null;
-  擠製日期批號: string;
+  擠製編號: string;
   T4溫度時間: string;
   T6溫度時間: string;
   是否NG: boolean;
@@ -858,13 +921,12 @@ export interface MechanicalTestDetail {
     材質: string;
     廠商ID: number | null;
     測試日期: string | null;
-    擠製日期批號: string;
-    T4爐具編號: string;
     T4溫度時間: string;
     T6溫度時間: string;
     備註: string;
     是否NG: boolean;
   };
+  batches: MechanicalBatch[];
   measurements: MechanicalMeasurement[];
 }
 
@@ -873,11 +935,10 @@ export interface MechanicalTestPayload {
   材質: string;
   廠商ID?: number | null;
   測試日期?: string | null;
-  擠製日期批號?: string;
-  T4爐具編號?: string;
   T4溫度時間?: string;
   T6溫度時間?: string;
   備註?: string;
+  batches: MechanicalBatch[];
   measurements: MechanicalMeasurement[];
 }
 ```
@@ -1142,7 +1203,7 @@ export default function MechanicalTestListPage() {
           <thead>
             <tr>
               <th>產品尺寸</th><th>材質</th><th>測試日期</th>
-              <th>批號</th><th>T4</th><th>T6</th><th>判定</th><th>操作</th>
+              <th>擠製編號</th><th>T4</th><th>T6</th><th>判定</th><th>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -1151,7 +1212,7 @@ export default function MechanicalTestListPage() {
                 <td>{row.產品尺寸}</td>
                 <td>{row.材質}</td>
                 <td>{row.測試日期 ?? ''}</td>
-                <td>{row.擠製日期批號}</td>
+                <td>{row.擠製編號}</td>
                 <td>{row.T4溫度時間}</td>
                 <td>{row.T6溫度時間}</td>
                 <td>
@@ -1224,7 +1285,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { mechanicalApi } from '../../services/mechanicalApi';
-import type { MechItem, MechanicalTestPayload } from '../../types';
+import type { MechItem, MechanicalBatch, MechanicalTestPayload } from '../../types';
 import {
   JUDGED_ITEMS,
   LOCATIONS,
@@ -1244,20 +1305,21 @@ interface BasicFields {
   產品尺寸: string;
   材質: string;
   測試日期: string;
-  擠製日期批號: string;
-  T4爐具編號: string;
   T4溫度時間: string;
   T6溫度時間: string;
   備註: string;
 }
 
 const EMPTY_BASIC: BasicFields = {
-  產品尺寸: '', 材質: '6061-T651', 測試日期: '', 擠製日期批號: '',
-  T4爐具編號: '', T4溫度時間: '', T6溫度時間: '', 備註: '',
+  產品尺寸: '', 材質: '6061-T651', 測試日期: '',
+  T4溫度時間: '', T6溫度時間: '', 備註: '',
 };
+
+const emptyBatch = (seq: number): MechanicalBatch => ({ 序號: seq, 擠製編號: '', 爐具編號: '' });
 
 export default function MechanicalTestForm({ testId, onClose, onSaved }: Props) {
   const [basic, setBasic] = useState<BasicFields>(EMPTY_BASIC);
+  const [batches, setBatches] = useState<MechanicalBatch[]>([emptyBatch(1)]);
   const [grid, setGrid] = useState<MechGrid>(emptyGrid());
   const [showSecond, setShowSecond] = useState(false); // 異常加測（第2取樣）
   const [showEc, setShowEc] = useState(false);          // 導電度 EC
@@ -1276,18 +1338,24 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Props) 
         產品尺寸: detail.main.產品尺寸,
         材質: detail.main.材質,
         測試日期: detail.main.測試日期 ?? '',
-        擠製日期批號: detail.main.擠製日期批號,
-        T4爐具編號: detail.main.T4爐具編號,
         T4溫度時間: detail.main.T4溫度時間,
         T6溫度時間: detail.main.T6溫度時間,
         備註: detail.main.備註,
       });
+      setBatches(detail.batches.length > 0 ? detail.batches : [emptyBatch(1)]);
       setGrid(hydrateGrid(detail.measurements));
       // 若有第2取樣或 EC 值，預設展開
       if (detail.measurements.some((m) => m.取樣序 === 2)) setShowSecond(true);
       if (detail.measurements.some((m) => m.量測項目 === 'EC值')) setShowEc(true);
     }
   }, [detail]);
+
+  const setBatchField = (idx: number, field: '擠製編號' | '爐具編號', val: string) => {
+    setBatches((bs) => bs.map((b, i) => (i === idx ? { ...b, [field]: val } : b)));
+  };
+  const addBatch = () => setBatches((bs) => [...bs, emptyBatch(bs.length + 1)]);
+  const removeBatch = (idx: number) =>
+    setBatches((bs) => (bs.length <= 1 ? bs : bs.filter((_, i) => i !== idx).map((b, i) => ({ ...b, 序號: i + 1 }))));
 
   // 規格下限（用於即時 NG 提示）
   const { data: limits } = useQuery({
@@ -1318,11 +1386,10 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Props) 
       產品尺寸: basic.產品尺寸,
       材質: basic.材質,
       測試日期: basic.測試日期 || null,
-      擠製日期批號: basic.擠製日期批號,
-      T4爐具編號: basic.T4爐具編號,
       T4溫度時間: basic.T4溫度時間,
       T6溫度時間: basic.T6溫度時間,
       備註: basic.備註,
+      batches: batches.filter((b) => b.擠製編號.trim() || b.爐具編號.trim()),
       measurements: buildMeasurements(grid),
     };
     setSaving(true);
@@ -1355,18 +1422,43 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Props) 
           <label>測試日期
             <input type="date" value={basic.測試日期} onChange={(e) => setBasic({ ...basic, 測試日期: e.target.value })} />
           </label>
-          <label>擠製日期/批號
-            <input value={basic.擠製日期批號} onChange={(e) => setBasic({ ...basic, 擠製日期批號: e.target.value })} />
-          </label>
-          <label>T4爐具編號
-            <input value={basic.T4爐具編號} onChange={(e) => setBasic({ ...basic, T4爐具編號: e.target.value })} />
-          </label>
           <label>T4溫度/時間
             <input value={basic.T4溫度時間} onChange={(e) => setBasic({ ...basic, T4溫度時間: e.target.value })} />
           </label>
           <label>T6溫度/時間
             <input value={basic.T6溫度時間} onChange={(e) => setBasic({ ...basic, T6溫度時間: e.target.value })} />
           </label>
+        </div>
+
+        {/* 批次區（可擴充）：擠製編號 + 爐具編號成對 */}
+        <div className="batch-section" style={{ margin: '12px 0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong>擠製編號 / 爐具編號（可多組）</strong>
+            <button type="button" className="btn btn-sm" onClick={addBatch}>
+              <i className="fa-solid fa-plus" /> 新增一組
+            </button>
+          </div>
+          {batches.map((b, idx) => (
+            <div key={idx} style={{ display: 'flex', gap: 8, marginTop: 6, alignItems: 'center' }}>
+              <span style={{ width: 24 }}>{idx + 1}.</span>
+              <input
+                placeholder="擠製編號"
+                value={b.擠製編號}
+                onChange={(e) => setBatchField(idx, '擠製編號', e.target.value)}
+              />
+              <input
+                placeholder="爐具編號"
+                value={b.爐具編號}
+                onChange={(e) => setBatchField(idx, '爐具編號', e.target.value)}
+              />
+              <button
+                type="button"
+                className="btn btn-sm btn-danger"
+                disabled={batches.length <= 1}
+                onClick={() => removeBatch(idx)}
+              >刪除</button>
+            </div>
+          ))}
         </div>
 
         {/* 量測開關 */}
