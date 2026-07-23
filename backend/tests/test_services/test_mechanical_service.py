@@ -70,9 +70,15 @@ def test_update_recomputes_ng(db_session):
 
 def test_update_twice_with_same_measurement_keys_does_not_raise(db_session):
     """量測明細的 (量測項目, 測量位置, 取樣序) 鍵值不變、僅量測值變動時，
-    連續更新兩次不應因唯一鍵 uq_mech_group_item 衝突而拋出 IntegrityError。
-    這鎖定 _apply_measurements／_apply_batches 在 clear() 後、重新 append 前
-    必須先 flush 孤兒刪除，避免刪除與新增在同一次 flush 中排序不定。"""
+    連續更新兩次應能正確覆蓋量測值（功能面驗證：相同鍵值、值不同，重複更新皆正確）。
+
+    注意：本測試「不能」也「沒有」鎖定 _apply_measurements／_apply_batches 的
+    flush() 修正所要防範的那個 bug——該 IntegrityError 只在 PostgreSQL
+    （不可延遲的唯一鍵，逐語句檢查）才會於 clear() 後、重新 append 前的同一次
+    flush 中因排序不定而觸發；測試在 SQLite 記憶體資料庫上執行（見
+    backend/tests/conftest.py），並不會重現此排序問題，因此拿掉 flush() 這
+    支測試仍會通過。對正式環境該 bug 的實際防護，來自原始碼中確實存在
+    db.session.flush() 這兩行，須以程式碼審查確認，而非本測試的通過與否。"""
     _seed_spec(db_session)
     new_id = MechanicalService.create(_payload(), user_id=None)
 
