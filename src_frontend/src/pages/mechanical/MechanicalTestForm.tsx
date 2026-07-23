@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Col, Form, Modal, Row, Table } from 'react-bootstrap';
 import toast from 'react-hot-toast';
@@ -6,8 +6,10 @@ import toast from 'react-hot-toast';
 import { mechanicalApi } from '../../services/mechanicalApi';
 import type { MechItem, MechLocation, MechanicalBatch, MechanicalTestPayload } from '../../types';
 import {
+  ALL_ITEMS,
   JUDGED_ITEMS,
   LOCATIONS,
+  SAMPLES,
   buildMeasurements,
   emptyGrid,
   hydrateGrid,
@@ -47,6 +49,30 @@ const emptyBatch = (sequence: number): MechanicalBatch => ({
 const cellLabel = (item: MechItem, location: MechLocation, sample: number) =>
   `${item}－${location}－取樣 ${sample}`;
 
+const ITEM_KEYS: Record<MechItem, string> = {
+  EC值: 'ec',
+  硬度: 'hardness',
+  抗拉強度: 'tensile',
+  降伏強度: 'yield',
+  伸長率: 'elongation',
+};
+
+const LOCATION_KEYS: Record<MechLocation, string> = {
+  爐門: 'door',
+  爐頂: 'top',
+};
+
+const measurementErrorId = (item: MechItem, location: MechLocation, sample: number, kind: 'format' | 'ng') =>
+  `mechanical-measurement-${ITEM_KEYS[item]}-${LOCATION_KEYS[location]}-${sample}-${kind}-error`;
+
+const isInvalidMeasurement = (value: string) => value.trim() !== '' && !Number.isFinite(Number(value.trim()));
+
+const invalidMeasurements = (grid: MechGrid) => ALL_ITEMS.flatMap((item) => (
+  LOCATIONS.flatMap((location) => SAMPLES.flatMap((sample) => (
+    isInvalidMeasurement(grid[item][location][sample] ?? '') ? [{ item, location, sample }] : []
+  )))
+));
+
 export default function MechanicalTestForm({ testId, onClose, onSaved }: MechanicalTestFormProps) {
   const [basic, setBasic] = useState<BasicFields>(EMPTY_BASIC);
   const [vendorId, setVendorId] = useState<number | null>(null);
@@ -57,11 +83,14 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
   const [saving, setSaving] = useState(false);
   const [validationError, setValidationError] = useState('');
   const [saveError, setSaveError] = useState('');
+  const [hydratedTestId, setHydratedTestId] = useState<number | null>(null);
+  const savingRef = useRef(false);
 
   const {
     data: detail,
     isLoading: isDetailLoading,
     isError: isDetailError,
+    refetch: refetchDetail,
   } = useQuery({
     queryKey: ['mechanical-test', testId],
     queryFn: () => mechanicalApi.getDetail(testId as number),
@@ -78,6 +107,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
       setShowEc(false);
       setValidationError('');
       setSaveError('');
+      setHydratedTestId(null);
       return;
     }
 
@@ -97,7 +127,10 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
     setGrid(hydrateGrid(detail.measurements));
     setShowSecond(detail.measurements.some((measurement) => measurement.取樣序 === 2));
     setShowEc(detail.measurements.some((measurement) => measurement.量測項目 === 'EC值'));
+    setHydratedTestId(testId);
   }, [detail, testId]);
+
+  const isEditReady = testId === null || hydratedTestId === testId;
 
   const {
     data: limits,
@@ -105,7 +138,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
   } = useQuery({
     queryKey: ['mechanical-spec', basic.材質, basic.產品尺寸, vendorId],
     queryFn: () => mechanicalApi.getSpec(basic.材質, basic.產品尺寸, vendorId ?? undefined),
-    enabled: Boolean(basic.材質 && basic.產品尺寸),
+    enabled: Boolean(isEditReady && basic.材質 && basic.產品尺寸),
   });
 
   const setBasicField = <Key extends keyof BasicFields>(field: Key, value: BasicFields[Key]) => {
@@ -151,10 +184,20 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
   };
 
   const save = async () => {
+    if (savingRef.current) return;
+
     if (!basic.產品尺寸.trim() || !basic.材質.trim()) {
       const message = '請填寫產品尺寸與材質';
       setValidationError(message);
       toast.error(message);
+      return;
+    }
+
+    const invalid = invalidMeasurements(grid);
+    if (invalid.length > 0) {
+      setShowSecond((current) => current || invalid.some((measurement) => measurement.sample === 2));
+      setShowEc((current) => current || invalid.some((measurement) => measurement.item === 'EC值'));
+      toast.error('請修正量測值格式錯誤');
       return;
     }
 
@@ -170,6 +213,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
     };
     if (testId !== null) payload.廠商ID = vendorId;
 
+    savingRef.current = true;
     setSaving(true);
     setSaveError('');
     try {
@@ -182,6 +226,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
       setSaveError(message);
       toast.error(message);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -189,18 +234,47 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
   const samples = showSecond ? [1, 2] : [1];
   const items: MechItem[] = showEc ? [...JUDGED_ITEMS, 'EC值'] : JUDGED_ITEMS;
 
+  if (testId !== null && isDetailError) {
+    return (
+      <Modal show onHide={onClose} size="lg" backdrop="static" aria-label="機械性質檢驗表單">
+        <Modal.Header closeButton>
+          <Modal.Title>編輯機械性質檢驗</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Alert variant="danger" role="alert">載入機械性質檢驗資料失敗，請稍後再試</Alert>
+          <Button type="button" variant="outline-primary" onClick={() => void refetchDetail()}>重新載入</Button>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={onClose}>關閉</Button>
+        </Modal.Footer>
+      </Modal>
+    );
+  }
+
+  if (testId !== null && !isEditReady) {
+    return (
+      <Modal show onHide={onClose} size="lg" backdrop="static" aria-label="機械性質檢驗表單">
+        <Modal.Header closeButton>
+          <Modal.Title>編輯機械性質檢驗</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div className="text-center py-4" role="status">
+            {isDetailLoading ? '載入檢驗資料中…' : '正在準備檢驗資料…'}
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={onClose}>取消</Button>
+        </Modal.Footer>
+      </Modal>
+    );
+  }
+
   return (
     <Modal show onHide={onClose} size="lg" backdrop="static" scrollable aria-label="機械性質檢驗表單">
       <Modal.Header closeButton>
         <Modal.Title>{testId === null ? '新增機械性質檢驗' : '編輯機械性質檢驗'}</Modal.Title>
       </Modal.Header>
       <Modal.Body>
-        {isDetailLoading && (
-          <div className="text-center py-4" role="status">載入檢驗資料中…</div>
-        )}
-        {isDetailError && (
-          <Alert variant="danger" role="alert">載入機械性質檢驗資料失敗，請稍後再試</Alert>
-        )}
         {isSpecError && (
           <Alert variant="danger" role="alert">載入機械性質規格失敗，請稍後再試</Alert>
         )}
@@ -342,21 +416,33 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                       {LOCATIONS.flatMap((location) => samples.map((sample) => {
                         const value = grid[item][location][sample] ?? '';
                         const isNg = cellNg(item, value);
+                        const hasFormatError = isInvalidMeasurement(value);
                         const lowerLimit = limits?.[item];
+                        const errorId = hasFormatError
+                          ? measurementErrorId(item, location, sample, 'format')
+                          : isNg ? measurementErrorId(item, location, sample, 'ng') : undefined;
                         return (
-                          <td key={`${location}-${sample}`} className={isNg ? 'bg-danger-subtle' : undefined}>
+                          <td key={`${location}-${sample}`} className={isNg || hasFormatError ? 'bg-danger-subtle' : undefined}>
                             <Form.Control
                               size="sm"
                               type="text"
                               inputMode="decimal"
                               aria-label={cellLabel(item, location, sample)}
-                              aria-invalid={isNg}
-                              isInvalid={isNg}
+                              aria-invalid={hasFormatError || isNg}
+                              aria-describedby={errorId}
+                              aria-errormessage={errorId}
+                              isInvalid={hasFormatError || isNg}
                               value={value}
                               onChange={(event) => setCell(item, location, sample, event.target.value)}
                             />
-                            {isNg && lowerLimit !== undefined && (
-                              <Form.Text className="text-danger">NG：低於下限 {lowerLimit}</Form.Text>
+                            {hasFormatError ? (
+                              <Form.Text id={measurementErrorId(item, location, sample, 'format')} className="text-danger" role="alert">
+                                量測值必須為有限數字
+                              </Form.Text>
+                            ) : isNg && lowerLimit !== undefined && (
+                              <Form.Text id={measurementErrorId(item, location, sample, 'ng')} className="text-danger">
+                                NG：低於下限 {lowerLimit}
+                              </Form.Text>
                             )}
                           </td>
                         );

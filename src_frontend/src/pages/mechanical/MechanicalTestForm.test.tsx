@@ -147,6 +147,24 @@ describe('MechanicalTestForm', () => {
     await waitFor(() => expect(mechanicalApi.update).toHaveBeenCalledWith(8, expect.objectContaining({ 廠商ID: 42 })));
   });
 
+  it('編輯時等待 detail hydrate 前不顯示表單、不查規格，完成後才以廠商 ID 查詢', async () => {
+    let resolveDetail: ((value: typeof editDetail) => void) | undefined;
+    vi.mocked(mechanicalApi.getDetail).mockImplementation(() => new Promise((resolve) => {
+      resolveDetail = resolve;
+    }));
+    renderForm(8);
+
+    expect(screen.getByRole('status')).toHaveTextContent('載入檢驗資料中…');
+    expect(screen.queryByLabelText('產品尺寸')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '儲存' })).not.toBeInTheDocument();
+    expect(mechanicalApi.getSpec).not.toHaveBeenCalled();
+
+    resolveDetail?.(editDetail);
+
+    expect(await screen.findByDisplayValue('62.5 x 2.3')).toBeInTheDocument();
+    await waitFor(() => expect(mechanicalApi.getSpec).toHaveBeenCalledWith('6061-T651', '62.5 x 2.3', 42));
+  });
+
   it('顯示規格下限並即時標示低於下限的 NG 值', async () => {
     renderForm();
 
@@ -154,15 +172,23 @@ describe('MechanicalTestForm', () => {
     expect(await screen.findByText('90')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('硬度－爐門－取樣 1'), { target: { value: '89' } });
 
-    expect(screen.getByLabelText('硬度－爐門－取樣 1')).toHaveAttribute('aria-invalid', 'true');
+    const input = screen.getByLabelText('硬度－爐門－取樣 1');
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(input).toHaveAttribute('aria-errormessage', 'mechanical-measurement-hardness-door-1-ng-error');
+    expect(document.getElementById('mechanical-measurement-hardness-door-1-ng-error')).toHaveTextContent('NG：低於下限 90');
     expect(screen.getByText('NG：低於下限 90')).toBeInTheDocument();
   });
 
-  it('載入既有資料失敗時顯示明確錯誤', async () => {
+  it('載入既有資料失敗時僅顯示錯誤操作，且不得更新資料', async () => {
     vi.mocked(mechanicalApi.getDetail).mockRejectedValue(new Error('讀取失敗'));
-    renderForm(8);
+    const { onClose } = renderForm(8);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('載入機械性質檢驗資料失敗，請稍後再試');
+    expect(screen.queryByLabelText('產品尺寸')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '儲存' })).not.toBeInTheDocument();
+    expect(mechanicalApi.update).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('規格查詢與儲存失敗時顯示明確錯誤', async () => {
@@ -175,5 +201,74 @@ describe('MechanicalTestForm', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '儲存' }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('儲存失敗，請稍後再試'));
+  });
+
+  it('垃圾量測字串顯示可存取錯誤並阻止建立', async () => {
+    renderForm();
+
+    fireEvent.change(screen.getByLabelText('產品尺寸'), { target: { value: '62.5 x 2.3' } });
+    fireEvent.change(screen.getByLabelText('硬度－爐門－取樣 1'), { target: { value: 'abc' } });
+    const input = screen.getByLabelText('硬度－爐門－取樣 1');
+
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(input).toHaveAttribute('aria-errormessage', 'mechanical-measurement-hardness-door-1-format-error');
+    expect(document.getElementById('mechanical-measurement-hardness-door-1-format-error')).toHaveTextContent('量測值必須為有限數字');
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    expect(toast.error).toHaveBeenCalledWith('請修正量測值格式錯誤');
+    expect(mechanicalApi.create).not.toHaveBeenCalled();
+  });
+
+  it('收合的非法 EC 第 2 取樣會在儲存時展開並阻止建立', async () => {
+    renderForm();
+
+    fireEvent.change(screen.getByLabelText('產品尺寸'), { target: { value: '62.5 x 2.3' } });
+    fireEvent.click(screen.getByLabelText('異常加測（第2取樣）'));
+    fireEvent.click(screen.getByLabelText('顯示導電度 (EC)'));
+    fireEvent.change(screen.getByLabelText('EC值－爐門－取樣 2'), { target: { value: 'NaN' } });
+    fireEvent.click(screen.getByLabelText('異常加測（第2取樣）'));
+    fireEvent.click(screen.getByLabelText('顯示導電度 (EC)'));
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    expect(toast.error).toHaveBeenCalledWith('請修正量測值格式錯誤');
+    expect(screen.getByLabelText('異常加測（第2取樣）')).toBeChecked();
+    expect(screen.getByLabelText('顯示導電度 (EC)')).toBeChecked();
+    expect(screen.getByLabelText('EC值－爐門－取樣 2')).toHaveAttribute('aria-invalid', 'true');
+    expect(mechanicalApi.create).not.toHaveBeenCalled();
+  });
+
+  it('收合後仍會保留有效的 EC 與第 2 取樣量測值', async () => {
+    renderForm();
+
+    fireEvent.change(screen.getByLabelText('產品尺寸'), { target: { value: '62.5 x 2.3' } });
+    fireEvent.click(screen.getByLabelText('異常加測（第2取樣）'));
+    fireEvent.click(screen.getByLabelText('顯示導電度 (EC)'));
+    fireEvent.change(screen.getByLabelText('硬度－爐門－取樣 2'), { target: { value: '91' } });
+    fireEvent.change(screen.getByLabelText('EC值－爐頂－取樣 1'), { target: { value: '55.2' } });
+    fireEvent.click(screen.getByLabelText('異常加測（第2取樣）'));
+    fireEvent.click(screen.getByLabelText('顯示導電度 (EC)'));
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    await waitFor(() => expect(mechanicalApi.create).toHaveBeenCalledWith(expect.objectContaining({
+      measurements: expect.arrayContaining([
+        { 量測項目: '硬度', 測量位置: '爐門', 取樣序: 2, 量測值: 91 },
+        { 量測項目: 'EC值', 測量位置: '爐頂', 取樣序: 1, 量測值: 55.2 },
+      ]),
+    })));
+  });
+
+  it('儲存請求未完成時重複點擊不會建立第二筆資料', async () => {
+    let resolveCreate: ((value: { success: boolean; id: number }) => void) | undefined;
+    vi.mocked(mechanicalApi.create).mockImplementation(() => new Promise((resolve) => {
+      resolveCreate = resolve;
+    }));
+    renderForm();
+
+    fireEvent.change(screen.getByLabelText('產品尺寸'), { target: { value: '62.5 x 2.3' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+    fireEvent.click(screen.getByRole('button', { name: '儲存中…' }));
+
+    expect(mechanicalApi.create).toHaveBeenCalledTimes(1);
+    resolveCreate?.({ success: true, id: 9 });
   });
 });
