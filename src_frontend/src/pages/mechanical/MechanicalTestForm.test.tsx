@@ -25,6 +25,7 @@ const renderForm = (testId: number | null = null) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
   const onClose = vi.fn();
   const onSaved = vi.fn();
 
@@ -34,7 +35,7 @@ const renderForm = (testId: number | null = null) => {
     </QueryClientProvider>,
   );
 
-  return { onClose, onSaved };
+  return { onClose, onSaved, invalidateSpy };
 };
 
 const editDetail = {
@@ -194,6 +195,22 @@ describe('MechanicalTestForm', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '儲存' }));
     await waitFor(() => expect(mechanicalApi.update).toHaveBeenCalledWith(8, expect.objectContaining({ 廠商ID: 42 })));
+  });
+
+  it('編輯儲存後使該筆詳情快取失效，避免重開仍顯示舊材質', async () => {
+    vi.mocked(mechanicalApi.getDetail).mockResolvedValue(editDetail);
+    const { invalidateSpy } = renderForm(8);
+
+    await screen.findByDisplayValue('62.5 x 2.3');
+    fireEvent.change(screen.getByLabelText('材質'), { target: { value: '6063-T5' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+
+    await waitFor(() => expect(mechanicalApi.update).toHaveBeenCalledWith(
+      8, expect.objectContaining({ 材質: '6063-T5' }),
+    ));
+    await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['mechanical-test', 8],
+    }));
   });
 
   it('可獨立新增一個擠製編號與兩個 T4爐號後送出新版 payload', async () => {

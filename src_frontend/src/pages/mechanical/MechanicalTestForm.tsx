@@ -5,7 +5,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Col, Form, Modal, Row, Table } from 'react-bootstrap';
 import toast from 'react-hot-toast';
 
@@ -112,6 +112,7 @@ const invalidMeasurements = (grid: MechGrid) => ALL_ITEMS.flatMap((item) => (
 ));
 
 export default function MechanicalTestForm({ testId, onClose, onSaved }: MechanicalTestFormProps) {
+  const queryClient = useQueryClient();
   const [basic, setBasic] = useState<BasicFields>(EMPTY_BASIC);
   const [vendorId, setVendorId] = useState<number | null>(null);
   const [extrusionNumbers, setExtrusionNumbers] = useState<MechanicalTraceNumber[]>([
@@ -321,8 +322,13 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
     setSaving(true);
     setSaveError('');
     try {
-      if (testId === null) await mechanicalApi.create(payload);
-      else await mechanicalApi.update(testId, payload);
+      if (testId === null) {
+        await mechanicalApi.create(payload);
+      } else {
+        await mechanicalApi.update(testId, payload);
+        // 更新後讓該筆詳情快取失效，避免 30 秒 staleTime 內重開編輯仍讀到舊資料
+        await queryClient.invalidateQueries({ queryKey: ['mechanical-test', testId] });
+      }
       toast.success('已儲存');
       onSaved();
     } catch (error) {
