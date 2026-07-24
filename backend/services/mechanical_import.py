@@ -35,6 +35,13 @@ PRODUCT_SIZE_OVERRIDES: dict[str, str] = {
 # 無法可靠解析出正確的產品尺寸，故整張跳過，改由人工個別補建。
 SKIPPED_SHEET_NAMES = {"工作表1"}
 
+
+def normalize_product_size(value: str) -> str:
+    """統一產品尺寸的外徑*內徑分隔符號：X／x／× 一律轉為 *（例：80X70 → 80*70）。"""
+    if not value:
+        return value
+    return value.replace("×", "*").replace("X", "*").replace("x", "*")
+
 LABEL_TEST_DATE = "測試日期"
 LABEL_EXTRUSION = "擠製日期/批號"
 LABEL_T4_FURNACE = "T4爐具編號"
@@ -163,7 +170,9 @@ def build_payloads_from_workbook(
             continue
 
         sheet_key = sheet_name.strip()
-        product_size = PRODUCT_SIZE_OVERRIDES.get(sheet_key, sheet_key)
+        product_size = normalize_product_size(
+            PRODUCT_SIZE_OVERRIDES.get(sheet_key, sheet_key)
+        )
         furnace_rows = _t4_furnace_rows(mapping)
         measurement_rows = {
             key: mapping[label]
