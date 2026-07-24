@@ -61,6 +61,9 @@ export default function MechanicalCharts({
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: vendors } = useQuery({ queryKey: ['vendors'], queryFn: mechanicalApi.getVendors });
+  const vendorName = vendors?.find((v) => String(v.id) === String(vendorId))?.name;
+
   const studyFilters = useMemo(() => ({
     item, position, vendor_id: vendorId || null, material,
     product_size: productSize, start_date: startDate, end_date: endDate,
@@ -151,7 +154,7 @@ export default function MechanicalCharts({
 
       <SpcReportModal
         show={showReport}
-        model={statsData ? reportModelFromStats('mechanical', studyFilters, displayStatsData ?? statsData) : null}
+        model={statsData ? reportModelFromStats('mechanical', studyFilters, displayStatsData ?? statsData, { vendorName }) : null}
         statsItem={`${item}（${position}）`}
         onHide={() => setShowReport(false)}
       />

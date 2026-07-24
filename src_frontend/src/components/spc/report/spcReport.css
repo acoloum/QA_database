@@ -33,7 +33,7 @@
 /* 單一外框格線表單（比照手冊 Figure 11-1 版面，不含編號徽章） */
 .spc-report-grid {
   border: 1.5px solid #333;
-  font-size: 11px;
+  font-size: 13px;
 }
 .spc-grid-row {
   display: flex;
@@ -54,11 +54,11 @@
 .spc-grid-title {
   font-weight: 600;
   color: #0d3b66;
-  font-size: 10px;
+  font-size: 11px;
   margin-bottom: 1px;
 }
 .spc-grid-chart {
-  height: 185px;
+  height: 360px;
   overflow: hidden;
   position: relative;
 }

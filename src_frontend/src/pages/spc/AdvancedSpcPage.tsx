@@ -358,7 +358,7 @@ const AdvancedSpcPage = () => {
     {query.family === 'machine' ? <MachinePerformancePanel result={machineResult} /> : query.family === 'variable' ? variableResult && <><TimeDiagnosticPanel version={variableResult} canApprove={canApprove} pending={confirmTimeModel.isPending} onConfirm={(model, reason) => void confirmDiagnostic(model, reason)} /><TransformationPanel version={variableResult} canApprove={canApprove} pending={confirmTransformation.isPending} onConfirm={(model, reason) => void confirmDistribution(model, reason)} /></> : <AttributeStudyPanel result={visibleResult} />}
     {visibleResult && action && <SpcBaselineApprovalModal show action={action} source={visibleResult.source} filters={visibleResult.filters} version={visibleResult} pending={actionPending} onHide={() => setAction(null)} onConfirm={(reason, model) => void handleAction(reason, model)} />}
     {visibleResult && showHistory && <SpcStudyHistoryOffcanvas show studyId={visibleResult.study_id} onHide={() => setShowHistory(false)} />}
-    <SpcReportModal show={showReport} model={variableResult ? reportModelFromVersion(variableResult) : null} statsItem={String(query.filters.item || query.filters.material || 'SPC')} onHide={() => setShowReport(false)} />
+    <SpcReportModal show={showReport} model={variableResult ? reportModelFromVersion(variableResult, vendorsQuery.data?.find(v => String(v.id) === String(variableResult.filters.vendor_id))?.name) : null} statsItem={String(query.filters.item || query.filters.material || 'SPC')} onHide={() => setShowReport(false)} />
   </div>;
 };
 

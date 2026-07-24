@@ -129,6 +129,7 @@ const buildConclusion = (capability: ProcessCapability | null): string => {
 const buildIdentity = (
   source: SpcReportSource,
   filters: Record<string, unknown>,
+  vendorName?: string,
 ): ReportField[] => {
   if (source === 'shipping') {
     return [
@@ -142,7 +143,7 @@ const buildIdentity = (
   if (source === 'mechanical') {
     return [
       { label: '製程 / 來源', value: '機械性質' },
-      { label: '廠商 ID', value: str(filters.vendor_id) },
+      { label: '廠商', value: vendorName || str(filters.vendor_id) },
       { label: '材質', value: str(filters.material) },
       { label: '產品尺寸', value: str(filters.product_size) },
       { label: '特性 / 位置', value: `${str(filters.item)}（${str(filters.position)}）` },
@@ -161,6 +162,8 @@ const buildIdentity = (
 interface BuildOptions {
   studyType?: string;
   createdAt?: string;
+  /** 機械性質：以廠商中文名稱取代廠商 ID 顯示。 */
+  vendorName?: string;
 }
 
 /** 由 SpcChartData（即時預覽或研究版本合成）建立報告模型。 */
@@ -186,7 +189,7 @@ export const reportModelFromStats = (
   return {
     title: 'SPC 與製程能力研究報告',
     sourceLabel: SOURCE_LABEL[source],
-    identity: buildIdentity(source, filters),
+    identity: buildIdentity(source, filters, options.vendorName),
     specLimits: {
       // 規格界限（手冊要素 6）來自規格快照，與能力是否計算無關：
       // 能力可能因時間模型未確認而暫不可用，但規格界限仍應顯示。
@@ -254,7 +257,10 @@ export const chartDataFromVersion = (version: SpcStudyResult): SpcChartData => {
   } as SpcChartData;
 };
 
-export const reportModelFromVersion = (version: SpcStudyResult): SpcReportModel =>
+export const reportModelFromVersion = (
+  version: SpcStudyResult,
+  vendorName?: string,
+): SpcReportModel =>
   reportModelFromStats(
     version.source as SpcReportSource,
     version.filters,
@@ -262,5 +268,6 @@ export const reportModelFromVersion = (version: SpcStudyResult): SpcReportModel 
     {
       studyType: version.study_type === 'ongoing' ? '持續監控研究' : '回溯研究',
       createdAt: version.created_at,
+      vendorName,
     },
   );
