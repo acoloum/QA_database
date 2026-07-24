@@ -30,26 +30,63 @@
   padding: 6px 8px;
 }
 
-/* 列印：只顯示報告本身，解除視窗高度/捲動限制，力求乾淨一頁 */
+/* 列印：只印報告本身。關鍵是解除 scrollable modal 的 overflow/max-height，
+   否則只會印出捲動可見的那一小段（報告被裁切、其餘空白）。 */
 @media print {
-  body * {
-    visibility: hidden !important;
-  }
-  .spc-report, .spc-report * {
-    visibility: visible !important;
-  }
-  .spc-report {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    padding: 0;
+  /* 隱藏 app 主體與 modal 外框/背景，避免多出空白頁 */
+  #root,
+  .modal-backdrop {
+    display: none !important;
   }
   .spc-report-no-print {
     display: none !important;
   }
+
+  /* modal 由 Portal 掛在 body；改為正常流排並解除高度/捲動限制 */
+  .modal,
+  .modal-dialog,
+  .modal-content {
+    position: static !important;
+    display: block !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    inset: auto !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    overflow: visible !important;
+  }
+  .modal-body {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    padding: 0 !important;
+  }
+  /* 整份等比縮放以容納於單頁 A4（width 補償確保仍填滿頁寬） */
+  .spc-report {
+    padding: 0 !important;
+    transform: scale(0.70);
+    transform-origin: top left;
+    width: 142.8% !important;
+  }
+  .spc-report canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+  .spc-report .card {
+    margin: 0 !important;
+    border: 0 !important;
+  }
+  .spc-report .card-body {
+    padding: 2px !important;
+  }
+
   @page {
     size: A4 portrait;
-    margin: 10mm;
+    margin: 8mm;
   }
 }

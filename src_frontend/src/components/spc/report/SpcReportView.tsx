@@ -6,13 +6,12 @@ import {
 } from 'chart.js';
 import type { ChartData, ChartOptions } from 'chart.js';
 
-// 報告可從任一頁開啟，確保其圖表所需的軸/元素已註冊（register 為冪等）。
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
-
 import ControlChartCard from '../../patrol/ControlChartCard';
-import ProcessCapabilityCard from '../../patrol/ProcessCapabilityCard';
 import HistogramDistributionChart from '../HistogramDistributionChart';
 import type { SpcReportModel } from './spcReportModel';
+
+// 報告可從任一頁開啟，確保其圖表所需的軸/元素已註冊（register 為冪等）。
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
 
 interface SpcReportViewProps {
   model: SpcReportModel;
@@ -40,7 +39,12 @@ const scatterOptions: ChartOptions<'scatter'> = {
   },
 };
 
-export default function SpcReportView({ model, statsItem }: SpcReportViewProps) {
+const num3 = (v: number | null | undefined): string =>
+  v == null || !Number.isFinite(v) ? '—' : v.toFixed(3);
+const ppm = (v: number | null | undefined): string =>
+  v == null || !Number.isFinite(v) ? '—' : Math.round(v).toLocaleString();
+
+export default function SpcReportView({ model }: SpcReportViewProps) {
   const runData: ChartData<'line'> = {
     labels: model.runChart.map((_, i) => i + 1),
     datasets: [{
@@ -114,11 +118,11 @@ export default function SpcReportView({ model, statsItem }: SpcReportViewProps) 
         </div>
         <div className="col-6">
           <div className="spc-report-chart-title">② 原始值圖</div>
-          <div style={{ height: 200 }}><Line data={runData} options={compactLineOptions} /></div>
+          <div style={{ height: 160 }}><Line data={runData} options={compactLineOptions} /></div>
         </div>
         <div className="col-6">
           <div className="spc-report-chart-title">③ 機率圖（常態）</div>
-          <div style={{ height: 200 }}><Scatter data={probData} options={scatterOptions} /></div>
+          <div style={{ height: 160 }}><Scatter data={probData} options={scatterOptions} /></div>
         </div>
         <div className="col-6">
           <div className="spc-report-chart-title">④ 管制圖</div>
@@ -143,8 +147,40 @@ export default function SpcReportView({ model, statsItem }: SpcReportViewProps) 
         </tbody>
       </table>
 
-      {/* 要素 18,19：能力指標卡（重用） */}
-      <ProcessCapabilityCard processCapability={cap} statsItem={statsItem} />
+      {/* 要素 18,19：能力/績效指標（精簡呈現，貼近手冊 Figure 11-1） */}
+      {(() => {
+        if (!cap || !cap.available) {
+          return (
+            <div className="spc-report-conclusion mt-2">
+              <div className="spc-report-key">績效 / 能力指標</div>
+              <div className="text-muted">
+                無法計算指數{cap?.capability_reason ? `（${cap.capability_reason}）` : ''}——
+                請確認樣本數與規格界限設定。
+              </div>
+            </div>
+          );
+        }
+        const isCap = cap.applicable === 'capability';
+        const pLabel = `${isCap ? 'Cp' : 'Pp'}.${cap.method ?? 'G'}`;
+        const pkLabel = `${isCap ? 'Cpk' : 'Ppk'}.${cap.method ?? 'G'}`;
+        const pVal = isCap ? cap.cp : cap.pp;
+        const pkVal = isCap ? cap.cpk : cap.ppk;
+        const t = cap.targets;
+        return (
+          <table className="table table-bordered table-sm spc-report-meta mt-2 mb-2">
+            <tbody>
+              <tr>
+                {model.specLimits.oneSided == null && (
+                  <td><div className="spc-report-key">{pLabel}</div>{num3(pVal)}{t?.p_target != null ? `（目標 ≥ ${t.p_target.toFixed(2)}）` : ''}</td>
+                )}
+                <td><div className="spc-report-key">{pkLabel}</div>{num3(pkVal)}{t?.pk_target != null ? `（目標 ≥ ${t.pk_target.toFixed(2)}）` : ''}{cap.achieved != null ? ` ${cap.achieved ? '達標' : '未達標'}` : ''}</td>
+                <td><div className="spc-report-key">CWk（組內參考）</div>{num3(cap.cwk)}</td>
+                <td><div className="spc-report-key">估計超規格 PPM（上 / 下 / 總）</div>{ppm(cap.ppm?.upper)} / {ppm(cap.ppm?.lower)} / {ppm(cap.ppm?.total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        );
+      })()}
 
       {/* 要素 20：結論 */}
       <div className="spc-report-conclusion mt-2">
