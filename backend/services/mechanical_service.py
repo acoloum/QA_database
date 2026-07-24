@@ -11,6 +11,7 @@ from ..models import (
     MechanicalTest,
     MechanicalMeasurement,
     MechanicalTraceNumber,
+    MechanicalWaivedItem,
     Vendor,
     VendorToleranceMain,
 )
@@ -33,6 +34,8 @@ ALLOWED_SAMPLE_NUMBERS = {1, 2}
 # 完成判定所需的力學特性項目：每一項只要有任一量測值（不限位置／取樣序）即算完成。
 # 實務上部分批次僅取單一位置（爐門或爐頂）就是完整檢驗，故不強制兩個位置都齊。
 REQUIRED_MEASUREMENT_ITEMS = {"硬度", "抗拉強度", "降伏強度", "伸長率"}
+# 可標記「免測」的項目：設備故障等原因無法量測時，該項目不列入完成判定。
+ALLOWED_WAIVED_ITEMS = REQUIRED_MEASUREMENT_ITEMS
 TRACE_TYPE_EXTRUSION = "擠製編號"
 TRACE_TYPE_T4_FURNACE = "T4爐號"
 NEW_TRACE_FIELDS = {
@@ -269,6 +272,36 @@ def _parse_trace_numbers(data: Dict[str, Any]) -> NormalizedTraceNumbers:
     )
 
 
+def _parse_waived_items(value: Any) -> list[tuple[str, str]]:
+    """解析免測項目（{項目, 原因}），驗證項目受控、不重複、原因非空且不超過 200 字。"""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise MechanicalValidationError("waived_items 必須為陣列")
+
+    parsed: list[tuple[str, str]] = []
+    seen_items: set[str] = set()
+    for row in value:
+        if not isinstance(row, dict):
+            raise MechanicalValidationError("免測項目必須為物件")
+        item = row.get("項目")
+        if item not in ALLOWED_WAIVED_ITEMS:
+            raise MechanicalValidationError("免測項目不受支援")
+        if item in seen_items:
+            raise MechanicalValidationError("免測項目不可重複")
+        seen_items.add(item)
+        reason = row.get("原因")
+        if not isinstance(reason, str):
+            raise MechanicalValidationError("免測原因必須為字串")
+        reason = reason.strip()
+        if not reason:
+            raise MechanicalValidationError("免測原因不得為空")
+        if len(reason) > 200:
+            raise MechanicalValidationError("免測原因不得超過 200 字元")
+        parsed.append((item, reason))
+    return parsed
+
+
 def _validate_payload(
     data: Dict[str, Any],
 ) -> tuple[Optional[int], NormalizedTraceNumbers]:
@@ -282,6 +315,7 @@ def _validate_payload(
 
     _parse_date(data.get("測試日期"))
     trace_numbers = _parse_trace_numbers(data)
+    waived_items = _parse_waived_items(data.get("waived_items"))
 
     measurements = data.get("measurements", [])
     if not isinstance(measurements, list):
@@ -308,7 +342,7 @@ def _validate_payload(
     vendor_id = parse_vendor_id(data.get("廠商ID"))
     if vendor_id is not None and db.session.get(Vendor, vendor_id) is None:
         raise MechanicalValidationError("指定的廠商不存在")
-    return vendor_id, trace_numbers
+    return vendor_id, trace_numbers, waived_items
 
 
 JUDGEMENT_STATUSES = {"OK", "NG", "NO_SPEC", "INCOMPLETE"}
@@ -323,7 +357,10 @@ def _judgement_status(test: MechanicalTest) -> str:
     if any(measurement.is_ng for measurement in judged):
         return "NG"
     measured_items = {measurement.item for measurement in judged}
-    if not REQUIRED_MEASUREMENT_ITEMS.issubset(measured_items):
+    # 免測項目（設備故障等原因無法量測）不列入完成要求
+    waived_items = {waived.item for waived in test.waived_items}
+    required = REQUIRED_MEASUREMENT_ITEMS - waived_items
+    if not required.issubset(measured_items):
         return "INCOMPLETE"
     if any(measurement.lower_limit is None for measurement in judged):
         return "NO_SPEC"
@@ -368,6 +405,20 @@ class MechanicalService:
                 )
 
     @staticmethod
+    def _apply_waived_items(
+        test: MechanicalTest,
+        values: list[tuple[str, str]],
+        user_id: Optional[int],
+    ) -> None:
+        """依正規化結果重建免測項目；先送出孤兒刪除避免唯一鍵衝突。"""
+        test.waived_items.clear()
+        db.session.flush()
+        for item, reason in values:
+            test.waived_items.append(
+                MechanicalWaivedItem(item=item, reason=reason, created_by=user_id)
+            )
+
+    @staticmethod
     def _apply_measurements(test: MechanicalTest, data: Dict[str, Any]) -> None:
         """依受控鍵值更新量測明細並保留既有排除追溯資訊。"""
         limits = lookup_lower_limits(test.material, test.product_size, test.vendor_id)
@@ -410,7 +461,7 @@ class MechanicalService:
     @staticmethod
     def create(data: Dict[str, Any], user_id: Optional[int]) -> int:
         try:
-            vendor_id, trace_numbers = _validate_payload(data)
+            vendor_id, trace_numbers, waived_items = _validate_payload(data)
             test = MechanicalTest(
                 product_size=data.get("產品尺寸").strip(),
                 material=data.get("材質").strip(),
@@ -422,6 +473,7 @@ class MechanicalService:
                 created_by=user_id,
             )
             MechanicalService._apply_trace_numbers(test, trace_numbers)
+            MechanicalService._apply_waived_items(test, waived_items, user_id)
             MechanicalService._apply_measurements(test, data)
             db.session.add(test)
             db.session.commit()
@@ -503,7 +555,7 @@ class MechanicalService:
             test = db.session.get(MechanicalTest, test_id)
             if not test:
                 raise MechanicalNotFoundError("找不到該筆機械性質檢驗資料")
-            vendor_id, trace_numbers = _validate_payload(data)
+            vendor_id, trace_numbers, waived_items = _validate_payload(data)
             test.product_size = data["產品尺寸"].strip()
             test.material = data["材質"].strip()
             test.vendor_id = vendor_id
@@ -512,6 +564,7 @@ class MechanicalService:
             test.t6_temp_time = data.get("T6溫度時間") or None
             test.note = data.get("備註") or None
             MechanicalService._apply_trace_numbers(test, trace_numbers)
+            MechanicalService._apply_waived_items(test, waived_items, user_id)
             MechanicalService._apply_measurements(test, data)
             db.session.commit()
         except Exception:
@@ -556,7 +609,10 @@ class MechanicalService:
         if status_filter in JUDGEMENT_STATUSES:
             # 判定狀態是跨量測明細聚合出的衍生值，資料庫沒有對應欄位可直接 filter；
             # 先套用其餘條件縮小候選集合，一次撈出量測明細後在 Python 端篩選、手動分頁。
-            candidates = query.options(selectinload(MechanicalTest.measurements)).all()
+            candidates = query.options(
+                selectinload(MechanicalTest.measurements),
+                selectinload(MechanicalTest.waived_items),
+            ).all()
             filtered = [t for t in candidates if _judgement_status(t) == status_filter]
             total = len(filtered)
             start = (page - 1) * page_size
@@ -584,6 +640,7 @@ class MechanicalService:
             "T6溫度時間": t.t6_temp_time,
             "是否NG": t.is_ng,
             "判定狀態": _judgement_status(t),
+            "免測": "、".join(waived.item for waived in t.waived_items),
             "備註": t.note,
         } for t in items]
         return {"success": True, "data": data, "total": total, "page": page,
@@ -638,6 +695,10 @@ class MechanicalService:
             "排除者ID": m.exclusion_user_id,
             "排除時間": m.excluded_at.isoformat() if m.excluded_at else None,
         } for m in sorted(t.measurements, key=lambda x: (x.item, x.location, x.sample_no))]
+        waived_items = [
+            {"項目": w.item, "原因": w.reason}
+            for w in sorted(t.waived_items, key=lambda x: x.item)
+        ]
         return {
             "success": True,
             "main": main,
@@ -645,4 +706,5 @@ class MechanicalService:
             "t4_furnace_numbers": t4_furnace_numbers,
             "batches": batches,
             "measurements": measurements,
+            "waived_items": waived_items,
         }

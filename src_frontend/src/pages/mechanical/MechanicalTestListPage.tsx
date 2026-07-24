@@ -221,6 +221,7 @@ export default function MechanicalTestListPage() {
                   <th>T4溫度/時間</th>
                   <th>T6溫度/時間</th>
                   <th>判定</th>
+                  <th>免測</th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -239,6 +240,7 @@ export default function MechanicalTestListPage() {
                         {judgementDisplay[row.判定狀態].label}
                       </span>
                     </td>
+                    <td>{row.免測 || '—'}</td>
                     <td>
                       {canEdit && <Button
                         size="sm"
@@ -264,7 +266,7 @@ export default function MechanicalTestListPage() {
                 ))}
                 {data && rows.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="text-center text-muted">查無資料</td>
+                    <td colSpan={10} className="text-center text-muted">查無資料</td>
                   </tr>
                 )}
               </tbody>

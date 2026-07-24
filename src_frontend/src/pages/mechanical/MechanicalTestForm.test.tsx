@@ -153,6 +153,7 @@ describe('MechanicalTestForm', () => {
         extrusion_numbers: [{ 序號: 1, 編號: 'EX-001' }],
         t4_furnace_numbers: [{ 序號: 1, 編號: 'T4-01' }],
         measurements: [{ 量測項目: '硬度', 測量位置: '爐門', 取樣序: 1, 量測值: 95 }],
+        waived_items: [],
       });
     });
     expect(onSaved).toHaveBeenCalledTimes(1);

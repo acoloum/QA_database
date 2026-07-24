@@ -474,6 +474,61 @@ def test_judgement_status_is_incomplete_when_an_item_is_missing(db_session, coun
     assert MechanicalService.get_detail(test_id)["main"]["判定狀態"] == "INCOMPLETE"
 
 
+def _non_hardness_measurements():
+    """抗拉/降伏/伸長率三項（爐門+爐頂），缺硬度。"""
+    return [
+        m for m in _required_measurements()
+        if m["量測項目"] != "硬度"
+    ]
+
+
+def test_waived_item_excludes_missing_item_from_completeness(db_session):
+    # 缺硬度但標記硬度免測 → 不再是 INCOMPLETE（無規格 → NO_SPEC）
+    payload = _payload()
+    payload["measurements"] = _non_hardness_measurements()
+    payload["waived_items"] = [{"項目": "硬度", "原因": "硬度機故障"}]
+    test_id = MechanicalService.create(payload, user_id=None)
+    detail = MechanicalService.get_detail(test_id)
+    assert detail["main"]["判定狀態"] == "NO_SPEC"
+    assert detail["waived_items"] == [{"項目": "硬度", "原因": "硬度機故障"}]
+
+
+def test_waived_item_reason_is_required(db_session):
+    payload = _payload()
+    payload["measurements"] = _non_hardness_measurements()
+    payload["waived_items"] = [{"項目": "硬度", "原因": "   "}]
+    with pytest.raises(MechanicalValidationError):
+        MechanicalService.create(payload, user_id=None)
+
+
+def test_waived_item_rejects_unsupported_and_duplicate(db_session):
+    payload = _payload()
+    payload["waived_items"] = [{"項目": "EC值", "原因": "x"}]
+    with pytest.raises(MechanicalValidationError):
+        MechanicalService.create(payload, user_id=None)
+
+    payload["waived_items"] = [
+        {"項目": "硬度", "原因": "a"}, {"項目": "硬度", "原因": "b"},
+    ]
+    with pytest.raises(MechanicalValidationError):
+        MechanicalService.create(payload, user_id=None)
+
+
+def test_waived_items_can_be_updated_and_cleared(db_session):
+    payload = _payload()
+    payload["measurements"] = _non_hardness_measurements()
+    payload["waived_items"] = [{"項目": "硬度", "原因": "硬度機故障"}]
+    test_id = MechanicalService.create(payload, user_id=None)
+    assert MechanicalService.get_detail(test_id)["main"]["判定狀態"] == "NO_SPEC"
+
+    # 清空免測 → 缺硬度又變回 INCOMPLETE
+    payload["waived_items"] = []
+    MechanicalService.update(test_id, payload, user_id=None)
+    detail = MechanicalService.get_detail(test_id)
+    assert detail["waived_items"] == []
+    assert detail["main"]["判定狀態"] == "INCOMPLETE"
+
+
 def test_judgement_status_ng_takes_priority_over_incomplete(db_session):
     vendor_id = _seed_spec(db_session)
     payload = _payload()

@@ -24,13 +24,18 @@ import {
   SAMPLES,
   buildMeasurements,
   buildTraceNumbers,
+  buildWaivedItems,
   duplicateTraceNumberIndexes,
   emptyGrid,
   emptyTraceNumber,
+  emptyWaived,
   hydrateGrid,
   hydrateTraceNumbers,
+  hydrateWaivedItems,
   removeTraceNumber,
+  waivedItemsMissingReason,
   type MechGrid,
+  type MechWaivedState,
 } from './mechanicalPayload';
 import MechanicalTraceNumberPanel from './MechanicalTraceNumberPanel';
 
@@ -116,6 +121,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
     emptyTraceNumber(1),
   ]);
   const [grid, setGrid] = useState<MechGrid>(emptyGrid());
+  const [waived, setWaived] = useState<MechWaivedState>(emptyWaived());
   const [showSecond, setShowSecond] = useState(false);
   const [showEc, setShowEc] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -164,6 +170,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
       setExtrusionNumbers([emptyTraceNumber(1)]);
       setT4FurnaceNumbers([emptyTraceNumber(1)]);
       setGrid(emptyGrid());
+      setWaived(emptyWaived());
       setShowSecond(false);
       setShowEc(false);
       setValidationError('');
@@ -186,6 +193,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
     setExtrusionNumbers(hydrateTraceNumbers(detail.extrusion_numbers));
     setT4FurnaceNumbers(hydrateTraceNumbers(detail.t4_furnace_numbers));
     setGrid(hydrateGrid(detail.measurements));
+    setWaived(hydrateWaivedItems(detail.waived_items ?? []));
     setShowSecond(detail.measurements.some((measurement) => measurement.取樣序 === 2));
     setShowEc(detail.measurements.some((measurement) => measurement.量測項目 === 'EC值'));
     setHydratedTestId(testId);
@@ -235,6 +243,26 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
     }));
   };
 
+  const toggleWaived = (item: MechItem, checked: boolean) => {
+    setWaived((current) => ({
+      ...current,
+      [item]: { waived: checked, reason: checked ? current[item].reason : '' },
+    }));
+    if (checked) {
+      // 免測項目清空該列量測值（無法量測故不留數值）
+      setGrid((current) => ({
+        ...current,
+        [item]: { 爐門: { 1: '', 2: '' }, 爐頂: { 1: '', 2: '' } },
+      }));
+    }
+    setValidationError('');
+  };
+
+  const setWaivedReason = (item: MechItem, reason: string) => {
+    setWaived((current) => ({ ...current, [item]: { ...current[item], reason } }));
+    setValidationError('');
+  };
+
   const cellNg = (item: MechItem, value: string) => {
     const lowerLimit = limits?.[item];
     if (lowerLimit === undefined || value.trim() === '') return false;
@@ -267,6 +295,14 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
       return;
     }
 
+    const waivedMissingReason = waivedItemsMissingReason(waived);
+    if (waivedMissingReason.length > 0) {
+      const message = `免測項目請填寫原因：${waivedMissingReason.join('、')}`;
+      setValidationError(message);
+      toast.error(message);
+      return;
+    }
+
     const payload: MechanicalTestPayload = {
       產品尺寸: basic.產品尺寸,
       材質: basic.材質,
@@ -278,6 +314,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
       extrusion_numbers: buildTraceNumbers(extrusionNumbers),
       t4_furnace_numbers: buildTraceNumbers(t4FurnaceNumbers),
       measurements: buildMeasurements(grid),
+      waived_items: buildWaivedItems(waived),
     };
 
     savingRef.current = true;
@@ -497,10 +534,14 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                       <th key={`${location}-${sample}`} scope="col">{location} 取樣 {sample}</th>
                     )))}
                     <th scope="col">下限</th>
+                    <th scope="col">免測</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item) => (
+                  {items.map((item) => {
+                    const canWaive = item !== 'EC值';
+                    const isWaived = canWaive && waived[item].waived;
+                    return (
                     <tr key={item}>
                       <th scope="row">{item}</th>
                       {LOCATIONS.flatMap((location) => samples.map((sample) => {
@@ -536,7 +577,8 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                               aria-describedby={errorId}
                               aria-errormessage={errorId}
                               isInvalid={hasFormatError || isNg}
-                              disabled={Boolean(excludedMeasurement)}
+                              disabled={Boolean(excludedMeasurement) || isWaived}
+                              placeholder={isWaived ? '免測' : undefined}
                               value={value}
                               onChange={(event) => setCell(item, location, sample, event.target.value)}
                             />
@@ -565,8 +607,33 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                         );
                       }))}
                       <td>{item === 'EC值' ? '—' : (limits?.[item] ?? '—')}</td>
+                      <td style={{ minWidth: 160 }}>
+                        {canWaive ? (
+                          <>
+                            <Form.Check
+                              id={`mechanical-waive-${item}`}
+                              label="免測"
+                              checked={isWaived}
+                              onChange={(event) => toggleWaived(item, event.target.checked)}
+                            />
+                            {isWaived && (
+                              <Form.Control
+                                size="sm"
+                                className="mt-1"
+                                maxLength={200}
+                                placeholder="免測原因（必填）"
+                                aria-label={`${item}免測原因`}
+                                isInvalid={!waived[item].reason.trim()}
+                                value={waived[item].reason}
+                                onChange={(event) => setWaivedReason(item, event.target.value)}
+                              />
+                            )}
+                          </>
+                        ) : '—'}
+                      </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </Table>
             </div>

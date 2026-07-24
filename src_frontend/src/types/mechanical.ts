@@ -9,6 +9,12 @@ export interface MechanicalTraceNumber {
   編號: string;
 }
 
+/** 免測項目：設備故障等原因無法量測時標記，該項目不列入完成判定。 */
+export interface MechanicalWaivedItem {
+  項目: MechItem;
+  原因: string;
+}
+
 /** @deprecated 僅供舊 detail response 相容，新增前端不得使用。 */
 export interface MechanicalBatch {
   序號: number;
@@ -40,6 +46,7 @@ export interface MechanicalTestListItem {
   T6溫度時間: string | null;
   是否NG: boolean;
   判定狀態: MechanicalJudgementStatus;
+  免測?: string;
   備註: string | null;
 }
 
@@ -61,6 +68,7 @@ export interface MechanicalTestDetail {
   /** @deprecated 舊前端相容欄位。 */
   batches?: MechanicalBatch[];
   measurements: MechanicalMeasurement[];
+  waived_items?: MechanicalWaivedItem[];
 }
 
 export interface MechanicalTestPayload {
@@ -74,4 +82,5 @@ export interface MechanicalTestPayload {
   extrusion_numbers: MechanicalTraceNumber[];
   t4_furnace_numbers: MechanicalTraceNumber[];
   measurements: MechanicalMeasurement[];
+  waived_items: MechanicalWaivedItem[];
 }

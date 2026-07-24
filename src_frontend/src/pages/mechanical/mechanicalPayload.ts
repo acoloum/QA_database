@@ -3,6 +3,7 @@ import type {
   MechLocation,
   MechanicalMeasurement,
   MechanicalTraceNumber,
+  MechanicalWaivedItem,
 } from '../../types';
 
 export const JUDGED_ITEMS: MechItem[] = ['硬度', '抗拉強度', '降伏強度', '伸長率'];
@@ -57,6 +58,38 @@ export function hydrateGrid(measurements: MechanicalMeasurement[]): MechGrid {
     }
   }
   return grid;
+}
+
+// 免測狀態：四項力學特性各自可標記免測並填原因
+export type MechWaivedState = Record<MechItem, { waived: boolean; reason: string }>;
+
+export function emptyWaived(): MechWaivedState {
+  const state = {} as MechWaivedState;
+  for (const item of ALL_ITEMS) {
+    state[item] = { waived: false, reason: '' };
+  }
+  return state;
+}
+
+export function buildWaivedItems(state: MechWaivedState): MechanicalWaivedItem[] {
+  return JUDGED_ITEMS
+    .filter((item) => state[item]?.waived && state[item].reason.trim())
+    .map((item) => ({ 項目: item, 原因: state[item].reason.trim() }));
+}
+
+export function hydrateWaivedItems(items: MechanicalWaivedItem[]): MechWaivedState {
+  const state = emptyWaived();
+  for (const waived of items) {
+    if (state[waived.項目]) {
+      state[waived.項目] = { waived: true, reason: waived.原因 };
+    }
+  }
+  return state;
+}
+
+// 已勾選免測卻沒填原因的項目（供存檔前擋下並提示）
+export function waivedItemsMissingReason(state: MechWaivedState): MechItem[] {
+  return JUDGED_ITEMS.filter((item) => state[item]?.waived && !state[item].reason.trim());
 }
 
 export const emptyTraceNumber = (sequence: number): MechanicalTraceNumber => ({

@@ -1295,6 +1295,9 @@ class MechanicalTest(db.Model):
     measurements = db.relationship(
         'MechanicalMeasurement', backref='test', cascade="all, delete-orphan"
     )
+    waived_items = db.relationship(
+        'MechanicalWaivedItem', backref='test', cascade="all, delete-orphan"
+    )
     vendor = db.relationship('Vendor')
 
 
@@ -1367,3 +1370,28 @@ class MechanicalMeasurement(db.Model):
     exclusion_user_id = db.Column('排除者ID', db.Integer,
                                   db.ForeignKey('使用者.識別碼'), nullable=True)
     excluded_at       = db.Column('排除時間', db.DateTime(timezone=True), nullable=True)
+
+
+class MechanicalWaivedItem(db.Model):
+    """機械性質免測項目：設備故障等原因無法量測時標記，該項目不列入完成判定。"""
+    __tablename__ = '機械性質免測項目'
+    __table_args__ = (
+        db.UniqueConstraint('機械性質檢驗_ID', '量測項目', name='uq_mech_waived_item'),
+        db.CheckConstraint(
+            '"量測項目" IN (\'硬度\', \'抗拉強度\', \'降伏強度\', \'伸長率\')',
+            name='ck_mech_waived_item',
+        ),
+        db.CheckConstraint(
+            '"原因" = trim("原因") AND length(trim("原因")) BETWEEN 1 AND 200',
+            name='ck_mech_waived_reason',
+        ),
+        db.Index('ix_mech_waived_test_id', '機械性質檢驗_ID'),
+    )
+
+    id         = db.Column('識別碼',        db.Integer, primary_key=True)
+    test_id    = db.Column('機械性質檢驗_ID', db.Integer,
+                           db.ForeignKey('機械性質檢驗.識別碼', ondelete='CASCADE'), nullable=False)
+    item       = db.Column('量測項目',      db.String(20), nullable=False)
+    reason     = db.Column('原因',          db.String(200), nullable=False)
+    created_by = db.Column('建立者ID',      db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True)
+    created_at = db.Column('建立日期',      db.DateTime(timezone=True), default=utc_now)
