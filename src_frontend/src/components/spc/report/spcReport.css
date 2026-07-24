@@ -58,7 +58,7 @@
   margin-bottom: 1px;
 }
 .spc-grid-chart {
-  height: 360px;
+  height: 280px;
   overflow: hidden;
   position: relative;
 }
@@ -113,12 +113,13 @@
     height: auto !important;
     padding: 0 !important;
   }
-  /* 整份等比縮放以容納於單頁 A4（width 補償確保仍填滿頁寬） */
+  /* 不做任何縮放：報告以頁寬（A4 去邊約 733px）自然排版，圖表高度已調成
+     使整份自然高度約 1013px（<單頁可列印高 1062px），直接容納於單頁。
+     不用 transform:scale（只影響繪製、不影響分頁，會使底部列溢出到第二頁），
+     也不用 zoom（百分比寬度在縮放下不一致，易造成右緣裁切）。 */
   .spc-report {
     padding: 0 !important;
-    transform: scale(0.85);
-    transform-origin: top left;
-    width: 117.6% !important;
+    width: 100% !important;
   }
   .spc-report canvas {
     max-width: 100% !important;
