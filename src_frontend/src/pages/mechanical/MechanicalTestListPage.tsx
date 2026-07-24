@@ -37,6 +37,19 @@ export default function MechanicalTestListPage() {
     setter(value);
   };
 
+  const clearFilters = () => {
+    setSize('');
+    setMaterial('');
+    setVendorId('');
+    setJudgementStatus('');
+    setDateFrom('');
+    setDateTo('');
+    setPage(1);
+  };
+  const hasActiveFilter = Boolean(
+    size || material || vendorId || judgementStatus || dateFrom || dateTo,
+  );
+
   const { data: vendors = [] } = useQuery({
     queryKey: ['vendors'],
     queryFn: mechanicalApi.getVendors,
@@ -162,6 +175,17 @@ export default function MechanicalTestListPage() {
                   <option key={status} value={status}>{judgementDisplay[status].label}</option>
                 ))}
               </Form.Select>
+            </Col>
+            <Col md={2} className="d-flex align-items-end">
+              <Button
+                size="sm"
+                variant="outline-secondary"
+                className="w-100"
+                disabled={!hasActiveFilter}
+                onClick={clearFilters}
+              >
+                清除篩選
+              </Button>
             </Col>
           </Row>
         </Card.Body>
