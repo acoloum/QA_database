@@ -532,7 +532,7 @@ export interface SpcLimitVersionSummary {
 export interface SpcStudyResult {
   id: number;
   study_id: number;
-  source: 'shipping' | 'patrol';
+  source: 'shipping' | 'patrol' | 'mechanical';
   study_type: 'retrospective' | 'ongoing';
   analysis_family?: SpcAnalysisFamily;
   process_stream_key: string;
@@ -566,7 +566,7 @@ export type SpcStudyVersionSummary = Omit<SpcStudyResult, 'samples'>;
 
 export interface SpcStudySummary {
   id: number;
-  source: 'shipping' | 'patrol';
+  source: 'shipping' | 'patrol' | 'mechanical';
   study_type: 'retrospective' | 'ongoing';
   process_stream_key: string;
   characteristic: string;

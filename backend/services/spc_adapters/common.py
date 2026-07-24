@@ -16,9 +16,12 @@ SHIPPING_FILTERS = (
 PATROL_FILTERS = (
     "m_id", "op_id", "cust_id", "mat", "spec", "item", "pos", "s_date", "e_date",
 )
+MECHANICAL_FILTERS = (
+    "vendor_id", "material", "product_size", "item", "position", "start_date", "end_date",
+)
 ATTRIBUTE_SHIPPING_FILTERS = SHIPPING_FILTERS
 ATTRIBUTE_PATROL_FILTERS = PATROL_FILTERS
-ID_FILTERS = {"m_id", "op_id", "cust_id"}
+ID_FILTERS = {"m_id", "op_id", "cust_id", "vendor_id"}
 DATE_FILTERS = {"start_date", "end_date", "s_date", "e_date"}
 
 
@@ -58,6 +61,9 @@ def normalize_filters(source: str, filters: Mapping[str, Any]) -> dict[str, Any]
     elif source == "patrol":
         names = PATROL_FILTERS
         defaults = {"item": "厚度"}
+    elif source == "mechanical":
+        names = MECHANICAL_FILTERS
+        defaults = {"item": "抗拉強度", "position": "爐門"}
     else:
         raise ValueError(f"不支援的 SPC 資料來源：{source}")
 
@@ -169,6 +175,25 @@ def specification_from_measurement_limits(rows: Sequence[Any]) -> dict[str, Any]
         "lower_values": lower_values,
         "upper_values": upper_values,
         "consistent": len(lower_values) <= 1 and len(upper_values) <= 1,
+        "source": "measurement_snapshot",
+    }
+
+
+def specification_from_mechanical_limits(rows: Sequence[Any]) -> dict[str, Any]:
+    """由機械性質量測保存的下限建立單邊規格快照。
+
+    機械性質為單邊下限（量測值 < 下限 → 超差），量測明細沒有上限欄位，
+    故只讀 lower_limit，並標記 one_sided="lower" 讓能力分析走單邊計算。
+    """
+
+    lower_values = sorted({float(row.lower_limit) for row in rows if row.lower_limit is not None})
+    return {
+        "found": bool(lower_values),
+        "LSL": lower_values[0] if len(lower_values) == 1 else None,
+        "USL": None,
+        "one_sided": "lower",
+        "lower_values": lower_values,
+        "consistent": len(lower_values) <= 1,
         "source": "measurement_snapshot",
     }
 

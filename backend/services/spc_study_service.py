@@ -31,6 +31,7 @@ from ..models import (
 from ..utils import log_audit
 from .spc_adapters.patrol import build_patrol_study_input
 from .spc_adapters.shipping import build_shipping_study_input
+from .spc_adapters.mechanical import build_mechanical_study_input
 from .spc_adapters.attribute import build_attribute_study_input
 from .spc_analysis_service import calculate_process_capability
 from .spc_machine_performance import calculate_machine_performance
@@ -74,6 +75,7 @@ ANALYSIS_FAMILIES = {"variable", "attribute", "machine"}
 ADAPTERS: dict[str, Callable[[Mapping[str, Any]], SpcStudyInput]] = {
     "shipping": build_shipping_study_input,
     "patrol": build_patrol_study_input,
+    "mechanical": build_mechanical_study_input,
 }
 ATTRIBUTE_ADAPTERS: dict[str, Callable[..., SpcStudyInput]] = {
     "shipping": build_attribute_study_input,

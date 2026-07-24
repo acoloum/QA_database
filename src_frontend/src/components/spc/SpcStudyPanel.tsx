@@ -18,7 +18,7 @@ import SpcOcapOffcanvas from './SpcOcapOffcanvas';
 import './spcStudy.css';
 
 interface SpcStudyPanelProps {
-  source: 'shipping' | 'patrol';
+  source: 'shipping' | 'patrol' | 'mechanical';
   filters: Record<string, unknown>;
   preview?: SpcChartData | null;
   version: SpcStudyResult | null;

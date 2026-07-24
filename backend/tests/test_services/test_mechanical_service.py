@@ -438,7 +438,7 @@ def test_judgement_status_without_complete_spec(db_session, measurements, expect
     assert MechanicalService.list({})["data"][0]["判定狀態"] == expected
 
 
-def test_judgement_status_ok_requires_all_eight_required_measurements(db_session):
+def test_judgement_status_ok_requires_all_four_items(db_session):
     vendor_id = _seed_spec(db_session)
     main = VendorToleranceMain.query.one()
     for item, lower in [("抗拉強度", 60), ("降伏強度", 60), ("伸長率", 60)]:
@@ -453,8 +453,21 @@ def test_judgement_status_ok_requires_all_eight_required_measurements(db_session
     assert MechanicalService.get_detail(test_id)["main"]["判定狀態"] == "OK"
 
 
-@pytest.mark.parametrize("count", [0, 1, 7])
-def test_judgement_status_is_incomplete_when_required_measurements_missing(db_session, count):
+def test_judgement_status_complete_with_single_location(db_session):
+    # 只取單一位置（爐門）但四項力學特性都有值 → 視為完整檢驗，非 INCOMPLETE。
+    payload = _payload()
+    payload["measurements"] = [
+        {"量測項目": item, "測量位置": "爐門", "取樣序": 1, "量測值": 70}
+        for item in ("硬度", "抗拉強度", "降伏強度", "伸長率")
+    ]
+    test_id = MechanicalService.create(payload, user_id=None)
+    # 無規格 → NO_SPEC（重點是不再因為缺爐頂而落入 INCOMPLETE）
+    assert MechanicalService.get_detail(test_id)["main"]["判定狀態"] == "NO_SPEC"
+
+
+# count 取前 N 筆（項目為外層迴圈）：0=空、1=只有硬度、6=缺伸長率一整項 → 皆缺項目 → INCOMPLETE
+@pytest.mark.parametrize("count", [0, 1, 6])
+def test_judgement_status_is_incomplete_when_an_item_is_missing(db_session, count):
     payload = _payload()
     payload["measurements"] = _required_measurements()[:count]
     test_id = MechanicalService.create(payload, user_id=None)

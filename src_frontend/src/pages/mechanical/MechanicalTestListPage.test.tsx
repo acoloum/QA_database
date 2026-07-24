@@ -13,7 +13,12 @@ vi.mock('../../services/mechanicalApi', () => ({
   mechanicalApi: {
     list: vi.fn(),
     remove: vi.fn(),
+    getVendors: vi.fn().mockResolvedValue([]),
   },
+}));
+
+vi.mock('../../components/mechanical/MechanicalCharts', () => ({
+  default: () => <div data-testid="mechanical-charts" />,
 }));
 
 vi.mock('react-hot-toast', () => ({
@@ -68,7 +73,8 @@ describe('MechanicalTestListPage', () => {
     expect(screen.getByText('載入中…')).toBeInTheDocument();
     expect(await screen.findByText('62.5 x 2.3')).toBeInTheDocument();
     expect(screen.getByText('E001')).toBeInTheDocument();
-    expect(screen.getByText('OK')).toBeInTheDocument();
+    // 判定徽章（限定 .badge，避免與「判定狀態」下拉選項的 OK 文字衝突）
+    expect(screen.getByText('OK', { selector: '.badge' })).toBeInTheDocument();
   });
 
   it('分欄顯示兩種追溯摘要並使用完整溫度時間標題', async () => {
@@ -96,7 +102,7 @@ describe('MechanicalTestListPage', () => {
     expect(await screen.findByText('查無資料')).toHaveAttribute('colSpan', '9');
   });
 
-  it('以尺寸、材質、日期區間及僅 NG 條件重新載入清單', async () => {
+  it('以尺寸、材質、日期區間及判定狀態條件重新載入清單', async () => {
     renderPage();
 
     await screen.findByText('62.5 x 2.3');
@@ -112,15 +118,18 @@ describe('MechanicalTestListPage', () => {
     fireEvent.change(screen.getByLabelText('結束日期'), {
       target: { value: '2026-07-31' },
     });
-    fireEvent.click(screen.getByLabelText('僅顯示 NG'));
+    fireEvent.change(screen.getByLabelText('判定狀態'), {
+      target: { value: 'NG' },
+    });
 
     await waitFor(() => {
       expect(mechanicalApi.list).toHaveBeenLastCalledWith({
         product_size: '80 x 3.0',
         material: '6061',
+        vendor_id: undefined,
+        judgement_status: 'NG',
         date_from: '2026-07-01',
         date_to: '2026-07-31',
-        only_ng: 'true',
         page: 1,
         page_size: 20,
       });

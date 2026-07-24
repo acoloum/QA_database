@@ -71,8 +71,13 @@ def lookup_lower_limits(
     details = VendorToleranceDetail.query.filter_by(main_id=candidate.id).all()
     for d in details:
         mech_item = tol_to_mech.get(d.item)
-        if mech_item and d.tolerance_min is not None:
-            result[mech_item] = d.tolerance_min
+        if not mech_item:
+            continue
+        # 優先使用尺寸下限（廠商公差頁面填寫下限的慣用欄位），
+        # 沒有尺寸下限時退而使用公差下限（視為絕對下限值）。
+        lower = d.dim_min if d.dim_min is not None else d.tolerance_min
+        if lower is not None:
+            result[mech_item] = lower
     return result
 
 

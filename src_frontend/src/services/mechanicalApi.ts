@@ -3,7 +3,18 @@ import type {
   MechanicalTestDetail,
   MechanicalTestListItem,
   MechanicalTestPayload,
+  SpcChartData,
 } from '../types';
+
+export interface MechanicalStatsParams {
+  item: string;
+  position: string;
+  vendor_id?: string | number;
+  material?: string;
+  product_size?: string;
+  start_date?: string;
+  end_date?: string;
+}
 
 export interface MechanicalListResponse {
   success: boolean;
@@ -22,6 +33,20 @@ export interface MechanicalVendorOption {
 export interface MechanicalOptions {
   materials: string[];
   product_sizes: string[];
+}
+
+export interface MechanicalImportError {
+  工作表: string;
+  欄位: number;
+  錯誤: string;
+}
+
+export interface MechanicalImportResult {
+  success: boolean;
+  message: string;
+  created: number;
+  skipped: number;
+  errors: MechanicalImportError[];
 }
 
 export const mechanicalApi = {
@@ -53,4 +78,19 @@ export const mechanicalApi = {
   getOptions: (vendor_id: number) =>
     api.get<MechanicalOptions>('/mechanical/options', { params: { vendor_id } })
       .then((r) => ({ materials: r.data.materials, product_sizes: r.data.product_sizes })),
+
+  stats: (params: MechanicalStatsParams) =>
+    api.get<SpcChartData>('/mechanical/stats', { params }).then((r) => r.data),
+
+  importExcel: (file: File, material: string, vendorId?: number) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('material', material);
+    if (vendorId) formData.append('vendor_id', String(vendorId));
+    return api
+      .post<MechanicalImportResult>('/mechanical/tests/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data);
+  },
 };

@@ -7,7 +7,7 @@ export type SpcWorkflowAction = 'time-model' | 'submit' | 'approve' | 'approve-r
 interface SpcBaselineApprovalModalProps {
   show: boolean;
   action: SpcWorkflowAction;
-  source: 'shipping' | 'patrol';
+  source: 'shipping' | 'patrol' | 'mechanical';
   filters: Record<string, unknown>;
   version: SpcStudyResult;
   onHide: () => void;
@@ -81,8 +81,8 @@ const SpcBaselineApprovalModal = ({
           <div className="spc-eyebrow">{researchOnly ? '研究生命週期' : '基準生命週期'} · 研究 v{version.version_no}</div>
           <Modal.Title>{researchOnly && machineCapability ? '核准機器研究結果' : copy.title}</Modal.Title>
         </div>
-        <Badge bg={source === 'shipping' ? 'primary' : 'secondary'}>
-          {source === 'shipping' ? '出貨檢驗' : '巡檢'}
+        <Badge bg={source === 'shipping' ? 'primary' : source === 'mechanical' ? 'info' : 'secondary'}>
+          {source === 'shipping' ? '出貨檢驗' : source === 'mechanical' ? '機械性質' : '巡檢'}
         </Badge>
       </Modal.Header>
       <Modal.Body>

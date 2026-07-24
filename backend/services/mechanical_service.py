@@ -3,6 +3,9 @@ from datetime import datetime, date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict, Optional
 
+import openpyxl
+from sqlalchemy.orm import selectinload
+
 from ..extensions import db
 from ..models import (
     MechanicalTest,
@@ -12,6 +15,7 @@ from ..models import (
     VendorToleranceMain,
 )
 from ..utils import bounded_int
+from .mechanical_import import build_payloads_from_workbook
 from .mechanical_spec import lookup_lower_limits, compute_measurement_ng
 
 
@@ -26,11 +30,9 @@ class MechanicalNotFoundError(ValueError):
 ALLOWED_MEASUREMENT_ITEMS = {"EC值", "硬度", "抗拉強度", "降伏強度", "伸長率"}
 ALLOWED_MEASUREMENT_LOCATIONS = {"爐門", "爐頂"}
 ALLOWED_SAMPLE_NUMBERS = {1, 2}
-REQUIRED_MEASUREMENT_KEYS = {
-    (item, location, 1)
-    for item in ("硬度", "抗拉強度", "降伏強度", "伸長率")
-    for location in ("爐門", "爐頂")
-}
+# 完成判定所需的力學特性項目：每一項只要有任一量測值（不限位置／取樣序）即算完成。
+# 實務上部分批次僅取單一位置（爐門或爐頂）就是完整檢驗，故不強制兩個位置都齊。
+REQUIRED_MEASUREMENT_ITEMS = {"硬度", "抗拉強度", "降伏強度", "伸長率"}
 TRACE_TYPE_EXTRUSION = "擠製編號"
 TRACE_TYPE_T4_FURNACE = "T4爐號"
 NEW_TRACE_FIELDS = {
@@ -64,6 +66,43 @@ def _serialize_trace_rows(
         {"識別碼": row.id, "序號": row.seq, "編號": row.number}
         for row in _trace_rows(test, trace_type)
     ]
+
+
+def _existing_trace_signature(test: MechanicalTest) -> tuple:
+    """既有檢驗的追溯編號簽章，供匯入時比對是否為重複資料。"""
+    return tuple(
+        tuple((row.seq, row.number) for row in _trace_rows(test, trace_type))
+        for trace_type in (TRACE_TYPE_EXTRUSION, TRACE_TYPE_T4_FURNACE)
+    )
+
+
+def _payload_trace_signature(trace_numbers: NormalizedTraceNumbers) -> tuple:
+    """匯入 payload 的追溯編號簽章，須與 `_existing_trace_signature` 同結構才能比對。"""
+    return tuple(
+        tuple(trace_numbers[trace_type])
+        for trace_type in (TRACE_TYPE_EXTRUSION, TRACE_TYPE_T4_FURNACE)
+    )
+
+
+def _existing_measurement_signature(test: MechanicalTest) -> tuple:
+    """既有檢驗的量測值簽章；追溯編號相同但量測值不同視為同批次二次檢驗，非重複。"""
+    return tuple(sorted(
+        (m.item, m.location, m.sample_no, m.value)
+        for m in test.measurements
+    ))
+
+
+def _payload_measurement_signature(data: Dict[str, Any]) -> tuple:
+    """匯入 payload 的量測值簽章，須與 `_existing_measurement_signature` 同結構才能比對。"""
+    return tuple(sorted(
+        (
+            m.get("量測項目"),
+            m.get("測量位置"),
+            m.get("取樣序"),
+            _to_float(m.get("量測值")),
+        )
+        for m in data.get("measurements", [])
+    ))
 
 
 def _parse_date(v: Any) -> Optional[date]:
@@ -272,6 +311,9 @@ def _validate_payload(
     return vendor_id, trace_numbers
 
 
+JUDGEMENT_STATUSES = {"OK", "NG", "NO_SPEC", "INCOMPLETE"}
+
+
 def _judgement_status(test: MechanicalTest) -> str:
     """依有效判定量測回傳清單與明細共用的明確判定狀態。"""
     judged = [
@@ -280,11 +322,8 @@ def _judgement_status(test: MechanicalTest) -> str:
     ]
     if any(measurement.is_ng for measurement in judged):
         return "NG"
-    measured_keys = {
-        (measurement.item, measurement.location, measurement.sample_no)
-        for measurement in judged
-    }
-    if not REQUIRED_MEASUREMENT_KEYS.issubset(measured_keys):
+    measured_items = {measurement.item for measurement in judged}
+    if not REQUIRED_MEASUREMENT_ITEMS.issubset(measured_items):
         return "INCOMPLETE"
     if any(measurement.lower_limit is None for measurement in judged):
         return "NO_SPEC"
@@ -392,6 +431,73 @@ class MechanicalService:
             raise
 
     @staticmethod
+    def get_stats(args: Dict[str, Any]) -> Dict[str, Any]:
+        """使用 2026 共用 SPC 引擎產生機械性質即時預覽（與出貨/巡檢同一引擎）。"""
+        from .spc_study_service import SpcStudyService
+
+        return SpcStudyService.preview("mechanical", args)
+
+    @staticmethod
+    def _is_duplicate(data: Dict[str, Any]) -> bool:
+        """依產品尺寸/材質/測試日期/追溯編號**與量測值**判斷是否已存在完全相同的檢驗紀錄。
+
+        追溯編號相同但硬度/抗拉強度/降伏強度/伸長率等量測值不同時，視為同批次的
+        二次檢驗（例如重新取樣覆測），仍應允許匯入為新紀錄，不得因追溯編號相同而略過。
+        用於匯入時避免同一批（或跨檔重疊的）Excel 資料重複上傳造成重複建檔；
+        驗證失敗的 payload 一律視為非重複，交由 create() 走正常流程回報錯誤。
+        """
+        try:
+            test_date = _parse_date(data.get("測試日期"))
+            trace_numbers = _parse_trace_numbers(data)
+            measurement_signature = _payload_measurement_signature(data)
+        except MechanicalValidationError:
+            return False
+        product_size = (data.get("產品尺寸") or "").strip()
+        material = (data.get("材質") or "").strip()
+        if not product_size or not material:
+            return False
+        incoming_trace_signature = _payload_trace_signature(trace_numbers)
+        candidates = MechanicalTest.query.filter_by(
+            product_size=product_size, material=material, test_date=test_date
+        ).all()
+        return any(
+            _existing_trace_signature(candidate) == incoming_trace_signature
+            and _existing_measurement_signature(candidate) == measurement_signature
+            for candidate in candidates
+        )
+
+    @staticmethod
+    def import_data(
+        file: Any, material: str, vendor_id: Optional[int], user_id: Optional[int]
+    ) -> Dict[str, Any]:
+        """解析必榮機械性質 Excel（轉置表格式）並逐欄建立檢驗紀錄。
+
+        每一欄各自呼叫 create() 獨立驗證與提交，單欄失敗僅記錄錯誤，
+        不影響同批次其他已成功匯入的紀錄（歷史資料量大，避免一筆錯誤拖累全部）。
+        已存在相同產品尺寸/材質/測試日期/追溯編號的紀錄視為重複，略過不重複建檔，
+        讓同一份（或跨年度重疊的）Excel 可重複上傳而只新增真正新增的部分。
+        """
+        try:
+            wb = openpyxl.load_workbook(file, data_only=True)
+        except Exception as exc:
+            raise MechanicalValidationError("無法讀取 Excel 檔案，請確認檔案格式") from exc
+
+        payloads = build_payloads_from_workbook(wb, material, vendor_id)
+        created = 0
+        skipped = 0
+        errors: list[Dict[str, Any]] = []
+        for sheet_name, col_idx, data in payloads:
+            try:
+                if MechanicalService._is_duplicate(data):
+                    skipped += 1
+                    continue
+                MechanicalService.create(data, user_id)
+                created += 1
+            except MechanicalValidationError as exc:
+                errors.append({"工作表": sheet_name, "欄位": col_idx, "錯誤": str(exc)})
+        return {"created": created, "skipped": skipped, "errors": errors}
+
+    @staticmethod
     def update(test_id: int, data: Dict[str, Any], user_id: Optional[int]) -> None:
         try:
             test = db.session.get(MechanicalTest, test_id)
@@ -431,6 +537,10 @@ class MechanicalService:
             query = query.filter(MechanicalTest.product_size.like(f"%{args['product_size']}%"))
         if args.get("material"):
             query = query.filter(MechanicalTest.material.like(f"%{args['material']}%"))
+        if args.get("vendor_id"):
+            vendor_id = parse_vendor_id(args.get("vendor_id"))
+            if vendor_id is not None:
+                query = query.filter(MechanicalTest.vendor_id == vendor_id)
         if args.get("date_from"):
             query = query.filter(MechanicalTest.test_date >= _parse_date(args["date_from"]))
         if args.get("date_to"):
@@ -440,11 +550,24 @@ class MechanicalService:
 
         page = bounded_int(args.get("page"), 1, 1, 1000000)
         page_size = bounded_int(args.get("page_size"), 20, 1, 100)
-        total = query.count()
-        # 以識別碼倒序（新→舊），避免 SQLite NULLS LAST 相容性問題（沿用擠壓公差慣例）
-        pagination = query.order_by(MechanicalTest.id.desc()).paginate(
-            page=page, per_page=page_size, error_out=False
-        )
+        query = query.order_by(MechanicalTest.id.desc())
+
+        status_filter = str(args.get("judgement_status") or "").strip().upper()
+        if status_filter in JUDGEMENT_STATUSES:
+            # 判定狀態是跨量測明細聚合出的衍生值，資料庫沒有對應欄位可直接 filter；
+            # 先套用其餘條件縮小候選集合，一次撈出量測明細後在 Python 端篩選、手動分頁。
+            candidates = query.options(selectinload(MechanicalTest.measurements)).all()
+            filtered = [t for t in candidates if _judgement_status(t) == status_filter]
+            total = len(filtered)
+            start = (page - 1) * page_size
+            items = filtered[start:start + page_size]
+            total_pages = max((total + page_size - 1) // page_size, 1)
+        else:
+            total = query.count()
+            # 以識別碼倒序（新→舊），避免 SQLite NULLS LAST 相容性問題（沿用擠壓公差慣例）
+            pagination = query.paginate(page=page, per_page=page_size, error_out=False)
+            items = pagination.items
+            total_pages = pagination.pages
 
         data = [{
             "識別碼": t.id,
@@ -462,9 +585,9 @@ class MechanicalService:
             "是否NG": t.is_ng,
             "判定狀態": _judgement_status(t),
             "備註": t.note,
-        } for t in pagination.items]
+        } for t in items]
         return {"success": True, "data": data, "total": total, "page": page,
-                "page_size": page_size, "total_pages": pagination.pages}
+                "page_size": page_size, "total_pages": total_pages}
 
     @staticmethod
     def get_detail(test_id: int) -> Dict[str, Any]:

@@ -8,6 +8,8 @@ import { apiErrorMessage, apiErrorNeedsToast } from '../../services/apiError';
 import { useAuth } from '../../context/useAuth';
 import type { MechanicalJudgementStatus } from '../../types';
 import MechanicalTestForm from './MechanicalTestForm';
+import MechanicalImportModal from '../../components/mechanical/MechanicalImportModal';
+import MechanicalCharts from '../../components/mechanical/MechanicalCharts';
 
 const judgementDisplay: Record<MechanicalJudgementStatus, { label: string; variant: string }> = {
   NG: { label: 'NG', variant: 'danger' },
@@ -21,10 +23,12 @@ export default function MechanicalTestListPage() {
   const { hasPermission } = useAuth();
   const [size, setSize] = useState('');
   const [material, setMaterial] = useState('');
+  const [vendorId, setVendorId] = useState('');
+  const [judgementStatus, setJudgementStatus] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [onlyNg, setOnlyNg] = useState(false);
   const [editingId, setEditingId] = useState<number | null | 'new'>(null);
+  const [showImport, setShowImport] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
@@ -33,17 +37,23 @@ export default function MechanicalTestListPage() {
     setter(value);
   };
 
+  const { data: vendors = [] } = useQuery({
+    queryKey: ['vendors'],
+    queryFn: mechanicalApi.getVendors,
+  });
+
   const params = useMemo(
     () => ({
       product_size: size || undefined,
       material: material || undefined,
+      vendor_id: vendorId || undefined,
+      judgement_status: judgementStatus || undefined,
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
-      only_ng: onlyNg ? 'true' : undefined,
       page,
       page_size: pageSize,
     }),
-    [size, material, dateFrom, dateTo, onlyNg, page, pageSize],
+    [size, material, vendorId, judgementStatus, dateFrom, dateTo, page, pageSize],
   );
 
   const { data, isLoading, isError } = useQuery({
@@ -73,7 +83,12 @@ export default function MechanicalTestListPage() {
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h4>機械性質檢驗</h4>
         {canCreate && (
-          <Button size="sm" onClick={() => setEditingId('new')}>+ 新增檢驗</Button>
+          <div className="d-flex gap-2">
+            <Button size="sm" variant="outline-secondary" onClick={() => setShowImport(true)}>
+              匯入 Excel
+            </Button>
+            <Button size="sm" onClick={() => setEditingId('new')}>+ 新增檢驗</Button>
+          </div>
         )}
       </div>
 
@@ -120,17 +135,48 @@ export default function MechanicalTestListPage() {
                 onChange={(event) => changeFilter(setDateTo, event.target.value)}
               />
             </Col>
-            <Col md={2} className="d-flex align-items-end">
-              <Form.Check
-                id="mechanical-only-ng"
-                label="僅顯示 NG"
-                checked={onlyNg}
-                onChange={(event) => changeFilter(setOnlyNg, event.target.checked)}
-              />
+            <Col md={2}>
+              <Form.Label htmlFor="mechanical-vendor">廠商</Form.Label>
+              <Form.Select
+                id="mechanical-vendor"
+                size="sm"
+                value={vendorId}
+                onChange={(event) => changeFilter(setVendorId, event.target.value)}
+              >
+                <option value="">全部</option>
+                {vendors.map((vendor) => (
+                  <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
+                ))}
+              </Form.Select>
+            </Col>
+            <Col md={2}>
+              <Form.Label htmlFor="mechanical-judgement-status">判定狀態</Form.Label>
+              <Form.Select
+                id="mechanical-judgement-status"
+                size="sm"
+                value={judgementStatus}
+                onChange={(event) => changeFilter(setJudgementStatus, event.target.value)}
+              >
+                <option value="">全部</option>
+                {(Object.keys(judgementDisplay) as MechanicalJudgementStatus[]).map((status) => (
+                  <option key={status} value={status}>{judgementDisplay[status].label}</option>
+                ))}
+              </Form.Select>
             </Col>
           </Row>
         </Card.Body>
       </Card>
+
+      {(vendorId || material || size) && (
+        <MechanicalCharts
+          vendorId={vendorId}
+          material={material}
+          productSize={size}
+          startDate={dateFrom}
+          endDate={dateTo}
+          onPointClick={canEdit ? (id) => setEditingId(id) : undefined}
+        />
+      )}
 
       <Card>
         <Card.Body>
@@ -252,6 +298,12 @@ export default function MechanicalTestListPage() {
           }}
         />
       )}
+
+      <MechanicalImportModal
+        show={showImport}
+        handleClose={() => setShowImport(false)}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['mechanical-tests'] })}
+      />
     </div>
   );
 }

@@ -9,7 +9,7 @@ from ..services.mechanical_service import (
 )
 from ..extensions import db
 from ..models import Vendor
-from ..utils import auth_required, require_perm, handle_db_error
+from ..utils import auth_required, require_perm, handle_db_error, validate_upload_file
 
 mechanical_bp = Blueprint('mechanical', __name__)
 
@@ -90,6 +90,51 @@ def delete_test(test_id):
     try:
         MechanicalService.delete(test_id)
         return jsonify({"success": True})
+    except Exception as e:
+        return _mechanical_error_response(e)
+
+
+@mechanical_bp.route('/api/mechanical/tests/import', methods=['POST'])
+@auth_required
+@require_perm('mechanical.create')
+def import_tests():
+    """匯入機械性質 Excel（必榮供應商轉置表格式）"""
+    try:
+        if 'file' not in request.files:
+            raise MechanicalValidationError("沒有上傳檔案")
+        file = request.files['file']
+        if file.filename == '':
+            raise MechanicalValidationError("沒有選擇檔案")
+        upload_error = validate_upload_file(file)
+        if upload_error:
+            raise MechanicalValidationError(upload_error)
+        material = (request.form.get('material') or '').strip()
+        if not material:
+            raise MechanicalValidationError("材質為必填")
+        vendor_id = parse_vendor_id(request.form.get('vendor_id'))
+        if vendor_id is not None and db.session.get(Vendor, vendor_id) is None:
+            raise MechanicalValidationError("指定的廠商不存在")
+        result = MechanicalService.import_data(file, material, vendor_id, _current_user_id())
+        message = f"匯入完成，新增 {result['created']} 筆"
+        if result['skipped']:
+            message += f"，略過 {result['skipped']} 筆重複資料"
+        if result['errors']:
+            message += f"，{len(result['errors'])} 筆失敗"
+        return jsonify({
+            "success": True,
+            "message": message,
+            **result,
+        })
+    except Exception as e:
+        return _mechanical_error_response(e)
+
+
+@mechanical_bp.route('/api/mechanical/stats', methods=['GET'])
+@auth_required
+def get_stats():
+    """機械性質即時 SPC 預覽（供頁面內嵌圖表使用）"""
+    try:
+        return jsonify(MechanicalService.get_stats(request.args))
     except Exception as e:
         return _mechanical_error_response(e)
 

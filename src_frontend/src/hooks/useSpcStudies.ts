@@ -25,7 +25,7 @@ interface ApiSuccess<T> {
 }
 
 interface AnalyzeSpcStudyBaseInput {
-  source: 'shipping' | 'patrol';
+  source: 'shipping' | 'patrol' | 'mechanical';
   filters: Record<string, unknown>;
   study_type?: 'retrospective' | 'ongoing';
 }
