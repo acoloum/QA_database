@@ -30,6 +30,53 @@
   padding: 6px 8px;
 }
 
+/* 單一外框格線表單（比照手冊 Figure 11-1 版面，不含編號徽章） */
+.spc-report-grid {
+  border: 1.5px solid #333;
+  font-size: 11px;
+}
+.spc-grid-row {
+  display: flex;
+  border-top: 1px solid #333;
+}
+.spc-grid-row:first-child {
+  border-top: 0;
+}
+.spc-grid-cell {
+  flex: 1 1 0;
+  border-left: 1px solid #333;
+  padding: 3px 7px;
+  min-width: 0;
+}
+.spc-grid-cell:first-child {
+  border-left: 0;
+}
+.spc-grid-title {
+  font-weight: 600;
+  color: #0d3b66;
+  font-size: 10px;
+  margin-bottom: 1px;
+}
+.spc-grid-chart {
+  height: 185px;
+  overflow: hidden;
+  position: relative;
+}
+.spc-report-titlebar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 8px;
+  background: #eef2f7;
+  font-weight: 700;
+  color: #0d3b66;
+}
+.spc-report-titlebar .spc-report-std {
+  font-weight: 400;
+  font-size: 10px;
+  color: #555;
+}
+
 /* 列印：只印報告本身。關鍵是解除 scrollable modal 的 overflow/max-height，
    否則只會印出捲動可見的那一小段（報告被裁切、其餘空白）。 */
 @media print {
@@ -69,9 +116,9 @@
   /* 整份等比縮放以容納於單頁 A4（width 補償確保仍填滿頁寬） */
   .spc-report {
     padding: 0 !important;
-    transform: scale(0.70);
+    transform: scale(0.85);
     transform-origin: top left;
-    width: 142.8% !important;
+    width: 117.6% !important;
   }
   .spc-report canvas {
     max-width: 100% !important;
