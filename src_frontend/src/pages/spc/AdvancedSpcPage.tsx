@@ -22,6 +22,8 @@ import TransformationPanel from '../../components/spc/distribution/Transformatio
 import SpcBaselineApprovalModal, { type SpcWorkflowAction } from '../../components/spc/SpcBaselineApprovalModal';
 import SpcStudyHistoryOffcanvas from '../../components/spc/SpcStudyHistoryOffcanvas';
 import SpcStudyWorkflowBar from '../../components/spc/SpcStudyWorkflowBar';
+import SpcReportModal from '../../components/spc/report/SpcReportModal';
+import { reportModelFromVersion } from '../../components/spc/report/spcReportModel';
 
 type Source = 'shipping' | 'patrol' | 'mechanical';
 type Family = 'variable' | 'attribute' | 'machine';
@@ -168,6 +170,7 @@ const AdvancedSpcPage = () => {
   const [result, setResult] = useState<SpcStudyResult | null>(null);
   const [action, setAction] = useState<SpcWorkflowAction | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [machineConditionReason, setMachineConditionReason] = useState({ family: '' as Family | '', value: '' });
   const [actionError, setActionError] = useState<ApiErrorDetail | null>(null);
   const queryClient = useQueryClient();
@@ -351,10 +354,11 @@ const AdvancedSpcPage = () => {
       </div>
     </Card.Body></Card>
     {actionError && <Alert variant="danger" className="mb-3" role="alert" aria-live="assertive"><strong>{actionError.status === 403 ? '權限不足：' : actionError.status === 409 ? '研究狀態已變更：' : '流程操作失敗：'}</strong>{actionError.code ? `${actionError.code}；` : ''}{actionError.message}{(actionError.status === 403 || actionError.status === 409) && <div>請重新分析或開啟版本歷程後再操作。</div>}</Alert>}
-    {visibleResult && <Card className="mb-3"><Card.Body><SpcStudyWorkflowBar version={visibleResult} canView={canView} canManage={canManage} canApprove={canApprove} showTimeModelAction={query.family !== 'variable'} analyzing={analyze.isPending} canAnalyze={query.family !== 'machine' || (machineCanManage && machineRequest != null)} analyzeDisabledReason={query.family === 'machine' && machineRequest == null ? '重建候選前必須重新完成固定機台與受控條件。' : undefined} onAnalyze={() => void (query.family === 'machine' ? analyzeMachine() : query.family === 'variable' ? analyzeVariable() : analyzeAttribute())} onAction={setAction} onShowHistory={() => setShowHistory(true)} /></Card.Body></Card>}
+    {visibleResult && <Card className="mb-3"><Card.Body><SpcStudyWorkflowBar version={visibleResult} canView={canView} canManage={canManage} canApprove={canApprove} showTimeModelAction={query.family !== 'variable'} analyzing={analyze.isPending} canAnalyze={query.family !== 'machine' || (machineCanManage && machineRequest != null)} analyzeDisabledReason={query.family === 'machine' && machineRequest == null ? '重建候選前必須重新完成固定機台與受控條件。' : undefined} onAnalyze={() => void (query.family === 'machine' ? analyzeMachine() : query.family === 'variable' ? analyzeVariable() : analyzeAttribute())} onAction={setAction} onShowHistory={() => setShowHistory(true)} />{variableResult && <div className="mt-2 text-end"><Button variant="outline-primary" size="sm" onClick={() => setShowReport(true)}>📄 產生 SPC 報告</Button></div>}</Card.Body></Card>}
     {query.family === 'machine' ? <MachinePerformancePanel result={machineResult} /> : query.family === 'variable' ? variableResult && <><TimeDiagnosticPanel version={variableResult} canApprove={canApprove} pending={confirmTimeModel.isPending} onConfirm={(model, reason) => void confirmDiagnostic(model, reason)} /><TransformationPanel version={variableResult} canApprove={canApprove} pending={confirmTransformation.isPending} onConfirm={(model, reason) => void confirmDistribution(model, reason)} /></> : <AttributeStudyPanel result={visibleResult} />}
     {visibleResult && action && <SpcBaselineApprovalModal show action={action} source={visibleResult.source} filters={visibleResult.filters} version={visibleResult} pending={actionPending} onHide={() => setAction(null)} onConfirm={(reason, model) => void handleAction(reason, model)} />}
     {visibleResult && showHistory && <SpcStudyHistoryOffcanvas show studyId={visibleResult.study_id} onHide={() => setShowHistory(false)} />}
+    <SpcReportModal show={showReport} model={variableResult ? reportModelFromVersion(variableResult) : null} statsItem={String(query.filters.item || query.filters.material || 'SPC')} onHide={() => setShowReport(false)} />
   </div>;
 };
 

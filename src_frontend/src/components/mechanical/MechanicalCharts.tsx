@@ -12,12 +12,14 @@ import {
   Filler,
 } from 'chart.js';
 import { useQuery } from '@tanstack/react-query';
-import { Form } from 'react-bootstrap';
+import { Button, Form } from 'react-bootstrap';
 
 import { mechanicalApi } from '../../services/mechanicalApi';
 import { buildSpcChartModel, mergeOngoingStudyForDisplay } from '../../utils/spcChartModel';
 import SpcDashboardPanel from '../spc/SpcDashboardPanel';
 import SpcStudyPanel from '../spc/SpcStudyPanel';
+import SpcReportModal from '../spc/report/SpcReportModal';
+import { reportModelFromStats } from '../spc/report/spcReportModel';
 import type { SpcStudyResult } from '../../types';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
@@ -42,6 +44,7 @@ export default function MechanicalCharts({
   const [position, setPosition] = useState('爐門');
   const [showSpecLimits, setShowSpecLimits] = useState(false);
   const [studyVersion, setStudyVersion] = useState<SpcStudyResult | null>(null);
+  const [showReport, setShowReport] = useState(false);
 
   const params = useMemo(() => ({
     item, position,
@@ -114,9 +117,19 @@ export default function MechanicalCharts({
             onChange={(e) => setShowSpecLimits(e.target.checked)}
           />
         </div>
-        <a href={advancedSpcHref} className="btn btn-outline-info btn-sm">
-          進階變數分析
-        </a>
+        <div className="d-flex gap-2">
+          <Button
+            variant="outline-primary"
+            size="sm"
+            disabled={!statsData?.all_values?.length}
+            onClick={() => setShowReport(true)}
+          >
+            📄 產生 SPC 報告
+          </Button>
+          <a href={advancedSpcHref} className="btn btn-outline-info btn-sm">
+            進階變數分析
+          </a>
+        </div>
       </div>
 
       <SpcStudyPanel
@@ -134,6 +147,13 @@ export default function MechanicalCharts({
         sampleCount={statsData?.all_values?.length ?? 0}
         onEditPoint={onPointClick}
         filterXBarLegendLabels
+      />
+
+      <SpcReportModal
+        show={showReport}
+        model={statsData ? reportModelFromStats('mechanical', studyFilters, displayStatsData ?? statsData) : null}
+        statsItem={`${item}（${position}）`}
+        onHide={() => setShowReport(false)}
       />
     </div>
   );

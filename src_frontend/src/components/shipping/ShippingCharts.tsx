@@ -15,6 +15,8 @@ import {
 import { buildSpcChartModel, mergeOngoingStudyForDisplay } from '../../utils/spcChartModel';
 import SpcDashboardPanel from '../spc/SpcDashboardPanel';
 import SpcStudyPanel from '../spc/SpcStudyPanel';
+import SpcReportModal from '../spc/report/SpcReportModal';
+import { reportModelFromStats } from '../spc/report/spcReportModel';
 import OutlierManagerModal from '../spc/OutlierManagerModal';
 import type { SpcStudyResult } from '../../types';
 import { Button, Form } from 'react-bootstrap';
@@ -51,6 +53,7 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
     const [selectedRecordId, setSelectedRecordId] = useState('');
     const [showSpecLimits, setShowSpecLimits] = useState(false);
     const [studyVersion, setStudyVersion] = useState<SpcStudyResult | null>(null);
+    const [showReport, setShowReport] = useState(false);
 
     // 安泰廠商：硬度改標示為洛氏硬度(HRB)，並新增韋伯氏硬度(HW)
     const isAntai = vendor.includes(ANTAI_VENDOR_NAME);
@@ -133,6 +136,14 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                     <a href={advancedSpcHref} className="btn btn-outline-info btn-sm">
                         進階變數分析
                     </a>
+                    <Button
+                        variant="outline-primary"
+                        size="sm"
+                        disabled={!displayStatsData?.all_values?.length}
+                        onClick={() => setShowReport(true)}
+                    >
+                        📄 產生 SPC 報告
+                    </Button>
                     <Form.Select
                         size="sm"
                         style={{ width: 'auto' }}
@@ -188,6 +199,13 @@ const ShippingCharts = ({ vendor, material, spec, startDate, endDate, onPointCli
                 shippingId={outlierTargetId}
                 show={outlierTargetId != null}
                 onHide={() => setOutlierTargetId(null)}
+            />
+
+            <SpcReportModal
+                show={showReport}
+                model={displayStatsData ? reportModelFromStats('shipping', studyFilters, displayStatsData) : null}
+                statsItem={statsField}
+                onHide={() => setShowReport(false)}
             />
         </div>
     );
