@@ -90,9 +90,25 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         () => tolerance?.found ? tolerance.tolerances.map(item => item.項目) : undefined,
         [tolerance],
     );
+    // 已存檔即有量測值的項目：即使公差判定該欄不需顯示，也不得隱藏而讓既有值被孤立。
+    // 必須取自載入的紀錄而非編輯中的 groups——ITEMS 變動會重建 groups，
+    // 若反過來依賴 groups 會形成循環並清掉使用者剛輸入的值。
+    const presentItemKeys = useMemo(() => {
+        const keys = new Set<string>();
+        const nested = (detailData?.measurements ?? {}) as Record<string, GroupMeas>;
+        Object.values(nested).forEach(group => {
+            Object.entries(group ?? {}).forEach(([key, value]) => {
+                const hasValue = value != null && (
+                    value.value_min != null || value.value_max != null || value.value_single != null
+                );
+                if (hasValue) keys.add(key);
+            });
+        });
+        return keys;
+    }, [detailData]);
     const ITEMS = useMemo(
-        () => getShippingInspectionItems(vendorName, toleranceItemNames),
-        [vendorName, toleranceItemNames],
+        () => getShippingInspectionItems(vendorName, toleranceItemNames, presentItemKeys),
+        [vendorName, toleranceItemNames, presentItemKeys],
     );
 
     // 依分段狀態展開後的實際渲染項目清單

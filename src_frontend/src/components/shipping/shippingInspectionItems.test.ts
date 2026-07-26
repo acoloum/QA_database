@@ -95,6 +95,34 @@ describe('shippingInspectionItems', () => {
     expect(items.map(item => item.key)).toContain('韋伯氏硬度');
   });
 
+  it('公差定義韋伯氏硬度時，非安泰廠商也要顯示韋伯欄位', () => {
+    // 韋伯類廠商（品岳等）的硬度量測遷移到韋伯氏硬度後，表單必須有該欄位可填
+    const items = getShippingInspectionItems('品岳', ['外徑', '韋伯氏硬度']);
+
+    expect(items.map(item => item.key)).toContain('韋伯氏硬度');
+  });
+
+  it('公差為韋伯專用時隱藏主硬度欄，避免填錯欄位', () => {
+    // 該規格的硬度只以韋伯標度管制，留著空的「硬度」欄會誘導填錯
+    const items = getShippingInspectionItems('品岳', ['外徑', '韋伯氏硬度']);
+
+    expect(items.map(item => item.key)).not.toContain('硬度');
+  });
+
+  it('主硬度已有資料時不得隱藏，避免既有值被孤立', () => {
+    const items = getShippingInspectionItems('品岳', ['外徑', '韋伯氏硬度'], new Set(['硬度']));
+
+    expect(items.map(item => item.key)).toContain('硬度');
+  });
+
+  it('公差同時有洛氏與韋伯時兩欄都保留', () => {
+    const items = getShippingInspectionItems('安泰', ['洛氏硬度', '韋伯氏硬度']);
+    const keys = items.map(item => item.key);
+
+    expect(keys).toContain('硬度');
+    expect(keys).toContain('韋伯氏硬度');
+  });
+
   it('calculates tab offsets based on item input width', () => {
     const items = getShippingInspectionItems('一般廠商');
 

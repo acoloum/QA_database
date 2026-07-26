@@ -38,31 +38,51 @@ export const resolvePrimaryHardness = (
   ) ?? null;
 };
 
+const WEBSTER_HARDNESS_KEY = '韋伯氏硬度';
+
 /**
  * 依廠商與（可選的）公差項目清單組出檢驗項目設定。
  *
- * 欄位「是否顯示」仍依廠商決定：安泰的韋伯氏硬度即使公差未定義也必須保留輸入
- * 欄位（實際有 65 筆紀錄在無韋伯公差的規格上填了值），公差只影響判定而不該
- * 讓輸入欄位消失。公差項目清單僅用來決定主硬度的比對目標與標籤；未提供
- * （尚未載入或查無公差）時沿用原本依廠商的預設，避免標籤閃動。
+ * 公差項目清單決定兩件事：主硬度的比對目標與標籤，以及是否顯示韋伯氏硬度欄。
+ * 未提供（尚未載入或查無公差）時沿用原本依廠商的預設，避免標籤閃動。
+ *
+ * 欄位顯示的兩條安全規則：
+ *  - 安泰的韋伯欄即使公差未定義也保留：實際有 65 筆紀錄在無韋伯公差的規格上
+ *    填了值，公差只該影響判定而不是讓輸入欄位消失。
+ *  - presentKeys（該筆已有資料的項目）一律不隱藏，避免既有值被孤立。
+ *
+ * 當公差只以韋伯標度管制（有韋伯、無洛氏／硬度）時隱藏主硬度欄，
+ * 否則留著空欄會誘導檢驗員把韋伯值填進主硬度而重蹈標度混用。
  */
 export const getShippingInspectionItems = (
   vendorName: string,
   toleranceItems?: string[],
+  presentKeys?: ReadonlySet<string>,
 ): ShippingItemConfig[] => {
   const isAntai = vendorName.includes(ANTAI_VENDOR_NAME);
   const resolved = resolvePrimaryHardness(toleranceItems);
+  const hasWebsterTolerance = !!toleranceItems?.includes(WEBSTER_HARDNESS_KEY);
+  const has = (key: string) => !!presentKeys?.has(key);
 
   const items = [...BASE_SHIPPING_ITEMS];
   if (isAntai) items.splice(2, 0, ROUNDNESS_ITEM);
 
   const hardnessIndex = items.findIndex(item => item.key === '硬度');
   if (hardnessIndex !== -1) {
-    // 公差未載入時的預設：安泰沿用洛氏硬度，其餘廠商沿用未指明標度的「硬度」
-    const fallback = isAntai ? PRIMARY_HARDNESS_ITEMS[0] : PRIMARY_HARDNESS_ITEMS[1];
-    const { toleranceKey, label } = resolved ?? fallback;
-    items[hardnessIndex] = { ...items[hardnessIndex], label, toleranceKey };
-    if (isAntai) items.splice(hardnessIndex + 1, 0, VICKERS_HARDNESS_ITEM);
+    // 韋伯專用規格（有韋伯公差、無可用的主硬度公差）隱藏主硬度欄；已有資料者不動
+    const websterOnly = hasWebsterTolerance && resolved === null;
+    if (websterOnly && !has('硬度')) {
+      items.splice(hardnessIndex, 1);
+    } else {
+      // 公差未載入時的預設：安泰沿用洛氏硬度，其餘廠商沿用未指明標度的「硬度」
+      const fallback = isAntai ? PRIMARY_HARDNESS_ITEMS[0] : PRIMARY_HARDNESS_ITEMS[1];
+      const { toleranceKey, label } = resolved ?? fallback;
+      items[hardnessIndex] = { ...items[hardnessIndex], label, toleranceKey };
+    }
+    if (isAntai || hasWebsterTolerance || has(WEBSTER_HARDNESS_KEY)) {
+      const insertAt = items.findIndex(item => item.key === '硬度');
+      items.splice(insertAt === -1 ? hardnessIndex : insertAt + 1, 0, VICKERS_HARDNESS_ITEM);
+    }
   }
   return items;
 };

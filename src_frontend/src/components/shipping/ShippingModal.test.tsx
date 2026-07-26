@@ -181,4 +181,37 @@ describe('ShippingModal', () => {
     });
     await waitFor(() => expect(screen.getByText(/公差標準已載入/)).toBeInTheDocument());
   });
+  it('韋伯專用規格仍保留已存檔的硬度欄，且輸入不被項目重算清掉', async () => {
+    // 公差只有韋伯氏硬度時主硬度欄會隱藏；但既有紀錄已存有硬度值，隱藏會讓值被孤立。
+    // 另：項目清單若反過來依賴編輯中的量測值會形成循環並清掉剛輸入的內容。
+    shippingDetail = {
+      識別碼: 7,
+      檢驗日期: '2026-07-01',
+      檢驗人員: '檢驗員A',
+      廠商中文名稱: '廠商A',
+      材質: 'A6061',
+      檢驗規格: '10*2',
+      組數: 1,
+      measurements: {
+        '1': { '硬度': { value_single: 8, is_ng: false } },
+      },
+    };
+    checkToleranceMutate.mockResolvedValue({
+      success: true,
+      found: true,
+      tolerances: [{
+        項目: '韋伯氏硬度', 標準值: null, 公差上限: null, 公差下限: null,
+        尺寸上限: null, 尺寸下限: 10, 單位: 'HW',
+      }],
+    });
+
+    render(
+      <ShippingModal show editId={7} handleClose={() => undefined} onSuccess={() => undefined} />,
+    );
+
+    // 已存檔的硬度值仍在，未因韋伯專用公差而消失
+    await waitFor(() => expect(screen.getByDisplayValue('8')).toBeInTheDocument());
+    // 韋伯欄位同時可用
+    await waitFor(() => expect(screen.getByText('韋伯氏硬度(HW)')).toBeInTheDocument());
+  });
 });
