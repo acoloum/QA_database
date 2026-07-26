@@ -104,3 +104,29 @@ def test_韋伯氏硬度不得被當成洛氏硬度的別名():
     ])
     # 沒有可用的洛氏/硬度公差 → 該項不判定，不得因韋伯公差而判為合格或超差
     assert s.compute_is_ng(tol) is False
+
+
+def test_韋伯氏硬度納入判定():
+    """韋伯氏硬度原本被排除而從不判定；其公差本就存在，應與其他項目一致地判定。"""
+    tol = [{'項目': '韋伯氏硬度', '公差下限': None, '公差上限': None,
+            '標準值': None, '尺寸下限': 10, '尺寸上限': None}]
+    # 8.0 < 下限 10 → 超差
+    ng = _make('31.9*2.8*500', [
+        {'group_num': 1, 'item': '韋伯氏硬度', 'value_single': 8.0},
+    ])
+    assert ng.compute_is_ng(tol) is True
+    # 12.0 ≥ 10 → 合格
+    ok = _make('31.9*2.8*500', [
+        {'group_num': 1, 'item': '韋伯氏硬度', 'value_single': 12.0},
+    ])
+    assert ok.compute_is_ng(tol) is False
+
+
+def test_韋伯氏硬度為0視為未量測():
+    """韋伯氏硬度沿用「0 為未量測哨兵值」規則，不得判為超差。"""
+    tol = [{'項目': '韋伯氏硬度', '公差下限': None, '公差上限': None,
+            '標準值': None, '尺寸下限': 10, '尺寸上限': None}]
+    s = _make('31.9*2.8*500', [
+        {'group_num': 1, 'item': '韋伯氏硬度', 'value_single': 0},
+    ])
+    assert s.compute_is_ng(tol) is False
