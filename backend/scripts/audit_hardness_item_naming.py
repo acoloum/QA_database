@@ -175,22 +175,38 @@ def main(csv_path: str | None, apply: bool = False):
             print('     一律不動，請於公差建檔頁面人工核對。')
             return
 
-        # 只正名信心「高」者：依單位欄位判定且與下限量級一致，誤判風險最低。
-        updated: dict[str, int] = defaultdict(int)
+        # 只正名為「洛氏硬度」且信心「高」者。
+        #
+        # 【不得改名為韋伯氏硬度】量測明細一律以「硬度」存放，而 tolerance_items
+        # 的別名只把「洛氏硬度」對應回「硬度」；韋伯氏硬度是獨立的量測項目
+        # （出貨表單僅安泰有該欄位）。若把公差改名為韋伯氏硬度，這些廠商的
+        # 「硬度」量測就再也配對不到公差而靜默不判定——實測會使 439 筆由超差
+        # 變合格（例如品岳 6061-H 硬度 8.0 對下限 10.0 本應超差）。
+        # 這些廠商的「硬度」量測值本身就是韋伯值，要正名必須連量測項目一起
+        # 遷移並讓表單開放該欄位，屬另一項獨立工程，故此處一律不動。
+        updated = 0
+        deferred: dict[str, int] = defaultdict(int)
         for row in rows:
             if row['confidence'] != '高':
+                continue
+            if row['suggested'] != '洛氏硬度':
+                deferred[row['suggested']] += 1
                 continue
             detail = db.session.get(VendorToleranceDetail, row['detail_id'])
             if detail is None or detail.item != '硬度':
                 continue
-            detail.item = row['suggested']
-            updated[row['suggested']] += 1
+            detail.item = '洛氏硬度'
+            updated += 1
         db.session.commit()
-        total = sum(updated.values())
-        print(f'\n  ✅ 已正名 {total} 筆：'
-              + '、'.join(f'{name} {count} 筆' for name, count in sorted(updated.items())))
-        skipped = len(rows) - total
-        print(f'     另有 {skipped} 筆未動（衝突／低信心／無法判斷），請人工核對。')
+        print(f'\n  ✅ 已正名 {updated} 筆為「洛氏硬度」。')
+        if deferred:
+            total_deferred = sum(deferred.values())
+            print(f'  ⏸ 另有 {total_deferred} 筆推斷為韋伯氏硬度**刻意不改**：')
+            print('     量測明細仍以「硬度」存放，改名會使其配對不到公差而靜默不判定。')
+            print('     需連量測項目一併遷移並讓出貨表單開放韋伯欄位，屬獨立工程。')
+        low_conf = sum(1 for r in rows if r['confidence'] != '高')
+        if low_conf:
+            print(f'  ⚠ 另有 {low_conf} 筆未動（衝突／低信心／無法判斷），請人工核對。')
 
 
 if __name__ == '__main__':

@@ -60,3 +60,47 @@ def test_非尺寸項目的0不跳過():
     ])
     # 0 < 尺寸下限 0.5 → 超差（未被當成未量測跳過）
     assert s.compute_is_ng(tol) is True
+
+
+def test_公差寫洛氏硬度時硬度量測仍須判定():
+    """公差項目寫「洛氏硬度」而量測明細以「硬度」存放，兩邊名稱不同仍須配對。
+
+    原本以公差項目名為鍵、卻以量測項目名查表，導致安泰（公差已正名為
+    洛氏硬度）的硬度從未被判定而靜默放行。
+    """
+    tol = [{'項目': '洛氏硬度', '公差下限': None, '公差上限': None,
+            '標準值': None, '尺寸下限': 58, '尺寸上限': None}]
+    # 51.9 < 下限 58 → 必須判超差
+    ng = _make('80*70*2955', [
+        {'group_num': 1, 'item': '硬度', 'value_single': 51.9},
+    ])
+    assert ng.compute_is_ng(tol) is True
+    # 60 ≥ 58 → 合格
+    ok = _make('80*70*2955', [
+        {'group_num': 1, 'item': '硬度', 'value_single': 60},
+    ])
+    assert ok.compute_is_ng(tol) is False
+
+
+def test_公差寫未指明標度的硬度時仍須判定():
+    """正名前的舊寫法「硬度」不得因加入別名而失效。"""
+    tol = [{'項目': '硬度', '公差下限': None, '公差上限': None,
+            '標準值': None, '尺寸下限': 58, '尺寸上限': None}]
+    s = _make('80*70*2955', [
+        {'group_num': 1, 'item': '硬度', 'value_single': 51.9},
+    ])
+    assert s.compute_is_ng(tol) is True
+
+
+def test_韋伯氏硬度不得被當成洛氏硬度的別名():
+    """韋伯(HW 約3~20)與洛氏(HRB 約50~90)標度不同，混用會製造假合格。
+
+    韋伯下限 15 不得套用到「硬度」量測值 51.9 上（51.9 > 15 會誤判合格）。
+    """
+    tol = [{'項目': '韋伯氏硬度', '公差下限': None, '公差上限': None,
+            '標準值': None, '尺寸下限': 15, '尺寸上限': None}]
+    s = _make('80*70*2955', [
+        {'group_num': 1, 'item': '硬度', 'value_single': 51.9},
+    ])
+    # 沒有可用的洛氏/硬度公差 → 該項不判定，不得因韋伯公差而判為合格或超差
+    assert s.compute_is_ng(tol) is False

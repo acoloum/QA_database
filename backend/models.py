@@ -160,6 +160,7 @@ class ShippingData(db.Model):
             return False
             
         from .services.tolerance_service import ToleranceService
+        from .services.tolerance_items import measurement_items_for
         # spec values parsing
         spec_values = ToleranceService.parse_spec_values(self.spec)
         
@@ -195,7 +196,13 @@ class ShippingData(db.Model):
             else:
                 continue
                 
-            std_limits[t_item] = {'lsl': lsl, 'usl': usl}
+            # 以公差項目名為鍵，並一併掛上對應的量測項目名：公差的硬度可能寫成
+            # 「洛氏硬度」，而量測明細一律以「硬度」存放，不掛別名會配對失敗
+            # 而整項靜默不判定（安泰的硬度即因此從未被判定）。
+            limits = {'lsl': lsl, 'usl': usl}
+            std_limits[t_item] = limits
+            for measurement_item in measurement_items_for(t_item):
+                std_limits.setdefault(measurement_item, limits)
 
         # 限定要判定的量測項目（與舊版一致；不含韋伯氏硬度）
         items_to_check = {"外徑", "內徑", "真圓度", "厚度", "同心度", "長度", "硬度", "真直度"}

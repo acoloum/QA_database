@@ -205,6 +205,7 @@ def resolve_tolerance_specification(
     """以現有公差主檔解析巡檢規格快照。找不到時明確回傳未確認。"""
 
     from ..tolerance_service import ToleranceService
+    from ..tolerance_items import tolerance_names_for
     from ...utils import parse_spec_nominals
 
     result = ToleranceService.check_tolerance({
@@ -219,15 +220,9 @@ def resolve_tolerance_specification(
     if not result.get("found"):
         return snapshot
 
-    # 量測項目 → 公差主檔可能使用的項目名稱。硬度的標度寫法並存（未指明標度的
-    # 「硬度」與「洛氏硬度」），兩者都要接受，否則對不上就整項不判定。
-    # 韋伯氏硬度（Webster HW）是另一種標度，不與洛氏混用；維氏硬度（Vickers HV）
-    # 又是第三種標度，不得視為韋伯的別名，故不列入。
-    aliases = {
-        "硬度": {"硬度", "洛氏硬度"},
-        "韋伯氏硬度": {"韋伯氏硬度"},
-    }
-    match_names = aliases.get(characteristic, {characteristic})
+    # 硬度的標度寫法並存（未指明標度的「硬度」與「洛氏硬度」），兩者都要接受，
+    # 否則對不上就整項不判定；別名定義集中於 tolerance_items 共用。
+    match_names = set(tolerance_names_for(characteristic))
     nominal = parse_spec_nominals(spec).get(characteristic)
     normalized_position = None if position is None else str(position)
     for detail in result.get("tolerances", []):
