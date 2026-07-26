@@ -48,7 +48,6 @@ describe('useShippingToleranceMap', () => {
         }],
       },
       '',
-      '廠商A',
     );
 
     expect(limits?.外徑).toEqual({ lsl: 9.9, usl: 10.2 });
@@ -70,7 +69,6 @@ describe('useShippingToleranceMap', () => {
         }],
       },
       '',
-      '廠商A',
     );
 
     expect(limits).toEqual({});

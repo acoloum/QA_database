@@ -84,9 +84,16 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     // 需二次確認的動作（如關閉分段量測會刪除中/後段數據）
     const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
-    // 依廠商決定量測項目清單
-    // 安泰：真圓度插入內徑後、硬度改標示為洛氏硬度(HRB)、新增韋伯氏硬度(HW)
-    const ITEMS = useMemo(() => getShippingInspectionItems(vendorName), [vendorName]);
+    // 依廠商決定量測項目清單（安泰：真圓度插入內徑後、新增韋伯氏硬度(HW)），
+    // 主硬度的比對目標與標籤則依公差檔實際項目決定（洛氏硬度／未指明標度的硬度）。
+    const toleranceItemNames = useMemo(
+        () => tolerance?.found ? tolerance.tolerances.map(item => item.項目) : undefined,
+        [tolerance],
+    );
+    const ITEMS = useMemo(
+        () => getShippingInspectionItems(vendorName, toleranceItemNames),
+        [vendorName, toleranceItemNames],
+    );
 
     // 依分段狀態展開後的實際渲染項目清單
     const ACTIVE_ITEMS = useMemo(() => expandSegmentedItems(ITEMS, segmentedKeys), [ITEMS, segmentedKeys]);

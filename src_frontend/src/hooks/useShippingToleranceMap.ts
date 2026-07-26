@@ -26,7 +26,7 @@ export const resolveToleranceStandardValue = (
   return null;
 };
 
-export const toToleranceLimits = (result: ToleranceResult, spec: string, vendorName: string) => {
+export const toToleranceLimits = (result: ToleranceResult, spec: string) => {
   if (!result.success || !result.found) return null;
 
   const specValues = parseSpec(spec);
@@ -55,7 +55,10 @@ export const toToleranceLimits = (result: ToleranceResult, spec: string, vendorN
     }
 
     standards[t.項目] = { lsl, usl };
-    if (vendorName === '安泰' && t.項目 === '洛氏硬度') {
+    // 量測明細一律以「硬度」為鍵存放，但公差項目可能寫成「洛氏硬度」；
+    // 兩種寫法都要對應到「硬度」鍵，否則該廠商的硬度就查不到界限而漏判。
+    // 不可依廠商名稱判斷：公差正名後非安泰廠商同樣會出現「洛氏硬度」。
+    if (t.項目 === '洛氏硬度') {
       standards['硬度'] = { lsl, usl };
     }
   });
@@ -86,7 +89,7 @@ export const useShippingToleranceMap = (inspections: ShippingInspection[]) => {
         const res = await api.get<ToleranceResult>(
           `/tolerance/check?material=${encodeURIComponent(material)}&spec=${encodeURIComponent(spec)}&vendor_id=${vendorId}`,
         );
-        return [combo, toToleranceLimits(res.data, spec, vendorName)] as const;
+        return [combo, toToleranceLimits(res.data, spec)] as const;
       }));
 
       return Object.fromEntries(entries) as ShippingToleranceMap;
