@@ -19,6 +19,12 @@
 用法（repo 根目錄）：
     .\\venv\\Scripts\\python.exe -m backend.scripts.audit_hardness_item_naming
     .\\venv\\Scripts\\python.exe -m backend.scripts.audit_hardness_item_naming --csv out.csv
+    .\\venv\\Scripts\\python.exe -m backend.scripts.audit_hardness_item_naming --apply
+
+--apply 只正名信心「高」者（依單位欄位判定且與下限量級一致）；「衝突」「低」
+「無法判斷」一律不動，須人工確認。正名前務必確認前端已改為依公差檔決定比對
+標度（見 shippingInspectionItems.resolvePrimaryHardness），否則沿用固定比對
+「硬度」的版本會在正名後全面漏判。
 """
 import csv
 import sys
@@ -30,6 +36,7 @@ except Exception:
     pass
 
 from ..app import app
+from ..extensions import db
 from ..models import MechanicalTest, Vendor, VendorToleranceDetail, VendorToleranceMain
 
 ROCKWELL_UNITS = ('hrb', 'hrc', 'hra', 'hr', '洛氏')
@@ -74,7 +81,7 @@ def _classify(unit, lower, sibling_scale):
     return by_value, f'下限={float(lower)}（僅依量級推測）', '低'
 
 
-def main(csv_path: str | None):
+def main(csv_path: str | None, apply: bool = False):
     with app.app_context():
         vendors = {v.id: v.name for v in Vendor.query.all()}
         mains = {m.id: m for m in VendorToleranceMain.query.all()}
@@ -161,9 +168,29 @@ def main(csv_path: str | None):
                 writer.writerows(rows)
             print(f'\n  已輸出 CSV：{csv_path}')
 
-        print('\n  ℹ️  唯讀稽核，未變更任何資料。')
-        print('     「洛氏硬度」才會被機械性質判定採用；「韋伯氏硬度」目前不納入判定。')
-        print('     請逐筆確認後於公差建檔頁面修正項目名稱（信心「低」者務必人工核對）。')
+        if not apply:
+            print('\n  ℹ️  唯讀稽核，未變更任何資料。')
+            print('     「洛氏硬度」才會被機械性質判定採用；「韋伯氏硬度」目前不納入判定。')
+            print('     確認後可加 --apply 正名信心「高」者；「衝突」「低」「無法判斷」')
+            print('     一律不動，請於公差建檔頁面人工核對。')
+            return
+
+        # 只正名信心「高」者：依單位欄位判定且與下限量級一致，誤判風險最低。
+        updated: dict[str, int] = defaultdict(int)
+        for row in rows:
+            if row['confidence'] != '高':
+                continue
+            detail = db.session.get(VendorToleranceDetail, row['detail_id'])
+            if detail is None or detail.item != '硬度':
+                continue
+            detail.item = row['suggested']
+            updated[row['suggested']] += 1
+        db.session.commit()
+        total = sum(updated.values())
+        print(f'\n  ✅ 已正名 {total} 筆：'
+              + '、'.join(f'{name} {count} 筆' for name, count in sorted(updated.items())))
+        skipped = len(rows) - total
+        print(f'     另有 {skipped} 筆未動（衝突／低信心／無法判斷），請人工核對。')
 
 
 if __name__ == '__main__':
@@ -172,4 +199,4 @@ if __name__ == '__main__':
         index = sys.argv.index('--csv')
         if index + 1 < len(sys.argv):
             path = sys.argv[index + 1]
-    main(csv_path=path)
+    main(csv_path=path, apply='--apply' in sys.argv)
