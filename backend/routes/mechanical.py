@@ -108,13 +108,16 @@ def import_tests():
         upload_error = validate_upload_file(file)
         if upload_error:
             raise MechanicalValidationError(upload_error)
-        material = (request.form.get('material') or '').strip()
-        if not material:
-            raise MechanicalValidationError("材質為必填")
+        # 材質改為逐工作表由廠商公差檔反查自動填入；此處僅作為查無規格時的後援預設值。
+        default_material = (request.form.get('material') or '').strip() or None
         vendor_id = parse_vendor_id(request.form.get('vendor_id'))
         if vendor_id is not None and db.session.get(Vendor, vendor_id) is None:
             raise MechanicalValidationError("指定的廠商不存在")
-        result = MechanicalService.import_data(file, material, vendor_id, _current_user_id())
+        if vendor_id is None and not default_material:
+            raise MechanicalValidationError("未指定廠商時無法反查公差材質，請指定廠商或填寫預設材質")
+        result = MechanicalService.import_data(
+            file, default_material, vendor_id, _current_user_id()
+        )
         message = f"匯入完成，新增 {result['created']} 筆"
         if result['skipped']:
             message += f"，略過 {result['skipped']} 筆重複資料"

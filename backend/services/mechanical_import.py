@@ -4,8 +4,9 @@
 A欄為列標籤；本模組將該轉置表解析為與 MechanicalService.create() 相容的 payload。
 """
 import re
+from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 # 部分工作表僅以外徑命名（無內徑），與廠商公差主檔的「外徑*內徑」規格對不上；
 # 依實際規格補上內徑，使產品尺寸能比對到正確的公差下限（由使用者逐一確認內徑值）。
@@ -151,14 +152,83 @@ def _cell_number(ws, row: Optional[int], col: int) -> Optional[float]:
         return None
 
 
+@dataclass
+class WorkbookImportPlan:
+    """工作簿解析結果：可匯入的 payload、工作表層級錯誤、材質判定紀錄。"""
+
+    payloads: list[tuple[str, int, dict]] = field(default_factory=list)
+    errors: list[dict] = field(default_factory=list)
+    resolutions: list[dict] = field(default_factory=list)
+
+
+def _resolve_sheet_material(
+    sheet_name: str,
+    product_size: str,
+    default_material: Optional[str],
+    resolve_material: Optional[Callable[[str], dict]],
+) -> tuple[Optional[str], dict]:
+    """決定單一工作表要套用的材質，回傳 (材質或 None, 判定紀錄或錯誤)。
+
+    材質為 None 表示該工作表不可匯入，第二個回傳值即為錯誤紀錄。
+    """
+    resolution = resolve_material(product_size) if resolve_material else None
+    status = resolution["status"] if resolution else "not_found"
+
+    if status == "resolved":
+        return resolution["material"], {
+            "工作表": sheet_name,
+            "產品尺寸": product_size,
+            "材質": resolution["material"],
+            "來源": "公差檔",
+            "候選": resolution["candidates"],
+        }
+
+    # 多材質不得以預設材質掩蓋歧義，否則等同回到整批套用的錯誤標記。
+    if status == "ambiguous":
+        candidates = "、".join(resolution["candidates"])
+        return None, {
+            "工作表": sheet_name,
+            "欄位": None,
+            "錯誤": (
+                f"產品尺寸「{product_size}」在廠商公差檔對應到多個材質（{candidates}），"
+                "無法自動判定，請先確認公差主檔或分批匯入"
+            ),
+        }
+
+    if default_material:
+        return default_material, {
+            "工作表": sheet_name,
+            "產品尺寸": product_size,
+            "材質": default_material,
+            "來源": "預設值",
+            "候選": [],
+        }
+
+    return None, {
+        "工作表": sheet_name,
+        "欄位": None,
+        "錯誤": (
+            f"產品尺寸「{product_size}」在廠商公差檔查無對應材質，"
+            "請補建公差主檔或指定預設材質"
+        ),
+    }
+
+
 def build_payloads_from_workbook(
-    wb: Any, material: str, vendor_id: Optional[int]
-) -> list[tuple[str, int, dict]]:
+    wb: Any,
+    default_material: Optional[str],
+    vendor_id: Optional[int],
+    resolve_material: Optional[Callable[[str], dict]] = None,
+) -> WorkbookImportPlan:
     """依必榮機械性質 Excel 轉置表格式，解析出每個工作表、每一欄的檢驗 payload。
 
-    回傳 (工作表名稱, 欄位索引, payload) 清單；欄位全空的欄會被跳過。
+    來源 Excel 沒有材質欄位，且同一廠商不同規格可能是不同材質；故逐工作表
+    （＝逐產品尺寸）以 resolve_material 反查廠商公差檔的材質，查無時才退回
+    default_material。resolve_material 以參數注入，本模組因此不依賴資料庫。
+
+    payloads 為 (工作表名稱, 欄位索引, payload) 清單；欄位全空的欄會被跳過。
     """
-    results: list[tuple[str, int, dict]] = []
+    plan = WorkbookImportPlan()
     for sheet_name in wb.sheetnames:
         if sheet_name.strip() in SKIPPED_SHEET_NAMES:
             continue
@@ -180,6 +250,8 @@ def build_payloads_from_workbook(
             if label in mapping
         }
 
+        # 先收集本工作表有資料的欄，全空的工作表不做材質判定也不報錯。
+        sheet_columns: list[tuple[int, dict]] = []
         for col in range(2, ws.max_column + 1):
             test_date = _cell_date(ws, mapping.get(LABEL_TEST_DATE), col)
             extrusion_value = _cell_str(ws, mapping.get(LABEL_EXTRUSION), col)
@@ -217,7 +289,7 @@ def build_payloads_from_workbook(
 
             payload = {
                 "產品尺寸": product_size,
-                "材質": material,
+                # 材質稍後由工作表層級的公差反查結果統一填入
                 "廠商ID": vendor_id,
                 "測試日期": test_date.isoformat() if test_date else None,
                 "T4溫度時間": t4_temp,
@@ -232,5 +304,20 @@ def build_payloads_from_workbook(
                 ],
                 "measurements": measurements,
             }
-            results.append((sheet_name, col, payload))
-    return results
+            sheet_columns.append((col, payload))
+
+        if not sheet_columns:
+            continue
+
+        sheet_material, record = _resolve_sheet_material(
+            sheet_name, product_size, default_material, resolve_material
+        )
+        if sheet_material is None:
+            plan.errors.append(record)
+            continue
+        record["筆數"] = len(sheet_columns)
+        plan.resolutions.append(record)
+        for col, payload in sheet_columns:
+            payload["材質"] = sheet_material
+            plan.payloads.append((sheet_name, col, payload))
+    return plan

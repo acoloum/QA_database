@@ -37,8 +37,19 @@ export interface MechanicalOptions {
 
 export interface MechanicalImportError {
   工作表: string;
-  欄位: number;
+  /** 逐欄錯誤為欄位索引；工作表層級錯誤（材質無法判定）為 null */
+  欄位: number | null;
   錯誤: string;
+}
+
+/** 各工作表（產品尺寸）實際套用的材質及其來源 */
+export interface MechanicalImportMaterialSource {
+  工作表: string;
+  產品尺寸: string;
+  材質: string;
+  來源: '公差檔' | '預設值';
+  候選: string[];
+  筆數: number;
 }
 
 export interface MechanicalImportResult {
@@ -47,6 +58,7 @@ export interface MechanicalImportResult {
   created: number;
   skipped: number;
   errors: MechanicalImportError[];
+  material_sources: MechanicalImportMaterialSource[];
 }
 
 export const mechanicalApi = {
@@ -82,10 +94,11 @@ export const mechanicalApi = {
   stats: (params: MechanicalStatsParams) =>
     api.get<SpcChartData>('/mechanical/stats', { params }).then((r) => r.data),
 
+  /** material 為後援預設材質（僅在公差檔查無該產品尺寸時套用），可留空 */
   importExcel: (file: File, material: string, vendorId?: number) => {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('material', material);
+    if (material) formData.append('material', material);
     if (vendorId) formData.append('vendor_id', String(vendorId));
     return api
       .post<MechanicalImportResult>('/mechanical/tests/import', formData, {

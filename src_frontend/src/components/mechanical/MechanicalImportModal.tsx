@@ -41,8 +41,9 @@ export default function MechanicalImportModal({ show, handleClose, onSuccess }: 
       setError('請選擇檔案');
       return;
     }
-    if (!material.trim()) {
-      setError('請輸入材質');
+    // 未指定廠商時無法反查公差材質，此時預設材質才是必填
+    if (vendorId === null && !material.trim()) {
+      setError('未指定廠商時無法自動判定材質，請指定廠商或填寫預設材質');
       return;
     }
     setError(null);
@@ -69,18 +70,11 @@ export default function MechanicalImportModal({ show, handleClose, onSuccess }: 
       <Modal.Body>
         <Alert variant="info">
           請上傳必榮供應商格式的機械性質 Excel 檔案 (.xlsx, .xls)。來源檔案沒有材質欄位，
-          請先指定本次匯入資料要套用的材質；廠商為選填，指定後可套用對應公差判定 NG。
+          指定廠商後，系統會<strong>依各工作表的產品尺寸自動比對該廠商公差建檔的材質並填入</strong>，
+          不再整批套用同一材質。
         </Alert>
-        <Form.Group className="mb-3" controlId="mechanical-import-material">
-          <Form.Label>材質（必填）</Form.Label>
-          <Form.Control
-            value={material}
-            onChange={(event) => setMaterial(event.target.value)}
-            placeholder="例如 6061-T651"
-          />
-        </Form.Group>
         <Form.Group className="mb-3" controlId="mechanical-import-vendor">
-          <Form.Label>廠商</Form.Label>
+          <Form.Label>廠商（自動判定材質所需）</Form.Label>
           <Form.Select
             value={vendorId ?? ''}
             onChange={(event) => setVendorId(event.target.value ? Number(event.target.value) : null)}
@@ -90,6 +84,20 @@ export default function MechanicalImportModal({ show, handleClose, onSuccess }: 
               <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
             ))}
           </Form.Select>
+        </Form.Group>
+        <Form.Group className="mb-3" controlId="mechanical-import-material">
+          <Form.Label>
+            預設材質{vendorId === null ? '（必填）' : '（選填，後援用）'}
+          </Form.Label>
+          <Form.Control
+            value={material}
+            onChange={(event) => setMaterial(event.target.value)}
+            placeholder="例如 6061-T651"
+          />
+          <Form.Text className="text-muted">
+            僅在公差檔查無該產品尺寸時套用。若某尺寸對應到多個材質，該工作表不會匯入，
+            會列在下方錯誤清單供人工確認。
+          </Form.Text>
         </Form.Group>
         <Form.Group className="mb-3" controlId="mechanical-import-file">
           <Form.Label>選擇檔案</Form.Label>
@@ -114,13 +122,31 @@ export default function MechanicalImportModal({ show, handleClose, onSuccess }: 
                 已略過 {result.skipped} 筆重複資料（產品尺寸/材質/測試日期/追溯編號皆相同，判定為已匯入過）。
               </div>
             )}
+            {result.material_sources?.length > 0 && (
+              <>
+                <div className="mt-2 mb-1">各工作表套用的材質：</div>
+                <ListGroup className="small" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                  {result.material_sources.map((source) => (
+                    <ListGroup.Item key={source.工作表}>
+                      {source.產品尺寸} → <strong>{source.材質}</strong>（{source.筆數} 筆）
+                      {source.來源 === '預設值' && (
+                        <span className="text-warning ms-1">
+                          ⚠ 公差檔查無此尺寸，已套用預設材質
+                        </span>
+                      )}
+                    </ListGroup.Item>
+                  ))}
+                </ListGroup>
+              </>
+            )}
             {result.errors.length > 0 && (
               <>
-                <div className="mt-2 mb-1">以下 {result.errors.length} 筆資料匯入失敗，需人工檢查：</div>
+                <div className="mt-2 mb-1">以下 {result.errors.length} 項匯入失敗，需人工檢查：</div>
                 <ListGroup className="small" style={{ maxHeight: 200, overflowY: 'auto' }}>
                   {result.errors.map((e, idx) => (
                     <ListGroup.Item key={idx}>
-                      工作表「{e.工作表}」第 {e.欄位} 欄：{e.錯誤}
+                      工作表「{e.工作表}」
+                      {e.欄位 !== null && `第 ${e.欄位} 欄`}：{e.錯誤}
                     </ListGroup.Item>
                   ))}
                 </ListGroup>

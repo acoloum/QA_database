@@ -6,7 +6,7 @@
 """
 from decimal import Decimal
 import re
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from ..models import VendorToleranceMain, VendorToleranceDetail
 from .extrusion_tolerance_service import ExtrusionToleranceService
@@ -79,6 +79,75 @@ def lookup_lower_limits(
         if lower is not None:
             result[mech_item] = lower
     return result
+
+
+def resolve_material_by_spec(
+    product_size: str, vendor_id: Optional[int]
+) -> Dict[str, Any]:
+    """依（廠商 + 產品尺寸）反查廠商公差內建檔登錄的材質。
+
+    來源 Excel 沒有材質欄位，而同一廠商不同規格可能是不同材質，
+    整批套用單一材質會誤標；此處以規格反查公差主檔還原正確材質。
+
+    比對分兩層，且**精確層有解就不看模糊層**（避免精確唯一解被模糊層的
+    其他材質拖成 ambiguous）：
+      1. exact：規格正規化後完全相同
+      2. fuzzy：規格僅前兩段相同（_match_spec 的相近匹配）
+    同層若去重後只有一個材質即為 resolved；有多個則為 ambiguous
+    （不擅自挑選，交由呼叫端回報候選供人工判斷）。
+
+    回傳 {"status": "resolved"|"ambiguous"|"not_found",
+          "material": 材質或 None, "candidates": 候選材質清單,
+          "match": "exact"|"fuzzy"|None}
+    """
+    if not product_size or vendor_id is None:
+        return {"status": "not_found", "material": None, "candidates": [], "match": None}
+
+    normalize_spec = ExtrusionToleranceService._normalize_spec
+    match_spec = ExtrusionToleranceService._match_spec
+    normalize_compact = lambda value: re.sub(r"\s+", "", normalize_spec(value))
+    normalized_input = normalize_compact(product_size)
+
+    mains = VendorToleranceMain.query.filter(
+        VendorToleranceMain.material.isnot(None),
+        VendorToleranceMain.vendor_id == vendor_id,
+    ).order_by(VendorToleranceMain.id.asc()).all()
+
+    exact: Dict[str, str] = {}
+    fuzzy: Dict[str, str] = {}
+    for main in mains:
+        material = (main.material or "").strip()
+        if not material:
+            continue
+        compact_spec = normalize_compact(main.spec or "")
+        if not compact_spec:
+            continue
+        # 大小寫不同視為同一材質；保留公差檔 id 最小者的原始寫法
+        key = material.lower()
+        if compact_spec == normalized_input:
+            exact.setdefault(key, material)
+        elif match_spec(normalized_input, compact_spec):
+            fuzzy.setdefault(key, material)
+
+    for level, bucket in (("exact", exact), ("fuzzy", fuzzy)):
+        if not bucket:
+            continue
+        candidates = sorted(bucket.values())
+        if len(candidates) == 1:
+            return {
+                "status": "resolved",
+                "material": candidates[0],
+                "candidates": candidates,
+                "match": level,
+            }
+        return {
+            "status": "ambiguous",
+            "material": None,
+            "candidates": candidates,
+            "match": level,
+        }
+
+    return {"status": "not_found", "material": None, "candidates": [], "match": None}
 
 
 def compute_measurement_ng(value: Optional[float], lower_limit: Optional[float]) -> bool:

@@ -3,6 +3,7 @@ from backend.services.mechanical_spec import (
     MECH_ITEM_TO_TOLERANCE,
     lookup_lower_limits,
     compute_measurement_ng,
+    resolve_material_by_spec,
 )
 
 
@@ -97,6 +98,128 @@ def test_lookup_limits_are_scoped_to_requested_vendor(db_session):
 def test_lookup_returns_empty_when_no_spec(db_session):
     limits = lookup_lower_limits("6061-T651", "99x99")
     assert limits == {}
+
+
+def _add_main(db_session, vendor_id, material, spec):
+    main = VendorToleranceMain(vendor_id=vendor_id, material=material, spec=spec)
+    db_session.add(main)
+    db_session.flush()
+    return main
+
+
+def test_resolve_material_returns_unique_exact_match(db_session):
+    """規格精確相符且材質唯一時，直接回傳該材質。"""
+    v = Vendor(name="安泰")
+    db_session.add(v)
+    db_session.flush()
+    _add_main(db_session, v.id, "6061-T851", "78*66")
+    db_session.commit()
+
+    # 來源 Excel 工作表名稱可能使用 X 分隔，需正規化後才相符
+    result = resolve_material_by_spec("78X66", v.id)
+
+    assert result["status"] == "resolved"
+    assert result["material"] == "6061-T851"
+    assert result["match"] == "exact"
+    assert result["candidates"] == ["6061-T851"]
+
+
+def test_resolve_material_reports_ambiguous_with_candidates(db_session):
+    """同規格對應多個材質時不得擅自挑選，須回報候選供人工判斷。"""
+    v = Vendor(name="加茂")
+    db_session.add(v)
+    db_session.flush()
+    _add_main(db_session, v.id, "2014-T6", "28*3.4")
+    _add_main(db_session, v.id, "6066-T6", "28*3.4")
+    db_session.commit()
+
+    result = resolve_material_by_spec("28*3.4", v.id)
+
+    assert result["status"] == "ambiguous"
+    assert result["material"] is None
+    assert result["candidates"] == ["2014-T6", "6066-T6"]
+
+
+def test_resolve_material_falls_back_to_two_segment_match(db_session):
+    """精確規格查無時，才退到「前兩段相同」的相近比對。"""
+    v = Vendor(name="安泰")
+    db_session.add(v)
+    db_session.flush()
+    _add_main(db_session, v.id, "6061-F", "64.5*2.3")
+    db_session.commit()
+
+    result = resolve_material_by_spec("64.5*2.3*380", v.id)
+
+    assert result["status"] == "resolved"
+    assert result["material"] == "6061-F"
+    assert result["match"] == "fuzzy"
+
+
+def test_resolve_material_prefers_exact_over_fuzzy_even_when_fuzzy_is_unique(db_session):
+    """精確層級有唯一解時，不得因模糊層級另有資料而改判 ambiguous。"""
+    v = Vendor(name="安泰")
+    db_session.add(v)
+    db_session.flush()
+    _add_main(db_session, v.id, "7050-F", "64.5*2.3")        # 僅前兩段相同
+    _add_main(db_session, v.id, "6066-F", "64.5*2.3*380")    # 完全相同
+    db_session.commit()
+
+    result = resolve_material_by_spec("64.5*2.3*380", v.id)
+
+    assert result["status"] == "resolved"
+    assert result["material"] == "6066-F"
+    assert result["match"] == "exact"
+
+
+def test_resolve_material_is_scoped_to_vendor(db_session):
+    """不同廠商同規格不得互相污染。"""
+    first = Vendor(name="安泰")
+    second = Vendor(name="宏達")
+    db_session.add_all([first, second])
+    db_session.flush()
+    _add_main(db_session, first.id, "6061-T651", "36*25.2")
+    _add_main(db_session, second.id, "7075-T6", "36*25.2")
+    db_session.commit()
+
+    result = resolve_material_by_spec("36*25.2", second.id)
+
+    assert result["material"] == "7075-T6"
+
+
+def test_resolve_material_not_found_when_spec_absent(db_session):
+    v = Vendor(name="安泰")
+    db_session.add(v)
+    db_session.flush()
+    _add_main(db_session, v.id, "6061-T651", "36*25.2")
+    db_session.commit()
+
+    result = resolve_material_by_spec("66.7*56.85", v.id)
+
+    assert result["status"] == "not_found"
+    assert result["material"] is None
+    assert result["candidates"] == []
+
+
+def test_resolve_material_not_found_without_vendor(db_session):
+    """未指定廠商時無從比對，一律回報查無。"""
+    result = resolve_material_by_spec("36*25.2", None)
+
+    assert result["status"] == "not_found"
+
+
+def test_resolve_material_deduplicates_same_material_across_rows(db_session):
+    """同材質在公差檔有多筆（不同項目）時仍屬唯一解，不得誤判 ambiguous。"""
+    v = Vendor(name="安泰")
+    db_session.add(v)
+    db_session.flush()
+    _add_main(db_session, v.id, "6061-T651", "36*25.2")
+    _add_main(db_session, v.id, "6061-t651", "36*25.2")
+    db_session.commit()
+
+    result = resolve_material_by_spec("36*25.2", v.id)
+
+    assert result["status"] == "resolved"
+    assert result["material"] == "6061-T651"
 
 
 def test_lookup_without_vendor_never_crosses_vendor_boundary(db_session):

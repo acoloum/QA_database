@@ -17,7 +17,11 @@ from ..models import (
 )
 from ..utils import bounded_int
 from .mechanical_import import build_payloads_from_workbook
-from .mechanical_spec import lookup_lower_limits, compute_measurement_ng
+from .mechanical_spec import (
+    lookup_lower_limits,
+    compute_measurement_ng,
+    resolve_material_by_spec,
+)
 
 
 class MechanicalValidationError(ValueError):
@@ -520,9 +524,16 @@ class MechanicalService:
 
     @staticmethod
     def import_data(
-        file: Any, material: str, vendor_id: Optional[int], user_id: Optional[int]
+        file: Any,
+        default_material: Optional[str],
+        vendor_id: Optional[int],
+        user_id: Optional[int],
     ) -> Dict[str, Any]:
         """解析必榮機械性質 Excel（轉置表格式）並逐欄建立檢驗紀錄。
+
+        來源 Excel 沒有材質欄位，且同一廠商不同規格常是不同材質；故逐工作表
+        （＝逐產品尺寸）反查廠商公差主檔的材質自動填入，查無時才退回
+        default_material。未指定廠商時無從反查，整批沿用 default_material。
 
         每一欄各自呼叫 create() 獨立驗證與提交，單欄失敗僅記錄錯誤，
         不影響同批次其他已成功匯入的紀錄（歷史資料量大，避免一筆錯誤拖累全部）。
@@ -534,11 +545,18 @@ class MechanicalService:
         except Exception as exc:
             raise MechanicalValidationError("無法讀取 Excel 檔案，請確認檔案格式") from exc
 
-        payloads = build_payloads_from_workbook(wb, material, vendor_id)
+        resolver = (
+            (lambda product_size: resolve_material_by_spec(product_size, vendor_id))
+            if vendor_id is not None
+            else None
+        )
+        plan = build_payloads_from_workbook(
+            wb, default_material, vendor_id, resolve_material=resolver
+        )
         created = 0
         skipped = 0
-        errors: list[Dict[str, Any]] = []
-        for sheet_name, col_idx, data in payloads:
+        errors: list[Dict[str, Any]] = list(plan.errors)
+        for sheet_name, col_idx, data in plan.payloads:
             try:
                 if MechanicalService._is_duplicate(data):
                     skipped += 1
@@ -547,7 +565,12 @@ class MechanicalService:
                 created += 1
             except MechanicalValidationError as exc:
                 errors.append({"工作表": sheet_name, "欄位": col_idx, "錯誤": str(exc)})
-        return {"created": created, "skipped": skipped, "errors": errors}
+        return {
+            "created": created,
+            "skipped": skipped,
+            "errors": errors,
+            "material_sources": plan.resolutions,
+        }
 
     @staticmethod
     def update(test_id: int, data: Dict[str, Any], user_id: Optional[int]) -> None:
