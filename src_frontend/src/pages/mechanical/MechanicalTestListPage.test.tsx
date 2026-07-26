@@ -88,7 +88,7 @@ describe('MechanicalTestListPage', () => {
     expect(screen.getByText('T4-01、T4-02')).toBeInTheDocument();
   });
 
-  it('空資料提示橫跨全部十個欄位', async () => {
+  it('空資料提示橫跨表頭的全部欄位', async () => {
     vi.mocked(mechanicalApi.list).mockResolvedValueOnce({
       success: true,
       data: [],
@@ -99,7 +99,10 @@ describe('MechanicalTestListPage', () => {
     });
     renderPage();
 
-    expect(await screen.findByText('查無資料')).toHaveAttribute('colSpan', '10');
+    // 以表頭實際欄數比對，避免新增欄位時 colSpan 漏改卻仍通過測試
+    const emptyCell = await screen.findByText('查無資料');
+    const columnCount = document.querySelectorAll('thead th').length;
+    expect(emptyCell).toHaveAttribute('colSpan', String(columnCount));
   });
 
   it('以尺寸、材質、日期區間及判定狀態條件重新載入清單', async () => {

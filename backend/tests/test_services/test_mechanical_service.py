@@ -265,6 +265,25 @@ def test_list_filters_by_size(db_session):
     assert res2["total"] == 0
 
 
+def test_list_filters_by_id(db_session):
+    """依 ID 精確定位單筆（供稽核清單逐筆調閱）。"""
+    new_id = MechanicalService.create(_payload(), user_id=None)
+
+    res = MechanicalService.list({"id": str(new_id)})
+    assert res["total"] == 1
+    assert res["data"][0]["識別碼"] == new_id
+
+    assert MechanicalService.list({"id": str(new_id + 999)})["total"] == 0
+
+
+def test_list_id_filter_ignores_blank_and_rejects_non_numeric(db_session):
+    """空白視為未篩選；非數字不得拋錯，回報查無即可。"""
+    MechanicalService.create(_payload(), user_id=None)
+
+    assert MechanicalService.list({"id": "  "})["total"] == 1
+    assert MechanicalService.list({"id": "abc"})["total"] == 0
+
+
 def test_update_recomputes_ng(db_session):
     vendor_id = _seed_spec(db_session)
     initial = _payload()

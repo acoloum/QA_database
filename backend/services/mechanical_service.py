@@ -609,6 +609,12 @@ class MechanicalService:
     @staticmethod
     def list(args: Dict[str, Any]) -> Dict[str, Any]:
         query = MechanicalTest.query
+        # 依 ID 精確定位單筆（供稽核清單逐筆調閱；非數字視為無此紀錄）
+        if str(args.get("id") or "").strip():
+            try:
+                query = query.filter(MechanicalTest.id == int(str(args["id"]).strip()))
+            except ValueError:
+                query = query.filter(db.false())
         if args.get("product_size"):
             query = query.filter(MechanicalTest.product_size.like(f"%{args['product_size']}%"))
         if args.get("material"):

@@ -21,6 +21,7 @@ const judgementDisplay: Record<MechanicalJudgementStatus, { label: string; varia
 export default function MechanicalTestListPage() {
   const queryClient = useQueryClient();
   const { hasPermission } = useAuth();
+  const [testId, setTestId] = useState('');
   const [size, setSize] = useState('');
   const [material, setMaterial] = useState('');
   const [vendorId, setVendorId] = useState('');
@@ -38,6 +39,7 @@ export default function MechanicalTestListPage() {
   };
 
   const clearFilters = () => {
+    setTestId('');
     setSize('');
     setMaterial('');
     setVendorId('');
@@ -47,7 +49,7 @@ export default function MechanicalTestListPage() {
     setPage(1);
   };
   const hasActiveFilter = Boolean(
-    size || material || vendorId || judgementStatus || dateFrom || dateTo,
+    testId || size || material || vendorId || judgementStatus || dateFrom || dateTo,
   );
 
   const { data: vendors = [] } = useQuery({
@@ -57,6 +59,7 @@ export default function MechanicalTestListPage() {
 
   const params = useMemo(
     () => ({
+      id: testId || undefined,
       product_size: size || undefined,
       material: material || undefined,
       vendor_id: vendorId || undefined,
@@ -66,7 +69,7 @@ export default function MechanicalTestListPage() {
       page,
       page_size: pageSize,
     }),
-    [size, material, vendorId, judgementStatus, dateFrom, dateTo, page, pageSize],
+    [testId, size, material, vendorId, judgementStatus, dateFrom, dateTo, page, pageSize],
   );
 
   const { data, isLoading, isError } = useQuery({
@@ -108,6 +111,16 @@ export default function MechanicalTestListPage() {
       <Card className="mb-3">
         <Card.Body>
           <Row className="g-2">
+            <Col md={1}>
+              <Form.Label htmlFor="mechanical-id">ID</Form.Label>
+              <Form.Control
+                id="mechanical-id"
+                size="sm"
+                placeholder="ID"
+                value={testId}
+                onChange={(event) => changeFilter(setTestId, event.target.value)}
+              />
+            </Col>
             <Col md={2}>
               <Form.Label htmlFor="mechanical-product-size">產品尺寸</Form.Label>
               <Form.Control
@@ -213,6 +226,7 @@ export default function MechanicalTestListPage() {
               <Table bordered hover size="sm">
               <thead className="table-secondary">
                 <tr>
+                  <th>ID</th>
                   <th>產品尺寸</th>
                   <th>材質</th>
                   <th>測試日期</th>
@@ -228,6 +242,7 @@ export default function MechanicalTestListPage() {
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.識別碼}>
+                    <td className="text-muted">{row.識別碼}</td>
                     <td>{row.產品尺寸}</td>
                     <td>{row.材質}</td>
                     <td>{row.測試日期 ?? ''}</td>
@@ -266,7 +281,7 @@ export default function MechanicalTestListPage() {
                 ))}
                 {data && rows.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="text-center text-muted">查無資料</td>
+                    <td colSpan={11} className="text-center text-muted">查無資料</td>
                   </tr>
                 )}
               </tbody>
