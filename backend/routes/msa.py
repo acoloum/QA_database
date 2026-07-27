@@ -9,6 +9,7 @@ from ..services.msa_observation_import_service import (
     MsaObservationImportService,
 )
 from ..services.msa_observation_service import MsaObservationService
+from ..services.msa_restudy_service import MsaRestudyService
 from ..services.msa_study_service import MsaStudyService
 from ..services.msa_workflow_service import MsaWorkflowService
 from .msa_adapters import (
@@ -419,3 +420,39 @@ def void_msa_result(current_user, result_id: int):
         result_id, request.get_json(silent=True), actor_id=current_user.id,
     )
     return jsonify({"data": _serialize_result(result)})
+
+
+# ---------------------------------------------------------------------------
+# 再研究要求
+# ---------------------------------------------------------------------------
+
+
+@msa_bp.get("/api/msa/restudy-requests")
+@_msa_auth_required
+@_require_msa_permission("msa.view")
+@_handle_msa_errors
+def list_msa_restudy_requests(current_user):
+    """列出待處理與進行中的再研究要求。"""
+    return jsonify({"data": MsaRestudyService.list(request.args)})
+
+
+@msa_bp.post("/api/msa/restudy-requests")
+@_msa_auth_required
+@_require_msa_permission("msa.manage")
+@_handle_msa_errors
+def create_msa_restudy_request(current_user):
+    """人工登錄方法、夾治具、軟體、人員或規格改變等觸發。"""
+    created = MsaRestudyService.create_manual(
+        request.get_json(silent=True), actor_id=current_user.id,
+    )
+    return jsonify({"data": MsaRestudyService.serialize(created)}), 201
+
+
+@msa_bp.post("/api/msa/restudy-requests/<int:request_id>/start")
+@_msa_auth_required
+@_require_msa_permission("msa.manage")
+@_handle_msa_errors
+def start_msa_restudy_request(current_user, request_id: int):
+    """由再研究要求建立新的 draft 研究；不複製任何舊觀測。"""
+    started = MsaRestudyService.start(request_id, actor_id=current_user.id)
+    return jsonify({"data": MsaRestudyService.serialize(started)})

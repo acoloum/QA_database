@@ -881,6 +881,8 @@ class MsaEquipmentService:
                 },
             )
             db.session.commit()
+            # 事件已成立才觸發再研究；重放同一事件不會重複建立要求
+            MsaEquipmentService._raise_restudy_requests(event.id, actor_id)
             return result
         except (DataError, IntegrityError, ValueError) as error:
             db.session.rollback()
@@ -1027,6 +1029,20 @@ class MsaEquipmentService:
                     "source_entity_id": source_entity_id,
                 },
             ) from error
+
+    @staticmethod
+    def _raise_restudy_requests(event_id: int, actor_id) -> None:
+        """設備狀態事件成立後，為引用該設備的核准研究建立再研究要求。"""
+        # 延後匯入避免服務之間循環相依
+        from .msa_restudy_service import MsaRestudyService
+
+        try:
+            MsaRestudyService.from_equipment_event(
+                event_id, actor_id=actor_id,
+            )
+        except Exception:
+            # 再研究要求是後續追蹤用途，不應讓已成立的狀態事件失敗
+            db.session.rollback()
 
     @staticmethod
     def retire_link(
