@@ -1,0 +1,2721 @@
+{
+  "description": "統計引擎的 golden validation 案例；期望值沿用以獨立算式計算的參考值，不由待測引擎產生。",
+  "cases": {
+    "range_reference": {
+      "description": "極差法只輸出整體 GRR，不拆解分量",
+      "method_code": "MSA4_GRR_RANGE_1_0",
+      "context": {
+        "method_code": "MSA4_GRR_RANGE_1_0",
+        "method_version": "1.0",
+        "alpha": 0.05,
+        "study_variation_multiplier": 6.0,
+        "tolerance": 1.0,
+        "process_sigma": null,
+        "criteria": {
+          "grr_accept_max": 10,
+          "grr_conditional_max": 30,
+          "ndc_min": 5
+        }
+      },
+      "input": [
+        {
+          "part": "P01",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.0
+        },
+        {
+          "part": "P01",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.02
+        },
+        {
+          "part": "P02",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.1
+        },
+        {
+          "part": "P02",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.12
+        },
+        {
+          "part": "P03",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.2
+        },
+        {
+          "part": "P03",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.18
+        },
+        {
+          "part": "P01",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.04
+        },
+        {
+          "part": "P01",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": 10.02
+        },
+        {
+          "part": "P02",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.14
+        },
+        {
+          "part": "P02",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": 10.12
+        },
+        {
+          "part": "P03",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.22
+        },
+        {
+          "part": "P03",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": 10.24
+        }
+      ],
+      "expected": {
+        "statistics.detail_components_available": false,
+        "statistics.sample_size": 6,
+        "statistics.d2": 1.128,
+        "statistics.r_bar": 0.01999999999999987
+      },
+      "tolerances": {
+        "statistics.r_bar": 1e-09
+      }
+    },
+    "grr_xbar_r_reference": {
+      "description": "平均值－極差法的 EV／AV／GRR／PV／TV／ndc",
+      "method_code": "MSA4_GRR_XBAR_R_1_0",
+      "context": {
+        "method_code": "MSA4_GRR_XBAR_R_1_0",
+        "method_version": "1.0",
+        "alpha": 0.05,
+        "study_variation_multiplier": 6.0,
+        "tolerance": 1.0,
+        "process_sigma": null,
+        "criteria": {
+          "grr_accept_max": 10,
+          "grr_conditional_max": 30,
+          "ndc_min": 5
+        }
+      },
+      "input": [
+        {
+          "part": "P01",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.0
+        },
+        {
+          "part": "P01",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.02
+        },
+        {
+          "part": "P02",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.1
+        },
+        {
+          "part": "P02",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.12
+        },
+        {
+          "part": "P03",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.2
+        },
+        {
+          "part": "P03",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.18
+        },
+        {
+          "part": "P01",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.04
+        },
+        {
+          "part": "P01",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": 10.02
+        },
+        {
+          "part": "P02",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.14
+        },
+        {
+          "part": "P02",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": 10.12
+        },
+        {
+          "part": "P03",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.22
+        },
+        {
+          "part": "P03",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": 10.24
+        }
+      ],
+      "expected": {
+        "statistics.ev": 0.017730496453900596,
+        "statistics.av": 0.022505239674539327,
+        "statistics.grr": 0.028650590173855767,
+        "statistics.pv": 0.11222681630242248,
+        "statistics.tv": 0.11582622593647744,
+        "statistics.ndc": 5,
+        "statistics.percent_tolerance.grr": 17.19035410431346
+      },
+      "tolerances": {
+        "statistics.ev": 1e-09,
+        "statistics.av": 1e-09,
+        "statistics.grr": 1e-09,
+        "statistics.pv": 1e-09,
+        "statistics.tv": 1e-09,
+        "statistics.percent_tolerance.grr": 1e-09
+      }
+    },
+    "anova_reduced_interaction": {
+      "description": "交互作用不顯著時採縮減模型",
+      "method_code": "MSA4_GRR_ANOVA_1_0",
+      "context": {
+        "method_code": "MSA4_GRR_ANOVA_1_0",
+        "method_version": "1.0",
+        "alpha": 0.05,
+        "study_variation_multiplier": 6.0,
+        "tolerance": 1.0,
+        "process_sigma": null,
+        "criteria": {
+          "grr_accept_max": 10,
+          "grr_conditional_max": 30,
+          "ndc_min": 5
+        }
+      },
+      "input": [
+        {
+          "part": "P01",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.01
+        },
+        {
+          "part": "P01",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.03
+        },
+        {
+          "part": "P01",
+          "appraiser": "A01",
+          "trial": 3,
+          "value": 10.02
+        },
+        {
+          "part": "P02",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.31
+        },
+        {
+          "part": "P02",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.29
+        },
+        {
+          "part": "P02",
+          "appraiser": "A01",
+          "trial": 3,
+          "value": 10.3
+        },
+        {
+          "part": "P03",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.62
+        },
+        {
+          "part": "P03",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.6
+        },
+        {
+          "part": "P03",
+          "appraiser": "A01",
+          "trial": 3,
+          "value": 10.64
+        },
+        {
+          "part": "P01",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.05
+        },
+        {
+          "part": "P01",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": 10.04
+        },
+        {
+          "part": "P01",
+          "appraiser": "A02",
+          "trial": 3,
+          "value": 10.07
+        },
+        {
+          "part": "P02",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.34
+        },
+        {
+          "part": "P02",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": 10.36
+        },
+        {
+          "part": "P02",
+          "appraiser": "A02",
+          "trial": 3,
+          "value": 10.33
+        },
+        {
+          "part": "P03",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.66
+        },
+        {
+          "part": "P03",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": 10.63
+        },
+        {
+          "part": "P03",
+          "appraiser": "A02",
+          "trial": 3,
+          "value": 10.65
+        }
+      ],
+      "expected": {
+        "statistics.anova.selected_model": "reduced",
+        "statistics.anova.full_model.table.0.ss": 1.0687444444444414,
+        "statistics.anova.full_model.table.1.ss": 0.005338888888888907,
+        "statistics.anova.full_model.table.2.ss": 0.00021111111111113564,
+        "statistics.anova.full_model.table.3.ss": 0.0026000000000000432,
+        "statistics.anova.p_interaction": 0.6259966619659884,
+        "statistics.grr": 0.02777936503401631,
+        "statistics.pv": 0.29837655978406075,
+        "statistics.ndc": 15
+      },
+      "tolerances": {
+        "statistics.anova.full_model.table.0.ss": 1e-09,
+        "statistics.anova.full_model.table.1.ss": 1e-09,
+        "statistics.anova.full_model.table.2.ss": 1e-09,
+        "statistics.anova.full_model.table.3.ss": 1e-09,
+        "statistics.anova.p_interaction": 1e-06,
+        "statistics.grr": 1e-09,
+        "statistics.pv": 1e-09
+      }
+    },
+    "anova_full_interaction": {
+      "description": "交互作用顯著時保留完整模型",
+      "method_code": "MSA4_GRR_ANOVA_1_0",
+      "context": {
+        "method_code": "MSA4_GRR_ANOVA_1_0",
+        "method_version": "1.0",
+        "alpha": 0.05,
+        "study_variation_multiplier": 6.0,
+        "tolerance": 1.0,
+        "process_sigma": null,
+        "criteria": {
+          "grr_accept_max": 10,
+          "grr_conditional_max": 30,
+          "ndc_min": 5
+        }
+      },
+      "input": [
+        {
+          "part": "P01",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.0
+        },
+        {
+          "part": "P01",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.01
+        },
+        {
+          "part": "P01",
+          "appraiser": "A01",
+          "trial": 3,
+          "value": 10.0
+        },
+        {
+          "part": "P02",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.3
+        },
+        {
+          "part": "P02",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.31
+        },
+        {
+          "part": "P02",
+          "appraiser": "A01",
+          "trial": 3,
+          "value": 10.3
+        },
+        {
+          "part": "P03",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.9
+        },
+        {
+          "part": "P03",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.89
+        },
+        {
+          "part": "P03",
+          "appraiser": "A01",
+          "trial": 3,
+          "value": 10.9
+        },
+        {
+          "part": "P01",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.3
+        },
+        {
+          "part": "P01",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": 10.31
+        },
+        {
+          "part": "P01",
+          "appraiser": "A02",
+          "trial": 3,
+          "value": 10.3
+        },
+        {
+          "part": "P02",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.3
+        },
+        {
+          "part": "P02",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": 10.29
+        },
+        {
+          "part": "P02",
+          "appraiser": "A02",
+          "trial": 3,
+          "value": 10.3
+        },
+        {
+          "part": "P03",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.6
+        },
+        {
+          "part": "P03",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": 10.61
+        },
+        {
+          "part": "P03",
+          "appraiser": "A02",
+          "trial": 3,
+          "value": 10.6
+        }
+      ],
+      "expected": {
+        "statistics.anova.selected_model": "full",
+        "statistics.anova.full_model.table.0.ss": 1.160044444444441,
+        "statistics.anova.full_model.table.1.ss": 0.0,
+        "statistics.anova.full_model.table.2.ss": 0.26413333333333533,
+        "statistics.anova.full_model.table.3.ss": 0.00040000000000000663,
+        "statistics.anova.p_interaction": 1.1953016566113831e-17,
+        "statistics.grr": 0.20986768318263005,
+        "statistics.pv": 0.27323846592172707,
+        "statistics.ndc": 1
+      },
+      "tolerances": {
+        "statistics.anova.full_model.table.0.ss": 1e-09,
+        "statistics.anova.full_model.table.1.ss": 1e-09,
+        "statistics.anova.full_model.table.2.ss": 1e-09,
+        "statistics.anova.full_model.table.3.ss": 1e-09,
+        "statistics.anova.p_interaction": 1e-06,
+        "statistics.grr": 1e-09,
+        "statistics.pv": 1e-09
+      }
+    },
+    "bias_reference": {
+      "description": "偏倚的平均值、t 值、p 值與信賴區間",
+      "method_code": "MSA4_BIAS_1_0",
+      "context": {
+        "method_code": "MSA4_BIAS_1_0",
+        "method_version": "1.0",
+        "alpha": 0.05,
+        "study_variation_multiplier": 6.0,
+        "tolerance": 1.0,
+        "process_sigma": null,
+        "criteria": {
+          "alpha": 0.05
+        }
+      },
+      "input": {
+        "reference_value": 10.0,
+        "readings": [
+          10.004,
+          10.006,
+          10.003,
+          10.007,
+          10.005,
+          10.004,
+          10.008,
+          10.005,
+          10.003,
+          10.006,
+          10.005,
+          10.007,
+          10.004,
+          10.006,
+          10.005
+        ]
+      },
+      "expected": {
+        "statistics.mean": 10.0052,
+        "statistics.bias": 0.0052000000000003155,
+        "statistics.t_value": 13.667094558986031,
+        "statistics.p_value": 1.7318773796608406e-09,
+        "statistics.confidence_interval.0": 0.004383960370725906,
+        "statistics.confidence_interval.1": 0.006016039629274725,
+        "statistics.significant": true
+      },
+      "tolerances": {
+        "statistics.mean": 1e-09,
+        "statistics.bias": 1e-09,
+        "statistics.t_value": 1e-09,
+        "statistics.p_value": 1e-06,
+        "statistics.confidence_interval.0": 1e-09,
+        "statistics.confidence_interval.1": 1e-09
+      }
+    },
+    "linearity_reference": {
+      "description": "線性的斜率、截距與判定依據（不採用 R² 單獨判斷）",
+      "method_code": "MSA4_LINEARITY_1_0",
+      "context": {
+        "method_code": "MSA4_LINEARITY_1_0",
+        "method_version": "1.0",
+        "alpha": 0.05,
+        "study_variation_multiplier": 6.0,
+        "tolerance": 1.0,
+        "process_sigma": null,
+        "criteria": {
+          "alpha": 0.05
+        }
+      },
+      "input": [
+        {
+          "reference_value": 2.0,
+          "readings": [
+            2.05,
+            2.06,
+            2.04,
+            2.05
+          ]
+        },
+        {
+          "reference_value": 4.0,
+          "readings": [
+            4.02,
+            4.03,
+            4.02,
+            4.01
+          ]
+        },
+        {
+          "reference_value": 6.0,
+          "readings": [
+            6.0,
+            5.99,
+            6.01,
+            6.0
+          ]
+        },
+        {
+          "reference_value": 8.0,
+          "readings": [
+            7.97,
+            7.98,
+            7.96,
+            7.98
+          ]
+        },
+        {
+          "reference_value": 10.0,
+          "readings": [
+            9.94,
+            9.95,
+            9.96,
+            9.94
+          ]
+        }
+      ],
+      "expected": {
+        "statistics.regression.slope": -0.012624999999999996,
+        "statistics.regression.intercept": 0.0737499999999999,
+        "statistics.regression.slope_p_value": 1.6034791430097147e-13,
+        "statistics.linearity_evidence.acceptable": false,
+        "statistics.linearity_evidence.levels_excluding_zero": 4
+      },
+      "tolerances": {
+        "statistics.regression.slope": 1e-09,
+        "statistics.regression.intercept": 1e-09,
+        "statistics.regression.slope_p_value": 1e-06
+      }
+    },
+    "stability_xbar_r": {
+      "description": "子組大小 4 時採 Xbar-R 圖且無判異",
+      "method_code": "MSA4_STABILITY_1_0",
+      "context": {
+        "method_code": "MSA4_STABILITY_1_0",
+        "method_version": "1.0",
+        "alpha": 0.05,
+        "study_variation_multiplier": 6.0,
+        "tolerance": 1.0,
+        "process_sigma": null,
+        "criteria": {
+          "stability_rules": {
+            "rule_set": "WECO",
+            "enabled_rules": [
+              1,
+              2,
+              3,
+              4
+            ]
+          }
+        }
+      },
+      "input": [
+        {
+          "measured_on": "2026-01-01",
+          "readings": [
+            9.995999999999999,
+            10.006,
+            9.995999999999999,
+            10.006
+          ]
+        },
+        {
+          "measured_on": "2026-01-08",
+          "readings": [
+            9.994,
+            10.004000000000001,
+            9.994,
+            10.004000000000001
+          ]
+        },
+        {
+          "measured_on": "2026-01-15",
+          "readings": [
+            9.9955,
+            10.005500000000001,
+            9.9955,
+            10.005500000000001
+          ]
+        },
+        {
+          "measured_on": "2026-01-22",
+          "readings": [
+            9.994499999999999,
+            10.0045,
+            9.994499999999999,
+            10.0045
+          ]
+        },
+        {
+          "measured_on": "2026-02-01",
+          "readings": [
+            9.995999999999999,
+            10.006,
+            9.995999999999999,
+            10.006
+          ]
+        },
+        {
+          "measured_on": "2026-02-08",
+          "readings": [
+            9.994,
+            10.004000000000001,
+            9.994,
+            10.004000000000001
+          ]
+        },
+        {
+          "measured_on": "2026-02-15",
+          "readings": [
+            9.9955,
+            10.005500000000001,
+            9.9955,
+            10.005500000000001
+          ]
+        },
+        {
+          "measured_on": "2026-02-22",
+          "readings": [
+            9.994499999999999,
+            10.0045,
+            9.994499999999999,
+            10.0045
+          ]
+        },
+        {
+          "measured_on": "2026-03-01",
+          "readings": [
+            9.995999999999999,
+            10.006,
+            9.995999999999999,
+            10.006
+          ]
+        },
+        {
+          "measured_on": "2026-03-08",
+          "readings": [
+            9.994,
+            10.004000000000001,
+            9.994,
+            10.004000000000001
+          ]
+        },
+        {
+          "measured_on": "2026-03-15",
+          "readings": [
+            9.9955,
+            10.005500000000001,
+            9.9955,
+            10.005500000000001
+          ]
+        },
+        {
+          "measured_on": "2026-03-22",
+          "readings": [
+            9.994499999999999,
+            10.0045,
+            9.994499999999999,
+            10.0045
+          ]
+        },
+        {
+          "measured_on": "2026-04-01",
+          "readings": [
+            9.995999999999999,
+            10.006,
+            9.995999999999999,
+            10.006
+          ]
+        },
+        {
+          "measured_on": "2026-04-08",
+          "readings": [
+            9.994,
+            10.004000000000001,
+            9.994,
+            10.004000000000001
+          ]
+        },
+        {
+          "measured_on": "2026-04-15",
+          "readings": [
+            9.9955,
+            10.005500000000001,
+            9.9955,
+            10.005500000000001
+          ]
+        },
+        {
+          "measured_on": "2026-04-22",
+          "readings": [
+            9.994499999999999,
+            10.0045,
+            9.994499999999999,
+            10.0045
+          ]
+        },
+        {
+          "measured_on": "2026-05-01",
+          "readings": [
+            9.995999999999999,
+            10.006,
+            9.995999999999999,
+            10.006
+          ]
+        },
+        {
+          "measured_on": "2026-05-08",
+          "readings": [
+            9.994,
+            10.004000000000001,
+            9.994,
+            10.004000000000001
+          ]
+        },
+        {
+          "measured_on": "2026-05-15",
+          "readings": [
+            9.9955,
+            10.005500000000001,
+            9.9955,
+            10.005500000000001
+          ]
+        },
+        {
+          "measured_on": "2026-05-22",
+          "readings": [
+            9.994499999999999,
+            10.0045,
+            9.994499999999999,
+            10.0045
+          ]
+        },
+        {
+          "measured_on": "2026-06-01",
+          "readings": [
+            9.995999999999999,
+            10.006,
+            9.995999999999999,
+            10.006
+          ]
+        },
+        {
+          "measured_on": "2026-06-08",
+          "readings": [
+            9.994,
+            10.004000000000001,
+            9.994,
+            10.004000000000001
+          ]
+        },
+        {
+          "measured_on": "2026-06-15",
+          "readings": [
+            9.9955,
+            10.005500000000001,
+            9.9955,
+            10.005500000000001
+          ]
+        },
+        {
+          "measured_on": "2026-06-22",
+          "readings": [
+            9.994499999999999,
+            10.0045,
+            9.994499999999999,
+            10.0045
+          ]
+        }
+      ],
+      "expected": {
+        "statistics.chart_type": "xbar_r",
+        "statistics.stable": true,
+        "statistics.rule_violations": []
+      },
+      "tolerances": {}
+    },
+    "stability_i_mr": {
+      "description": "子組大小 1 時採 I-MR 圖",
+      "method_code": "MSA4_STABILITY_1_0",
+      "context": {
+        "method_code": "MSA4_STABILITY_1_0",
+        "method_version": "1.0",
+        "alpha": 0.05,
+        "study_variation_multiplier": 6.0,
+        "tolerance": 1.0,
+        "process_sigma": null,
+        "criteria": {
+          "stability_rules": {
+            "rule_set": "WECO",
+            "enabled_rules": [
+              1,
+              2,
+              3,
+              4
+            ]
+          }
+        }
+      },
+      "input": [
+        {
+          "measured_on": "2026-01-01",
+          "readings": [
+            9.995999999999999
+          ]
+        },
+        {
+          "measured_on": "2026-01-08",
+          "readings": [
+            9.994
+          ]
+        },
+        {
+          "measured_on": "2026-01-15",
+          "readings": [
+            9.9955
+          ]
+        },
+        {
+          "measured_on": "2026-01-22",
+          "readings": [
+            9.994499999999999
+          ]
+        },
+        {
+          "measured_on": "2026-02-01",
+          "readings": [
+            9.995999999999999
+          ]
+        },
+        {
+          "measured_on": "2026-02-08",
+          "readings": [
+            9.994
+          ]
+        },
+        {
+          "measured_on": "2026-02-15",
+          "readings": [
+            9.9955
+          ]
+        },
+        {
+          "measured_on": "2026-02-22",
+          "readings": [
+            9.994499999999999
+          ]
+        },
+        {
+          "measured_on": "2026-03-01",
+          "readings": [
+            9.995999999999999
+          ]
+        },
+        {
+          "measured_on": "2026-03-08",
+          "readings": [
+            9.994
+          ]
+        },
+        {
+          "measured_on": "2026-03-15",
+          "readings": [
+            9.9955
+          ]
+        },
+        {
+          "measured_on": "2026-03-22",
+          "readings": [
+            9.994499999999999
+          ]
+        },
+        {
+          "measured_on": "2026-04-01",
+          "readings": [
+            9.995999999999999
+          ]
+        },
+        {
+          "measured_on": "2026-04-08",
+          "readings": [
+            9.994
+          ]
+        },
+        {
+          "measured_on": "2026-04-15",
+          "readings": [
+            9.9955
+          ]
+        },
+        {
+          "measured_on": "2026-04-22",
+          "readings": [
+            9.994499999999999
+          ]
+        },
+        {
+          "measured_on": "2026-05-01",
+          "readings": [
+            9.995999999999999
+          ]
+        },
+        {
+          "measured_on": "2026-05-08",
+          "readings": [
+            9.994
+          ]
+        },
+        {
+          "measured_on": "2026-05-15",
+          "readings": [
+            9.9955
+          ]
+        },
+        {
+          "measured_on": "2026-05-22",
+          "readings": [
+            9.994499999999999
+          ]
+        },
+        {
+          "measured_on": "2026-06-01",
+          "readings": [
+            9.995999999999999
+          ]
+        },
+        {
+          "measured_on": "2026-06-08",
+          "readings": [
+            9.994
+          ]
+        },
+        {
+          "measured_on": "2026-06-15",
+          "readings": [
+            9.9955
+          ]
+        },
+        {
+          "measured_on": "2026-06-22",
+          "readings": [
+            9.994499999999999
+          ]
+        }
+      ],
+      "expected": {
+        "statistics.chart_type": "i_mr",
+        "statistics.dispersion_limits.label": "moving_range",
+        "statistics.stable": true
+      },
+      "tolerances": {}
+    },
+    "attribute_binary": {
+      "description": "二分類的 Kappa、有效性與誤收誤拒率",
+      "method_code": "MSA4_ATTRIBUTE_1_0",
+      "context": {
+        "method_code": "MSA4_ATTRIBUTE_1_0",
+        "method_version": "1.0",
+        "alpha": 0.05,
+        "study_variation_multiplier": 6.0,
+        "tolerance": null,
+        "process_sigma": null,
+        "criteria": {
+          "kappa_min": 0.75,
+          "effectiveness_min": 90.0,
+          "false_accept_max": 5.0,
+          "false_reject_max": 5.0
+        }
+      },
+      "input": [
+        {
+          "sample": "S01",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S01",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S02",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S02",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S03",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S03",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S04",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S04",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S05",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        },
+        {
+          "sample": "S05",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        },
+        {
+          "sample": "S06",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S06",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S07",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S07",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S08",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S08",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "pass",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S09",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S09",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S10",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S10",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S11",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S11",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S12",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S12",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S13",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S13",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S14",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S14",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S15",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S15",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S16",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S16",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S17",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        },
+        {
+          "sample": "S17",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        },
+        {
+          "sample": "S18",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S18",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S19",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S19",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S20",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        },
+        {
+          "sample": "S20",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        },
+        {
+          "sample": "S01",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S01",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S02",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S02",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S03",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S03",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S04",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S04",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S05",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        },
+        {
+          "sample": "S05",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        },
+        {
+          "sample": "S06",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S06",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S07",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S07",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S08",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S08",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S09",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S09",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S10",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S10",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S11",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S11",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S12",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S12",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S13",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S13",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S14",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "pass",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S14",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S15",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S15",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S16",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S16",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S17",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        },
+        {
+          "sample": "S17",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        },
+        {
+          "sample": "S18",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S18",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S19",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S19",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S20",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        },
+        {
+          "sample": "S20",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        },
+        {
+          "sample": "S01",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S01",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S02",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S02",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S03",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "pass",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S03",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "pass",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S04",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S04",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S05",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        },
+        {
+          "sample": "S05",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        },
+        {
+          "sample": "S06",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "fail",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S06",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S07",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S07",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S08",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S08",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S09",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S09",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S10",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S10",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S11",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S11",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "pass",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S12",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S12",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S13",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S13",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S14",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S14",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": true
+        },
+        {
+          "sample": "S15",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S15",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S16",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S16",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S17",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        },
+        {
+          "sample": "S17",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        },
+        {
+          "sample": "S18",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S18",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S19",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S19",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "pass",
+          "reference": "pass",
+          "grey_zone": false
+        },
+        {
+          "sample": "S20",
+          "appraiser": "A03",
+          "trial": 1,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        },
+        {
+          "sample": "S20",
+          "appraiser": "A03",
+          "trial": 2,
+          "value": "fail",
+          "reference": "fail",
+          "grey_zone": false
+        }
+      ],
+      "expected": {
+        "statistics.against_reference.overall.kappa": 0.8876404494382021,
+        "statistics.effectiveness": 75.0,
+        "statistics.false_accept_rate": 11.904761904761905,
+        "statistics.false_reject_rate": 1.2820512820512822
+      },
+      "tolerances": {
+        "statistics.against_reference.overall.kappa": 1e-09,
+        "statistics.effectiveness": 1e-09,
+        "statistics.false_accept_rate": 1e-09,
+        "statistics.false_reject_rate": 1e-09
+      }
+    },
+    "attribute_multiclass": {
+      "description": "多分類 confusion matrix；誤收誤拒率不適用",
+      "method_code": "MSA4_ATTRIBUTE_1_0",
+      "context": {
+        "method_code": "MSA4_ATTRIBUTE_1_0",
+        "method_version": "1.0",
+        "alpha": 0.05,
+        "study_variation_multiplier": 6.0,
+        "tolerance": null,
+        "process_sigma": null,
+        "criteria": {
+          "kappa_min": 0.75,
+          "effectiveness_min": 90.0,
+          "false_accept_max": 5.0,
+          "false_reject_max": 5.0
+        }
+      },
+      "input": [
+        {
+          "sample": "S1",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "A",
+          "reference": "A"
+        },
+        {
+          "sample": "S1",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "A",
+          "reference": "A"
+        },
+        {
+          "sample": "S2",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "B",
+          "reference": "B"
+        },
+        {
+          "sample": "S2",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "B",
+          "reference": "B"
+        },
+        {
+          "sample": "S3",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "C",
+          "reference": "C"
+        },
+        {
+          "sample": "S3",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "C",
+          "reference": "C"
+        },
+        {
+          "sample": "S4",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "A",
+          "reference": "A"
+        },
+        {
+          "sample": "S4",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "A",
+          "reference": "A"
+        },
+        {
+          "sample": "S5",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "B",
+          "reference": "B"
+        },
+        {
+          "sample": "S5",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "B",
+          "reference": "B"
+        },
+        {
+          "sample": "S6",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": "C",
+          "reference": "C"
+        },
+        {
+          "sample": "S6",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": "C",
+          "reference": "C"
+        },
+        {
+          "sample": "S1",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "A",
+          "reference": "A"
+        },
+        {
+          "sample": "S1",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "A",
+          "reference": "A"
+        },
+        {
+          "sample": "S2",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "C",
+          "reference": "B"
+        },
+        {
+          "sample": "S2",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "C",
+          "reference": "B"
+        },
+        {
+          "sample": "S3",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "C",
+          "reference": "C"
+        },
+        {
+          "sample": "S3",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "C",
+          "reference": "C"
+        },
+        {
+          "sample": "S4",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "A",
+          "reference": "A"
+        },
+        {
+          "sample": "S4",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "A",
+          "reference": "A"
+        },
+        {
+          "sample": "S5",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "B",
+          "reference": "B"
+        },
+        {
+          "sample": "S5",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "B",
+          "reference": "B"
+        },
+        {
+          "sample": "S6",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": "C",
+          "reference": "C"
+        },
+        {
+          "sample": "S6",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": "C",
+          "reference": "C"
+        }
+      ],
+      "expected": {
+        "statistics.labels": [
+          "A",
+          "B",
+          "C"
+        ],
+        "statistics.confusion_matrix.B.C": 2,
+        "statistics.false_accept_rate": null
+      },
+      "tolerances": {}
+    },
+    "nonrepeatable_paired": {
+      "description": "分割樣本配對差估計重複性",
+      "method_code": "MSA4_NONREPEATABLE_1_0",
+      "context": {
+        "method_code": "MSA4_NONREPEATABLE_1_0",
+        "method_version": "1.0",
+        "alpha": 0.05,
+        "study_variation_multiplier": 6.0,
+        "tolerance": 1.0,
+        "process_sigma": null,
+        "criteria": {
+          "design_type": "split_sample",
+          "confirmations": {
+            "sample_homogeneity": true,
+            "shelf_life": true,
+            "process_stability": true,
+            "pairing_assumption": true
+          }
+        }
+      },
+      "input": [
+        {
+          "unit": "U00",
+          "position": 1,
+          "value": 10.0
+        },
+        {
+          "unit": "U00",
+          "position": 2,
+          "value": 10.01
+        },
+        {
+          "unit": "U01",
+          "position": 1,
+          "value": 10.05
+        },
+        {
+          "unit": "U01",
+          "position": 2,
+          "value": 10.058
+        },
+        {
+          "unit": "U02",
+          "position": 1,
+          "value": 10.1
+        },
+        {
+          "unit": "U02",
+          "position": 2,
+          "value": 10.112
+        },
+        {
+          "unit": "U03",
+          "position": 1,
+          "value": 10.15
+        },
+        {
+          "unit": "U03",
+          "position": 2,
+          "value": 10.159
+        },
+        {
+          "unit": "U04",
+          "position": 1,
+          "value": 10.2
+        },
+        {
+          "unit": "U04",
+          "position": 2,
+          "value": 10.210999999999999
+        },
+        {
+          "unit": "U05",
+          "position": 1,
+          "value": 10.25
+        },
+        {
+          "unit": "U05",
+          "position": 2,
+          "value": 10.26
+        },
+        {
+          "unit": "U06",
+          "position": 1,
+          "value": 10.3
+        },
+        {
+          "unit": "U06",
+          "position": 2,
+          "value": 10.31
+        },
+        {
+          "unit": "U07",
+          "position": 1,
+          "value": 10.35
+        },
+        {
+          "unit": "U07",
+          "position": 2,
+          "value": 10.357999999999999
+        },
+        {
+          "unit": "U08",
+          "position": 1,
+          "value": 10.4
+        },
+        {
+          "unit": "U08",
+          "position": 2,
+          "value": 10.412
+        },
+        {
+          "unit": "U09",
+          "position": 1,
+          "value": 10.45
+        },
+        {
+          "unit": "U09",
+          "position": 2,
+          "value": 10.459
+        },
+        {
+          "unit": "U10",
+          "position": 1,
+          "value": 10.5
+        },
+        {
+          "unit": "U10",
+          "position": 2,
+          "value": 10.511
+        },
+        {
+          "unit": "U11",
+          "position": 1,
+          "value": 10.55
+        },
+        {
+          "unit": "U11",
+          "position": 2,
+          "value": 10.56
+        }
+      ],
+      "expected": {
+        "statistics.pairs": 12,
+        "statistics.mean_difference": 0.01,
+        "statistics.sd_difference": 0.0013483997249264842,
+        "statistics.repeatability_sigma": 0.0009534625892455923
+      },
+      "tolerances": {
+        "statistics.mean_difference": 1e-09,
+        "statistics.sd_difference": 1e-09,
+        "statistics.repeatability_sigma": 1e-09
+      }
+    },
+    "not_applicable_unbalanced_xbar_r": {
+      "description": "非平衡設計必須判定不適用",
+      "method_code": "MSA4_GRR_XBAR_R_1_0",
+      "context": {
+        "method_code": "MSA4_GRR_XBAR_R_1_0",
+        "method_version": "1.0",
+        "alpha": 0.05,
+        "study_variation_multiplier": 6.0,
+        "tolerance": 1.0,
+        "process_sigma": null,
+        "criteria": {
+          "grr_accept_max": 10,
+          "grr_conditional_max": 30,
+          "ndc_min": 5
+        }
+      },
+      "input": [
+        {
+          "part": "P01",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.0
+        },
+        {
+          "part": "P01",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.02
+        },
+        {
+          "part": "P02",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.1
+        },
+        {
+          "part": "P02",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.12
+        },
+        {
+          "part": "P03",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.2
+        },
+        {
+          "part": "P03",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.18
+        },
+        {
+          "part": "P01",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.04
+        },
+        {
+          "part": "P01",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": 10.02
+        },
+        {
+          "part": "P02",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.14
+        },
+        {
+          "part": "P02",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": 10.12
+        },
+        {
+          "part": "P03",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.22
+        }
+      ],
+      "expect_not_applicable": "unbalanced_design"
+    },
+    "not_applicable_nonrepeatable_assumptions": {
+      "description": "物理假設未確認時不得產生不可重複研究結論",
+      "method_code": "MSA4_NONREPEATABLE_1_0",
+      "context": {
+        "method_code": "MSA4_NONREPEATABLE_1_0",
+        "method_version": "1.0",
+        "alpha": 0.05,
+        "study_variation_multiplier": 6.0,
+        "tolerance": 1.0,
+        "process_sigma": null,
+        "criteria": {
+          "design_type": "split_sample",
+          "confirmations": {
+            "sample_homogeneity": true,
+            "shelf_life": false,
+            "process_stability": true,
+            "pairing_assumption": true
+          }
+        }
+      },
+      "input": [
+        {
+          "unit": "U00",
+          "position": 1,
+          "value": 10.0
+        },
+        {
+          "unit": "U00",
+          "position": 2,
+          "value": 10.01
+        },
+        {
+          "unit": "U01",
+          "position": 1,
+          "value": 10.05
+        },
+        {
+          "unit": "U01",
+          "position": 2,
+          "value": 10.058
+        },
+        {
+          "unit": "U02",
+          "position": 1,
+          "value": 10.1
+        },
+        {
+          "unit": "U02",
+          "position": 2,
+          "value": 10.112
+        },
+        {
+          "unit": "U03",
+          "position": 1,
+          "value": 10.15
+        },
+        {
+          "unit": "U03",
+          "position": 2,
+          "value": 10.159
+        },
+        {
+          "unit": "U04",
+          "position": 1,
+          "value": 10.2
+        },
+        {
+          "unit": "U04",
+          "position": 2,
+          "value": 10.210999999999999
+        },
+        {
+          "unit": "U05",
+          "position": 1,
+          "value": 10.25
+        },
+        {
+          "unit": "U05",
+          "position": 2,
+          "value": 10.26
+        },
+        {
+          "unit": "U06",
+          "position": 1,
+          "value": 10.3
+        },
+        {
+          "unit": "U06",
+          "position": 2,
+          "value": 10.31
+        },
+        {
+          "unit": "U07",
+          "position": 1,
+          "value": 10.35
+        },
+        {
+          "unit": "U07",
+          "position": 2,
+          "value": 10.357999999999999
+        },
+        {
+          "unit": "U08",
+          "position": 1,
+          "value": 10.4
+        },
+        {
+          "unit": "U08",
+          "position": 2,
+          "value": 10.412
+        },
+        {
+          "unit": "U09",
+          "position": 1,
+          "value": 10.45
+        },
+        {
+          "unit": "U09",
+          "position": 2,
+          "value": 10.459
+        },
+        {
+          "unit": "U10",
+          "position": 1,
+          "value": 10.5
+        },
+        {
+          "unit": "U10",
+          "position": 2,
+          "value": 10.511
+        },
+        {
+          "unit": "U11",
+          "position": 1,
+          "value": 10.55
+        },
+        {
+          "unit": "U11",
+          "position": 2,
+          "value": 10.56
+        }
+      ],
+      "expect_not_applicable": "physical_assumptions_unconfirmed"
+    },
+    "not_applicable_non_finite_reading": {
+      "description": "讀值出現 Infinity 時必須拒絕產生結果",
+      "method_code": "MSA4_GRR_XBAR_R_1_0",
+      "context": {
+        "method_code": "MSA4_GRR_XBAR_R_1_0",
+        "method_version": "1.0",
+        "alpha": 0.05,
+        "study_variation_multiplier": 6.0,
+        "tolerance": 1.0,
+        "process_sigma": null,
+        "criteria": {
+          "grr_accept_max": 10,
+          "grr_conditional_max": 30,
+          "ndc_min": 5
+        }
+      },
+      "input": [
+        {
+          "part": "P01",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.0
+        },
+        {
+          "part": "P01",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.02
+        },
+        {
+          "part": "P02",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.1
+        },
+        {
+          "part": "P02",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.12
+        },
+        {
+          "part": "P03",
+          "appraiser": "A01",
+          "trial": 1,
+          "value": 10.2
+        },
+        {
+          "part": "P03",
+          "appraiser": "A01",
+          "trial": 2,
+          "value": 10.18
+        },
+        {
+          "part": "P01",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.04
+        },
+        {
+          "part": "P01",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": 10.02
+        },
+        {
+          "part": "P02",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.14
+        },
+        {
+          "part": "P02",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": 10.12
+        },
+        {
+          "part": "P03",
+          "appraiser": "A02",
+          "trial": 1,
+          "value": 10.22
+        },
+        {
+          "part": "P03",
+          "appraiser": "A02",
+          "trial": 2,
+          "value": Infinity
+        }
+      ],
+      "expect_not_applicable": "non_finite_reading"
+    }
+  }
+}
