@@ -377,3 +377,255 @@ export interface ApproveMsaCriteriaVersionInput {
   /** 核准理由；只寫入稽核紀錄，不進入不可變的準則快照 */
   reason?: string;
 }
+
+// ---------------------------------------------------------------------------
+// 研究、計畫、觀測、結果與再研究
+// ---------------------------------------------------------------------------
+
+export type MsaStudyType =
+  | 'grr_range' | 'grr_xbar_r' | 'grr_anova' | 'bias'
+  | 'linearity' | 'stability' | 'attribute' | 'nonreplicable';
+
+export type MsaStudyStatus =
+  | 'draft' | 'ready' | 'collecting' | 'ready_for_analysis'
+  | 'analyzed' | 'submitted' | 'approved' | 'rejected'
+  | 'voided' | 'superseded';
+
+export type MsaMeasurementPurpose = 'product_control' | 'process_control';
+
+export type MsaPercentBasis =
+  | 'tolerance' | 'study_variation' | 'process_variation';
+
+export type MsaDisposition =
+  | 'acceptable' | 'conditionally_acceptable'
+  | 'unacceptable' | 'indeterminate';
+
+export interface MsaStudy {
+  id: number;
+  study_no: string;
+  study_type: MsaStudyType;
+  measurement_purpose: MsaMeasurementPurpose;
+  characteristic: string;
+  unit: string;
+  lsl: string | null;
+  usl: string | null;
+  no_tolerance_reason: string | null;
+  process_sigma: string | null;
+  criteria_profile_id: number | null;
+  responsible_user_id: number | null;
+  primary_executor_id: number | null;
+  status: MsaStudyStatus;
+  current_plan_version_id: number | null;
+  current_result_version_id: number | null;
+  previous_approved_study_id: number | null;
+  next_due_date: string | null;
+  created_by_id: number | null;
+  created_at: string;
+  updated_by_id: number | null;
+  updated_at: string;
+}
+
+export interface MsaStudyListParams {
+  page: number;
+  page_size: number;
+  sort: 'id' | 'study_no' | 'updated_at';
+  order?: 'asc' | 'desc';
+  status?: MsaStudyStatus;
+}
+
+export interface CreateMsaStudyInput {
+  study_type: MsaStudyType;
+  measurement_purpose: MsaMeasurementPurpose;
+  characteristic: string;
+  unit: string;
+  lsl?: number | null;
+  usl?: number | null;
+  no_tolerance_reason?: string | null;
+  process_sigma?: number | null;
+  criteria_profile_id?: number | null;
+  responsible_user_id?: number | null;
+  primary_executor_id?: number | null;
+}
+
+export interface UpdateMsaStudyInput extends Partial<CreateMsaStudyInput> {
+  studyId: number;
+  /** 畫面載入時的 updated_at；後端據此偵測他人已更新 */
+  expected_updated_at: string;
+}
+
+export interface MsaPlanVersion {
+  id: number;
+  study_id: number;
+  plan_version_no: number;
+  method_code: string;
+  method_version: string;
+  design_type: string;
+  part_count: number;
+  appraiser_count: number;
+  trial_count: number;
+  random_seed: number;
+  category_set: string[];
+  sampling_notes: string | null;
+  environment_notes: string | null;
+  equipment_snapshot: MsaJsonObject;
+  criteria_snapshot: MsaJsonObject;
+  plan_hash: string | null;
+  frozen_by_id: number | null;
+  frozen_at: string | null;
+  part_blind_codes: string[];
+  appraiser_blind_codes: string[];
+}
+
+export interface CreateMsaPlanInput {
+  studyId: number;
+  method_code: string;
+  part_count: number;
+  appraiser_count: number;
+  trial_count: number;
+  random_seed: number;
+  design_type?: string;
+  percent_basis?: MsaPercentBasis;
+  category_set?: string[];
+  sampling_notes?: string;
+  environment_notes?: string;
+  equipment: Array<{
+    equipment_id: number;
+    role: 'primary_gauge' | 'reference_standard' | 'fixture' | 'auxiliary';
+    measurement_mode?: string;
+    note?: string;
+  }>;
+  parts: Array<{
+    part_identifier?: string;
+    reference_value?: string | number;
+    reference_uncertainty?: string | number;
+    reference_category?: string;
+    note?: string;
+  }>;
+  appraisers: Array<{
+    name: string;
+    user_id?: number;
+    qualification?: string;
+  }>;
+}
+
+/** 盲測任務只帶盲碼，不含真實件號、參考值或他人讀值 */
+export interface MsaBlindTask {
+  requested_order: number;
+  part_blind_code: string | null;
+  appraiser_blind_code: string | null;
+  trial_no: number;
+  recorded: boolean;
+}
+
+export interface MsaObservation {
+  id: number;
+  plan_version_id: number;
+  requested_order: number;
+  actual_entry_order: number;
+  trial_no: number;
+  numeric_value: string | null;
+  attribute_value: string | null;
+  measured_at: string | null;
+  source: 'page_single' | 'page_matrix' | 'excel_import';
+  entered_by_id: number;
+  is_effective: boolean;
+  supersedes_id: number | null;
+  correction_reason: string | null;
+}
+
+export interface RecordMsaObservationInput {
+  planId: number;
+  task_order: number;
+  numeric_value?: string;
+  attribute_value?: string;
+  measured_at?: string;
+}
+
+export interface CorrectMsaObservationInput {
+  observationId: number;
+  reason: string;
+  numeric_value?: string;
+  attribute_value?: string;
+}
+
+export interface MsaCompletenessReport {
+  plan_version_id: number;
+  plan_hash: string | null;
+  expected: number;
+  recorded: number;
+  missing: Array<{ requested_order: number; trial_no: number }>;
+  complete: boolean;
+}
+
+export interface MsaObservationImportIssue {
+  sheet: string;
+  row: number;
+  cell: string;
+  code: string;
+  message: string;
+}
+
+export interface MsaObservationImportBatch {
+  id: number;
+  plan_version_id: number;
+  file_name: string;
+  file_sha256: string;
+  plan_hash: string | null;
+  status: 'previewed' | 'confirmed' | 'rejected';
+  issues: MsaObservationImportIssue[];
+  stats: MsaJsonObject;
+}
+
+export interface MsaConclusion {
+  statistical_result: MsaJsonObject;
+  system_disposition: MsaDisposition;
+  /** 人工工程判斷只能附加，永遠不覆寫統計結果 */
+  engineering_judgment: string | null;
+  reasons: string[];
+  percent_basis: MsaPercentBasis | null;
+}
+
+export interface MsaResultVersion {
+  id: number;
+  study_id: number;
+  plan_version_id: number;
+  result_version_no: number;
+  method_code: string;
+  method_version: string;
+  code_version: string;
+  data_hash: string;
+  applicability_result: MsaJsonObject;
+  statistics: MsaJsonObject;
+  chart_data: MsaJsonObject;
+  criteria_snapshot: MsaJsonObject;
+  conclusion: MsaConclusion;
+  warnings: Array<{ code: string; message: string }>;
+  blockers: Array<{ code: string; message: string }>;
+  status:
+    | 'analyzed' | 'submitted' | 'approved'
+    | 'rejected' | 'voided' | 'superseded';
+  created_by_id: number | null;
+  created_at: string;
+}
+
+export interface MsaWorkflowActionInput {
+  resultId: number;
+  expected_status: MsaResultVersion['status'];
+  reason: string;
+  actions?: string[];
+  due_date?: string;
+}
+
+export interface MsaRestudyRequest {
+  id: number;
+  source_study_id: number;
+  trigger_type: string;
+  source_entity_type: string;
+  source_entity_id: number | null;
+  trigger_payload: MsaJsonObject;
+  due_date: string | null;
+  status: 'open' | 'in_progress' | 'completed' | 'dismissed';
+  new_study_id: number | null;
+  created_by_id: number | null;
+  created_at: string;
+}
