@@ -3,6 +3,7 @@
 from datetime import date
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from backend.models import (
@@ -213,3 +214,31 @@ def test_criteria_version_number_is_unique_within_profile(db_session):
     with pytest.raises(IntegrityError):
         db_session.commit()
     db_session.rollback()
+
+
+def test_current_criteria_version_must_belong_to_same_profile(db_session):
+    db_session.execute(text("PRAGMA foreign_keys = ON"))
+    assert db_session.execute(text("PRAGMA foreign_keys")).scalar_one() == 1
+
+    try:
+        profile_a = MsaCriteriaProfile(name="準則設定 A")
+        profile_b = MsaCriteriaProfile(name="準則設定 B")
+        db_session.add_all([profile_a, profile_b])
+        db_session.commit()
+
+        version_b = MsaCriteriaVersion(
+            profile_id=profile_b.id,
+            version_no=1,
+            method_version="MSA4-1.0",
+            effective_date=date(2026, 7, 27),
+            thresholds={"ndc_min": 5},
+        )
+        db_session.add(version_b)
+        db_session.commit()
+
+        profile_a.current_version_id = version_b.id
+        with pytest.raises(IntegrityError):
+            db_session.commit()
+    finally:
+        db_session.rollback()
+        db_session.execute(text("PRAGMA foreign_keys = OFF"))

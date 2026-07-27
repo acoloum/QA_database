@@ -900,8 +900,20 @@ class MsaCriteriaProfile(db.Model):
     """MSA 判定準則的適用範圍與目前啟用版本。"""
 
     __tablename__ = 'MSA準則設定'
+    __table_args__ = (
+        db.ForeignKeyConstraint(
+            ['識別碼', '目前啟用版本ID'],
+            ['MSA準則版本.準則設定ID', 'MSA準則版本.識別碼'],
+            name='fk_msa_criteria_current_version',
+            use_alter=True,
+            deferrable=True,
+            initially='DEFERRED',
+        ),
+    )
 
-    id = db.Column('識別碼', db.Integer, primary_key=True)
+    id = db.Column(
+        '識別碼', db.Integer, primary_key=True, autoincrement='ignore_fk'
+    )
     name = db.Column('名稱', db.String(160), nullable=False)
     customer_scope = db.Column('顧客範圍', db.String(200), nullable=True)
     product_scope = db.Column('產品範圍', db.String(200), nullable=True)
@@ -918,13 +930,7 @@ class MsaCriteriaProfile(db.Model):
         '適用研究類型', db.JSON, nullable=False, default=list
     )
     current_version_id = db.Column(
-        '目前啟用版本ID', db.Integer,
-        db.ForeignKey(
-            'MSA準則版本.識別碼',
-            name='fk_msa_criteria_current_version',
-            use_alter=True,
-        ),
-        nullable=True,
+        '目前啟用版本ID', db.Integer, nullable=True,
     )
 
     versions = db.relationship(
@@ -934,8 +940,13 @@ class MsaCriteriaProfile(db.Model):
     )
     current_version = db.relationship(
         'MsaCriteriaVersion',
-        foreign_keys=[current_version_id],
+        primaryjoin=lambda: db.and_(
+            MsaCriteriaProfile.id == MsaCriteriaVersion.profile_id,
+            MsaCriteriaProfile.current_version_id == MsaCriteriaVersion.id,
+        ),
+        foreign_keys=lambda: [MsaCriteriaProfile.current_version_id],
         post_update=True,
+        uselist=False,
     )
 
 
@@ -946,6 +957,10 @@ class MsaCriteriaVersion(db.Model):
     __table_args__ = (
         db.UniqueConstraint(
             '準則設定ID', '版本號', name='uq_msa_criteria_revision'
+        ),
+        db.UniqueConstraint(
+            '準則設定ID', '識別碼',
+            name='uq_msa_criteria_profile_version_identity',
         ),
         db.Index(
             'idx_msa_criteria_status_effective',

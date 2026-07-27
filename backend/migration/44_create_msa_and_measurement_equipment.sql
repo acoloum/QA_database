@@ -188,10 +188,14 @@ ALTER TABLE "MSA準則版本"
     ADD CONSTRAINT uq_msa_criteria_revision
     UNIQUE ("準則設定ID", "版本號");
 
+ALTER TABLE "MSA準則版本"
+    ADD CONSTRAINT uq_msa_criteria_profile_version_identity
+    UNIQUE ("準則設定ID", "識別碼");
+
 ALTER TABLE "MSA準則設定"
     ADD CONSTRAINT fk_msa_criteria_current_version
-    FOREIGN KEY ("目前啟用版本ID")
-    REFERENCES "MSA準則版本"("識別碼")
+    FOREIGN KEY ("識別碼", "目前啟用版本ID")
+    REFERENCES "MSA準則版本"("準則設定ID", "識別碼")
     DEFERRABLE INITIALLY DEFERRED;
 
 CREATE INDEX idx_msa_criteria_status_effective
