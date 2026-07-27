@@ -1,0 +1,1060 @@
+{
+  "description": "20 件樣本 × 3 位評價人 × 2 次判定的二分類計數型研究；期望值由獨立算式計算，未使用待測引擎。",
+  "context": {
+    "method_code": "MSA4_ATTRIBUTE_1_0",
+    "method_version": "1.0",
+    "alpha": 0.05,
+    "study_variation_multiplier": 6.0,
+    "tolerance": null,
+    "process_sigma": null,
+    "criteria": {
+      "kappa_min": 0.75,
+      "effectiveness_min": 90.0,
+      "false_accept_max": 5.0,
+      "false_reject_max": 5.0
+    }
+  },
+  "observations": [
+    {
+      "sample": "S01",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S01",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S02",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S02",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S03",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S03",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S04",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S04",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S05",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    },
+    {
+      "sample": "S05",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    },
+    {
+      "sample": "S06",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S06",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S07",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S07",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S08",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S08",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "pass",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S09",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S09",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S10",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S10",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S11",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S11",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S12",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S12",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S13",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S13",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S14",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S14",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S15",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S15",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S16",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S16",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S17",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    },
+    {
+      "sample": "S17",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    },
+    {
+      "sample": "S18",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S18",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S19",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S19",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S20",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    },
+    {
+      "sample": "S20",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    },
+    {
+      "sample": "S01",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S01",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S02",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S02",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S03",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S03",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S04",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S04",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S05",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    },
+    {
+      "sample": "S05",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    },
+    {
+      "sample": "S06",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S06",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S07",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S07",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S08",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S08",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S09",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S09",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S10",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S10",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S11",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S11",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S12",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S12",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S13",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S13",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S14",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "pass",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S14",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S15",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S15",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S16",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S16",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S17",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    },
+    {
+      "sample": "S17",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    },
+    {
+      "sample": "S18",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S18",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S19",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S19",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S20",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    },
+    {
+      "sample": "S20",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    },
+    {
+      "sample": "S01",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S01",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S02",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S02",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S03",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "pass",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S03",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "pass",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S04",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S04",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S05",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    },
+    {
+      "sample": "S05",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    },
+    {
+      "sample": "S06",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "fail",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S06",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S07",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S07",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S08",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S08",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S09",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S09",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S10",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S10",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S11",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S11",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "pass",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S12",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S12",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S13",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S13",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S14",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S14",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": true
+    },
+    {
+      "sample": "S15",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S15",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S16",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S16",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S17",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    },
+    {
+      "sample": "S17",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    },
+    {
+      "sample": "S18",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S18",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S19",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S19",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "pass",
+      "reference": "pass",
+      "grey_zone": false
+    },
+    {
+      "sample": "S20",
+      "appraiser": "A03",
+      "trial": 1,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    },
+    {
+      "sample": "S20",
+      "appraiser": "A03",
+      "trial": 2,
+      "value": "fail",
+      "reference": "fail",
+      "grey_zone": false
+    }
+  ],
+  "expected": {
+    "labels": [
+      "pass",
+      "fail"
+    ],
+    "within_appraiser": {
+      "A01": {
+        "consistent": 19,
+        "total": 20,
+        "agreement": 0.95
+      },
+      "A02": {
+        "consistent": 19,
+        "total": 20,
+        "agreement": 0.95
+      },
+      "A03": {
+        "consistent": 18,
+        "total": 20,
+        "agreement": 0.9
+      }
+    },
+    "between_appraiser": {
+      "consistent": 15,
+      "total": 20,
+      "agreement": 0.75
+    },
+    "against_reference": {
+      "A01": {
+        "correct": 19,
+        "total": 20,
+        "agreement": 0.95
+      },
+      "A02": {
+        "correct": 19,
+        "total": 20,
+        "agreement": 0.95
+      },
+      "A03": {
+        "correct": 17,
+        "total": 20,
+        "agreement": 0.85
+      }
+    },
+    "overall_correct": 15,
+    "observed_agreement": 0.95,
+    "expected_agreement": 0.555,
+    "overall_kappa": 0.8876404494382021,
+    "kappa_standard_error": 0.04470912504237202,
+    "kappa_confidence_interval": [
+      0.8000121745748551,
+      0.9752687243015491
+    ],
+    "effectiveness": 75.0,
+    "false_accept_rate": 11.904761904761905,
+    "false_reject_rate": 1.2820512820512822,
+    "false_accept_count": 5,
+    "false_reject_count": 1,
+    "confusion_matrix": {
+      "pass": {
+        "pass": 77,
+        "fail": 1
+      },
+      "fail": {
+        "pass": 5,
+        "fail": 37
+      }
+    },
+    "strata": {
+      "grey_zone": {
+        "decisions": 24,
+        "correct": 19,
+        "agreement": 0.7916666666666666
+      },
+      "non_grey_zone": {
+        "decisions": 96,
+        "correct": 95,
+        "agreement": 0.9895833333333334
+      }
+    }
+  }
+}
