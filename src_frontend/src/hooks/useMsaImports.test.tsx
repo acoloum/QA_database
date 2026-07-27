@@ -1,6 +1,4 @@
-import { QueryClientProvider } from '@tanstack/react-query';
-// @ts-expect-error 封裝套件未重新匯出 QueryClient 型別；測試仍使用其真實執行期建構子。
-import { QueryClient } from '@tanstack/query-core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -63,7 +61,7 @@ describe('MSA 設備匯入資料層', () => {
     expect(api.post).toHaveBeenCalledWith('/measurement-equipment/imports/41/confirm', {
       resolutions, confirmation_date: '2026-07-27',
     });
-    expect(invalidateSpy.mock.calls.map(([options]: [{ predicate?: unknown; queryKey?: readonly unknown[] }]) => options)).toEqual([
+    expect(invalidateSpy.mock.calls.map((call) => call[0])).toEqual([
       { queryKey: ['msa', 'equipment-import', 41] },
       { predicate: isMsaImportHistoryQuery },
       { predicate: isMsaEquipmentListQuery },

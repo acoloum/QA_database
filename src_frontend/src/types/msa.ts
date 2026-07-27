@@ -374,4 +374,6 @@ export interface CreateMsaCriteriaVersionInput {
 export interface ApproveMsaCriteriaVersionInput {
   versionId: number;
   expected_status: 'draft';
+  /** 核准理由；只寫入稽核紀錄，不進入不可變的準則快照 */
+  reason?: string;
 }

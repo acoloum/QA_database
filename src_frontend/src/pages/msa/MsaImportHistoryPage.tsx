@@ -87,7 +87,7 @@ export default function MsaImportHistoryPage() {
         </section>
       )}
 
-      {(preview.error || confirm.error) && (
+      {(preview.error != null || confirm.error != null) && (
         <div className="msa-state msa-state--error" role="alert">
           {preview.error instanceof Error
             ? preview.error.message

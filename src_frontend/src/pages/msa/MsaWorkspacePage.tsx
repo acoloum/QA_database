@@ -23,6 +23,11 @@ export default function MsaWorkspacePage() {
           <strong>設備匯入紀錄</strong>
           <small>預覽差異、逐列處置並追查批次來源指紋。</small>
         </Link>
+        <Link to="/msa/criteria">
+          <span className="msa-mono">CRITERIA</span>
+          <strong>判定準則</strong>
+          <small>檢視版本化門檻，並由具核准權限者確認新版本。</small>
+        </Link>
       </nav>
     </main>
   );

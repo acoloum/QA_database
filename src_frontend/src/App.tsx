@@ -35,6 +35,7 @@ const MechanicalTestListPage = lazy(() => import('./pages/mechanical/MechanicalT
 const MsaWorkspacePage = lazy(() => import('./pages/msa/MsaWorkspacePage'));
 const MeasurementEquipmentPage = lazy(() => import('./pages/msa/MeasurementEquipmentPage'));
 const MsaImportHistoryPage = lazy(() => import('./pages/msa/MsaImportHistoryPage'));
+const MsaCriteriaPage = lazy(() => import('./pages/msa/MsaCriteriaPage'));
 
 const PageFallback = () => (
   <div className="d-flex align-items-center justify-content-center py-5 text-muted">
@@ -89,6 +90,7 @@ function App() {
                 <Route path="/msa" element={<MsaViewRoute><MsaWorkspacePage /></MsaViewRoute>} />
                 <Route path="/msa/equipment" element={<MsaViewRoute><MeasurementEquipmentPage /></MsaViewRoute>} />
                 <Route path="/msa/imports" element={<MsaViewRoute><MsaImportHistoryPage /></MsaViewRoute>} />
+                <Route path="/msa/criteria" element={<MsaViewRoute><MsaCriteriaPage /></MsaViewRoute>} />
               </Route>
             </Route>
 

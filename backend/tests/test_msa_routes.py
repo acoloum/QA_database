@@ -305,12 +305,41 @@ def test_only_msa_approve_can_approve_criteria_version(
     assert persisted_version.status == "approved"
 
 
+def test_criteria_approve_accepts_and_audits_reason(
+    client,
+    db_session,
+    msa_user_headers,
+):
+    profile = _create_criteria_profile(client, msa_user_headers)
+    version = _create_criteria_version(
+        client,
+        msa_user_headers,
+        profile["id"],
+    )
+
+    approved = client.post(
+        f"/api/msa/criteria/versions/{version['id']}/approve",
+        json={"expected_status": "draft", "reason": "符合公司與顧客要求"},
+        headers=msa_user_headers("msa_approve"),
+    )
+
+    assert approved.status_code == 200
+    db_session.expire_all()
+    audit = AuditLog.query.filter_by(
+        module="msa_criteria",
+        action="approve_version",
+        record_id=version["id"],
+    ).one()
+    assert audit.new_value["reason"] == "符合公司與顧客要求"
+
+
 @pytest.mark.parametrize(
     "payload",
     [
         {},
         {"expected_status": "approved"},
         {"expected_status": "draft", "unexpected": True},
+        {"expected_status": "draft", "reason": 123},
     ],
 )
 def test_criteria_approve_rejects_invalid_payload(
@@ -335,6 +364,7 @@ def test_criteria_approve_rejects_invalid_payload(
     assert response.get_json()["error"]["code"] in {
         "MSA_EXPECTED_STATUS_INVALID",
         "MSA_UNKNOWN_FIELDS",
+        "MSA_CRITERIA_REASON_INVALID",
     }
 
 

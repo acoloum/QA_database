@@ -69,6 +69,8 @@ _VERSION_FIELDS = {
     "conditional_actions",
     "basis",
 }
+# 核准理由的長度上限；只寫入稽核紀錄，不進入不可變的準則快照
+_REASON_MAX_LENGTH = 500
 _THRESHOLD_FIELDS = frozenset(DEFAULT_THRESHOLDS)
 _STABILITY_FIELDS = {"rule_set", "enabled_rules"}
 _LIST_QUERY_FIELDS = {"page", "page_size", "sort", "order"}
@@ -252,13 +254,21 @@ class MsaCriteriaService:
         payload=None,
     ) -> MsaCriteriaVersion:
         """以 version/profile 雙 row lock 原子核准完整準則快照。"""
+        reason = None
         if payload is not None:
             approval_data = MsaCriteriaService._require_object(payload)
             MsaCriteriaService._reject_unknown_fields(
                 approval_data,
-                {"expected_status"},
+                {"expected_status", "reason"},
             )
             expected_status = approval_data.get("expected_status")
+            # 核准理由為稽核證據；空白視為未填寫，型別或長度不合則拒絕
+            reason = MsaCriteriaService._optional_text(
+                approval_data.get("reason"),
+                field="reason",
+                max_length=_REASON_MAX_LENGTH,
+                code="MSA_CRITERIA_REASON_INVALID",
+            )
         if expected_status != "draft":
             raise MsaValidationError(
                 "MSA_EXPECTED_STATUS_INVALID",
@@ -367,6 +377,7 @@ class MsaCriteriaService:
                     "current_version_id": version.id,
                     "version_status": "approved",
                     "approved_by": actor_id,
+                    "reason": reason,
                     "criteria_snapshot": criteria_snapshot,
                 },
             )

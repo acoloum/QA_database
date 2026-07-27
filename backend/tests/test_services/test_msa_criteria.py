@@ -321,6 +321,58 @@ def test_approving_new_version_updates_pointer_and_keeps_history_approved(
     }
 
 
+def test_approval_reason_is_recorded_in_the_audit_trail(criteria_actor):
+    profile = _create_profile(criteria_actor)
+    version = _create_version(criteria_actor, profile)
+
+    approved = MsaCriteriaService.approve_version(
+        version.id,
+        actor_id=criteria_actor.id,
+        payload={"expected_status": "draft", "reason": "符合公司與顧客要求"},
+    )
+
+    audit = AuditLog.query.filter_by(
+        module="msa_criteria",
+        action="approve_version",
+        record_id=approved.id,
+    ).one()
+    assert audit.new_value["reason"] == "符合公司與顧客要求"
+
+
+def test_approval_without_reason_records_none(criteria_actor):
+    profile = _create_profile(criteria_actor)
+    version = _create_version(criteria_actor, profile)
+
+    approved = MsaCriteriaService.approve_version(
+        version.id,
+        actor_id=criteria_actor.id,
+        expected_status="draft",
+    )
+
+    audit = AuditLog.query.filter_by(
+        module="msa_criteria",
+        action="approve_version",
+        record_id=approved.id,
+    ).one()
+    assert audit.new_value["reason"] is None
+
+
+@pytest.mark.parametrize("reason", [123, "理" * 501])
+def test_approval_rejects_invalid_reason(criteria_actor, reason):
+    profile = _create_profile(criteria_actor)
+    version = _create_version(criteria_actor, profile)
+
+    with pytest.raises(MsaValidationError) as captured:
+        MsaCriteriaService.approve_version(
+            version.id,
+            actor_id=criteria_actor.id,
+            payload={"expected_status": "draft", "reason": reason},
+        )
+
+    assert captured.value.code == "MSA_CRITERIA_REASON_INVALID"
+    db.session.rollback()
+
+
 def test_duplicate_approval_is_a_conflict(criteria_actor):
     profile = _create_profile(criteria_actor)
     version = _create_version(criteria_actor, profile)

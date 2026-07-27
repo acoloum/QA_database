@@ -1,6 +1,4 @@
-import { QueryClientProvider } from '@tanstack/react-query';
-// @ts-expect-error 封裝套件未重新匯出 QueryClient 型別；測試仍使用其真實執行期建構子。
-import { QueryClient } from '@tanstack/query-core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -56,7 +54,7 @@ describe('MSA 判定準則資料層', () => {
     expect(api.post).toHaveBeenNthCalledWith(2, '/msa/criteria/versions/13/approve', {
       expected_status: 'draft',
     });
-    expect(invalidateSpy.mock.calls.map(([options]: [{ queryKey: readonly unknown[] }]) => options)).toEqual([
+    expect(invalidateSpy.mock.calls.map((call) => call[0])).toEqual([
       { queryKey: ['msa', 'criteria'] },
       { queryKey: ['msa', 'criteria'] },
     ]);
