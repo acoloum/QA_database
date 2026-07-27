@@ -125,6 +125,7 @@ def test_default_snapshots_are_independent_copies():
         ({"alpha": True}, "alpha"),
         ({"kappa_min": float("nan")}, "kappa_min"),
         ({"effectiveness_min": float("inf")}, "effectiveness_min"),
+        ({"false_accept_max": 10**1000}, "false_accept_max"),
     ],
 )
 def test_threshold_boundaries_reject_invalid_values(

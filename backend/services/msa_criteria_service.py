@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import date, datetime, timezone
 import json
 import math
+from typing import NoReturn
 
 from sqlalchemy import func
 from sqlalchemy.exc import DataError, IntegrityError
@@ -41,6 +42,7 @@ DEFAULT_CONDITIONAL_ACTIONS = [
 ]
 
 DEFAULT_BASIS = "AIAG MSA 第四版及經核准之組織判定準則"
+MAX_CRITERIA_PAGE = 1_000_000
 
 _PROFILE_FIELDS = {
     "name",
@@ -405,7 +407,7 @@ class MsaCriteriaService:
             values.get("page", 1),
             field="page",
             minimum=1,
-            maximum=None,
+            maximum=MAX_CRITERIA_PAGE,
             code="MSA_CRITERIA_PAGE_INVALID",
         )
         page_size = MsaCriteriaService._parse_bounded_int(
@@ -910,16 +912,27 @@ class MsaCriteriaService:
         if (
             isinstance(value, bool)
             or not isinstance(value, (int, float))
-            or not math.isfinite(value)
         ):
             MsaCriteriaService._threshold_error(
                 field,
                 f"{field} 必須是有限數值",
             )
-        return float(value)
+        try:
+            normalized = float(value)
+        except (OverflowError, ValueError):
+            MsaCriteriaService._threshold_error(
+                field,
+                f"{field} 必須是有限數值",
+            )
+        if not math.isfinite(normalized):
+            MsaCriteriaService._threshold_error(
+                field,
+                f"{field} 必須是有限數值",
+            )
+        return normalized
 
     @staticmethod
-    def _threshold_error(field: str, message: str):
+    def _threshold_error(field: str, message: str) -> NoReturn:
         raise MsaValidationError(
             "MSA_CRITERIA_THRESHOLDS_INVALID",
             message,

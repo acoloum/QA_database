@@ -1,135 +1,23 @@
 """量測設備、校驗證據、狀態事件與來源連結 API。"""
 
 from datetime import date
-from functools import wraps
 
 from flask import Blueprint, jsonify, request
 
 from ..services.msa_equipment_service import MsaEquipmentService
-from ..services.msa_errors import MsaServiceError, MsaValidationError
+from ..services.msa_errors import MsaValidationError
 from ..services.msa_import_service import (
     MsaImportService,
     serialize_import_batch,
 )
-from ..utils import auth_required, require_permission
+from .msa_adapters import (
+    handle_msa_errors as _handle_msa_errors,
+    msa_auth_required as _msa_auth_required,
+    require_msa_permission as _require_msa_permission,
+)
 
 
 measurement_equipment_bp = Blueprint("measurement_equipment", __name__)
-
-
-def _handle_msa_errors(function):
-    """將 MSA service 例外轉為穩定且可程式判定的錯誤 envelope。"""
-
-    @wraps(function)
-    def wrapped(*args, **kwargs):
-        try:
-            return function(*args, **kwargs)
-        except MsaServiceError as error:
-            return (
-                jsonify(
-                    {
-                        "error": {
-                            "code": error.code,
-                            "message": error.message,
-                            "details": error.details,
-                        }
-                    }
-                ),
-                error.status_code,
-            )
-
-    return wrapped
-
-
-def _require_msa_permission(permission: str):
-    """沿用共用權限判定，並統一 MSA API 的錯誤 envelope。"""
-
-    def decorator(function):
-        guarded = require_permission(permission)(function)
-
-        @wraps(function)
-        def wrapped(current_user, *args, **kwargs):
-            result = guarded(current_user, *args, **kwargs)
-            if isinstance(result, tuple) and len(result) == 2:
-                _response, status_code = result
-                if status_code == 403:
-                    return (
-                        jsonify(
-                            {
-                                "error": {
-                                    "code": "MSA_PERMISSION_DENIED",
-                                    "message": "權限不足",
-                                    "details": {"permission": permission},
-                                }
-                            }
-                        ),
-                        403,
-                    )
-                if status_code == 401:
-                    return (
-                        jsonify(
-                            {
-                                "error": {
-                                    "code": "MSA_USER_NOT_FOUND",
-                                    "message": "使用者不存在",
-                                    "details": {},
-                                }
-                            }
-                        ),
-                        401,
-                    )
-            return result
-
-        return wrapped
-
-    return decorator
-
-
-def _msa_import_auth_required(function):
-    """只將設備匯入端點的 auth 401 轉成穩定 MSA envelope。"""
-    guarded = auth_required(function)
-
-    @wraps(function)
-    def wrapped(*args, **kwargs):
-        result = guarded(*args, **kwargs)
-        if (
-            isinstance(result, tuple)
-            and len(result) == 2
-            and result[1] == 401
-        ):
-            response = result[0]
-            body = (
-                response.get_json(silent=True)
-                if hasattr(response, "get_json")
-                else None
-            )
-            legacy_message = (
-                body.get("error") if isinstance(body, dict) else None
-            )
-            auth_code_by_message = {
-                "缺少認證 Token": "MSA_AUTH_REQUIRED",
-                "無效或過期的 Token": "MSA_AUTH_INVALID_TOKEN",
-            }
-            if (
-                not isinstance(legacy_message, str)
-                or legacy_message not in auth_code_by_message
-            ):
-                return result
-            return (
-                jsonify(
-                    {
-                        "error": {
-                            "code": auth_code_by_message[legacy_message],
-                            "message": legacy_message,
-                            "details": {},
-                        }
-                    }
-                ),
-                401,
-            )
-        return result
-
-    return wrapped
 
 
 def _optional_iso_date(value, *, field: str) -> date | None:
@@ -149,7 +37,7 @@ def _optional_iso_date(value, *, field: str) -> date | None:
 @measurement_equipment_bp.post(
     "/api/measurement-equipment/imports/preview"
 )
-@_msa_import_auth_required
+@_msa_auth_required
 @_require_msa_permission("msa.manage")
 @_handle_msa_errors
 def preview_import(current_user):
@@ -171,7 +59,7 @@ def preview_import(current_user):
 @measurement_equipment_bp.post(
     "/api/measurement-equipment/imports/<int:batch_id>/confirm"
 )
-@_msa_import_auth_required
+@_msa_auth_required
 @_require_msa_permission("msa.manage")
 @_handle_msa_errors
 def confirm_import(current_user, batch_id: int):
@@ -196,7 +84,7 @@ def confirm_import(current_user, batch_id: int):
 
 
 @measurement_equipment_bp.get("/api/measurement-equipment")
-@auth_required
+@_msa_auth_required
 @_require_msa_permission("msa.view")
 @_handle_msa_errors
 def list_equipment(current_user):
@@ -205,7 +93,7 @@ def list_equipment(current_user):
 
 
 @measurement_equipment_bp.post("/api/measurement-equipment")
-@auth_required
+@_msa_auth_required
 @_require_msa_permission("msa.manage")
 @_handle_msa_errors
 def create_equipment(current_user):
@@ -218,7 +106,7 @@ def create_equipment(current_user):
 
 
 @measurement_equipment_bp.get("/api/measurement-equipment/<int:equipment_id>")
-@auth_required
+@_msa_auth_required
 @_require_msa_permission("msa.view")
 @_handle_msa_errors
 def get_equipment(current_user, equipment_id: int):
@@ -229,7 +117,7 @@ def get_equipment(current_user, equipment_id: int):
 @measurement_equipment_bp.patch(
     "/api/measurement-equipment/<int:equipment_id>"
 )
-@auth_required
+@_msa_auth_required
 @_require_msa_permission("msa.manage")
 @_handle_msa_errors
 def update_equipment(current_user, equipment_id: int):
@@ -245,7 +133,7 @@ def update_equipment(current_user, equipment_id: int):
 @measurement_equipment_bp.post(
     "/api/measurement-equipment/<int:equipment_id>/calibrations"
 )
-@auth_required
+@_msa_auth_required
 @_require_msa_permission("msa.manage")
 @_handle_msa_errors
 def create_calibration(current_user, equipment_id: int):
@@ -262,7 +150,7 @@ def create_calibration(current_user, equipment_id: int):
     "/api/measurement-equipment/calibrations/"
     "<int:calibration_id>/approve"
 )
-@auth_required
+@_msa_auth_required
 @_require_msa_permission("msa.approve")
 @_handle_msa_errors
 def approve_calibration(current_user, calibration_id: int):
@@ -278,7 +166,7 @@ def approve_calibration(current_user, calibration_id: int):
 @measurement_equipment_bp.post(
     "/api/measurement-equipment/<int:equipment_id>/status-events"
 )
-@auth_required
+@_msa_auth_required
 @_require_msa_permission("msa.manage")
 @_handle_msa_errors
 def create_status_event(current_user, equipment_id: int):
@@ -294,7 +182,7 @@ def create_status_event(current_user, equipment_id: int):
 @measurement_equipment_bp.post(
     "/api/measurement-equipment/<int:equipment_id>/links"
 )
-@auth_required
+@_msa_auth_required
 @_require_msa_permission("msa.manage")
 @_handle_msa_errors
 def create_equipment_link(current_user, equipment_id: int):
@@ -311,7 +199,7 @@ def create_equipment_link(current_user, equipment_id: int):
     "/api/measurement-equipment/<int:equipment_id>/links/"
     "<int:link_id>/retire"
 )
-@auth_required
+@_msa_auth_required
 @_require_msa_permission("msa.manage")
 @_handle_msa_errors
 def retire_equipment_link(current_user, equipment_id: int, link_id: int):

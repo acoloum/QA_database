@@ -358,6 +358,146 @@ def test_criteria_validation_and_not_found_use_stable_envelope(
     assert missing.get_json()["error"]["code"] == "MSA_CRITERIA_PROFILE_NOT_FOUND"
 
 
+def test_inactive_approver_with_old_jwt_cannot_approve_criteria(
+    client,
+    db_session,
+    msa_user_headers,
+):
+    profile = _create_criteria_profile(client, msa_user_headers)
+    version = _create_criteria_version(
+        client,
+        msa_user_headers,
+        profile["id"],
+    )
+    old_headers = msa_user_headers("msa_approve")
+    approver = User.query.filter_by(username="msa_approve_user").one()
+    approver.is_active = False
+    db_session.commit()
+
+    response = client.post(
+        f"/api/msa/criteria/versions/{version['id']}/approve",
+        json={"expected_status": "draft"},
+        headers=old_headers,
+    )
+
+    assert response.status_code == 401
+    assert response.get_json() == {
+        "error": {
+            "code": "MSA_USER_INACTIVE",
+            "message": "使用者帳號已停用",
+            "details": {},
+        }
+    }
+    db_session.expire_all()
+    persisted_profile = db_session.get(MsaCriteriaProfile, profile["id"])
+    persisted_version = db_session.get(MsaCriteriaVersion, version["id"])
+    assert persisted_profile.current_version_id is None
+    assert persisted_version.status == "draft"
+    assert persisted_version.approved_by is None
+    assert persisted_version.approved_at is None
+    assert AuditLog.query.filter_by(
+        module="msa_criteria",
+        action="approve_version",
+        record_id=version["id"],
+    ).count() == 0
+
+
+def test_inactive_approver_with_old_jwt_cannot_approve_calibration(
+    client,
+    db_session,
+    msa_user_headers,
+):
+    equipment = _create_equipment(client, msa_user_headers)
+    calibration = client.post(
+        f"/api/measurement-equipment/{equipment['id']}/calibrations",
+        json=_calibration_payload(),
+        headers=msa_user_headers("msa_manage"),
+    ).get_json()["data"]
+    old_headers = msa_user_headers("msa_approve")
+    approver = User.query.filter_by(username="msa_approve_user").one()
+    approver.is_active = False
+    db_session.commit()
+
+    response = client.post(
+        f"/api/measurement-equipment/calibrations/{calibration['id']}/approve",
+        json={
+            "expected_status": "draft",
+            "reason": "停用帳號不得寫入此理由",
+        },
+        headers=old_headers,
+    )
+
+    assert response.status_code == 401
+    assert response.get_json() == {
+        "error": {
+            "code": "MSA_USER_INACTIVE",
+            "message": "使用者帳號已停用",
+            "details": {},
+        }
+    }
+    db_session.expire_all()
+    persisted = db_session.get(
+        EquipmentCalibrationRecord,
+        calibration["id"],
+    )
+    assert persisted.status == "draft"
+    assert persisted.approved_by is None
+    assert persisted.approved_at is None
+    assert AuditLog.query.filter_by(
+        module="msa_equipment",
+        action="approve_calibration",
+        record_id=calibration["id"],
+    ).count() == 0
+
+
+def test_criteria_extreme_integer_returns_stable_validation_envelope(
+    client,
+    msa_user_headers,
+):
+    profile = _create_criteria_profile(client, msa_user_headers)
+
+    response = client.post(
+        f"/api/msa/criteria/{profile['id']}/versions",
+        json={
+            "thresholds": {
+                "false_accept_max": 10**1000,
+            }
+        },
+        headers=msa_user_headers("msa_manage"),
+    )
+
+    assert response.status_code == 422
+    assert response.get_json()["error"] == {
+        "code": "MSA_CRITERIA_THRESHOLDS_INVALID",
+        "message": "false_accept_max 必須是有限數值",
+        "details": {"field": "false_accept_max"},
+    }
+    assert MsaCriteriaVersion.query.filter_by(
+        profile_id=profile["id"]
+    ).count() == 0
+
+
+def test_criteria_list_rejects_page_above_explicit_limit_before_db_query(
+    client,
+    msa_user_headers,
+):
+    response = client.get(
+        f"/api/msa/criteria?page={'9' * 1000}",
+        headers=msa_user_headers("msa_view"),
+    )
+
+    assert response.status_code == 422
+    assert response.get_json()["error"] == {
+        "code": "MSA_CRITERIA_PAGE_INVALID",
+        "message": "page 超出允許範圍",
+        "details": {
+            "field": "page",
+            "minimum": 1,
+            "maximum": 1000000,
+        },
+    }
+
+
 def test_equipment_import_preview_requires_msa_manage(
     client,
     msa_user_headers,
@@ -506,12 +646,18 @@ def test_msa_import_auth_adapter_preserves_missing_user_envelope(client):
     }
 
 
-def test_msa_import_auth_adapter_does_not_change_other_route_contract(client):
-    """MSA import 專用 adapter 不得改寫既有設備 route 的 auth 回應。"""
+def test_all_msa_routes_share_the_stable_auth_envelope(client):
+    """MSA 共用 adapter 必須涵蓋設備與匯入 route。"""
     response = client.get("/api/measurement-equipment")
 
     assert response.status_code == 401
-    assert response.get_json() == {"error": "缺少認證 Token"}
+    assert response.get_json() == {
+        "error": {
+            "code": "MSA_AUTH_REQUIRED",
+            "message": "缺少認證 Token",
+            "details": {},
+        }
+    }
 
 
 def test_equipment_import_rejects_control_character_with_stable_envelope(
