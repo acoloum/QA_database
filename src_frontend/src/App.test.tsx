@@ -15,6 +15,14 @@ vi.mock('./pages/mechanical/MechanicalTestListPage', () => ({
   default: () => <h2>機械性質路由頁面</h2>,
 }));
 
+vi.mock('./pages/DashboardPage', () => ({
+  default: () => <h2>儀表板路由頁面</h2>,
+}));
+
+vi.mock('./pages/msa/MsaWorkspacePage', () => ({
+  default: () => <h2>MSA 工作台路由頁面</h2>,
+}));
+
 import App from './App';
 
 describe('App 機械性質路由', () => {
@@ -61,5 +69,49 @@ describe('App 機械性質路由', () => {
 
     expect(await screen.findByRole('heading', { name: '品保管理系統' })).toBeInTheDocument();
     expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
+  });
+});
+
+describe('App MSA 路由', () => {
+  let originalPathname: string;
+  let originalSearch: string;
+  let originalHash: string;
+
+  beforeEach(() => {
+    originalPathname = window.location.pathname;
+    originalSearch = window.location.search;
+    originalHash = window.location.hash;
+    window.history.replaceState({}, '', '/msa');
+  });
+
+  afterEach(() => {
+    window.history.replaceState({}, '', `${originalPathname}${originalSearch}${originalHash}`);
+  });
+
+  it('已驗證且具有 msa.view 的使用者造訪 /msa 時呈現 MSA 工作台', async () => {
+    authMock.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+      user: { username: '測試人員', role: 'user' },
+      hasPermission: (permission: string) => permission === 'msa.view',
+      logout: vi.fn(),
+    });
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'MSA 工作台路由頁面' })).toBeInTheDocument();
+  });
+
+  it('已驗證但沒有 msa.view 的使用者造訪 /msa 時不呈現 MSA 工作台', async () => {
+    authMock.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+      user: { username: '測試人員', role: 'user' },
+      hasPermission: () => false,
+      logout: vi.fn(),
+    });
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: '儀表板路由頁面' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'MSA 工作台路由頁面' })).not.toBeInTheDocument();
   });
 });

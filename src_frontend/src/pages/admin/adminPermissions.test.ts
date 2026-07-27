@@ -18,4 +18,15 @@ describe('管理員權限清單', () => {
       { key: 'mechanical.delete', label: '刪除' },
     ]);
   });
+
+  it('可設定 MSA 檢視、執行、管理與核准四層權限', () => {
+    const msa = PERMISSION_GROUPS.find(group => group.label === '量測系統分析');
+
+    expect(msa?.perms).toEqual([
+      { key: 'msa.view', label: '檢視' },
+      { key: 'msa.execute', label: '執行研究與輸入資料' },
+      { key: 'msa.manage', label: '管理設備、準則與送審' },
+      { key: 'msa.approve', label: '核准與作廢' },
+    ]);
+  });
 });

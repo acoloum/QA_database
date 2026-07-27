@@ -65,6 +65,15 @@ export const PERMISSION_GROUPS: { label: string; perms: { key: string; label: st
     ],
   },
   {
+    label: '量測系統分析',
+    perms: [
+      { key: 'msa.view', label: '檢視' },
+      { key: 'msa.execute', label: '執行研究與輸入資料' },
+      { key: 'msa.manage', label: '管理設備、準則與送審' },
+      { key: 'msa.approve', label: '核准與作廢' },
+    ],
+  },
+  {
     label: '爐溫測試 (CQI-9)',
     perms: [
       { key: 'pyrometry.view', label: '查看' },

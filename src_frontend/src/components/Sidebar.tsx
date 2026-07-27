@@ -43,6 +43,7 @@ const Sidebar = () => {
                 { title: '廠商績效', path: '/vendor-performance', icon: 'fa-chart-line' },
                 { title: '品質分析', path: '/quality-analytics', icon: 'fa-chart-simple' },
                 { title: '進階 SPC', path: '/spc/advanced', icon: 'fa-chart-area', permission: 'spc.view' },
+                { title: 'MSA 工作台', path: '/msa', icon: 'fa-ruler-combined', permission: 'msa.view' },
             ]
         },
         {

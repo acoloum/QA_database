@@ -1,6 +1,8 @@
 import { lazy, Suspense } from 'react';
+import type { ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { useAuth } from './context/useAuth';
 import MainLayout from './layouts/MainLayout';
 import AuthLayout from './layouts/AuthLayout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -30,12 +32,23 @@ const RecorderCalibrationPage = lazy(() => import('./pages/pyrometry/RecorderCal
 const ThermocoupleCalibrationPage = lazy(() => import('./pages/pyrometry/ThermocoupleCalibrationPage'));
 const AdvancedSpcPage = lazy(() => import('./pages/spc/AdvancedSpcPage'));
 const MechanicalTestListPage = lazy(() => import('./pages/mechanical/MechanicalTestListPage'));
+const MsaWorkspacePage = lazy(() => import('./pages/msa/MsaWorkspacePage'));
 
 const PageFallback = () => (
   <div className="d-flex align-items-center justify-content-center py-5 text-muted">
     載入中...
   </div>
 );
+
+const MsaViewRoute = ({ children }: { children: ReactNode }) => {
+  const { isAuthenticated, isLoading, hasPermission } = useAuth();
+
+  if (isLoading) {
+    return <div className="d-flex justify-content-center align-items-center vh-100" role="status">載入中…</div>;
+  }
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return hasPermission('msa.view') ? children : <Navigate to="/" replace />;
+};
 
 function App() {
   return (
@@ -71,6 +84,7 @@ function App() {
                 <Route path="/pyrometry/recorders" element={<RecorderCalibrationPage />} />
                 <Route path="/pyrometry/thermocouples" element={<ThermocoupleCalibrationPage />} />
                 <Route path="/mechanical" element={<MechanicalTestListPage />} />
+                <Route path="/msa" element={<MsaViewRoute><MsaWorkspacePage /></MsaViewRoute>} />
               </Route>
             </Route>
 

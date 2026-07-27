@@ -33,3 +33,22 @@ describe('Sidebar 的機械性質選單', () => {
     expect(mechanicalLink).toHaveClass('active');
   });
 });
+
+describe('Sidebar 的 MSA 選單', () => {
+  it('沒有 msa.view 時不顯示 MSA 工作台', () => {
+    authMock.mockReturnValue({ user: { role: 'user' }, hasPermission: () => false });
+    render(<MemoryRouter><Sidebar /></MemoryRouter>);
+
+    expect(screen.queryByRole('link', { name: /MSA 工作台/ })).not.toBeInTheDocument();
+  });
+
+  it('具有 msa.view 時顯示 MSA 工作台', () => {
+    authMock.mockReturnValue({
+      user: { role: 'user' },
+      hasPermission: (permission: string) => permission === 'msa.view',
+    });
+    render(<MemoryRouter><Sidebar /></MemoryRouter>);
+
+    expect(screen.getByRole('link', { name: /MSA 工作台/ })).toHaveAttribute('href', '/msa');
+  });
+});
