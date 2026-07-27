@@ -3,6 +3,9 @@ import type { AxiosAdapter, AxiosResponse, InternalAxiosRequestConfig } from 'ax
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import toast from 'react-hot-toast';
 
+import { getAdminErrorMessage } from '../hooks/useAdmin';
+import { getPyrometryErrorMessage } from '../hooks/usePyrometry';
+import { getReworkErrorMessage } from '../components/rework/reworkError';
 import api, { ApiError } from './api';
 
 vi.mock('react-hot-toast', () => ({
@@ -96,6 +99,45 @@ describe('API 實際 Axios 傳輸與穩定錯誤契約', () => {
       code,
       details,
       field,
+    });
+  });
+
+  it('structured 後端錯誤保留頂層欄位，並讓既有非 MSA helper 讀到字串 error', async () => {
+    const sourceData = {
+      error: {
+        code: 'MSA_IMPORT_RESOLUTION_INVALID', message: '逐列處置無效',
+        details: { row_id: 71 }, field: 'resolutions',
+      },
+      request_id: 'req-71',
+    };
+    const adapter: AxiosAdapter = async (config) => {
+      const response: AxiosResponse = {
+        data: sourceData, status: 422, statusText: '受控錯誤', headers: {}, config,
+      };
+      throw new AxiosError('逐列處置無效', undefined, config, {}, response);
+    };
+    api.defaults.adapter = adapter;
+
+    let caught: unknown;
+    try {
+      await api.post('/compatibility-error', {});
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toMatchObject({
+      name: ApiError.name, status: 422, code: 'MSA_IMPORT_RESOLUTION_INVALID',
+      details: { row_id: 71 }, field: 'resolutions', message: '逐列處置無效',
+    });
+    expect(getAdminErrorMessage(caught)).toBe('逐列處置無效');
+    expect(getPyrometryErrorMessage(caught, '爐溫測試儲存失敗')).toBe('逐列處置無效');
+    expect(getReworkErrorMessage(caught, '重工失敗')).toBe('逐列處置無效');
+    expect((caught as { response?: { data?: { error?: unknown; request_id?: string } } }).response?.data).toEqual({
+      error: '逐列處置無效', request_id: 'req-71',
+    });
+    expect(sourceData.error).toEqual({
+      code: 'MSA_IMPORT_RESOLUTION_INVALID', message: '逐列處置無效',
+      details: { row_id: 71 }, field: 'resolutions',
     });
   });
 });

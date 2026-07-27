@@ -33,7 +33,7 @@ export const pyrometryKeys = {
   testDetail: (id: number | null) => ['pyrometry-test-detail', id] as const,
 };
 
-const getApiErrorMessage = (error: unknown, fallback: string) => {
+export const getPyrometryErrorMessage = (error: unknown, fallback: string) => {
   const apiError = error as { response?: { data?: { error?: string; message?: string } } };
   return apiError.response?.data?.error || apiError.response?.data?.message || fallback;
 };
@@ -67,7 +67,7 @@ export const useSaveFurnace = (editId?: number | null) => {
       queryClient.invalidateQueries({ queryKey: pyrometryKeys.furnaces });
       queryClient.invalidateQueries({ queryKey: pyrometryKeys.furnacesActive });
     },
-    onError: error => toast.error(getApiErrorMessage(error, '爐子設備儲存失敗')),
+    onError: error => toast.error(getPyrometryErrorMessage(error, '爐子設備儲存失敗')),
   });
 };
 
@@ -80,7 +80,7 @@ export const useDeleteFurnace = () => {
       queryClient.invalidateQueries({ queryKey: pyrometryKeys.furnaces });
       queryClient.invalidateQueries({ queryKey: pyrometryKeys.furnacesActive });
     },
-    onError: error => toast.error(getApiErrorMessage(error, '爐子設備刪除失敗')),
+    onError: error => toast.error(getPyrometryErrorMessage(error, '爐子設備刪除失敗')),
   });
 };
 
@@ -104,7 +104,7 @@ export const useSaveRecorder = (editId?: number | null) => {
       toast.success(variables.id || editId ? '記錄器校正已更新' : '記錄器校正已新增');
       queryClient.invalidateQueries({ queryKey: pyrometryKeys.recorders });
     },
-    onError: error => toast.error(getApiErrorMessage(error, '記錄器校正儲存失敗')),
+    onError: error => toast.error(getPyrometryErrorMessage(error, '記錄器校正儲存失敗')),
   });
 };
 
@@ -116,7 +116,7 @@ export const useDeleteRecorder = () => {
       toast.success('記錄器校正已刪除');
       queryClient.invalidateQueries({ queryKey: pyrometryKeys.recorders });
     },
-    onError: error => toast.error(getApiErrorMessage(error, '記錄器校正刪除失敗')),
+    onError: error => toast.error(getPyrometryErrorMessage(error, '記錄器校正刪除失敗')),
   });
 };
 
@@ -140,7 +140,7 @@ export const useSaveThermocouple = (editId?: number | null) => {
       toast.success(variables.id || editId ? '熱電偶校正已更新' : '熱電偶校正已新增');
       queryClient.invalidateQueries({ queryKey: pyrometryKeys.thermocouples });
     },
-    onError: error => toast.error(getApiErrorMessage(error, '熱電偶校正儲存失敗')),
+    onError: error => toast.error(getPyrometryErrorMessage(error, '熱電偶校正儲存失敗')),
   });
 };
 
@@ -152,7 +152,7 @@ export const useDeleteThermocouple = () => {
       toast.success('熱電偶校正已刪除');
       queryClient.invalidateQueries({ queryKey: pyrometryKeys.thermocouples });
     },
-    onError: error => toast.error(getApiErrorMessage(error, '熱電偶校正刪除失敗')),
+    onError: error => toast.error(getPyrometryErrorMessage(error, '熱電偶校正刪除失敗')),
   });
 };
 
@@ -186,7 +186,7 @@ export const usePyrometryTestDetail = (editId: number | null) =>
 export const useLoadPyrometryTestDetail = () =>
   useMutation({
     mutationFn: (id: number) => api.get(`/pyrometry/tests/${id}`).then(r => r.data),
-    onError: error => toast.error(getApiErrorMessage(error, '爐溫測試資料載入失敗')),
+    onError: error => toast.error(getPyrometryErrorMessage(error, '爐溫測試資料載入失敗')),
   });
 
 export const useSavePyrometryTest = (editId?: number | null) => {
@@ -198,7 +198,7 @@ export const useSavePyrometryTest = (editId?: number | null) => {
       toast.success(variables.id || editId ? '爐溫測試已更新' : '爐溫測試已新增');
       queryClient.invalidateQueries({ queryKey: pyrometryKeys.tests });
     },
-    onError: error => toast.error(getApiErrorMessage(error, '爐溫測試儲存失敗')),
+    onError: error => toast.error(getPyrometryErrorMessage(error, '爐溫測試儲存失敗')),
   });
 };
 
@@ -210,7 +210,7 @@ export const useDeletePyrometryTest = () => {
       toast.success('爐溫測試已刪除');
       queryClient.invalidateQueries({ queryKey: pyrometryKeys.tests });
     },
-    onError: error => toast.error(getApiErrorMessage(error, '爐溫測試刪除失敗')),
+    onError: error => toast.error(getPyrometryErrorMessage(error, '爐溫測試刪除失敗')),
   });
 };
 
@@ -221,7 +221,7 @@ export const useExportPyrometryTest = () =>
       downloadBlob(res.data as Blob, `pyrometry_${id}.xlsx`);
     },
     onSuccess: () => toast.success('爐溫測試報告已匯出'),
-    onError: error => toast.error(getApiErrorMessage(error, '爐溫測試報告匯出失敗')),
+    onError: error => toast.error(getPyrometryErrorMessage(error, '爐溫測試報告匯出失敗')),
   });
 
 export const usePyrometryCorrections = () =>
@@ -231,7 +231,7 @@ export const usePyrometryCorrections = () =>
       if (channels) params.set('channels', channels);
       return api.get<{ success: boolean; data: number[] }>(`/pyrometry/corrections?${params.toString()}`).then(r => r.data);
     },
-    onError: error => toast.error(getApiErrorMessage(error, '補正值載入失敗')),
+    onError: error => toast.error(getPyrometryErrorMessage(error, '補正值載入失敗')),
   });
 
 export const useParsePyrometryData = () =>
@@ -244,7 +244,7 @@ export const useParsePyrometryData = () =>
         data: { 時間: string[]; 通道: { 名稱: string }[]; 數值: Record<string, number[]> };
       }>('/pyrometry/parse-data', formData, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data);
     },
-    onError: error => toast.error(getApiErrorMessage(error, '曲線資料解析失敗')),
+    onError: error => toast.error(getPyrometryErrorMessage(error, '曲線資料解析失敗')),
   });
 
 export const useTusTestOnDate = () =>

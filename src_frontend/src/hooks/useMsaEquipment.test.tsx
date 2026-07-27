@@ -139,6 +139,6 @@ describe('MSA 設備資料層', () => {
     await act(async () => {
       await expect(result.current.mutateAsync({ equipment_no: 'EQ-009', name: '高度規' })).rejects.toBe(backendError);
     });
-    expect(result.current.isError).toBe(true);
+    await waitFor(() => expect(result.current.isError).toBe(true));
   });
 });

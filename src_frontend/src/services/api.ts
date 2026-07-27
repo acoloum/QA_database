@@ -15,9 +15,21 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
     typeof value === 'object' && value !== null && !Array.isArray(value)
 );
 
+const cloneCompatibleResponse = (
+    response: ApiError['response'],
+    message: string,
+): ApiError['response'] => {
+    if (!response || !isRecord(response.data)) return response;
+    return {
+        ...response,
+        data: { ...response.data, error: message },
+    };
+};
+
 const readStableError = (rawError: unknown, status?: number, response?: unknown): ApiError | null => {
+    const apiResponse = response as ApiError['response'];
     if (typeof rawError === 'string') {
-        return new ApiError({ message: rawError, status, response: response as ApiError['response'] });
+        return new ApiError({ message: rawError, status, response: apiResponse });
     }
     if (!isRecord(rawError)) return null;
 
@@ -28,7 +40,7 @@ const readStableError = (rawError: unknown, status?: number, response?: unknown)
     const detailField = typeof details?.field === 'string' ? details.field : undefined;
     return new ApiError({
         message, status, code, details, field: directField ?? detailField,
-        response: response as ApiError['response'],
+        response: cloneCompatibleResponse(apiResponse, message),
     });
 };
 
