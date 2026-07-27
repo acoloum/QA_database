@@ -1,6 +1,6 @@
 """MSA 判定準則與研究生命週期 API。"""
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 
 from ..services.msa_analysis_service import MsaAnalysisService
 from ..services.msa_criteria_service import MsaCriteriaService
@@ -9,6 +9,7 @@ from ..services.msa_observation_import_service import (
     MsaObservationImportService,
 )
 from ..services.msa_observation_service import MsaObservationService
+from ..services.msa_report import MsaReportService
 from ..services.msa_restudy_service import MsaRestudyService
 from ..services.msa_study_service import MsaStudyService
 from ..services.msa_workflow_service import MsaWorkflowService
@@ -456,3 +457,26 @@ def start_msa_restudy_request(current_user, request_id: int):
     """由再研究要求建立新的 draft 研究；不複製任何舊觀測。"""
     started = MsaRestudyService.start(request_id, actor_id=current_user.id)
     return jsonify({"data": MsaRestudyService.serialize(started)})
+
+
+# ---------------------------------------------------------------------------
+# 正式報告
+# ---------------------------------------------------------------------------
+
+
+@msa_bp.get("/api/msa/results/<int:version_id>/report.xlsx")
+@_msa_auth_required
+@_require_msa_permission("msa.view")
+@_handle_msa_errors
+def download_msa_excel(current_user, version_id: int):
+    """由已保存的結果版本重建 Excel 報告；不重新分析。"""
+    output = MsaReportService.generate_excel(version_id)
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=f"MSA_{version_id}.xlsx",
+        mimetype=(
+            "application/vnd.openxmlformats-officedocument"
+            ".spreadsheetml.sheet"
+        ),
+    )
