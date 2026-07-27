@@ -2,6 +2,7 @@
 
 from flask import Blueprint, jsonify, request
 
+from ..services.msa_analysis_service import MsaAnalysisService
 from ..services.msa_criteria_service import MsaCriteriaService
 from ..services.msa_design_service import MsaDesignService
 from ..services.msa_observation_import_service import (
@@ -319,3 +320,48 @@ def validate_msa_plan_data(current_user, plan_id: int):
             plan_id, actor_id=current_user.id,
         )
     })
+
+
+# ---------------------------------------------------------------------------
+# 分析與結果
+# ---------------------------------------------------------------------------
+
+
+def _serialize_result(result) -> dict:
+    return {
+        "id": result.id,
+        "study_id": result.study_id,
+        "plan_version_id": result.plan_version_id,
+        "result_version_no": result.result_version_no,
+        "method_code": result.method_code,
+        "method_version": result.method_version,
+        "code_version": result.code_version,
+        "data_hash": result.data_hash,
+        "applicability_result": result.applicability_result,
+        "statistics": result.statistics,
+        "chart_data": result.chart_data,
+        "criteria_snapshot": result.criteria_snapshot,
+        "conclusion": result.conclusion,
+        "warnings": result.warnings,
+        "blockers": result.blockers,
+        "status": result.status,
+        "created_by_id": result.created_by_id,
+        "created_at": (
+            result.created_at.isoformat() if result.created_at else None
+        ),
+    }
+
+
+@msa_bp.post("/api/msa/plans/<int:plan_id>/analyze")
+@_msa_auth_required
+@_require_msa_permission("msa.execute")
+@_handle_msa_errors
+def analyze_msa_plan(current_user, plan_id: int):
+    """以受控方法與凍結準則產生不可變結果版本。"""
+    payload = request.get_json(silent=True) or {}
+    result = MsaAnalysisService.analyze(
+        plan_id,
+        actor_id=current_user.id,
+        expected_plan_hash=payload.get("expected_plan_hash"),
+    )
+    return jsonify({"data": _serialize_result(result)}), 201

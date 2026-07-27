@@ -1304,6 +1304,10 @@ class MsaPart(db.Model):
         db.UniqueConstraint(
             '計畫版本ID', '盲碼', name='uq_msa_part_blind_code'
         ),
+        db.CheckConstraint(
+            '"參考值" IS NULL OR "參考分類" IS NULL',
+            name='ck_msa_part_single_reference',
+        ),
     )
 
     id = db.Column('識別碼', db.Integer, primary_key=True)
@@ -1318,6 +1322,8 @@ class MsaPart(db.Model):
     reference_uncertainty = db.Column(
         '參考不確定度', db.Numeric, nullable=True
     )
+    # 計數型研究的參考真值是類別；與數值參考值互斥
+    reference_category = db.Column('參考分類', db.String(80), nullable=True)
     note = db.Column('備註', db.Text, nullable=True)
 
     plan_version = db.relationship('MsaPlanVersion', back_populates='parts')

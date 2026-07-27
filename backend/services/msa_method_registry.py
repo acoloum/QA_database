@@ -43,6 +43,19 @@ class MethodDescriptor:
                 details={"method_code": self.code, "engine": self.engine_ref},
             ) from error
 
+    def as_dict(self) -> dict:
+        """納入分析輸入指紋的受控方法描述。"""
+        return {
+            "code": self.code,
+            "version": self.version,
+            "engine": self.engine_ref,
+            "alpha": self.alpha,
+            "study_variation_multiplier": self.study_variation_multiplier,
+            "minimum_design": dict(self.minimum_design),
+            "supports_unbalanced": self.supports_unbalanced,
+            "interaction_policy": self.interaction_policy,
+        }
+
     def design_shortfalls(self, design) -> list[dict]:
         """回傳未達方法設計下限的維度；全部達標時回傳空清單。"""
         values = design or {}

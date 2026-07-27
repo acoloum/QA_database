@@ -213,8 +213,12 @@ class MsaObservationService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def validate(plan_id: int, *, actor_id: int | None = None) -> dict:
-        """比對凍結的盲測矩陣與實際有效讀值，回報缺漏。"""
+    def completeness(plan_id: int) -> dict:
+        """唯讀比對盲測矩陣與有效讀值；不改狀態、不 commit。
+
+        分析交易需要在自己的交易內判斷完整性，因此與會推進狀態的
+        validate() 分開，避免在交易中途提交而提早釋放列鎖。
+        """
         plan = db.session.get(MsaPlanVersion, plan_id)
         if plan is None:
             raise MsaNotFound(
@@ -245,30 +249,36 @@ class MsaObservationService:
                 item["part_id"], item["appraiser_id"], item["trial_no"],
             ) not in recorded
         ]
-        complete = not missing
-
-        if complete:
-            study = (
-                MsaStudy.query
-                .filter_by(id=plan.study_id)
-                .with_for_update()
-                .one()
-            )
-            if study.status in {"ready", "collecting"}:
-                study.status = "ready_for_analysis"
-                study.updated_at = datetime.now(timezone.utc)
-                if actor_id is not None:
-                    study.updated_by_id = actor_id
-                db.session.commit()
-
         return {
             "plan_version_id": plan.id,
             "plan_hash": plan.plan_hash,
             "expected": len(plan.randomized_order),
             "recorded": len(recorded),
             "missing": missing,
-            "complete": complete,
+            "complete": not missing,
         }
+
+    @staticmethod
+    def validate(plan_id: int, *, actor_id: int | None = None) -> dict:
+        """驗證完整性；資料齊全時把研究推進到可分析。"""
+        report = MsaObservationService.completeness(plan_id)
+        if not report["complete"]:
+            return report
+
+        plan = db.session.get(MsaPlanVersion, plan_id)
+        study = (
+            MsaStudy.query
+            .filter_by(id=plan.study_id)
+            .with_for_update()
+            .one()
+        )
+        if study.status in {"ready", "collecting"}:
+            study.status = "ready_for_analysis"
+            study.updated_at = datetime.now(timezone.utc)
+            if actor_id is not None:
+                study.updated_by_id = actor_id
+            db.session.commit()
+        return report
 
     # ------------------------------------------------------------------
     # 內部

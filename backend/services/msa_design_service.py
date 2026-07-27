@@ -39,12 +39,17 @@ _PLAN_FIELDS = {
     "category_set",
     "sampling_notes",
     "environment_notes",
+    "percent_basis",
 }
 
 _EQUIPMENT_FIELDS = {"equipment_id", "role", "measurement_mode", "note"}
 _PART_FIELDS = {
-    "part_identifier", "reference_value", "reference_uncertainty", "note",
+    "part_identifier", "reference_value", "reference_uncertainty",
+    "reference_category", "note",
 }
+
+# 統計百分比的口徑必須由計畫明確選擇，不得由結果自動挑最有利的數字。
+PERCENT_BASES = ("tolerance", "study_variation", "process_variation")
 _APPRAISER_FIELDS = {"name", "user_id", "qualification"}
 
 # 需要可追溯參考值的方法；沒有參考證據就無法計算偏倚或線性。
@@ -109,7 +114,10 @@ class MsaDesignService:
                 random_seed=design["random_seed"],
                 randomized_order=[],
                 equipment_snapshot={},
-                criteria_snapshot={},
+                # 百分比口徑先記在準則快照，凍結時與準則版本一併固定
+                criteria_snapshot=MsaDesignService._percent_basis_selection(
+                    data
+                ),
                 category_set=list(data.get("category_set") or []),
                 sampling_notes=_optional_text(
                     data.get("sampling_notes"), field="sampling_notes",
@@ -130,6 +138,7 @@ class MsaDesignService:
                     part_identifier=row.get("part_identifier"),
                     reference_value=row.get("reference_value"),
                     reference_uncertainty=row.get("reference_uncertainty"),
+                    reference_category=row.get("reference_category"),
                     note=row.get("note"),
                 ))
             for index, row in enumerate(appraisers, start=1):
@@ -289,7 +298,13 @@ class MsaDesignService:
             equipment_snapshot["resolution_assessment"] = (
                 MsaDesignService._assess_resolution(study, equipment_snapshot)
             )
-            criteria_snapshot = MsaDesignService._build_criteria_snapshot(study)
+            selection = dict(plan.criteria_snapshot or {})
+            if not selection.get("percent_basis"):
+                selection = MsaDesignService._default_percent_basis(study)
+            criteria_snapshot = {
+                **MsaDesignService._build_criteria_snapshot(study),
+                **selection,
+            }
 
             plan.equipment_snapshot = equipment_snapshot
             plan.criteria_snapshot = criteria_snapshot
@@ -485,15 +500,28 @@ class MsaDesignService:
         for index, row in enumerate(rows):
             item = _require_object(row)
             _reject_unknown_fields(item, _PART_FIELDS)
+            reference_value = _optional_decimal(
+                item.get("reference_value"),
+                field=f"parts[{index}].reference_value",
+            )
+            reference_category = _optional_text(
+                item.get("reference_category"),
+                field=f"parts[{index}].reference_category",
+                max_length=80,
+            )
+            if reference_value is not None and reference_category is not None:
+                raise MsaValidationError(
+                    "MSA_DESIGN_PARTS_INVALID",
+                    "同一零件只能有數值參考值或參考分類其中一種",
+                    details={"index": index},
+                )
             validated.append({
                 "part_identifier": _optional_text(
                     item.get("part_identifier"),
                     field=f"parts[{index}].part_identifier",
                 ),
-                "reference_value": _optional_decimal(
-                    item.get("reference_value"),
-                    field=f"parts[{index}].reference_value",
-                ),
+                "reference_value": reference_value,
+                "reference_category": reference_category,
                 "reference_uncertainty": _optional_decimal(
                     item.get("reference_uncertainty"),
                     field=f"parts[{index}].reference_uncertainty",
@@ -590,6 +618,31 @@ class MsaDesignService:
                     "偏倚與線性研究必須有參考標準或可追溯的參考值",
                     details={"method_code": descriptor.code},
                 )
+
+    @staticmethod
+    def _percent_basis_selection(data: dict) -> dict:
+        """記錄百分比口徑是使用者明確選擇，還是採用預設順序。"""
+        basis = data.get("percent_basis")
+        if basis is None:
+            return {}
+        if basis not in PERCENT_BASES:
+            raise MsaValidationError(
+                "MSA_DESIGN_PERCENT_BASIS_INVALID",
+                "百分比口徑必須是受控選項之一",
+                details={"percent_basis": basis, "allowed": list(PERCENT_BASES)},
+            )
+        return {"percent_basis": basis, "percent_basis_source": "explicit"}
+
+    @staticmethod
+    def _default_percent_basis(study: MsaStudy) -> dict:
+        """未明確選擇時採固定順序，並記錄是預設而非最有利選擇。"""
+        if study.lsl is not None and study.usl is not None:
+            basis = "tolerance"
+        elif study.process_sigma is not None:
+            basis = "process_variation"
+        else:
+            basis = "study_variation"
+        return {"percent_basis": basis, "percent_basis_source": "default"}
 
     @staticmethod
     def _next_plan_no(study_id: int) -> int:
