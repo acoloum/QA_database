@@ -133,3 +133,15 @@ def msa_auth_required(function):
         return result
 
     return wrapped
+
+
+def has_msa_permission(current_user, permission: str) -> bool:
+    """在路由內判斷目前身分是否具備指定 MSA 權限（不影響回應）。"""
+    if current_user is None or not bool(current_user.is_active):
+        return False
+    if getattr(current_user, "role", None) == "admin":
+        return True
+    from ..models import Role
+
+    role = Role.query.filter_by(code=current_user.role).first()
+    return bool(role and role.has_permission(permission))

@@ -4,9 +4,14 @@ from flask import Blueprint, jsonify, request
 
 from ..services.msa_criteria_service import MsaCriteriaService
 from ..services.msa_design_service import MsaDesignService
+from ..services.msa_observation_import_service import (
+    MsaObservationImportService,
+)
+from ..services.msa_observation_service import MsaObservationService
 from ..services.msa_study_service import MsaStudyService
 from .msa_adapters import (
     handle_msa_errors as _handle_msa_errors,
+    has_msa_permission as _has_msa_permission,
     msa_auth_required as _msa_auth_required,
     require_msa_permission as _require_msa_permission,
 )
@@ -199,3 +204,118 @@ def freeze_msa_plan(current_user, plan_id: int):
 def list_msa_plan_tasks(current_user, plan_id: int):
     """取得只含盲碼的量測任務順序。"""
     return jsonify({"data": {"items": MsaDesignService.tasks(plan_id)}})
+
+
+# ---------------------------------------------------------------------------
+# 觀測收集與匯入
+# ---------------------------------------------------------------------------
+
+
+def _serialize_observation(observation) -> dict:
+    return {
+        "id": observation.id,
+        "plan_version_id": observation.plan_version_id,
+        "requested_order": observation.requested_order,
+        "actual_entry_order": observation.actual_entry_order,
+        "trial_no": observation.trial_no,
+        "numeric_value": (
+            str(observation.numeric_value)
+            if observation.numeric_value is not None else None
+        ),
+        "attribute_value": observation.attribute_value,
+        "measured_at": (
+            observation.measured_at.isoformat()
+            if observation.measured_at else None
+        ),
+        "source": observation.source,
+        "entered_by_id": observation.entered_by_id,
+        "is_effective": observation.is_effective,
+        "supersedes_id": observation.supersedes_id,
+        "correction_reason": observation.correction_reason,
+    }
+
+
+def _serialize_import_batch(batch) -> dict:
+    stats = dict(batch.stats or {})
+    # 逐列解析結果只在服務內部使用，不對外暴露以免洩漏盲測對應
+    stats.pop("rows", None)
+    return {
+        "id": batch.id,
+        "plan_version_id": batch.plan_version_id,
+        "file_name": batch.file_name,
+        "file_sha256": batch.file_sha256,
+        "plan_hash": batch.plan_hash,
+        "status": batch.status,
+        "issues": batch.issues,
+        "stats": stats,
+    }
+
+
+@msa_bp.post("/api/msa/plans/<int:plan_id>/observations")
+@_msa_auth_required
+@_require_msa_permission("msa.execute")
+@_handle_msa_errors
+def record_msa_observation(current_user, plan_id: int):
+    """記錄一筆盲測讀值；代輸入需要 msa.manage。"""
+    observation = MsaObservationService.record(
+        plan_id,
+        request.get_json(silent=True),
+        actor_id=current_user.id,
+        can_manage=_has_msa_permission(current_user, "msa.manage"),
+    )
+    return jsonify({"data": _serialize_observation(observation)}), 201
+
+
+@msa_bp.post("/api/msa/observations/<int:observation_id>/corrections")
+@_msa_auth_required
+@_require_msa_permission("msa.manage")
+@_handle_msa_errors
+def correct_msa_observation(current_user, observation_id: int):
+    """以後繼紀錄修正觀測；原紀錄只作廢不改值。"""
+    successor = MsaObservationService.correct(
+        observation_id,
+        request.get_json(silent=True),
+        actor_id=current_user.id,
+    )
+    return jsonify({"data": _serialize_observation(successor)}), 201
+
+
+@msa_bp.post("/api/msa/plans/<int:plan_id>/imports/preview")
+@_msa_auth_required
+@_require_msa_permission("msa.manage")
+@_handle_msa_errors
+def preview_msa_observation_import(current_user, plan_id: int):
+    """解析 Excel 並逐格回報問題，不寫入任何觀測。"""
+    batch = MsaObservationImportService.preview(
+        plan_id,
+        request.files.get("file"),
+        actor_id=current_user.id,
+    )
+    return jsonify({"data": _serialize_import_batch(batch)}), 201
+
+
+@msa_bp.post(
+    "/api/msa/plans/<int:plan_id>/imports/<int:batch_id>/confirm"
+)
+@_msa_auth_required
+@_require_msa_permission("msa.manage")
+@_handle_msa_errors
+def confirm_msa_observation_import(current_user, plan_id: int, batch_id: int):
+    """在單一交易內寫入批次中無問題的列。"""
+    batch = MsaObservationImportService.confirm(
+        batch_id, actor_id=current_user.id,
+    )
+    return jsonify({"data": _serialize_import_batch(batch)})
+
+
+@msa_bp.post("/api/msa/plans/<int:plan_id>/validate")
+@_msa_auth_required
+@_require_msa_permission("msa.execute")
+@_handle_msa_errors
+def validate_msa_plan_data(current_user, plan_id: int):
+    """比對盲測矩陣與有效讀值，完整時將研究推進到可分析。"""
+    return jsonify({
+        "data": MsaObservationService.validate(
+            plan_id, actor_id=current_user.id,
+        )
+    })
