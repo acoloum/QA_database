@@ -608,6 +608,11 @@ class MeasurementEquipment(db.Model):
             '(\'internal\', \'external\', \'exempt\')',
             name='ck_equipment_calibration_type',
         ),
+        db.CheckConstraint(
+            '"校驗類別" <> \'exempt\' OR '
+            'TRIM(COALESCE("校驗豁免理由", \'\')) <> \'\'',
+            name='ck_equipment_exemption_reason',
+        ),
         db.Index('idx_equipment_status_due', '狀態', '設備編號'),
     )
 
@@ -631,6 +636,9 @@ class MeasurementEquipment(db.Model):
         '狀態', db.String(30), nullable=False, default='pending_review'
     )
     calibration_type = db.Column('校驗類別', db.String(30), nullable=True)
+    calibration_exemption_reason = db.Column(
+        '校驗豁免理由', db.Text, nullable=True
+    )
     calibration_interval_months = db.Column(
         '校驗週期月數', db.Integer, nullable=True
     )
@@ -707,6 +715,11 @@ class EquipmentCalibrationRecord(db.Model):
             '"結果" IN (\'pending\', \'pass\', \'fail\', \'limited_use\')',
             name='ck_equipment_calibration_result',
         ),
+        db.CheckConstraint(
+            '"結果" <> \'limited_use\' OR '
+            '("適用量測模式" IS NOT NULL AND "適用量測模式" <> \'[]\')',
+            name='ck_equipment_limited_use_modes',
+        ),
         db.Index(
             'idx_equipment_calibration_equipment_date',
             '設備ID', '校驗日期',
@@ -736,6 +749,10 @@ class EquipmentCalibrationRecord(db.Model):
         '不確定度說明', db.Text, nullable=True
     )
     result = db.Column('結果', db.String(30), nullable=False)
+    applicable_modes = db.Column(
+        '適用量測模式', JsonType, nullable=False, default=list,
+        server_default=db.text("'[]'"),
+    )
     restriction_conditions = db.Column('限制條件', db.Text, nullable=True)
     approval_reason = db.Column('核准理由', db.Text, nullable=True)
     certificate_attachment_id = db.Column(

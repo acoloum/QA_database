@@ -242,3 +242,55 @@ def test_current_criteria_version_must_belong_to_same_profile(db_session):
     finally:
         db_session.rollback()
         db_session.execute(text("PRAGMA foreign_keys = OFF"))
+
+
+def test_exempt_equipment_requires_a_non_blank_exemption_reason(db_session):
+    """防止豁免設備未保存理由仍被當成正式研究證據。"""
+    db_session.add(
+        MeasurementEquipment(
+            equipment_no="EQ-EXEMPT-NO-REASON",
+            name="未載明理由的豁免量具",
+            calibration_type="exempt",
+            calibration_exemption_reason="  ",
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_limited_use_calibration_persists_applicable_modes(db_session):
+    """防止受限校驗缺少可供服務精確比對的結構化量測模式。"""
+    equipment = _equipment(db_session, "EQ-LIMITED-MODES")
+    record = EquipmentCalibrationRecord(
+        equipment_id=equipment.id,
+        calibration_type="external",
+        calibration_date=date(2026, 7, 27),
+        result="limited_use",
+        applicable_modes=["內徑量測"],
+        status="approved",
+    )
+    db_session.add(record)
+    db_session.commit()
+
+    assert record.applicable_modes == ["內徑量測"]
+
+
+def test_limited_use_calibration_rejects_empty_applicable_modes(db_session):
+    """防止資料庫接受沒有任何適用模式的受限校驗證據。"""
+    equipment = _equipment(db_session, "EQ-LIMITED-NO-MODES")
+    db_session.add(
+        EquipmentCalibrationRecord(
+            equipment_id=equipment.id,
+            calibration_type="external",
+            calibration_date=date(2026, 7, 27),
+            result="limited_use",
+            applicable_modes=[],
+            status="approved",
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()

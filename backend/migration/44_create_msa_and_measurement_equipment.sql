@@ -19,6 +19,7 @@ CREATE TABLE "量測設備" (
     "保管人" VARCHAR(120),
     "狀態" VARCHAR(30) NOT NULL DEFAULT 'pending_review',
     "校驗類別" VARCHAR(30),
+    "校驗豁免理由" TEXT,
     "校驗週期月數" INTEGER,
     "參考標準" BOOLEAN NOT NULL DEFAULT FALSE,
     "影響產品判定" BOOLEAN NOT NULL DEFAULT TRUE,
@@ -34,6 +35,10 @@ CREATE TABLE "量測設備" (
     CONSTRAINT ck_equipment_calibration_type CHECK (
         "校驗類別" IS NULL
         OR "校驗類別" IN ('internal', 'external', 'exempt')
+    ),
+    CONSTRAINT ck_equipment_exemption_reason CHECK (
+        "校驗類別" <> 'exempt'
+        OR BTRIM(COALESCE("校驗豁免理由", '')) <> ''
     )
 );
 
@@ -68,6 +73,7 @@ CREATE TABLE "設備校驗紀錄" (
     "追溯標準" TEXT,
     "不確定度說明" TEXT,
     "結果" VARCHAR(30) NOT NULL,
+    "適用量測模式" JSONB NOT NULL DEFAULT '[]'::jsonb,
     "限制條件" TEXT,
     "核准理由" TEXT,
     "原始證書附件ID" INTEGER REFERENCES "附件"("識別碼"),
@@ -78,6 +84,13 @@ CREATE TABLE "設備校驗紀錄" (
     "核准時間" TIMESTAMPTZ,
     CONSTRAINT ck_equipment_calibration_result CHECK (
         "結果" IN ('pending', 'pass', 'fail', 'limited_use')
+    ),
+    CONSTRAINT ck_equipment_limited_use_modes CHECK (
+        "結果" <> 'limited_use'
+        OR (
+            jsonb_typeof("適用量測模式") = 'array'
+            AND jsonb_array_length("適用量測模式") > 0
+        )
     )
 );
 
