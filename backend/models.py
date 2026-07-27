@@ -593,6 +593,460 @@ class SpcValidationRun(db.Model):
     )
 
 
+class MeasurementEquipment(db.Model):
+    """通用量測設備主檔，保存穩定身分與目前管理狀態。"""
+
+    __tablename__ = '量測設備'
+    __table_args__ = (
+        db.CheckConstraint(
+            '"狀態" IN (\'pending_review\', \'active\', \'maintenance\', '
+            '\'inactive\', \'scrapped\')',
+            name='ck_equipment_status',
+        ),
+        db.CheckConstraint(
+            '"校驗類別" IS NULL OR "校驗類別" IN '
+            '(\'internal\', \'external\', \'exempt\')',
+            name='ck_equipment_calibration_type',
+        ),
+        db.Index('idx_equipment_status_due', '狀態', '設備編號'),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    equipment_no = db.Column(
+        '設備編號', db.String(80), nullable=False, unique=True
+    )
+    name = db.Column('名稱', db.String(160), nullable=False)
+    equipment_type = db.Column('設備類型', db.String(80), nullable=True)
+    manufacturer = db.Column('製造商', db.String(120), nullable=True)
+    model = db.Column('型號', db.String(120), nullable=True)
+    serial_no = db.Column('序號', db.String(160), nullable=True)
+    range_min = db.Column('量程下限', db.Numeric, nullable=True)
+    range_max = db.Column('量程上限', db.Numeric, nullable=True)
+    resolution = db.Column('解析度', db.Numeric, nullable=True)
+    unit = db.Column('單位', db.String(40), nullable=True)
+    department = db.Column('部門', db.String(120), nullable=True)
+    location = db.Column('存放位置', db.String(200), nullable=True)
+    custodian = db.Column('保管人', db.String(120), nullable=True)
+    status = db.Column(
+        '狀態', db.String(30), nullable=False, default='pending_review'
+    )
+    calibration_type = db.Column('校驗類別', db.String(30), nullable=True)
+    calibration_interval_months = db.Column(
+        '校驗週期月數', db.Integer, nullable=True
+    )
+    is_reference_standard = db.Column(
+        '參考標準', db.Boolean, nullable=False, default=False
+    )
+    affects_product_decision = db.Column(
+        '影響產品判定', db.Boolean, nullable=False, default=True
+    )
+    created_by = db.Column(
+        '建立者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    created_at = db.Column(
+        '建立時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_by = db.Column(
+        '更新者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    updated_at = db.Column(
+        '更新時間', db.DateTime(timezone=True), nullable=False,
+        default=utc_now, onupdate=utc_now,
+    )
+
+    links = db.relationship(
+        'MeasurementEquipmentLink', back_populates='equipment'
+    )
+    calibration_records = db.relationship(
+        'EquipmentCalibrationRecord', back_populates='equipment'
+    )
+    status_events = db.relationship(
+        'EquipmentStatusEvent', back_populates='equipment'
+    )
+
+
+class MeasurementEquipmentLink(db.Model):
+    """通用設備與既有專用設備實體的正式連結。"""
+
+    __tablename__ = '量測設備連結'
+    __table_args__ = (
+        db.Index(
+            'uq_equipment_current_source_link',
+            '來源模組', '來源實體類型', '來源實體ID',
+            unique=True,
+            postgresql_where=db.text('"目前正式連結" IS TRUE'),
+            sqlite_where=db.text('"目前正式連結" IS 1'),
+        ),
+        db.Index('idx_equipment_link_equipment', '設備ID'),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    equipment_id = db.Column(
+        '設備ID', db.Integer, db.ForeignKey('量測設備.識別碼'), nullable=False
+    )
+    source_module = db.Column('來源模組', db.String(50), nullable=False)
+    source_entity_type = db.Column(
+        '來源實體類型', db.String(80), nullable=False
+    )
+    source_entity_id = db.Column('來源實體ID', db.Integer, nullable=False)
+    is_current = db.Column(
+        '目前正式連結', db.Boolean, nullable=False, default=True
+    )
+
+    equipment = db.relationship(
+        'MeasurementEquipment', back_populates='links'
+    )
+
+
+class EquipmentCalibrationRecord(db.Model):
+    """設備校驗證據；核准後只能建立後繼版本，不得原地覆寫。"""
+
+    __tablename__ = '設備校驗紀錄'
+    __table_args__ = (
+        db.CheckConstraint(
+            '"結果" IN (\'pending\', \'pass\', \'fail\', \'limited_use\')',
+            name='ck_equipment_calibration_result',
+        ),
+        db.Index(
+            'idx_equipment_calibration_equipment_date',
+            '設備ID', '校驗日期',
+        ),
+        db.Index(
+            'idx_equipment_calibration_due_status',
+            '下次校驗日', '狀態',
+        ),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    equipment_id = db.Column(
+        '設備ID', db.Integer, db.ForeignKey('量測設備.識別碼'), nullable=False
+    )
+    calibration_type = db.Column(
+        '校驗類型', db.String(30), nullable=False
+    )
+    calibration_date = db.Column('校驗日期', db.Date, nullable=False)
+    effective_date = db.Column('有效日期', db.Date, nullable=True)
+    next_due_date = db.Column('下次校驗日', db.Date, nullable=True)
+    calibration_provider = db.Column(
+        '校驗機構', db.String(160), nullable=True
+    )
+    certificate_no = db.Column('證書編號', db.String(160), nullable=True)
+    traceability_standard = db.Column('追溯標準', db.Text, nullable=True)
+    uncertainty_statement = db.Column(
+        '不確定度說明', db.Text, nullable=True
+    )
+    result = db.Column('結果', db.String(30), nullable=False)
+    restriction_conditions = db.Column('限制條件', db.Text, nullable=True)
+    approval_reason = db.Column('核准理由', db.Text, nullable=True)
+    certificate_attachment_id = db.Column(
+        '原始證書附件ID', db.Integer, db.ForeignKey('附件.識別碼'),
+        nullable=True,
+    )
+    status = db.Column(
+        '狀態', db.String(30), nullable=False, default='draft'
+    )
+    created_by = db.Column(
+        '建立者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    created_at = db.Column(
+        '建立時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    approved_by = db.Column(
+        '核准者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    approved_at = db.Column(
+        '核准時間', db.DateTime(timezone=True), nullable=True
+    )
+
+    equipment = db.relationship(
+        'MeasurementEquipment', back_populates='calibration_records'
+    )
+    correction_points = db.relationship(
+        'EquipmentCorrectionPoint', back_populates='calibration_record'
+    )
+
+
+class EquipmentCorrectionPoint(db.Model):
+    """設備校驗紀錄的逐點器差與補正資料。"""
+
+    __tablename__ = '設備校驗補正點'
+    __table_args__ = (
+        db.Index('idx_equipment_correction_record', '校驗紀錄ID'),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    calibration_record_id = db.Column(
+        '校驗紀錄ID', db.Integer,
+        db.ForeignKey('設備校驗紀錄.識別碼'), nullable=False,
+    )
+    measurement_mode = db.Column(
+        '量測模式', db.String(80), nullable=True
+    )
+    nominal_value = db.Column('名目值', db.Numeric, nullable=False)
+    indicated_value = db.Column('器示值', db.Numeric, nullable=False)
+    error_value = db.Column('誤差值', db.Numeric, nullable=True)
+    correction_value = db.Column('補正值', db.Numeric, nullable=True)
+    unit = db.Column('單位', db.String(40), nullable=True)
+    range_start = db.Column('適用量程起點', db.Numeric, nullable=True)
+    range_end = db.Column('適用量程終點', db.Numeric, nullable=True)
+
+    calibration_record = db.relationship(
+        'EquipmentCalibrationRecord', back_populates='correction_points'
+    )
+
+
+class EquipmentStatusEvent(db.Model):
+    """影響設備可用性與 MSA 再研究判定的狀態事件。"""
+
+    __tablename__ = '設備狀態事件'
+    __table_args__ = (
+        db.Index(
+            'idx_equipment_status_event_equipment_time',
+            '設備ID', '發生時間',
+        ),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    equipment_id = db.Column(
+        '設備ID', db.Integer, db.ForeignKey('量測設備.識別碼'), nullable=False
+    )
+    event_type = db.Column('事件類型', db.String(40), nullable=False)
+    occurred_at = db.Column(
+        '發生時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    reason = db.Column('原因', db.Text, nullable=True)
+    created_by = db.Column(
+        '建立者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    triggers_msa_restudy = db.Column(
+        '觸發MSA再研究', db.Boolean, nullable=False, default=False
+    )
+
+    equipment = db.relationship(
+        'MeasurementEquipment', back_populates='status_events'
+    )
+
+
+class EquipmentImportBatch(db.Model):
+    """設備匯入批次，保存原始檔案指紋與解析結果統計。"""
+
+    __tablename__ = '設備匯入批次'
+    __table_args__ = (
+        db.Index('uq_equipment_import_sha', '檔案SHA256', unique=True),
+        db.Index('idx_equipment_import_status_time', '狀態', '上傳時間'),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    original_filename = db.Column(
+        '原始檔名', db.String(255), nullable=False
+    )
+    file_sha256 = db.Column('檔案SHA256', db.String(64), nullable=False)
+    file_size = db.Column('檔案大小', db.BigInteger, nullable=False)
+    uploaded_by = db.Column(
+        '上傳者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    uploaded_at = db.Column(
+        '上傳時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    status = db.Column('狀態', db.String(30), nullable=False)
+    total_rows = db.Column('總列數', db.Integer, nullable=False, default=0)
+    success_rows = db.Column('成功數', db.Integer, nullable=False, default=0)
+    pending_rows = db.Column('待確認數', db.Integer, nullable=False, default=0)
+    rejected_rows = db.Column('拒絕數', db.Integer, nullable=False, default=0)
+    parser_version = db.Column(
+        '解析器版本', db.String(80), nullable=False
+    )
+
+    rows = db.relationship('EquipmentImportRow', back_populates='batch')
+
+
+class EquipmentImportRow(db.Model):
+    """設備匯入的逐列原始內容、正規化內容與人工確認軌跡。"""
+
+    __tablename__ = '設備匯入列'
+    __table_args__ = (
+        db.UniqueConstraint(
+            '匯入批次ID', '原始列號', name='uq_equipment_import_row'
+        ),
+        db.Index('idx_equipment_import_row_equipment', '對應設備ID'),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    batch_id = db.Column(
+        '匯入批次ID', db.Integer, db.ForeignKey('設備匯入批次.識別碼'),
+        nullable=False,
+    )
+    row_number = db.Column('原始列號', db.Integer, nullable=False)
+    raw_data = db.Column('原始JSON', db.JSON, nullable=False)
+    normalized_data = db.Column('正規化JSON', db.JSON, nullable=True)
+    issue_codes = db.Column('問題代碼', db.JSON, nullable=False, default=list)
+    issue_description = db.Column('問題說明', db.Text, nullable=True)
+    equipment_id = db.Column(
+        '對應設備ID', db.Integer, db.ForeignKey('量測設備.識別碼'),
+        nullable=True,
+    )
+    confirmed_by = db.Column(
+        '確認者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    confirmed_at = db.Column(
+        '確認時間', db.DateTime(timezone=True), nullable=True
+    )
+
+    batch = db.relationship('EquipmentImportBatch', back_populates='rows')
+    equipment = db.relationship('MeasurementEquipment')
+
+
+class MsaCriteriaProfile(db.Model):
+    """MSA 判定準則的適用範圍與目前啟用版本。"""
+
+    __tablename__ = 'MSA準則設定'
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    name = db.Column('名稱', db.String(160), nullable=False)
+    customer_scope = db.Column('顧客範圍', db.String(200), nullable=True)
+    product_scope = db.Column('產品範圍', db.String(200), nullable=True)
+    product_family_scope = db.Column(
+        '產品族範圍', db.String(200), nullable=True
+    )
+    characteristic_scope = db.Column(
+        '品質特性範圍', db.String(200), nullable=True
+    )
+    characteristic_importance = db.Column(
+        '特性重要度', db.String(40), nullable=True
+    )
+    applicable_study_types = db.Column(
+        '適用研究類型', db.JSON, nullable=False, default=list
+    )
+    current_version_id = db.Column(
+        '目前啟用版本ID', db.Integer,
+        db.ForeignKey(
+            'MSA準則版本.識別碼',
+            name='fk_msa_criteria_current_version',
+            use_alter=True,
+        ),
+        nullable=True,
+    )
+
+    versions = db.relationship(
+        'MsaCriteriaVersion',
+        back_populates='profile',
+        foreign_keys='MsaCriteriaVersion.profile_id',
+    )
+    current_version = db.relationship(
+        'MsaCriteriaVersion',
+        foreign_keys=[current_version_id],
+        post_update=True,
+    )
+
+
+class MsaCriteriaVersion(db.Model):
+    """具版次且核准後不可覆寫的 MSA 判定準則快照。"""
+
+    __tablename__ = 'MSA準則版本'
+    __table_args__ = (
+        db.UniqueConstraint(
+            '準則設定ID', '版本號', name='uq_msa_criteria_revision'
+        ),
+        db.Index(
+            'idx_msa_criteria_status_effective',
+            '狀態', '適用日期',
+        ),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    profile_id = db.Column(
+        '準則設定ID', db.Integer, db.ForeignKey('MSA準則設定.識別碼'),
+        nullable=False,
+    )
+    version_no = db.Column('版本號', db.Integer, nullable=False)
+    method_version = db.Column('方法版本', db.String(80), nullable=False)
+    effective_date = db.Column('適用日期', db.Date, nullable=False)
+    thresholds = db.Column('門檻', db.JSON, nullable=False)
+    stability_rules = db.Column(
+        '穩定性規則組', db.JSON, nullable=False, default=dict
+    )
+    conditional_actions = db.Column(
+        '條件接受強制處置', db.JSON, nullable=False, default=list
+    )
+    basis = db.Column('依據', db.Text, nullable=True)
+    status = db.Column('狀態', db.String(30), nullable=False, default='draft')
+    created_by = db.Column(
+        '建立者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    created_at = db.Column(
+        '建立時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    approved_by = db.Column(
+        '核准者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    approved_at = db.Column(
+        '核准時間', db.DateTime(timezone=True), nullable=True
+    )
+
+    profile = db.relationship(
+        'MsaCriteriaProfile',
+        back_populates='versions',
+        foreign_keys=[profile_id],
+    )
+
+
+_MSA_APPROVED_EVIDENCE = (
+    EquipmentCalibrationRecord,
+    MsaCriteriaVersion,
+)
+
+
+def _msa_evidence_label(target):
+    if isinstance(target, EquipmentCalibrationRecord):
+        return '校驗紀錄'
+    return ' MSA 準則版本'
+
+
+def _persisted_msa_status(connection, target):
+    """取得 flush 前的原始狀態，避免先改狀態再覆寫核准證據。"""
+
+    state = inspect(target)
+    history = state.attrs.status.history
+    if history.deleted:
+        return history.deleted[0]
+    if not state.persistent or target.id is None:
+        return None
+    table = target.__table__
+    return connection.execute(
+        db.select(table.c['狀態']).where(table.c['識別碼'] == target.id)
+    ).scalar_one_or_none()
+
+
+def _block_approved_msa_evidence_update(_mapper, connection, target):
+    original_status = _persisted_msa_status(connection, target)
+    if original_status == 'approved':
+        raise ValueError(
+            f'核准後的{_msa_evidence_label(target)}不可修改'
+        )
+
+
+def _block_msa_evidence_delete(_mapper, connection, target):
+    original_status = _persisted_msa_status(connection, target)
+    if original_status == 'approved' or target.status == 'approved':
+        raise ValueError(
+            f'核准後的{_msa_evidence_label(target)}不可刪除'
+        )
+    raise ValueError('MSA 證據不可刪除；請保留舊版並建立後繼版本')
+
+
+for _msa_approved_model in _MSA_APPROVED_EVIDENCE:
+    event.listen(
+        _msa_approved_model,
+        'before_update',
+        _block_approved_msa_evidence_update,
+    )
+    event.listen(
+        _msa_approved_model,
+        'before_delete',
+        _block_msa_evidence_delete,
+    )
+
+
 class VendorToleranceMain(db.Model):
     __tablename__ = '廠商公差主檔'
     id = db.Column('識別碼', db.Integer, primary_key=True)
