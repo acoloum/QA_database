@@ -297,8 +297,12 @@ class MsaEquipmentService:
                         point.correction_value
                     ),
                     "unit": point.unit,
-                    "range_start": point.range_start,
-                    "range_end": point.range_end,
+                    "range_start": MsaEquipmentService._canonical_value(
+                        point.range_start
+                    ),
+                    "range_end": MsaEquipmentService._canonical_value(
+                        point.range_end
+                    ),
                 }
                 for point in correction_points
             ],

@@ -405,6 +405,8 @@ def test_passing_calibration_returns_snapshot_with_correction_evidence(db_sessio
             error_value=Decimal("0.002"),
             correction_value=Decimal("-0.002"),
             unit="mm",
+            range_start=Decimal("5.000"),
+            range_end=Decimal("15.000"),
         )
     )
     db_session.commit()
@@ -419,6 +421,7 @@ def test_passing_calibration_returns_snapshot_with_correction_evidence(db_sessio
     assert eligible.calibration_record_id == record.id
     assert snapshot.equipment_no == "EQ-PASS"
     assert snapshot.resolution == "0.0010000000"
+    assert json.dumps(asdict(snapshot), sort_keys=True, allow_nan=False)
     assert snapshot.calibration == {
         "record_id": record.id,
         "calibration_type": "external",
@@ -442,9 +445,8 @@ def test_passing_calibration_returns_snapshot_with_correction_evidence(db_sessio
                 "error_value": "0.0020000000",
                 "correction_value": "-0.0020000000",
                 "unit": "mm",
-                "range_start": None,
-                "range_end": None,
+                "range_start": "5.0000000000",
+                "range_end": "15.0000000000",
             }
         ],
     }
-    assert json.dumps(asdict(snapshot), sort_keys=True, allow_nan=False)
