@@ -188,19 +188,27 @@ export interface MsaStatusEventInput {
 export interface ApproveMsaCalibrationInput {
   calibrationId: number;
   equipmentId: number;
-  expected_status: 'draft' | 'approved';
+  expected_status: 'draft';
   reason: string;
   certificate_attachment_id?: number;
 }
 
-export interface CreateMsaEquipmentLinkInput {
+interface CreateMsaEquipmentLinkBase {
   equipmentId: number;
   source_module: 'pyrometry';
   source_entity_type: 'Recorder' | 'Thermocouple';
   source_entity_id: number;
-  is_current?: boolean;
-  expected_current_link_id?: number | null;
 }
+
+export type CreateMsaEquipmentLinkInput =
+  | (CreateMsaEquipmentLinkBase & {
+    is_current?: true;
+    expected_current_link_id: number | null;
+  })
+  | (CreateMsaEquipmentLinkBase & {
+    is_current: false;
+    expected_current_link_id?: never;
+  });
 
 export interface RetireMsaEquipmentLinkInput {
   equipmentId: number;
@@ -297,7 +305,7 @@ export interface MsaCriteriaVersion {
   approved_at: string | null;
 }
 
-export interface MsaCriteriaProfile {
+export interface MsaCriteriaProfileSummary {
   id: number;
   name: string;
   customer_scope: string | null;
@@ -307,6 +315,9 @@ export interface MsaCriteriaProfile {
   characteristic_importance: string | null;
   applicable_study_types: string[];
   current_version_id: number | null;
+}
+
+export interface MsaCriteriaProfile extends MsaCriteriaProfileSummary {
   versions: MsaCriteriaVersion[];
 }
 

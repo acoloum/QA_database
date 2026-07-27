@@ -1,13 +1,36 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { ApiError } from './apiError';
+
+export { ApiError } from './apiError';
 
 // 建立 axios 實例
 const api = axios.create({
     baseURL: '/api',
-    headers: {
-        'Content-Type': 'application/json',
-    },
 });
+
+type StableErrorDetails = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+    typeof value === 'object' && value !== null && !Array.isArray(value)
+);
+
+const readStableError = (rawError: unknown, status?: number, response?: unknown): ApiError | null => {
+    if (typeof rawError === 'string') {
+        return new ApiError({ message: rawError, status, response: response as ApiError['response'] });
+    }
+    if (!isRecord(rawError)) return null;
+
+    const message = typeof rawError.message === 'string' ? rawError.message : '發生未知錯誤';
+    const code = typeof rawError.code === 'string' ? rawError.code : undefined;
+    const details = isRecord(rawError.details) ? rawError.details as StableErrorDetails : undefined;
+    const directField = typeof rawError.field === 'string' ? rawError.field : undefined;
+    const detailField = typeof details?.field === 'string' ? details.field : undefined;
+    return new ApiError({
+        message, status, code, details, field: directField ?? detailField,
+        response: response as ApiError['response'],
+    });
+};
 
 // 請求攔截器：自動帶入 Token
 api.interceptors.request.use(
@@ -42,22 +65,17 @@ api.interceptors.response.use(
 
         // 2. 處理後端回傳的標準錯誤格式
         if (response && response.data && response.data.error) {
-            // 後端可能回 { error: "訊息" } 或 { error: { message: "訊息", field: "欄位" } }
+            // 後端可能回 { error: "訊息" } 或穩定 { error: { code, message, details } }。
             const rawError = response.data.error;
-            const errorMsg = typeof rawError === 'string'
-                ? rawError
-                : (rawError.message || '發生未知錯誤');
-            const field = rawError && typeof rawError === 'object' ? rawError.field : undefined;
+            const err = readStableError(rawError, response.status, response);
+            if (err === null) return Promise.reject(error);
 
             // 4xx 驗證錯誤（如「使用者名稱已存在」）→ 不顯示 toast，讓 caller 自行處理
             // 5xx server error 或沒有 response 的錯誤 → 顯示 toast
             const isServerError = !response || response.status >= 500;
 
-            const err = new Error(errorMsg) as Error & { field?: string; _toasted?: boolean };
-            err.field = field;
-
             if (isServerError || !response) {
-                toast.error(errorMsg);
+                toast.error(err.message);
                 err._toasted = true;
             }
             // 4xx 驗證錯誤不放 toast，_toasted 保持 undefined

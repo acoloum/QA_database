@@ -33,11 +33,24 @@ export const msaKeys = {
   criteria: () => ['msa', 'criteria'] as const,
 };
 
+export const isMsaEquipmentListQuery = (query: { queryKey: readonly unknown[] }) => {
+  const key = query.queryKey;
+  return key[0] === 'msa'
+    && key[1] === 'equipment'
+    && typeof key[2] === 'object'
+    && key[2] !== null
+    && !Array.isArray(key[2]);
+};
+
+export const invalidateMsaEquipmentLists = (queryClient: ReturnType<typeof useQueryClient>) => {
+  queryClient.invalidateQueries({ predicate: isMsaEquipmentListQuery });
+};
+
 const invalidateEquipment = (
   queryClient: ReturnType<typeof useQueryClient>,
   equipmentId?: number,
 ) => {
-  queryClient.invalidateQueries({ queryKey: msaKeys.equipmentRoot });
+  invalidateMsaEquipmentLists(queryClient);
   if (equipmentId != null) {
     queryClient.invalidateQueries({ queryKey: msaKeys.equipmentDetail(equipmentId) });
   }

@@ -7,6 +7,7 @@ import type {
   CreateMsaCriteriaVersionInput,
   MsaCriteriaListParams,
   MsaCriteriaProfile,
+  MsaCriteriaProfileSummary,
   MsaCriteriaVersion,
   MsaPage,
 } from '../types/msa';
@@ -31,9 +32,9 @@ export const useMsaCriteria = (params: MsaCriteriaListParams) => useQuery({
 
 export const useCreateMsaCriteriaProfile = () => {
   const queryClient = useQueryClient();
-  return useMutation<MsaCriteriaProfile, unknown, CreateMsaCriteriaProfileInput>({
+  return useMutation<MsaCriteriaProfileSummary, unknown, CreateMsaCriteriaProfileInput>({
     mutationFn: async (payload: CreateMsaCriteriaProfileInput) => unwrap(
-      await api.post<ApiEnvelope<MsaCriteriaProfile>>('/msa/criteria', payload),
+      await api.post<ApiEnvelope<MsaCriteriaProfileSummary>>('/msa/criteria', payload),
     ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: msaKeys.criteria() }),
   });

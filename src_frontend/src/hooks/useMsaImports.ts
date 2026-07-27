@@ -6,7 +6,7 @@ import type {
   EquipmentImportBatch,
   PreviewMsaEquipmentImportInput,
 } from '../types/msa';
-import { msaKeys } from './useMsaEquipment';
+import { invalidateMsaEquipmentLists, msaKeys } from './useMsaEquipment';
 
 interface ApiEnvelope<T> {
   data: T;
@@ -42,7 +42,7 @@ export const useConfirmMsaEquipmentImport = () => {
     ),
     onSuccess: (_batch: EquipmentImportBatch, { batchId }: ConfirmMsaEquipmentImportInput) => {
       queryClient.invalidateQueries({ queryKey: msaKeys.importBatch(batchId) });
-      queryClient.invalidateQueries({ queryKey: msaKeys.equipmentRoot });
+      invalidateMsaEquipmentLists(queryClient);
     },
   });
 };

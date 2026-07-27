@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../services/api';
+import type { MsaCriteriaProfileSummary } from '../types/msa';
 import {
   useApproveMsaCriteriaVersion,
   useCreateMsaCriteriaProfile,
@@ -59,5 +60,15 @@ describe('MSA 判定準則資料層', () => {
       { queryKey: ['msa', 'criteria'] },
       { queryKey: ['msa', 'criteria'] },
     ]);
+  });
+
+  it('建立 profile 時採用 route 實際回傳的無 versions 摘要型別', () => {
+    const summary: MsaCriteriaProfileSummary = {
+      id: 5, name: '一般量測', customer_scope: null, product_scope: null,
+      product_family_scope: null, characteristic_scope: null,
+      characteristic_importance: null, applicable_study_types: ['grr'], current_version_id: null,
+    };
+
+    expect('versions' in summary).toBe(false);
   });
 });

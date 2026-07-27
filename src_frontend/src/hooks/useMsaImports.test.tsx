@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../services/api';
+import { isMsaEquipmentListQuery } from './useMsaEquipment';
 import { useConfirmMsaEquipmentImport, usePreviewMsaEquipmentImport } from './useMsaImports';
 
 vi.mock('../services/api', () => ({ default: { post: vi.fn() } }));
@@ -54,9 +55,9 @@ describe('MSA 設備匯入資料層', () => {
     expect(api.post).toHaveBeenCalledWith('/measurement-equipment/imports/41/confirm', {
       resolutions, confirmation_date: '2026-07-27',
     });
-    expect(invalidateSpy.mock.calls.map(([options]: [{ queryKey: readonly unknown[] }]) => options)).toEqual([
+    expect(invalidateSpy.mock.calls.map(([options]: [{ predicate?: unknown; queryKey?: readonly unknown[] }]) => options)).toEqual([
       { queryKey: ['msa', 'equipment-import', 41] },
-      { queryKey: ['msa', 'equipment'] },
+      { predicate: isMsaEquipmentListQuery },
     ]);
   });
 });
