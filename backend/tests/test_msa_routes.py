@@ -1787,3 +1787,59 @@ def test_study_creation_is_audited(client, db_session, msa_user_headers):
         module="msa_study", action="create_study", record_id=created["id"],
     ).one()
     assert audit.new_value["study_no"] == created["study_no"]
+
+
+# ---------------------------------------------------------------------------
+# 服務層 403 不得被權限轉接器蓋掉
+# ---------------------------------------------------------------------------
+
+
+def test_self_approval_403_is_not_masked_as_permission_denied(
+    client, db_session, msa_user_headers,
+):
+    """職責分離的 403 必須保留自己的錯誤碼。
+
+    兩者都是 403：若被改寫成 MSA_PERMISSION_DENIED，核准者會以為只是
+    權限不足而去要更多權限，而不是知道自己根本不該核准這份研究。
+    """
+    from backend.services.msa_errors import MsaForbidden
+    from backend.routes import msa as msa_routes
+
+    def _raise_self_approval(*_args, **_kwargs):
+        raise MsaForbidden(
+            "MSA_SELF_APPROVAL_FORBIDDEN",
+            "建立、執行或輸入本研究資料的人員不得核准本研究",
+            details={"conflicting_roles": ["data_entry"]},
+        )
+
+    original = msa_routes.MsaWorkflowService.approve
+    msa_routes.MsaWorkflowService.approve = staticmethod(_raise_self_approval)
+    try:
+        response = client.post(
+            "/api/msa/results/1/approve",
+            json={"expected_status": "submitted", "reason": "自己核准"},
+            headers=msa_user_headers("msa_approve"),
+        )
+    finally:
+        msa_routes.MsaWorkflowService.approve = original
+
+    assert response.status_code == 403
+    error = response.get_json()["error"]
+    assert error["code"] == "MSA_SELF_APPROVAL_FORBIDDEN"
+    assert error["details"]["conflicting_roles"] == ["data_entry"]
+
+
+def test_missing_permission_still_reports_permission_denied(
+    client, msa_user_headers,
+):
+    """真的權限不足時仍要回 MSA_PERMISSION_DENIED。"""
+    response = client.post(
+        "/api/msa/results/1/approve",
+        json={"expected_status": "submitted", "reason": "無權限"},
+        headers=msa_user_headers("msa_execute"),
+    )
+
+    assert response.status_code == 403
+    error = response.get_json()["error"]
+    assert error["code"] == "MSA_PERMISSION_DENIED"
+    assert error["details"] == {"permission": "msa.approve"}

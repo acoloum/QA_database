@@ -421,3 +421,21 @@ button.msa-risk-card:hover { box-shadow: 0 3px 10px rgba(23, 33, 38, .1); }
 .msa-dialog-actions { display: flex; justify-content: flex-end; gap: .6rem; margin-top: .8rem; }
 .msa-dialog-actions button { min-height: 2.5rem; border: 1px solid var(--msa-line); border-radius: .3rem; background: #fff; padding: .45rem 1rem; font-weight: 700; }
 .msa-dialog-actions button[type="submit"] { border-color: var(--msa-accent); background: var(--msa-accent); color: #fff; }
+
+/*
+ * 欄位多的表格讓表格自己橫向捲動，頁面本身永遠不橫向溢出。
+ * 少了這條，390px 下研究清單會把整頁推寬 111px。
+ */
+.msa-panel,
+.msa-evidence-layer > div,
+.msa-chart {
+  overflow-x: auto;
+}
+
+/* 捲動容器需要可聚焦，鍵盤使用者才能捲動看到被裁掉的欄位 */
+.msa-panel:focus-visible,
+.msa-evidence-layer > div:focus-visible,
+.msa-chart:focus-visible {
+  outline: 3px solid rgba(15, 107, 98, .5);
+  outline-offset: 2px;
+}

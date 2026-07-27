@@ -4,15 +4,42 @@
     {
       "name": "Frontend (Vite)",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["node_modules/vite/bin/vite.js"],
+      "runtimeArgs": [
+        "node_modules/vite/bin/vite.js"
+      ],
       "port": 5173,
       "cwd": "src_frontend"
     },
     {
       "name": "Backend (Flask)",
       "runtimeExecutable": "venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "flask", "--app", "backend.app:app", "run", "--port", "5001"],
+      "runtimeArgs": [
+        "-m",
+        "flask",
+        "--app",
+        "backend.app:app",
+        "run",
+        "--port",
+        "5001"
+      ],
       "port": 5001
+    },
+    {
+      "name": "MSA Smoke Backend",
+      "runtimeExecutable": "venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "flask",
+        "--app",
+        "backend.app:app",
+        "run",
+        "--port",
+        "5002"
+      ],
+      "port": 5002,
+      "env": {
+        "DB_NAME": "qa_database_smoke"
+      }
     }
   ]
 }
