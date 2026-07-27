@@ -5,6 +5,7 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
+from sqlalchemy.exc import DataError
 
 import backend.services.msa_import_service as msa_import_module
 from backend.models import (
@@ -33,6 +34,15 @@ FIXTURE_PATH = (
 def _preview(actor_id=1):
     return MsaImportService.preview(
         FIXTURE_PATH,
+        "equipment.csv",
+        actor_id=actor_id,
+        as_of=date(2026, 7, 27),
+    )
+
+
+def _preview_content(content: str, *, actor_id=1):
+    return MsaImportService.preview(
+        BytesIO(content.encode("utf-8-sig")),
         "equipment.csv",
         actor_id=actor_id,
         as_of=date(2026, 7, 27),
@@ -71,6 +81,78 @@ def test_normalize_cleans_html_and_keeps_raw_source():
     assert normalized.data["serial_no"] == "ABC123"
     assert normalized.data["legacy_notes"] == "送校，S/N: ABC123"
     assert raw["效準提醒"].startswith("<span")
+
+
+@pytest.mark.parametrize(
+    "reminder",
+    [
+        "&lt;img src=x onerror=alert(1)&gt;校驗即將到期",
+        "&amp;lt;img src=x onerror=alert(1)&amp;gt;校驗即將到期",
+    ],
+)
+def test_html_cleaning_decodes_entities_before_extracting_plain_text(reminder):
+    """encoded 或 double-encoded markup 若流入輸出，此測試應失敗。"""
+    normalized = normalize_equipment_row(
+        {
+            "設備編號": "EQ-HTML",
+            "名稱": "測試量具",
+            "效準提醒": reminder,
+        },
+        source_row_no=2,
+        as_of=date(2026, 7, 27),
+    )
+
+    assert normalized.data["reminder_text"] == "校驗即將到期"
+    assert "<" not in normalized.data["reminder_text"]
+    assert "onerror" not in normalized.data["reminder_text"]
+    assert normalized.html_cleaned is True
+
+
+def test_plain_entity_decode_does_not_count_as_html_cleaning():
+    """純文字 entity 若被誤算成 HTML 清理列，此測試應失敗。"""
+    normalized = normalize_equipment_row(
+        {
+            "設備編號": "EQ-TEXT",
+            "名稱": "測試量具",
+            "效準提醒": "AT&amp;T 校驗",
+        },
+        source_row_no=2,
+        as_of=date(2026, 7, 27),
+    )
+
+    assert normalized.data["reminder_text"] == "AT&T 校驗"
+    assert normalized.html_cleaned is False
+
+
+@pytest.mark.parametrize(
+    "resolution",
+    [
+        "1e100000",
+        "1e-100000",
+        "9999999999999999999999999999999999999999",
+        "1000001",
+        "0.0000000000001",
+    ],
+)
+def test_resolution_rejects_unbounded_decimal_without_expansion(resolution):
+    """超長、極端指數或超出業務範圍的解析度不得展開成巨量字串。"""
+    normalized = normalize_equipment_row(
+        {
+            "設備編號": "EQ-DECIMAL",
+            "名稱": "測試量具",
+            "狀態": "使用中",
+            "類別": "外校",
+            "解析度": resolution,
+            "單位": "mm",
+            "型號": "M-1",
+            "操作者": "測試人員",
+        },
+        source_row_no=2,
+        as_of=date(2026, 7, 27),
+    )
+
+    assert normalized.data["resolution"] is None
+    assert "MSA_IMPORT_RESOLUTION_INVALID" in normalized.issue_codes
 
 
 def test_serial_requires_supported_prefix_and_preserves_review_candidates():
@@ -228,6 +310,38 @@ def test_csv_parser_accepts_cp950_without_changing_source_bytes():
     assert inspection.rows[0][1].data["name"] == "游標卡尺"
 
 
+@pytest.mark.parametrize("control_character", ["\x00", "\x01", "\x7f"])
+def test_csv_parser_rejects_disallowed_control_characters(
+    control_character,
+):
+    """U+0000 或其他不允許控制字元若進入 raw JSON，此測試應失敗。"""
+    content = (
+        f"設備編號,名稱\nEQ-1,游標{control_character}卡尺\n"
+    ).encode("utf-8")
+
+    with pytest.raises(MsaValidationError) as error:
+        inspect_equipment_csv(content, as_of=date(2026, 7, 27))
+
+    assert error.value.code == "MSA_IMPORT_CONTROL_CHARACTER_INVALID"
+
+
+def test_preview_converts_database_data_error_to_stable_validation(
+    db_session,
+    monkeypatch,
+):
+    """資料庫拒絕 preview 值時，不得洩漏 DataError 或留下半批資料。"""
+    def fail_flush():
+        raise DataError("INSERT", {}, ValueError("invalid data"))
+
+    monkeypatch.setattr(db_session, "flush", fail_flush)
+
+    with pytest.raises(MsaValidationError) as error:
+        _preview()
+
+    assert error.value.code == "MSA_IMPORT_DATABASE_VALUE_INVALID"
+    assert EquipmentImportBatch.query.count() == 0
+
+
 def test_confirm_keeps_unresolved_rows_pending_and_accepts_valid_resolution(
     db_session,
 ):
@@ -304,6 +418,101 @@ def test_confirm_recomputes_expiry_from_confirmation_date(db_session):
 
     db_session.refresh(row)
     assert row.normalized_data["is_expired"] is True
+
+
+def test_exempt_resolution_requires_reason_in_same_resolution(db_session):
+    """將遊校映射 exempt 卻沒有理由時，不得產生 active + NULL 類別。"""
+    batch = _preview_content(
+        "設備編號,名稱,狀態,類別,型號,操作者,解析度,單位\n"
+        "EQ-EXEMPT,測試量具,使用中,遊校,M-1,測試人員,0.01,mm\n"
+    )
+    row = EquipmentImportRow.query.filter_by(batch_id=batch.id).one()
+
+    with pytest.raises(MsaValidationError) as error:
+        MsaImportService.confirm(
+            batch.id,
+            actor_id=1,
+            resolutions={
+                str(row.id): {
+                    "action": "accept",
+                    "calibration_type": "exempt",
+                }
+            },
+            confirmation_date=date(2026, 7, 27),
+        )
+
+    assert error.value.code == "MSA_IMPORT_RESOLUTION_INVALID"
+    assert MeasurementEquipment.query.count() == 0
+    db_session.expire_all()
+    assert db_session.get(EquipmentImportBatch, batch.id).status == "previewed"
+
+
+def test_switching_away_from_exempt_clears_stale_exemption_issue(db_session):
+    """免校改映射外校後，舊豁免理由 issue 不得讓設備停在 pending。"""
+    batch = _preview_content(
+        "設備編號,名稱,狀態,類別,型號,操作者,解析度,單位\n"
+        "EQ-EXEMPT,測試量具,使用中,免校,M-1,測試人員,0.01,mm\n"
+    )
+    row = EquipmentImportRow.query.filter_by(batch_id=batch.id).one()
+
+    MsaImportService.confirm(
+        batch.id,
+        actor_id=1,
+        resolutions={
+            str(row.id): {
+                "action": "accept",
+                "calibration_type": "external",
+            }
+        },
+        confirmation_date=date(2026, 7, 27),
+    )
+
+    equipment = MeasurementEquipment.query.filter_by(
+        equipment_no="EQ-EXEMPT"
+    ).one()
+    db_session.refresh(row)
+    assert equipment.status == "active"
+    assert equipment.calibration_type == "external"
+    assert (
+        "MSA_IMPORT_EXEMPTION_REASON_MISSING"
+        not in row.normalized_data["unresolved_issue_codes"]
+    )
+
+
+def test_rejected_existing_number_does_not_block_other_rows(db_session):
+    """reject 的既有編號若仍進 duplicate precheck，此測試應失敗。"""
+    batch = _preview_content(
+        "設備編號,名稱,狀態,類別,型號,操作者,解析度,單位\n"
+        "EQ-OLD,既有量具,使用中,外校,M-1,測試人員,0.01,mm\n"
+        "EQ-NEW,新量具,使用中,外校,M-2,測試人員,0.01,mm\n"
+    )
+    rows = {
+        row.normalized_data["equipment_no"]: row
+        for row in EquipmentImportRow.query.filter_by(batch_id=batch.id)
+    }
+    db_session.add(
+        MeasurementEquipment(
+            equipment_no="EQ-OLD",
+            name="資料庫既有設備",
+            status="pending_review",
+        )
+    )
+    db_session.commit()
+
+    confirmed = MsaImportService.confirm(
+        batch.id,
+        actor_id=1,
+        resolutions={
+            str(rows["EQ-OLD"].id): {"action": "reject"},
+        },
+        confirmation_date=date(2026, 7, 27),
+    )
+
+    assert confirmed.success_rows == 1
+    assert confirmed.rejected_rows == 1
+    assert MeasurementEquipment.query.filter_by(
+        equipment_no="EQ-NEW"
+    ).count() == 1
 
 
 def test_confirm_is_idempotent_and_writes_one_batch_audit(db_session):

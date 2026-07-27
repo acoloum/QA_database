@@ -7,9 +7,11 @@ import hashlib
 import html
 import io
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import BinaryIO
 
@@ -54,8 +56,17 @@ _SERIAL_PREFIX_PATTERN = re.compile(
 _UNSUPPORTED_NO_PATTERN = re.compile(
     r"(?:^|[\s(（])NO\s*[:：#]", re.IGNORECASE
 )
-_HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
 _WHITESPACE_PATTERN = re.compile(r"\s+")
+_DECIMAL_PATTERN = re.compile(
+    r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$"
+)
+
+_MAX_DECIMAL_INPUT_LENGTH = 64
+_MAX_DECIMAL_SIGNIFICANT_DIGITS = 18
+_MIN_RESOLUTION = Decimal("1e-12")
+_MAX_RESOLUTION = Decimal("1e6")
+_MIN_RESOLUTION_ADJUSTED_EXPONENT = -12
+_MAX_RESOLUTION_ADJUSTED_EXPONENT = 6
 
 _REQUIRED_HEADERS = frozenset({"設備編號", "名稱"})
 _CALIBRATION_TYPES = frozenset(CALIBRATION_TYPE_MAP.values())
@@ -133,14 +144,59 @@ def _null_if_dash(value) -> str | None:
     return None if text in {"", "-"} else text
 
 
+class _PlainTextHtmlParser(HTMLParser):
+    """只收集可見文字，忽略標籤、註解與 script/style 內容。"""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.saw_markup = False
+        self._suppressed_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        self.saw_markup = True
+        if tag.lower() in {"script", "style"}:
+            self._suppressed_depth += 1
+
+    def handle_startendtag(self, tag, attrs):
+        self.saw_markup = True
+
+    def handle_endtag(self, tag):
+        self.saw_markup = True
+        if tag.lower() in {"script", "style"} and self._suppressed_depth:
+            self._suppressed_depth -= 1
+
+    def handle_comment(self, data):
+        self.saw_markup = True
+
+    def handle_decl(self, decl):
+        self.saw_markup = True
+
+    def handle_data(self, data):
+        if not self._suppressed_depth:
+            self.parts.append(data)
+
+
+def _decode_html_entities(value: str) -> str:
+    """有限次解碼，涵蓋來源的 double entity 且避免無界重複處理。"""
+    decoded = value
+    for _ in range(3):
+        next_value = html.unescape(decoded)
+        if next_value == decoded:
+            break
+        decoded = next_value
+    return decoded
+
+
 def _clean_html_text(value) -> tuple[str | None, bool]:
     text = _null_if_dash(value)
     if text is None:
         return None, False
-    had_html = bool(_HTML_TAG_PATTERN.search(text))
-    cleaned = _HTML_TAG_PATTERN.sub(" ", text)
-    cleaned = _WHITESPACE_PATTERN.sub(" ", html.unescape(cleaned)).strip()
-    return cleaned or None, had_html
+    parser = _PlainTextHtmlParser()
+    parser.feed(_decode_html_entities(text))
+    parser.close()
+    cleaned = _WHITESPACE_PATTERN.sub(" ", " ".join(parser.parts)).strip()
+    return cleaned or None, parser.saw_markup
 
 
 def _parse_source_date(value, *, issue_codes: list[str]) -> str | None:
@@ -165,12 +221,27 @@ def _positive_decimal_text(
     if text is None:
         issue_codes.append("MSA_IMPORT_RESOLUTION_MISSING")
         return None
+    if (
+        len(text) > _MAX_DECIMAL_INPUT_LENGTH
+        or _DECIMAL_PATTERN.fullmatch(text) is None
+    ):
+        issue_codes.append("MSA_IMPORT_RESOLUTION_INVALID")
+        return None
     try:
         parsed = Decimal(text)
     except (InvalidOperation, ValueError):
         issue_codes.append("MSA_IMPORT_RESOLUTION_INVALID")
         return None
-    if not parsed.is_finite() or parsed <= 0:
+    decimal_tuple = parsed.as_tuple()
+    if (
+        not parsed.is_finite()
+        or parsed <= 0
+        or len(decimal_tuple.digits) > _MAX_DECIMAL_SIGNIFICANT_DIGITS
+        or parsed.adjusted() < _MIN_RESOLUTION_ADJUSTED_EXPONENT
+        or parsed.adjusted() > _MAX_RESOLUTION_ADJUSTED_EXPONENT
+        or parsed < _MIN_RESOLUTION
+        or parsed > _MAX_RESOLUTION
+    ):
         issue_codes.append("MSA_IMPORT_RESOLUTION_INVALID")
         return None
     return format(parsed.normalize(), "f")
@@ -336,6 +407,20 @@ def _decode_csv(content: bytes) -> tuple[str, str]:
     )
 
 
+def _reject_disallowed_control_characters(text: str) -> None:
+    """CSV 可保留欄位換行與 tab，其餘 Unicode 控制字元一律拒絕。"""
+    for character in text:
+        if (
+            character not in {"\t", "\n", "\r"}
+            and unicodedata.category(character) == "Cc"
+        ):
+            raise MsaValidationError(
+                "MSA_IMPORT_CONTROL_CHARACTER_INVALID",
+                "CSV 含有不允許的控制字元",
+                details={"codepoint": f"U+{ord(character):04X}"},
+            )
+
+
 def inspect_equipment_csv(
     content: bytes,
     *,
@@ -353,6 +438,7 @@ def inspect_equipment_csv(
             details={"max_bytes": MAX_FILE_BYTES},
         )
     text, encoding = _decode_csv(content)
+    _reject_disallowed_control_characters(text)
     reader = csv.DictReader(io.StringIO(text, newline=""))
     headers = [str(header).strip() for header in (reader.fieldnames or [])]
     if not headers:
@@ -638,6 +724,12 @@ class MsaImportService:
                 )
             db.session.commit()
             return batch
+        except DataError as error:
+            db.session.rollback()
+            raise MsaValidationError(
+                "MSA_IMPORT_DATABASE_VALUE_INVALID",
+                "匯入欄位不符合資料庫長度或格式限制",
+            ) from error
         except IntegrityError:
             db.session.rollback()
             raced = EquipmentImportBatch.query.filter_by(
@@ -690,12 +782,26 @@ class MsaImportService:
             resolution_by_id = MsaImportService._validate_resolutions(
                 rows, resolutions
             )
-            equipment_numbers = [
-                row.normalized_data.get("equipment_no")
-                for row in rows
-                if row.normalized_data
-                and row.normalized_data.get("equipment_no")
-            ]
+            equipment_numbers = []
+            for row in rows:
+                resolution = resolution_by_id.get(row.id, {})
+                action = resolution.get(
+                    "action",
+                    "pending_review" if row.issue_codes else "accept",
+                )
+                cannot_create = any(
+                    code in _UNIMPORTABLE_ISSUES
+                    for code in (row.issue_codes or [])
+                )
+                equipment_no = (row.normalized_data or {}).get(
+                    "equipment_no"
+                )
+                if (
+                    action != "reject"
+                    and not cannot_create
+                    and equipment_no
+                ):
+                    equipment_numbers.append(equipment_no)
             duplicate = (
                 MeasurementEquipment.query.filter(
                     MeasurementEquipment.equipment_no.in_(equipment_numbers)
@@ -887,9 +993,26 @@ class MsaImportService:
                     "人工映射的校驗類別不在允許清單",
                     details={"calibration_type": calibration_type},
                 )
+            if calibration_type == "exempt":
+                exemption_reason = resolution.get(
+                    "calibration_exemption_reason"
+                )
+                if (
+                    not isinstance(exemption_reason, str)
+                    or not exemption_reason.strip()
+                ):
+                    raise MsaValidationError(
+                        "MSA_IMPORT_RESOLUTION_INVALID",
+                        "人工映射 exempt 必須在同一 resolution 提供豁免理由",
+                    )
             normalized["calibration_type"] = calibration_type
             if calibration_type != "exempt":
                 normalized["calibration_exemption_reason"] = None
+                issue_codes = [
+                    code
+                    for code in issue_codes
+                    if code != "MSA_IMPORT_EXEMPTION_REASON_MISSING"
+                ]
             issue_codes = [
                 code
                 for code in issue_codes

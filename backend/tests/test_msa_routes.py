@@ -195,6 +195,102 @@ def test_equipment_import_error_uses_stable_msa_envelope(
     }
 
 
+@pytest.mark.parametrize(
+    ("path", "headers", "code", "message"),
+    [
+        (
+            "/api/measurement-equipment/imports/preview",
+            {},
+            "MSA_AUTH_REQUIRED",
+            "缺少認證 Token",
+        ),
+        (
+            "/api/measurement-equipment/imports/999/confirm",
+            {},
+            "MSA_AUTH_REQUIRED",
+            "缺少認證 Token",
+        ),
+        (
+            "/api/measurement-equipment/imports/preview",
+            {"Authorization": "Bearer invalid-token"},
+            "MSA_AUTH_INVALID_TOKEN",
+            "無效或過期的 Token",
+        ),
+        (
+            "/api/measurement-equipment/imports/999/confirm",
+            {"Authorization": "Bearer invalid-token"},
+            "MSA_AUTH_INVALID_TOKEN",
+            "無效或過期的 Token",
+        ),
+    ],
+)
+def test_equipment_import_auth_errors_use_stable_msa_envelope(
+    client,
+    path,
+    headers,
+    code,
+    message,
+):
+    """import auth 若在 MSA adapter 外返回舊式字串，此測試應失敗。"""
+    response = client.post(path, headers=headers)
+
+    assert response.status_code == 401
+    assert response.get_json() == {
+        "error": {
+            "code": code,
+            "message": message,
+            "details": {},
+        }
+    }
+
+
+def test_msa_import_auth_adapter_preserves_missing_user_envelope(client):
+    """有效 Token 找不到使用者時，不得誤報成 Token 無效。"""
+    token = generate_token(999999, "missing-user", "msa_manage")
+    response = client.post(
+        "/api/measurement-equipment/imports/preview",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 401
+    assert response.get_json() == {
+        "error": {
+            "code": "MSA_USER_NOT_FOUND",
+            "message": "使用者不存在",
+            "details": {},
+        }
+    }
+
+
+def test_msa_import_auth_adapter_does_not_change_other_route_contract(client):
+    """MSA import 專用 adapter 不得改寫既有設備 route 的 auth 回應。"""
+    response = client.get("/api/measurement-equipment")
+
+    assert response.status_code == 401
+    assert response.get_json() == {"error": "缺少認證 Token"}
+
+
+def test_equipment_import_rejects_control_character_with_stable_envelope(
+    client,
+    msa_user_headers,
+):
+    """控制字元若進入 preview 或錯誤 envelope 漂移，此測試應失敗。"""
+    content = "設備編號,名稱\nEQ-1,量具\u0000\n".encode("utf-8")
+    response = client.post(
+        "/api/measurement-equipment/imports/preview",
+        data={"file": (BytesIO(content), "equipment.csv")},
+        content_type="multipart/form-data",
+        headers=msa_user_headers("msa_manage"),
+    )
+
+    assert response.status_code == 422
+    assert response.get_json()["error"] == {
+        "code": "MSA_IMPORT_CONTROL_CHARACTER_INVALID",
+        "message": "CSV 含有不允許的控制字元",
+        "details": {"codepoint": "U+0000"},
+    }
+
+
 def test_equipment_list_requires_msa_view(client, msa_user_headers):
     """移除 msa.view 權限時，清單路由必須拒絕存取。"""
     response = client.get(

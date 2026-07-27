@@ -85,6 +85,53 @@ def _require_msa_permission(permission: str):
     return decorator
 
 
+def _msa_import_auth_required(function):
+    """只將設備匯入端點的 auth 401 轉成穩定 MSA envelope。"""
+    guarded = auth_required(function)
+
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        result = guarded(*args, **kwargs)
+        if (
+            isinstance(result, tuple)
+            and len(result) == 2
+            and result[1] == 401
+        ):
+            response = result[0]
+            body = (
+                response.get_json(silent=True)
+                if hasattr(response, "get_json")
+                else None
+            )
+            legacy_message = (
+                body.get("error") if isinstance(body, dict) else None
+            )
+            auth_code_by_message = {
+                "缺少認證 Token": "MSA_AUTH_REQUIRED",
+                "無效或過期的 Token": "MSA_AUTH_INVALID_TOKEN",
+            }
+            if (
+                not isinstance(legacy_message, str)
+                or legacy_message not in auth_code_by_message
+            ):
+                return result
+            return (
+                jsonify(
+                    {
+                        "error": {
+                            "code": auth_code_by_message[legacy_message],
+                            "message": legacy_message,
+                            "details": {},
+                        }
+                    }
+                ),
+                401,
+            )
+        return result
+
+    return wrapped
+
+
 def _optional_iso_date(value, *, field: str) -> date | None:
     """解析匯入盤點日；空值由 service 採用目前日期。"""
     if value in (None, ""):
@@ -102,7 +149,7 @@ def _optional_iso_date(value, *, field: str) -> date | None:
 @measurement_equipment_bp.post(
     "/api/measurement-equipment/imports/preview"
 )
-@auth_required
+@_msa_import_auth_required
 @_require_msa_permission("msa.manage")
 @_handle_msa_errors
 def preview_import(current_user):
@@ -124,7 +171,7 @@ def preview_import(current_user):
 @measurement_equipment_bp.post(
     "/api/measurement-equipment/imports/<int:batch_id>/confirm"
 )
-@auth_required
+@_msa_import_auth_required
 @_require_msa_permission("msa.manage")
 @_handle_msa_errors
 def confirm_import(current_user, batch_id: int):
