@@ -1,0 +1,178 @@
+{
+  "description": "偏倚為 15 次重複量測；線性為 5 個量程各 4 次。期望值以獨立算式與 scipy 計算，未使用待測引擎。",
+  "bias": {
+    "reference_value": 10.0,
+    "readings": [
+      10.004,
+      10.006,
+      10.003,
+      10.007,
+      10.005,
+      10.004,
+      10.008,
+      10.005,
+      10.003,
+      10.006,
+      10.005,
+      10.007,
+      10.004,
+      10.006,
+      10.005
+    ],
+    "context": {
+      "method_code": "MSA4_BIAS_1_0",
+      "method_version": "1.0",
+      "alpha": 0.05,
+      "study_variation_multiplier": 6.0,
+      "tolerance": 1.0,
+      "process_sigma": null,
+      "criteria": {
+        "alpha": 0.05
+      }
+    },
+    "expected": {
+      "n": 15,
+      "mean": 10.0052,
+      "bias": 0.0052000000000003155,
+      "repeatability_sd": 0.0014735767952258868,
+      "standard_error": 0.00038047589248450375,
+      "t_value": 13.667094558986031,
+      "p_value": 1.7318773796608406e-09,
+      "t_critical": 2.144786687917804,
+      "confidence_interval": [
+        0.004383960370725906,
+        0.006016039629274725
+      ],
+      "significant": true,
+      "percent_bias_of_tolerance": 0.5200000000000315
+    }
+  },
+  "linearity": {
+    "groups": [
+      {
+        "reference_value": 2.0,
+        "readings": [
+          2.05,
+          2.06,
+          2.04,
+          2.05
+        ]
+      },
+      {
+        "reference_value": 4.0,
+        "readings": [
+          4.02,
+          4.03,
+          4.02,
+          4.01
+        ]
+      },
+      {
+        "reference_value": 6.0,
+        "readings": [
+          6.0,
+          5.99,
+          6.01,
+          6.0
+        ]
+      },
+      {
+        "reference_value": 8.0,
+        "readings": [
+          7.97,
+          7.98,
+          7.96,
+          7.98
+        ]
+      },
+      {
+        "reference_value": 10.0,
+        "readings": [
+          9.94,
+          9.95,
+          9.96,
+          9.94
+        ]
+      }
+    ],
+    "context": {
+      "method_code": "MSA4_LINEARITY_1_0",
+      "method_version": "1.0",
+      "alpha": 0.05,
+      "study_variation_multiplier": 6.0,
+      "tolerance": 1.0,
+      "process_sigma": null,
+      "criteria": {
+        "alpha": 0.05
+      }
+    },
+    "expected": {
+      "slope": -0.012624999999999996,
+      "intercept": 0.0737499999999999,
+      "slope_se": 0.0006501869389303204,
+      "intercept_se": 0.004312852240043186,
+      "slope_t": -19.417492484193072,
+      "slope_p": 1.6034791430097147e-13,
+      "intercept_t": 17.100052562723878,
+      "intercept_p": 1.4123021830001853e-12,
+      "r_squared": 0.9544348802395184,
+      "residual_df": 18,
+      "residual_mse": 6.763888888889183e-05,
+      "sxx": 160.0,
+      "x_mean": 6.0,
+      "t_critical": 2.1009220402410382,
+      "slope_confidence_interval": [
+        -0.01399099207027556,
+        -0.01125900792972443
+      ],
+      "group_stats": [
+        {
+          "reference_value": 2.0,
+          "mean_bias": 0.04999999999999993,
+          "confidence_interval": [
+            0.03700771736374881,
+            0.06299228263625105
+          ],
+          "crosses_zero": false
+        },
+        {
+          "reference_value": 4.0,
+          "mean_bias": 0.019999999999999796,
+          "confidence_interval": [
+            0.007007717363748387,
+            0.0329922826362512
+          ],
+          "crosses_zero": false
+        },
+        {
+          "reference_value": 6.0,
+          "mean_bias": 0.0,
+          "confidence_interval": [
+            -0.01299228263625083,
+            0.01299228263625083
+          ],
+          "crosses_zero": true
+        },
+        {
+          "reference_value": 8.0,
+          "mean_bias": -0.027499999999999858,
+          "confidence_interval": [
+            -0.04273480180828839,
+            -0.012265198191711324
+          ],
+          "crosses_zero": false
+        },
+        {
+          "reference_value": 10.0,
+          "mean_bias": -0.05250000000000021,
+          "confidence_interval": [
+            -0.06773480180828924,
+            -0.03726519819171119
+          ],
+          "crosses_zero": false
+        }
+      ],
+      "linearity_percent_of_tolerance": 7.5749999999999975
+    }
+  }
+}
