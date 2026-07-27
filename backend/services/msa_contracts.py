@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import Decimal
 
 
 @dataclass(frozen=True)
@@ -25,6 +24,6 @@ class EquipmentSnapshot:
     equipment_no: str
     name: str
     status: str
-    resolution: Decimal | None
+    resolution: str | None
     unit: str | None
     calibration: dict

@@ -717,7 +717,8 @@ class EquipmentCalibrationRecord(db.Model):
         ),
         db.CheckConstraint(
             '"結果" <> \'limited_use\' OR '
-            '("適用量測模式" IS NOT NULL AND "適用量測模式" <> \'[]\')',
+            '("適用量測模式" IS NOT NULL AND "適用量測模式" <> \'[]\' '
+            'AND TRIM(COALESCE("限制條件", \'\')) <> \'\')',
             name='ck_equipment_limited_use_modes',
         ),
         db.Index(
@@ -1066,6 +1067,22 @@ def _block_msa_evidence_delete(_mapper, connection, target):
     raise ValueError('MSA 證據不可刪除；請保留舊版並建立後繼版本')
 
 
+def _validate_limited_use_evidence(_mapper, _connection, target):
+    """在 ORM 寫入前完整驗證受限校驗的模式及限制理由。"""
+    if target.result != 'limited_use':
+        return
+    modes = target.applicable_modes
+    if (
+        not isinstance(modes, list)
+        or not modes
+        or any(not isinstance(mode, str) or not mode.strip() for mode in modes)
+        or not (target.restriction_conditions or '').strip()
+    ):
+        raise ValueError(
+            '受限校驗必須保存非空白適用量測模式與限制條件'
+        )
+
+
 for _msa_approved_model in _MSA_APPROVED_EVIDENCE:
     event.listen(
         _msa_approved_model,
@@ -1077,6 +1094,17 @@ for _msa_approved_model in _MSA_APPROVED_EVIDENCE:
         'before_delete',
         _block_msa_evidence_delete,
     )
+
+event.listen(
+    EquipmentCalibrationRecord,
+    'before_insert',
+    _validate_limited_use_evidence,
+)
+event.listen(
+    EquipmentCalibrationRecord,
+    'before_update',
+    _validate_limited_use_evidence,
+)
 
 
 class VendorToleranceMain(db.Model):

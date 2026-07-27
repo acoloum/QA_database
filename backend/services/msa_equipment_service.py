@@ -1,6 +1,9 @@
 """MSA 正式研究使用的設備資格閘門與可追溯快照。"""
 
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
+
+from sqlalchemy import or_
 
 from ..extensions import db
 from ..models import (
@@ -50,7 +53,9 @@ class MsaEquipmentService:
                 limitation=reason,
             )
 
-        record = MsaEquipmentService._latest_approved_calibration(equipment.id)
+        record = MsaEquipmentService._latest_approved_calibration(
+            equipment.id, on_date
+        )
         if record is None:
             MsaEquipmentService._raise_validation(
                 "MSA_EQUIPMENT_CALIBRATION_MISSING", "找不到核准的設備校驗紀錄"
@@ -96,7 +101,13 @@ class MsaEquipmentService:
                     applicable_modes=list(modes),
                     measurement_mode=normalised_measurement_mode or None,
                 )
-            limitation = record.restriction_conditions
+            limitation = (record.restriction_conditions or "").strip()
+            if not limitation:
+                MsaEquipmentService._raise_validation(
+                    "MSA_EQUIPMENT_CALIBRATION_LIMITED_USE_RESTRICTED",
+                    "受限校驗缺少完整限制條件",
+                    calibration_record_id=record.id,
+                )
         else:
             limitation = None
 
@@ -122,17 +133,27 @@ class MsaEquipmentService:
             measurement_mode=measurement_mode,
         )
         equipment = MsaEquipmentService._get_equipment(equipment_id)
-        record = (
-            MsaEquipmentService._latest_approved_calibration(equipment.id)
-            if eligibility.calibration_record_id is not None
-            else None
-        )
+        record = None
+        if eligibility.calibration_record_id is not None:
+            record = MsaEquipmentService._approved_calibration_by_id(
+                equipment.id,
+                eligibility.calibration_record_id,
+                on_date,
+            )
+            if record is None:
+                MsaEquipmentService._raise_validation(
+                    "MSA_EQUIPMENT_CALIBRATION_MISSING",
+                    "資格判定後校驗證據已不可用，拒絕建立快照",
+                    calibration_record_id=eligibility.calibration_record_id,
+                )
         return EquipmentSnapshot(
             equipment_id=equipment.id,
             equipment_no=equipment.equipment_no,
             name=equipment.name,
             status=equipment.status,
-            resolution=equipment.resolution,
+            resolution=MsaEquipmentService._canonical_value(
+                equipment.resolution
+            ),
             unit=equipment.unit,
             calibration=MsaEquipmentService._calibration_snapshot(
                 equipment, record
@@ -152,15 +173,45 @@ class MsaEquipmentService:
     @staticmethod
     def _latest_approved_calibration(
         equipment_id: int,
+        on_date: date,
     ) -> EquipmentCalibrationRecord | None:
         return (
             EquipmentCalibrationRecord.query
             .filter_by(equipment_id=equipment_id, status="approved")
+            .filter(EquipmentCalibrationRecord.calibration_date <= on_date)
+            .filter(
+                or_(
+                    EquipmentCalibrationRecord.effective_date.is_(None),
+                    EquipmentCalibrationRecord.effective_date <= on_date,
+                )
+            )
             .order_by(
                 EquipmentCalibrationRecord.calibration_date.desc(),
                 EquipmentCalibrationRecord.id.desc(),
             )
             .first()
+        )
+
+    @staticmethod
+    def _approved_calibration_by_id(
+        equipment_id: int,
+        calibration_record_id: int,
+        on_date: date,
+    ) -> EquipmentCalibrationRecord | None:
+        return (
+            db.session.execute(
+                db.select(EquipmentCalibrationRecord).where(
+                    EquipmentCalibrationRecord.id == calibration_record_id,
+                    EquipmentCalibrationRecord.equipment_id == equipment_id,
+                    EquipmentCalibrationRecord.status == "approved",
+                    EquipmentCalibrationRecord.calibration_date <= on_date,
+                    or_(
+                        EquipmentCalibrationRecord.effective_date.is_(None),
+                        EquipmentCalibrationRecord.effective_date <= on_date,
+                    ),
+                )
+            )
+            .scalar_one_or_none()
         )
 
     @staticmethod
@@ -193,7 +244,9 @@ class MsaEquipmentService:
                 "uncertainty_statement": None,
                 "applicable_modes": [],
                 "restriction_conditions": None,
-                "exemption_reason": equipment.calibration_exemption_reason.strip(),
+                "exemption_reason": (
+                    equipment.calibration_exemption_reason or ""
+                ).strip(),
                 "correction_points": [],
             }
 
@@ -206,9 +259,15 @@ class MsaEquipmentService:
         return {
             "record_id": record.id,
             "calibration_type": record.calibration_type,
-            "calibration_date": record.calibration_date,
-            "effective_date": record.effective_date,
-            "next_due_date": record.next_due_date,
+            "calibration_date": MsaEquipmentService._canonical_value(
+                record.calibration_date
+            ),
+            "effective_date": MsaEquipmentService._canonical_value(
+                record.effective_date
+            ),
+            "next_due_date": MsaEquipmentService._canonical_value(
+                record.next_due_date
+            ),
             "result": record.result,
             "status": record.status,
             "certificate_no": record.certificate_no,
@@ -225,10 +284,18 @@ class MsaEquipmentService:
                 {
                     "id": point.id,
                     "measurement_mode": point.measurement_mode,
-                    "nominal_value": point.nominal_value,
-                    "indicated_value": point.indicated_value,
-                    "error_value": point.error_value,
-                    "correction_value": point.correction_value,
+                    "nominal_value": MsaEquipmentService._canonical_value(
+                        point.nominal_value
+                    ),
+                    "indicated_value": MsaEquipmentService._canonical_value(
+                        point.indicated_value
+                    ),
+                    "error_value": MsaEquipmentService._canonical_value(
+                        point.error_value
+                    ),
+                    "correction_value": MsaEquipmentService._canonical_value(
+                        point.correction_value
+                    ),
                     "unit": point.unit,
                     "range_start": point.range_start,
                     "range_end": point.range_end,
@@ -236,6 +303,22 @@ class MsaEquipmentService:
                 for point in correction_points
             ],
         }
+
+    @staticmethod
+    def _canonical_value(value):
+        """轉換為標準 json.dumps 可直接保存的穩定純量。"""
+        if isinstance(value, Decimal):
+            return format(value, "f")
+        if isinstance(value, (date, datetime)):
+            return value.isoformat()
+        if isinstance(value, list):
+            return [MsaEquipmentService._canonical_value(item) for item in value]
+        if isinstance(value, dict):
+            return {
+                str(key): MsaEquipmentService._canonical_value(value[key])
+                for key in sorted(value)
+            }
+        return value
 
     @staticmethod
     def _raise_validation(code: str, message: str, **details) -> None:

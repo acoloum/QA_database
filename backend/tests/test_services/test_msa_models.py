@@ -269,12 +269,53 @@ def test_limited_use_calibration_persists_applicable_modes(db_session):
         calibration_date=date(2026, 7, 27),
         result="limited_use",
         applicable_modes=["內徑量測"],
+        restriction_conditions="僅限既定量程",
         status="approved",
     )
     db_session.add(record)
     db_session.commit()
 
     assert record.applicable_modes == ["內徑量測"]
+
+
+def test_limited_use_calibration_requires_a_non_blank_restriction(db_session):
+    """防止模式吻合但沒有可追溯限制理由的校驗被正式採用。"""
+    equipment = _equipment(db_session, "EQ-LIMITED-NO-RESTRICTION")
+    db_session.add(
+        EquipmentCalibrationRecord(
+            equipment_id=equipment.id,
+            calibration_type="external",
+            calibration_date=date(2026, 7, 27),
+            result="limited_use",
+            applicable_modes=["內徑量測"],
+            restriction_conditions="  ",
+            status="approved",
+        )
+    )
+
+    with pytest.raises(ValueError, match="受限校驗"):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_limited_use_calibration_rejects_blank_mode_element(db_session):
+    """防止非空陣列以空白量測模式繞過受限校驗資料不變量。"""
+    equipment = _equipment(db_session, "EQ-LIMITED-BLANK-MODE")
+    db_session.add(
+        EquipmentCalibrationRecord(
+            equipment_id=equipment.id,
+            calibration_type="external",
+            calibration_date=date(2026, 7, 27),
+            result="limited_use",
+            applicable_modes=["  "],
+            restriction_conditions="僅限既定量程",
+            status="approved",
+        )
+    )
+
+    with pytest.raises(ValueError, match="受限校驗"):
+        db_session.commit()
+    db_session.rollback()
 
 
 def test_limited_use_calibration_rejects_empty_applicable_modes(db_session):
@@ -287,10 +328,11 @@ def test_limited_use_calibration_rejects_empty_applicable_modes(db_session):
             calibration_date=date(2026, 7, 27),
             result="limited_use",
             applicable_modes=[],
+            restriction_conditions="僅限既定量程",
             status="approved",
         )
     )
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(ValueError, match="受限校驗"):
         db_session.commit()
     db_session.rollback()

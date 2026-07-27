@@ -1,10 +1,14 @@
 """MSA 正式研究的設備資格與快照契約。"""
 
+from dataclasses import asdict
 from datetime import date, timedelta
 from decimal import Decimal
+import json
 
 import pytest
+from sqlalchemy import event
 
+from backend.extensions import db
 from backend.models import (
     EquipmentCalibrationRecord,
     EquipmentCorrectionPoint,
@@ -195,6 +199,31 @@ def test_limited_use_requires_an_exact_matching_measurement_mode(db_session):
     assert error.value.status_code == 422
 
 
+def test_limited_use_requires_a_non_blank_restriction_before_passing(
+    db_session,
+):
+    """防止模式符合卻沒有受限理由的紀錄通過正式研究。"""
+    equipment = _equipment(db_session, "EQ-LIMITED-NO-RESTRICTION", status="active")
+    record = _calibration(
+        db_session,
+        equipment,
+        result="limited_use",
+        applicable_modes=["外徑量測"],
+        restriction_conditions="僅限既定量程",
+    )
+    db_session.commit()
+    equipment_id = equipment.id
+    record.restriction_conditions = "  "
+
+    with db_session.no_autoflush:
+        with pytest.raises(MsaValidationError) as error:
+            MsaEquipmentService.assert_officially_usable(
+                equipment_id, on_date=STUDY_DATE, measurement_mode="外徑量測"
+            )
+
+    assert error.value.code == "MSA_EQUIPMENT_CALIBRATION_LIMITED_USE_RESTRICTED"
+
+
 def test_limited_use_rejects_blank_structured_modes(db_session):
     """防止非空 JSON 陣列內仍以空白字串繞過模式限制。"""
     equipment = _equipment(db_session, "EQ-LIMITED-BLANK", status="active")
@@ -203,6 +232,7 @@ def test_limited_use_rejects_blank_structured_modes(db_session):
         equipment,
         result="limited_use",
         applicable_modes=["內徑量測"],
+        restriction_conditions="僅限既定量程",
     )
     db_session.commit()
     equipment_id = equipment.id
@@ -267,6 +297,89 @@ def test_exempt_equipment_rejects_blank_reason_even_before_persistence(
     assert error.value.code == "MSA_EQUIPMENT_EXEMPTION_REASON_MISSING"
 
 
+@pytest.mark.parametrize(
+    "calibration_date,effective_date",
+    [
+        (STUDY_DATE + timedelta(days=1), None),
+        (STUDY_DATE - timedelta(days=1), STUDY_DATE + timedelta(days=1)),
+    ],
+)
+def test_official_study_uses_only_calibration_effective_on_study_date(
+    db_session, calibration_date, effective_date
+):
+    """防止研究日後才校驗或生效的證據回填歷史研究資格。"""
+    equipment = _equipment(
+        db_session,
+        f"EQ-AS-OF-{calibration_date}-{effective_date}",
+        status="active",
+    )
+    _calibration(
+        db_session,
+        equipment,
+        calibration_date=calibration_date,
+        effective_date=effective_date,
+    )
+    db_session.commit()
+
+    with pytest.raises(MsaValidationError) as error:
+        MsaEquipmentService.assert_officially_usable(
+            equipment.id, on_date=STUDY_DATE
+        )
+
+    assert error.value.code == "MSA_EQUIPMENT_CALIBRATION_MISSING"
+
+
+def test_snapshot_fails_closed_when_selected_calibration_is_revoked_mid_read(
+    db_session,
+):
+    """防止資格判定後重查最新紀錄而靜默換掉或遺失已選校驗證據。"""
+    equipment = _equipment(db_session, "EQ-SNAPSHOT-RACE", status="active")
+    record = _calibration(db_session, equipment)
+    db_session.commit()
+    equipment_id = equipment.id
+    record_id = record.id
+    select_count = 0
+
+    def revoke_after_first_calibration_select(
+        connection, cursor, statement, parameters, context, executemany
+    ):
+        nonlocal select_count
+        if 'FROM "設備校驗紀錄"' not in statement or not statement.lstrip().startswith("SELECT"):
+            return
+        select_count += 1
+        if select_count != 1:
+            return
+        raw_connection = connection.connection.driver_connection
+        update_cursor = raw_connection.cursor()
+        try:
+            update_cursor.execute(
+                'UPDATE "設備校驗紀錄" SET "狀態" = ? WHERE "識別碼" = ?',
+                ("draft", record_id),
+            )
+        finally:
+            update_cursor.close()
+
+    event.listen(
+        db.engine,
+        "after_cursor_execute",
+        revoke_after_first_calibration_select,
+    )
+    try:
+        with pytest.raises(MsaValidationError) as error:
+            MsaEquipmentService.build_snapshot(
+                equipment_id, on_date=STUDY_DATE
+            )
+    finally:
+        event.remove(
+            db.engine,
+            "after_cursor_execute",
+            revoke_after_first_calibration_select,
+        )
+
+    assert select_count >= 1
+    assert error.value.code == "MSA_EQUIPMENT_CALIBRATION_MISSING"
+
+
 def test_passing_calibration_returns_snapshot_with_correction_evidence(db_session):
     """防止資格通過時遺失設備身分、校驗與逐點補正證據。"""
     equipment = _equipment(
@@ -305,13 +418,13 @@ def test_passing_calibration_returns_snapshot_with_correction_evidence(db_sessio
 
     assert eligible.calibration_record_id == record.id
     assert snapshot.equipment_no == "EQ-PASS"
-    assert snapshot.resolution == Decimal("0.001")
+    assert snapshot.resolution == "0.0010000000"
     assert snapshot.calibration == {
         "record_id": record.id,
         "calibration_type": "external",
-        "calibration_date": STUDY_DATE - timedelta(days=10),
+        "calibration_date": "2026-07-17",
         "effective_date": None,
-        "next_due_date": STUDY_DATE + timedelta(days=30),
+        "next_due_date": "2026-08-26",
         "result": "pass",
         "status": "approved",
         "certificate_no": "CERT-100",
@@ -324,13 +437,14 @@ def test_passing_calibration_returns_snapshot_with_correction_evidence(db_sessio
             {
                 "id": 1,
                 "measurement_mode": "外徑量測",
-                "nominal_value": Decimal("10.000"),
-                "indicated_value": Decimal("10.002"),
-                "error_value": Decimal("0.002"),
-                "correction_value": Decimal("-0.002"),
+                "nominal_value": "10.0000000000",
+                "indicated_value": "10.0020000000",
+                "error_value": "0.0020000000",
+                "correction_value": "-0.0020000000",
                 "unit": "mm",
                 "range_start": None,
                 "range_end": None,
             }
         ],
     }
+    assert json.dumps(asdict(snapshot), sort_keys=True, allow_nan=False)

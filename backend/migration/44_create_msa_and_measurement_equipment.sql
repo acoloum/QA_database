@@ -2,6 +2,28 @@
 -- 核准證據採 append-only；資料庫層以原始狀態阻擋繞過服務／ORM 的覆寫。
 BEGIN;
 
+CREATE OR REPLACE FUNCTION msa_limited_use_evidence_valid(
+    applicable_modes JSONB,
+    restriction_conditions TEXT
+)
+RETURNS BOOLEAN
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT CASE
+        WHEN applicable_modes IS NULL
+            OR jsonb_typeof(applicable_modes) <> 'array' THEN FALSE
+        WHEN jsonb_array_length(applicable_modes) = 0 THEN FALSE
+        WHEN BTRIM(COALESCE(restriction_conditions, '')) = '' THEN FALSE
+        ELSE NOT EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(applicable_modes) AS mode(value)
+            WHERE jsonb_typeof(mode.value) <> 'string'
+                OR BTRIM(mode.value #>> '{}') = ''
+        )
+    END
+$$;
+
 CREATE TABLE "量測設備" (
     "識別碼" SERIAL PRIMARY KEY,
     "設備編號" VARCHAR(80) NOT NULL UNIQUE,
@@ -87,9 +109,8 @@ CREATE TABLE "設備校驗紀錄" (
     ),
     CONSTRAINT ck_equipment_limited_use_modes CHECK (
         "結果" <> 'limited_use'
-        OR (
-            jsonb_typeof("適用量測模式") = 'array'
-            AND jsonb_array_length("適用量測模式") > 0
+        OR msa_limited_use_evidence_valid(
+            "適用量測模式", "限制條件"
         )
     )
 );
