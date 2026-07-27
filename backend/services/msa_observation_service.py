@@ -213,6 +213,58 @@ class MsaObservationService:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def list_for_plan(plan_id: int) -> list[dict]:
+        """列出計畫的所有觀測（含已作廢），供管理矩陣呈現修正歷程。
+
+        這個視圖只給具管理權限者使用；盲測任務 DTO 仍不含這些資訊。
+        """
+        plan = db.session.get(MsaPlanVersion, plan_id)
+        if plan is None:
+            raise MsaNotFound(
+                "MSA_PLAN_NOT_FOUND",
+                "找不到 MSA 計畫版本",
+                details={"plan_id": plan_id},
+            )
+
+        part_codes = {part.id: part.blind_code for part in plan.parts}
+        appraiser_codes = {
+            row.id: row.blind_code for row in plan.appraisers
+        }
+        rows = (
+            MsaObservation.query
+            .filter_by(plan_version_id=plan.id)
+            .order_by(MsaObservation.actual_entry_order.asc())
+            .all()
+        )
+        return [
+            {
+                "id": row.id,
+                "requested_order": row.requested_order,
+                "actual_entry_order": row.actual_entry_order,
+                "part_blind_code": part_codes.get(row.part_id),
+                "appraiser_blind_code": appraiser_codes.get(row.appraiser_id),
+                "trial_no": row.trial_no,
+                "numeric_value": (
+                    str(row.numeric_value)
+                    if row.numeric_value is not None else None
+                ),
+                "attribute_value": row.attribute_value,
+                "measured_at": (
+                    row.measured_at.isoformat() if row.measured_at else None
+                ),
+                "source": row.source,
+                "entered_by_id": row.entered_by_id,
+                "created_at": (
+                    row.created_at.isoformat() if row.created_at else None
+                ),
+                "is_effective": row.is_effective,
+                "supersedes_id": row.supersedes_id,
+                "correction_reason": row.correction_reason,
+            }
+            for row in rows
+        ]
+
+    @staticmethod
     def completeness(plan_id: int) -> dict:
         """唯讀比對盲測矩陣與有效讀值；不改狀態、不 commit。
 

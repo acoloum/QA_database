@@ -325,3 +325,36 @@ button.msa-risk-card:hover { box-shadow: 0 3px 10px rgba(23, 33, 38, .1); }
   .msa-form-grid, .msa-filters { grid-template-columns: 1fr; }
   .msa-form-grid__wide { grid-column: auto; }
 }
+
+/* --- 收集分頁與盲測輸入 --------------------------------------------- */
+
+.msa-tabs { display: flex; flex-wrap: wrap; gap: .3rem; border-bottom: 1px solid var(--msa-line); margin-bottom: 1.2rem; }
+.msa-tabs button {
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--msa-muted);
+  padding: .6rem .9rem;
+  font-weight: 720;
+}
+.msa-tabs button[aria-pressed="true"] { border-bottom-color: var(--msa-accent); color: var(--msa-ink); }
+
+.msa-progress { margin-bottom: 1rem; font-weight: 720; }
+
+/* 盲測輸入刻意留白、字大，讓現場人員一眼看到目前該量哪一件 */
+.msa-blind-entry { display: grid; gap: .9rem; max-width: 34rem; }
+.msa-blind-entry h2 { font-size: 2rem; margin: 0; }
+.msa-blind-entry input[inputmode="decimal"] { font-size: 1.5rem; min-height: 3.2rem; }
+.msa-blind-entry fieldset { display: flex; flex-wrap: wrap; gap: .8rem; border: 1px solid var(--msa-line); border-radius: .35rem; padding: .8rem; }
+.msa-blind-entry fieldset label { display: flex; flex-direction: row; align-items: center; gap: .35rem; font-size: 1rem; }
+.msa-blind-entry button[type="submit"] {
+  min-height: 3rem;
+  border: 1px solid var(--msa-accent);
+  border-radius: .35rem;
+  background: var(--msa-accent);
+  color: #fff;
+  font-weight: 720;
+}
+.msa-blind-entry button:disabled { opacity: .5; cursor: not-allowed; }
+
+.msa-inline-error { color: var(--msa-danger); font-weight: 700; }

@@ -16,6 +16,7 @@ from backend.models import (
 )
 from backend.services.msa_design_service import MsaDesignService
 from backend.services.msa_errors import (
+    MsaNotFound,
     MsaConflict,
     MsaForbidden,
     MsaValidationError,
@@ -710,3 +711,40 @@ def test_import_rejects_non_xlsx_upload(
         )
 
     assert error.value.code == "MSA_IMPORT_FILE_TYPE_INVALID"
+
+
+def test_management_view_lists_every_observation_with_history(
+    db_session, collecting_plan, msa_manager,
+):
+    """管理矩陣需要看到已作廢紀錄，才能呈現完整修正鏈。"""
+    original = MsaObservationService.record(
+        collecting_plan.id,
+        {"task_order": 1, "numeric_value": "10.001"},
+        actor_id=msa_manager.id, can_manage=True,
+    )
+    successor = MsaObservationService.correct(
+        original.id,
+        {"numeric_value": "10.002", "reason": "小數點輸入錯誤"},
+        actor_id=msa_manager.id,
+    )
+
+    rows = MsaObservationService.list_for_plan(collecting_plan.id)
+
+    assert len(rows) == 2
+    retired = next(row for row in rows if row["id"] == original.id)
+    current = next(row for row in rows if row["id"] == successor.id)
+    assert retired["is_effective"] is False
+    # 序列化保留資料庫的小數刻度，因此以數值而非字串比較
+    assert Decimal(retired["numeric_value"]) == Decimal("10.001")
+    assert current["is_effective"] is True
+    assert current["supersedes_id"] == original.id
+    assert current["correction_reason"] == "小數點輸入錯誤"
+    assert current["part_blind_code"]
+    assert current["appraiser_blind_code"]
+
+
+def test_management_view_reports_missing_plan(db_session):
+    with pytest.raises(MsaNotFound) as error:
+        MsaObservationService.list_for_plan(999999)
+
+    assert error.value.code == "MSA_PLAN_NOT_FOUND"

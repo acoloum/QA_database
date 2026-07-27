@@ -270,6 +270,17 @@ def record_msa_observation(current_user, plan_id: int):
     return jsonify({"data": _serialize_observation(observation)}), 201
 
 
+@msa_bp.get("/api/msa/plans/<int:plan_id>/observations")
+@_msa_auth_required
+@_require_msa_permission("msa.manage")
+@_handle_msa_errors
+def list_msa_plan_observations(current_user, plan_id: int):
+    """管理用觀測視圖，含已作廢紀錄以呈現完整修正歷程。"""
+    return jsonify({
+        "data": {"items": MsaObservationService.list_for_plan(plan_id)}
+    })
+
+
 @msa_bp.post("/api/msa/observations/<int:observation_id>/corrections")
 @_msa_auth_required
 @_require_msa_permission("msa.manage")

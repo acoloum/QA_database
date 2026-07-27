@@ -38,6 +38,9 @@ const MsaImportHistoryPage = lazy(() => import('./pages/msa/MsaImportHistoryPage
 const MsaCriteriaPage = lazy(() => import('./pages/msa/MsaCriteriaPage'));
 const MsaStudyListPage = lazy(() => import('./pages/msa/MsaStudyListPage'));
 const MsaStudyWizardPage = lazy(() => import('./pages/msa/MsaStudyWizardPage'));
+const MsaDataCollectionPage = lazy(
+  () => import('./pages/msa/MsaDataCollectionPage'),
+);
 
 const PageFallback = () => (
   <div className="d-flex align-items-center justify-content-center py-5 text-muted">
@@ -96,6 +99,7 @@ function App() {
                 <Route path="/msa/studies" element={<MsaViewRoute><MsaStudyListPage /></MsaViewRoute>} />
                 <Route path="/msa/studies/new" element={<MsaViewRoute><MsaStudyWizardPage /></MsaViewRoute>} />
                 <Route path="/msa/studies/:studyId/edit" element={<MsaViewRoute><MsaStudyWizardPage /></MsaViewRoute>} />
+                <Route path="/msa/studies/:studyId/collect" element={<MsaViewRoute><MsaDataCollectionPage /></MsaViewRoute>} />
               </Route>
             </Route>
 

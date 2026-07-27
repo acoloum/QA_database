@@ -123,6 +123,18 @@ export const useMsaPlanTasks = (planId: number | null) => useQuery({
 // 觀測
 // ---------------------------------------------------------------------------
 
+/** 管理用觀測視圖，含已作廢紀錄；需要 msa.manage。 */
+export const useMsaPlanObservations = (planId: number | null, enabled = true) =>
+  useQuery({
+    queryKey: [...msaKeys.all, 'plan-observations', planId ?? 0] as const,
+    enabled: planId != null && enabled,
+    queryFn: async () => unwrap(
+      await api.get<ApiEnvelope<{ items: MsaObservation[] }>>(
+        `/msa/plans/${planId}/observations`,
+      ),
+    ),
+  });
+
 export const useRecordMsaObservation = () => {
   const queryClient = useQueryClient();
   return useMutation<MsaObservation, unknown, RecordMsaObservationInput>({
