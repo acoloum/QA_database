@@ -1650,3 +1650,140 @@ def test_all_equipment_mutations_write_audit_logs(
         "retire_link",
         "create_status_event",
     ]
+
+
+# ---------------------------------------------------------------------------
+# MSA 研究基礎 API
+# ---------------------------------------------------------------------------
+
+
+def _study_payload(**overrides):
+    payload = {
+        "study_type": "grr_xbar_r",
+        "measurement_purpose": "product_control",
+        "characteristic": "外徑",
+        "unit": "mm",
+        "lsl": 9.5,
+        "usl": 10.5,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _create_study(client, msa_user_headers, **overrides):
+    response = client.post(
+        "/api/msa/studies",
+        json=_study_payload(**overrides),
+        headers=msa_user_headers("msa_execute"),
+    )
+    assert response.status_code == 201, response.get_json()
+    return response.get_json()["data"]
+
+
+def test_study_list_requires_msa_view(client, msa_user_headers):
+    response = client.get(
+        "/api/msa/studies", headers=msa_user_headers("no_msa"),
+    )
+
+    assert response.status_code == 403
+
+
+def test_creating_a_study_requires_msa_execute(client, msa_user_headers):
+    response = client.post(
+        "/api/msa/studies",
+        json=_study_payload(),
+        headers=msa_user_headers("msa_view"),
+    )
+
+    assert response.status_code == 403
+
+
+def test_study_can_be_created_listed_and_fetched(client, msa_user_headers):
+    created = _create_study(client, msa_user_headers)
+
+    listed = client.get(
+        "/api/msa/studies?page=1&page_size=25&sort=study_no",
+        headers=msa_user_headers("msa_view"),
+    )
+    detail = client.get(
+        f"/api/msa/studies/{created['id']}",
+        headers=msa_user_headers("msa_view"),
+    )
+
+    assert listed.status_code == 200
+    assert set(listed.get_json()["data"]) == {
+        "items", "page", "page_size", "total",
+    }
+    assert detail.status_code == 200
+    assert detail.get_json()["data"]["study_no"] == created["study_no"]
+
+
+def test_study_detail_reports_not_found_with_stable_envelope(
+    client, msa_user_headers,
+):
+    response = client.get(
+        "/api/msa/studies/999999", headers=msa_user_headers("msa_view"),
+    )
+
+    assert response.status_code == 404
+    assert response.get_json()["error"]["code"] == "MSA_STUDY_NOT_FOUND"
+
+
+def test_study_patch_uses_expected_updated_at(client, msa_user_headers):
+    created = _create_study(client, msa_user_headers)
+
+    stale = client.patch(
+        f"/api/msa/studies/{created['id']}",
+        json={
+            "characteristic": "厚度",
+            "expected_updated_at": "2020-01-01T00:00:00+00:00",
+        },
+        headers=msa_user_headers("msa_execute"),
+    )
+    fresh = client.patch(
+        f"/api/msa/studies/{created['id']}",
+        json={
+            "characteristic": "厚度",
+            "expected_updated_at": created["updated_at"],
+        },
+        headers=msa_user_headers("msa_execute"),
+    )
+
+    assert stale.status_code == 409
+    assert stale.get_json()["error"]["code"] == "MSA_VERSION_CONFLICT"
+    assert fresh.status_code == 200
+    assert fresh.get_json()["data"]["characteristic"] == "厚度"
+
+
+def test_study_patch_rejects_unknown_fields(client, msa_user_headers):
+    created = _create_study(client, msa_user_headers)
+
+    response = client.patch(
+        f"/api/msa/studies/{created['id']}",
+        json={
+            "status": "approved",
+            "expected_updated_at": created["updated_at"],
+        },
+        headers=msa_user_headers("msa_execute"),
+    )
+
+    assert response.status_code == 422
+    assert response.get_json()["error"]["code"] == "MSA_UNKNOWN_FIELDS"
+
+
+def test_study_list_rejects_oversized_page(client, msa_user_headers):
+    response = client.get(
+        "/api/msa/studies?page_size=101", headers=msa_user_headers("msa_view"),
+    )
+
+    assert response.status_code == 422
+    assert response.get_json()["error"]["code"] == "MSA_STUDY_PAGE_SIZE_INVALID"
+
+
+def test_study_creation_is_audited(client, db_session, msa_user_headers):
+    created = _create_study(client, msa_user_headers)
+
+    audit = AuditLog.query.filter_by(
+        module="msa_study", action="create_study", record_id=created["id"],
+    ).one()
+    assert audit.new_value["study_no"] == created["study_no"]
