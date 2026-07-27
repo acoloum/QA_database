@@ -1,0 +1,206 @@
+/*
+ * MSA 視覺語言。
+ *
+ * 全部樣式以 .msa-shell 命名空間隔離，避免影響既有頁面。
+ * 狀態一律「圖示 + 文字 + 邊框」三重編碼，不單靠顏色傳達嚴重度。
+ */
+
+.msa-shell {
+  --msa-ink: #172126;
+  --msa-muted: #617078;
+  --msa-surface: #f7f4ee;
+  --msa-panel: #fffdfa;
+  --msa-line: #d8d2c6;
+  --msa-accent: #0f6b62;
+  --msa-warning: #a55f05;
+  --msa-danger: #a8342f;
+  --msa-info: #285a8e;
+
+  color: var(--msa-ink);
+  background:
+    radial-gradient(circle at 90% 0%, rgba(15, 107, 98, .09), transparent 30rem),
+    var(--msa-surface);
+  padding: clamp(1rem, 2.5vw, 2rem) clamp(1rem, 3vw, 2.5rem) 3rem;
+  min-height: 100%;
+}
+
+.msa-shell h1,
+.msa-shell h2,
+.msa-shell h3 {
+  color: var(--msa-ink);
+  font-weight: 720;
+  letter-spacing: -.01em;
+}
+
+.msa-shell h1 { margin: .1rem 0 .4rem; font-size: clamp(1.7rem, 2.8vw, 2.4rem); }
+.msa-shell h2 { font-size: 1.15rem; margin-bottom: .6rem; }
+.msa-shell p { color: var(--msa-muted); }
+
+/* 統計數值使用等寬與表格數字，讓不同列可以直接對齊比較 */
+.msa-num {
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.msa-shell__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.25rem;
+  border-bottom: 1px solid var(--msa-line);
+  padding-bottom: 1rem;
+  margin-bottom: 1.4rem;
+}
+
+.msa-eyebrow {
+  color: var(--msa-accent);
+  font-size: .74rem;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+/* --- 風險卡片 ------------------------------------------------------- */
+
+.msa-risk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: .9rem;
+  margin-bottom: 1.6rem;
+}
+
+.msa-risk-card {
+  display: grid;
+  gap: .45rem;
+  align-content: start;
+  border: 1px solid var(--msa-line);
+  border-left: 6px solid var(--msa-accent);
+  border-radius: .4rem;
+  background: var(--msa-panel);
+  padding: .95rem 1.05rem;
+  text-align: left;
+  box-shadow: 0 1px 2px rgba(23, 33, 38, .05);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+button.msa-risk-card { cursor: pointer; width: 100%; }
+button.msa-risk-card:hover { box-shadow: 0 3px 10px rgba(23, 33, 38, .1); }
+
+.msa-risk-card[data-severity="critical"] { border-left-color: var(--msa-danger); }
+.msa-risk-card[data-severity="warning"] { border-left-color: var(--msa-warning); }
+.msa-risk-card[data-severity="info"] { border-left-color: var(--msa-info); }
+.msa-risk-card[data-severity="normal"] { border-left-color: var(--msa-accent); }
+
+.msa-risk-card__label {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  font-size: .82rem;
+  font-weight: 750;
+  color: var(--msa-muted);
+}
+
+.msa-risk-card__count { font-size: 1.9rem; font-weight: 760; line-height: 1.1; }
+.msa-risk-card__hint { font-size: .8rem; margin: 0; }
+
+/* --- 工作佇列 ------------------------------------------------------- */
+
+.msa-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 19rem);
+  align-items: start;
+  gap: 1.5rem;
+}
+
+.msa-panel {
+  border: 1px solid var(--msa-line);
+  border-radius: .4rem;
+  background: var(--msa-panel);
+  padding: 1.1rem;
+}
+
+.msa-queue { display: grid; gap: .7rem; list-style: none; margin: 0; padding: 0; }
+
+.msa-queue__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: .8rem;
+  border: 1px solid var(--msa-line);
+  border-left: 5px solid var(--msa-accent);
+  border-radius: .35rem;
+  background: #fff;
+  padding: .8rem .9rem;
+}
+
+.msa-queue__item[data-severity="critical"] { border-left-color: var(--msa-danger); }
+.msa-queue__item[data-severity="warning"] { border-left-color: var(--msa-warning); }
+.msa-queue__item[data-severity="info"] { border-left-color: var(--msa-info); }
+
+.msa-queue__icon {
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  font-size: .85rem;
+  font-weight: 800;
+}
+
+.msa-queue__item[data-severity="critical"] .msa-queue__icon { color: var(--msa-danger); }
+.msa-queue__item[data-severity="warning"] .msa-queue__icon { color: var(--msa-warning); }
+.msa-queue__item[data-severity="info"] .msa-queue__icon { color: var(--msa-info); }
+
+.msa-queue__body { display: grid; gap: .2rem; min-width: 0; }
+.msa-queue__title { font-weight: 720; }
+.msa-queue__meta { display: flex; flex-wrap: wrap; gap: .35rem .9rem; font-size: .8rem; color: var(--msa-muted); }
+.msa-queue__next { font-size: .82rem; color: var(--msa-accent); font-weight: 700; }
+
+/* --- 側欄捷徑 ------------------------------------------------------- */
+
+.msa-side { display: grid; gap: .55rem; }
+.msa-side a,
+.msa-side button {
+  display: grid;
+  gap: .15rem;
+  border: 1px solid var(--msa-line);
+  border-radius: .35rem;
+  background: var(--msa-panel);
+  padding: .7rem .85rem;
+  color: var(--msa-ink);
+  text-align: left;
+  text-decoration: none;
+}
+.msa-side a:hover, .msa-side button:hover { border-color: var(--msa-accent); }
+.msa-side strong { font-size: .95rem; }
+.msa-side small { color: var(--msa-muted); }
+
+/* --- 狀態 ----------------------------------------------------------- */
+
+.msa-state {
+  border: 1px dashed var(--msa-line);
+  border-left: 5px solid var(--msa-accent);
+  border-radius: .35rem;
+  background: var(--msa-panel);
+  padding: 1.2rem;
+  color: var(--msa-muted);
+}
+.msa-state--error { border-color: #d9b0ae; border-left-color: var(--msa-danger); background: #fdf6f5; color: #7a2622; }
+
+/* 焦點環必須明顯可見，鍵盤操作才有方向感 */
+.msa-shell :is(a, button, input, select, textarea):focus-visible {
+  outline: 3px solid rgba(15, 107, 98, .5);
+  outline-offset: 2px;
+}
+
+@media (max-width: 960px) {
+  .msa-layout { grid-template-columns: 1fr; }
+  .msa-queue__item { grid-template-columns: auto minmax(0, 1fr); }
+  .msa-queue__item > :last-child { grid-column: 2; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .msa-risk-card { transition: none; }
+}
