@@ -7,7 +7,11 @@ import pytest
 
 from backend.services.msa_contracts import MsaMethodContext
 from backend.services.msa_errors import MsaMethodNotApplicable
-from backend.services.msa_variable_grr import analyze_range, analyze_xbar_r
+from backend.services.msa_variable_grr import (
+    analyze_crossed_anova,
+    analyze_range,
+    analyze_xbar_r,
+)
 
 
 @pytest.fixture(scope="module")
@@ -280,3 +284,207 @@ def test_range_method_without_tolerance_reports_unavailable(grr_reference):
     )
 
     assert output.statistics["percent_tolerance"] is None
+
+
+# ---------------------------------------------------------------------------
+# 交叉型 ANOVA
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def anova_reference():
+    path = (
+        Path(__file__).parents[1] / "fixtures" / "msa_anova_reference.json"
+    )
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _anova_case(reference, name):
+    case = reference["cases"][name]
+    return (
+        [dict(row) for row in case["observations"]],
+        MsaMethodContext(**reference["context"]),
+        case["expected"],
+    )
+
+
+def test_crossed_anova_preserves_full_and_reduced_model_evidence(
+    anova_reference,
+):
+    observations, context, expected = _anova_case(
+        anova_reference, "interaction_not_significant"
+    )
+
+    output = analyze_crossed_anova(observations, context)
+    full = output.statistics["anova"]["full_model"]
+
+    assert [row["source"] for row in full["table"]] == [
+        "part", "appraiser", "part_appraiser", "repeatability",
+    ]
+    assert full["table"][0]["ss"] == pytest.approx(
+        expected["part_ss"], rel=1e-9
+    )
+    assert "raw_variance_components" in full
+    assert "adjusted_variance_components" in full
+    assert output.statistics["anova"]["selected_model"] in {"full", "reduced"}
+    # 即使採用 reduced，full 的證據仍必須完整保存
+    assert output.statistics["anova"]["reduced_model"]["error_ss"] == (
+        pytest.approx(expected["reduced_model"]["error_ss"], rel=1e-9)
+    )
+
+
+def test_anova_table_matches_independently_computed_sums_of_squares(
+    anova_reference,
+):
+    observations, context, expected = _anova_case(
+        anova_reference, "interaction_not_significant"
+    )
+
+    table = analyze_crossed_anova(
+        observations, context
+    ).statistics["anova"]["full_model"]["table"]
+    by_source = {row["source"]: row for row in table}
+
+    for source, key in (
+        ("part", "part"), ("appraiser", "appraiser"),
+        ("part_appraiser", "interaction"), ("repeatability", "repeatability"),
+    ):
+        assert by_source[source]["ss"] == pytest.approx(
+            expected[f"{key}_ss"], rel=1e-9
+        )
+        assert by_source[source]["df"] == expected[f"{key}_df"]
+        assert by_source[source]["ms"] == pytest.approx(
+            expected[f"{key}_ms"], rel=1e-9
+        )
+
+
+def test_anova_sums_of_squares_decompose_to_the_total(anova_reference):
+    """四個來源的平方和必須恰好等於總平方和。"""
+    observations, context, expected = _anova_case(
+        anova_reference, "interaction_not_significant"
+    )
+
+    table = analyze_crossed_anova(
+        observations, context
+    ).statistics["anova"]["full_model"]["table"]
+
+    assert sum(row["ss"] for row in table) == pytest.approx(
+        expected["total_ss"], rel=1e-9
+    )
+
+
+def test_interaction_not_significant_selects_reduced_model(anova_reference):
+    observations, context, expected = _anova_case(
+        anova_reference, "interaction_not_significant"
+    )
+
+    output = analyze_crossed_anova(observations, context)
+
+    assert expected["selected_model"] == "reduced"
+    assert output.statistics["anova"]["selected_model"] == "reduced"
+    assert output.statistics["anova"]["p_interaction"] == pytest.approx(
+        expected["p_interaction"], rel=1e-6
+    )
+    assert output.statistics["grr"] == pytest.approx(
+        expected["grr"], rel=1e-9
+    )
+    assert output.statistics["ndc"] == expected["ndc"]
+
+
+def test_interaction_significant_keeps_full_model(anova_reference):
+    observations, context, expected = _anova_case(
+        anova_reference, "interaction_significant"
+    )
+
+    output = analyze_crossed_anova(observations, context)
+
+    assert expected["selected_model"] == "full"
+    assert output.statistics["anova"]["selected_model"] == "full"
+    assert output.statistics["anova"]["p_interaction"] < context.alpha
+    assert output.statistics["grr"] == pytest.approx(
+        expected["grr"], rel=1e-9
+    )
+
+
+def test_anova_reports_negative_components_before_clamping(anova_reference):
+    observations, context, expected = _anova_case(
+        anova_reference, "interaction_not_significant"
+    )
+
+    full = analyze_crossed_anova(
+        observations, context
+    ).statistics["anova"]["full_model"]
+
+    raw = full["raw_variance_components"]
+    adjusted = full["adjusted_variance_components"]
+    assert raw["part_appraiser"] == pytest.approx(
+        expected["raw_variance_components"]["part_appraiser"], rel=1e-9
+    )
+    assert all(value >= 0 for value in adjusted.values())
+    for key, value in raw.items():
+        if value < 0:
+            assert adjusted[key] == 0.0
+
+
+def test_anova_uses_six_sigma_and_reports_percent_tolerance(anova_reference):
+    observations, context, expected = _anova_case(
+        anova_reference, "interaction_not_significant"
+    )
+
+    output = analyze_crossed_anova(observations, context)
+
+    assert output.statistics["study_variation_multiplier"] == 6.0
+    assert output.statistics["percent_tolerance"]["grr"] == pytest.approx(
+        expected["percent_tolerance_grr"], rel=1e-9
+    )
+
+
+def test_anova_rejects_unbalanced_data(anova_reference):
+    observations, context, _ = _anova_case(
+        anova_reference, "interaction_not_significant"
+    )
+
+    with pytest.raises(MsaMethodNotApplicable) as error:
+        analyze_crossed_anova(observations[:-1], context)
+
+    assert error.value.details["reason"] == "unbalanced_design"
+
+
+def test_anova_rejects_designs_without_error_degrees_of_freedom(
+    anova_reference,
+):
+    """每格只有一次試驗時誤差自由度為 0，無法估計重複性。"""
+    observations, context, _ = _anova_case(
+        anova_reference, "interaction_not_significant"
+    )
+    single_trial = [row for row in observations if row["trial"] == 1]
+
+    with pytest.raises(MsaMethodNotApplicable) as error:
+        analyze_crossed_anova(single_trial, context)
+
+    assert error.value.details["reason"] == "no_error_degrees_of_freedom"
+
+
+def test_anova_rejects_single_appraiser_design(anova_reference):
+    observations, context, _ = _anova_case(
+        anova_reference, "interaction_not_significant"
+    )
+    single = [row for row in observations if row["appraiser"] == "A01"]
+
+    with pytest.raises(MsaMethodNotApplicable) as error:
+        analyze_crossed_anova(single, context)
+
+    assert error.value.details["reason"] == "insufficient_appraisers"
+
+
+def test_anova_rejects_zero_variation_that_makes_f_undefined(anova_reference):
+    observations, context, _ = _anova_case(
+        anova_reference, "interaction_not_significant"
+    )
+    for row in observations:
+        row["value"] = 10.0
+
+    with pytest.raises(MsaMethodNotApplicable) as error:
+        analyze_crossed_anova(observations, context)
+
+    assert error.value.details["reason"] == "degenerate_model"
