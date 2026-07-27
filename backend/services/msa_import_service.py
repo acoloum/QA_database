@@ -67,6 +67,8 @@ _MIN_RESOLUTION = Decimal("1e-12")
 _MAX_RESOLUTION = Decimal("1e6")
 _MIN_RESOLUTION_ADJUSTED_EXPONENT = -12
 _MAX_RESOLUTION_ADJUSTED_EXPONENT = 6
+_MAX_HTML_SANITIZE_ITERATIONS = 12
+_MAX_HTML_INTERMEDIATE_LENGTH = 20_000
 
 _REQUIRED_HEADERS = frozenset({"設備編號", "名稱"})
 _CALIBRATION_TYPES = frozenset(CALIBRATION_TYPE_MAP.values())
@@ -109,6 +111,7 @@ _ISSUE_MESSAGES = {
     "MSA_IMPORT_SERIAL_PREFIX_WITHOUT_VALUE": "序號前綴後沒有可擷取的序號",
     "MSA_IMPORT_SERIAL_UNSUPPORTED_PREFIX": "NO 僅列為人工候選，不自動擷取",
     "MSA_IMPORT_EQUIPMENT_NO_DUPLICATE_IN_FILE": "檔案內設備編號重複",
+    "MSA_IMPORT_REMINDER_HTML_INVALID": "校驗提醒 HTML 無法在安全界線內清理",
 }
 
 
@@ -177,26 +180,40 @@ class _PlainTextHtmlParser(HTMLParser):
             self.parts.append(data)
 
 
-def _decode_html_entities(value: str) -> str:
-    """有限次解碼，涵蓋來源的 double entity 且避免無界重複處理。"""
-    decoded = value
-    for _ in range(3):
-        next_value = html.unescape(decoded)
-        if next_value == decoded:
-            break
-        decoded = next_value
-    return decoded
-
-
-def _clean_html_text(value) -> tuple[str | None, bool]:
+def _clean_html_text(
+    value,
+) -> tuple[str | None, bool, str | None]:
+    """有界收斂地將多層 entity 與 HTML 轉為不可解析的純文字。"""
     text = _null_if_dash(value)
     if text is None:
-        return None, False
-    parser = _PlainTextHtmlParser()
-    parser.feed(_decode_html_entities(text))
-    parser.close()
-    cleaned = _WHITESPACE_PATTERN.sub(" ", " ".join(parser.parts)).strip()
-    return cleaned or None, parser.saw_markup
+        return None, False, None
+    current = text
+    saw_markup = False
+    for _ in range(_MAX_HTML_SANITIZE_ITERATIONS):
+        if len(current) > _MAX_HTML_INTERMEDIATE_LENGTH:
+            return None, False, "MSA_IMPORT_REMINDER_HTML_INVALID"
+        decoded = html.unescape(current)
+        if len(decoded) > _MAX_HTML_INTERMEDIATE_LENGTH:
+            return None, False, "MSA_IMPORT_REMINDER_HTML_INVALID"
+        parser = _PlainTextHtmlParser()
+        if "<" in decoded:
+            parser.feed(decoded)
+            parser.close()
+            visible_text = " ".join(parser.parts)
+        else:
+            visible_text = decoded
+        cleaned = _WHITESPACE_PATTERN.sub(" ", visible_text).strip()
+        if len(cleaned) > _MAX_HTML_INTERMEDIATE_LENGTH:
+            return None, False, "MSA_IMPORT_REMINDER_HTML_INVALID"
+        saw_markup = saw_markup or parser.saw_markup
+        if (
+            decoded == current
+            and cleaned == current
+            and not parser.saw_markup
+        ):
+            return cleaned or None, saw_markup, None
+        current = cleaned
+    return None, False, "MSA_IMPORT_REMINDER_HTML_INVALID"
 
 
 def _parse_source_date(value, *, issue_codes: list[str]) -> str | None:
@@ -314,9 +331,11 @@ def normalize_equipment_row(
         date.fromisoformat(next_due_date) if next_due_date is not None else None
     )
 
-    reminder_text, html_cleaned = _clean_html_text(
+    reminder_text, html_cleaned, reminder_issue = _clean_html_text(
         raw_row.get("效準提醒", raw_row.get("校驗提醒"))
     )
+    if reminder_issue is not None:
+        issue_codes.append(reminder_issue)
     legacy_notes = _null_if_dash(raw_row.get("備註"))
     serial_match = SERIAL_PATTERN.search(legacy_notes or "")
     serial_no = serial_match.group(1) if serial_match else None

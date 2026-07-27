@@ -1,5 +1,6 @@
 """設備 CSV 受控匯入服務的回歸測試。"""
 
+import html as html_module
 from datetime import date
 from io import BytesIO
 from pathlib import Path
@@ -122,6 +123,70 @@ def test_plain_entity_decode_does_not_count_as_html_cleaning():
 
     assert normalized.data["reminder_text"] == "AT&T 校驗"
     assert normalized.html_cleaned is False
+
+
+@pytest.mark.parametrize("encode_layers", [4, 8])
+def test_html_cleaning_converges_for_four_or_more_encoded_layers(
+    encode_layers,
+):
+    """固定三次 unescape 若留下可解析 markup，此測試應失敗。"""
+    reminder = "<img src=x onerror=alert(1)>校驗即將到期"
+    for _ in range(encode_layers):
+        reminder = html_module.escape(reminder)
+
+    normalized = normalize_equipment_row(
+        {
+            "設備編號": "EQ-DEEP-HTML",
+            "名稱": "測試量具",
+            "效準提醒": reminder,
+        },
+        source_row_no=2,
+        as_of=date(2026, 7, 27),
+    )
+
+    assert normalized.data["reminder_text"] == "校驗即將到期"
+    assert "<" not in normalized.data["reminder_text"]
+    assert "onerror" not in normalized.data["reminder_text"]
+    assert normalized.html_cleaned is True
+    assert "MSA_IMPORT_REMINDER_HTML_INVALID" not in normalized.issue_codes
+
+
+def test_html_cleaning_marks_issue_when_entity_depth_does_not_converge():
+    """超過安全迭代上限時，不得輸出尚可繼續解碼的內容。"""
+    reminder = "<img src=x onerror=alert(1)>校驗即將到期"
+    for _ in range(20):
+        reminder = html_module.escape(reminder)
+
+    normalized = normalize_equipment_row(
+        {
+            "設備編號": "EQ-TOO-DEEP",
+            "名稱": "測試量具",
+            "效準提醒": reminder,
+        },
+        source_row_no=2,
+        as_of=date(2026, 7, 27),
+    )
+
+    assert normalized.data["reminder_text"] is None
+    assert normalized.html_cleaned is False
+    assert "MSA_IMPORT_REMINDER_HTML_INVALID" in normalized.issue_codes
+
+
+def test_html_cleaning_rejects_overlong_intermediate_output():
+    """任一輪輸出超過安全長度時，不得繼續 entity/parser 處理。"""
+    normalized = normalize_equipment_row(
+        {
+            "設備編號": "EQ-LONG-HTML",
+            "名稱": "測試量具",
+            "效準提醒": "A" * 20001,
+        },
+        source_row_no=2,
+        as_of=date(2026, 7, 27),
+    )
+
+    assert normalized.data["reminder_text"] is None
+    assert normalized.html_cleaned is False
+    assert "MSA_IMPORT_REMINDER_HTML_INVALID" in normalized.issue_codes
 
 
 @pytest.mark.parametrize(
