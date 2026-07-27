@@ -1,11 +1,16 @@
 """量測設備、校驗證據、狀態事件與來源連結 API。"""
 
+from datetime import date
 from functools import wraps
 
 from flask import Blueprint, jsonify, request
 
 from ..services.msa_equipment_service import MsaEquipmentService
-from ..services.msa_errors import MsaServiceError
+from ..services.msa_errors import MsaServiceError, MsaValidationError
+from ..services.msa_import_service import (
+    MsaImportService,
+    serialize_import_batch,
+)
 from ..utils import auth_required, require_permission
 
 
@@ -78,6 +83,69 @@ def _require_msa_permission(permission: str):
         return wrapped
 
     return decorator
+
+
+def _optional_iso_date(value, *, field: str) -> date | None:
+    """解析匯入盤點日；空值由 service 採用目前日期。"""
+    if value in (None, ""):
+        return None
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError as error:
+        raise MsaValidationError(
+            "MSA_IMPORT_DATE_INVALID",
+            f"{field} 必須是 ISO 日期",
+            details={"field": field, "value": value},
+        ) from error
+
+
+@measurement_equipment_bp.post(
+    "/api/measurement-equipment/imports/preview"
+)
+@auth_required
+@_require_msa_permission("msa.manage")
+@_handle_msa_errors
+def preview_import(current_user):
+    """只建立匯入批次與逐列預覽，不建立正式設備。"""
+    uploaded_file = request.files.get("file")
+    batch = MsaImportService.preview(
+        uploaded_file,
+        actor_id=current_user.id,
+        as_of=_optional_iso_date(
+            request.args.get("as_of"),
+            field="as_of",
+        ),
+    )
+    return jsonify(
+        {"data": serialize_import_batch(batch, include_rows=True)}
+    ), 201
+
+
+@measurement_equipment_bp.post(
+    "/api/measurement-equipment/imports/<int:batch_id>/confirm"
+)
+@auth_required
+@_require_msa_permission("msa.manage")
+@_handle_msa_errors
+def confirm_import(current_user, batch_id: int):
+    """以列鎖與整批交易確認預覽結果。"""
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        raise MsaValidationError(
+            "MSA_PAYLOAD_INVALID", "請求內容必須是 JSON 物件"
+        )
+    batch = MsaImportService.confirm(
+        batch_id,
+        current_user.id,
+        resolutions=payload.get("resolutions", {}),
+        confirmation_date=_optional_iso_date(
+            payload.get("confirmation_date"),
+            field="confirmation_date",
+        ),
+    )
+    return jsonify(
+        {"data": serialize_import_batch(batch, include_rows=True)}
+    )
 
 
 @measurement_equipment_bp.get("/api/measurement-equipment")

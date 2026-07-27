@@ -1,6 +1,7 @@
 """量測設備 API 的真實路由、權限、交易與稽核整合測試。"""
 
 from datetime import date
+from io import BytesIO
 
 import pytest
 
@@ -104,6 +105,94 @@ def _calibration_payload(**overrides):
     }
     payload.update(overrides)
     return payload
+
+
+def _import_csv_bytes():
+    return (
+        "設備編號,名稱,狀態,類別,解析度,單位\n"
+        "EQ-IMPORT-API,API 測試量具,使用中,外校,0.01,mm\n"
+    ).encode("utf-8-sig")
+
+
+def test_equipment_import_preview_requires_msa_manage(
+    client,
+    msa_user_headers,
+):
+    """若匯入預覽錯放給 msa.execute，此測試應失敗。"""
+    response = client.post(
+        "/api/measurement-equipment/imports/preview",
+        data={"file": (BytesIO(_import_csv_bytes()), "equipment.csv")},
+        content_type="multipart/form-data",
+        headers=msa_user_headers("msa_execute"),
+    )
+
+    assert response.status_code == 403
+    assert response.get_json() == {
+        "error": {
+            "code": "MSA_PERMISSION_DENIED",
+            "message": "權限不足",
+            "details": {"permission": "msa.manage"},
+        }
+    }
+
+
+def test_equipment_import_preview_and_confirm_use_stable_envelope(
+    client,
+    msa_user_headers,
+):
+    """若 preview 建設備、confirm envelope 漂移或無法冪等，此測試應失敗。"""
+    preview = client.post(
+        "/api/measurement-equipment/imports/preview?as_of=2026-07-27",
+        data={"file": (BytesIO(_import_csv_bytes()), "equipment.csv")},
+        content_type="multipart/form-data",
+        headers=msa_user_headers("msa_manage"),
+    )
+
+    assert preview.status_code == 201
+    batch = preview.get_json()["data"]
+    assert batch["status"] == "previewed"
+    assert batch["total_rows"] == 1
+    assert len(batch["rows"]) == 1
+    assert MeasurementEquipment.query.count() == 0
+
+    confirm = client.post(
+        f"/api/measurement-equipment/imports/{batch['id']}/confirm",
+        json={"resolutions": {}, "confirmation_date": "2026-07-27"},
+        headers=msa_user_headers("msa_manage"),
+    )
+    repeated = client.post(
+        f"/api/measurement-equipment/imports/{batch['id']}/confirm",
+        json={"resolutions": {}, "confirmation_date": "2026-07-27"},
+        headers=msa_user_headers("msa_manage"),
+    )
+
+    assert confirm.status_code == 200
+    assert repeated.status_code == 200
+    assert confirm.get_json()["data"]["status"] == "confirmed"
+    assert repeated.get_json()["data"]["id"] == batch["id"]
+    assert MeasurementEquipment.query.count() == 1
+
+
+def test_equipment_import_error_uses_stable_msa_envelope(
+    client,
+    msa_user_headers,
+):
+    """錯誤若退化成 HTML 或舊式字串格式，此測試應失敗。"""
+    response = client.post(
+        "/api/measurement-equipment/imports/preview",
+        data={"file": (BytesIO(b"not csv"), "equipment.txt")},
+        content_type="multipart/form-data",
+        headers=msa_user_headers("msa_manage"),
+    )
+
+    assert response.status_code == 422
+    assert response.get_json() == {
+        "error": {
+            "code": "MSA_IMPORT_FILE_TYPE_INVALID",
+            "message": "設備匯入僅接受 CSV 檔案",
+            "details": {"filename": "equipment.txt"},
+        }
+    }
 
 
 def test_equipment_list_requires_msa_view(client, msa_user_headers):
