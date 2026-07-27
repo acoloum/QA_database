@@ -204,3 +204,124 @@ button.msa-risk-card:hover { box-shadow: 0 3px 10px rgba(23, 33, 38, .1); }
 @media (prefers-reduced-motion: reduce) {
   .msa-risk-card { transition: none; }
 }
+
+/* --- 方法選擇 ------------------------------------------------------- */
+
+.msa-method-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: .9rem;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.msa-method-grid legend { font-weight: 750; margin-bottom: .5rem; }
+
+.msa-method-card {
+  display: grid;
+  gap: .5rem;
+  align-content: start;
+  border: 1px solid var(--msa-line);
+  border-radius: .4rem;
+  background: var(--msa-panel);
+  padding: .95rem;
+  cursor: pointer;
+}
+.msa-method-card[data-selected="true"] {
+  border-color: var(--msa-accent);
+  box-shadow: inset 0 0 0 1px var(--msa-accent);
+}
+.msa-method-card__head { display: flex; align-items: center; gap: .5rem; }
+.msa-method-card__head strong { font-size: 1.05rem; }
+.msa-method-card p { margin: 0; font-size: .85rem; }
+.msa-method-card__facts { display: grid; gap: .3rem; margin: 0; }
+.msa-method-card__facts dt { color: var(--msa-muted); font-size: .74rem; }
+.msa-method-card__facts dd { margin: 0; font-size: .82rem; }
+.msa-method-card h4 { font-size: .76rem; letter-spacing: .04em; margin: 0 0 .2rem; color: var(--msa-muted); }
+.msa-method-card ul { margin: 0; padding-left: 1.1rem; font-size: .82rem; }
+/* 「不能回答」用暖色強調，選錯方法的代價要看得見 */
+.msa-method-card__limits { border-left: 3px solid var(--msa-warning); padding-left: .6rem; }
+
+/* --- 精靈 ----------------------------------------------------------- */
+
+.msa-stepper {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  list-style: none;
+  gap: .4rem;
+  margin: 0 0 1.2rem;
+  padding: 0;
+}
+.msa-stepper li {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  border-bottom: 3px solid var(--msa-line);
+  padding: .5rem .2rem;
+  color: var(--msa-muted);
+  font-size: .84rem;
+  font-weight: 700;
+}
+.msa-stepper li[data-state="current"] { border-bottom-color: var(--msa-accent); color: var(--msa-ink); }
+.msa-stepper li[data-state="complete"] { border-bottom-color: var(--msa-accent); }
+.msa-stepper li span {
+  display: inline-grid;
+  width: 1.5rem; height: 1.5rem;
+  place-items: center;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  font-size: .72rem;
+}
+
+.msa-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
+.msa-form-grid__wide { grid-column: 1 / -1; }
+.msa-shell label { display: grid; gap: .3rem; font-size: .8rem; font-weight: 700; color: #33474d; }
+.msa-shell input, .msa-shell select, .msa-shell textarea {
+  min-height: 2.5rem;
+  border: 1px solid #b6bfc2;
+  border-radius: .3rem;
+  background: #fff;
+  color: var(--msa-ink);
+  padding: .45rem .6rem;
+  font: inherit;
+}
+.msa-shell input[type="radio"], .msa-shell input[type="checkbox"] { min-height: auto; }
+
+.msa-wizard-nav { display: flex; justify-content: space-between; gap: 1rem; margin-top: 1.2rem; }
+.msa-wizard-nav button,
+.msa-primary-action,
+.msa-shell__header a {
+  min-height: 2.6rem;
+  border: 1px solid var(--msa-accent);
+  border-radius: .35rem;
+  background: var(--msa-accent);
+  color: #fff;
+  padding: .55rem 1rem;
+  font-weight: 720;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.msa-wizard-nav button:first-child { background: #fff; color: var(--msa-ink); border-color: var(--msa-line); }
+.msa-primary-action:disabled, .msa-wizard-nav button:disabled { opacity: .5; cursor: not-allowed; }
+
+/* --- 檢閱與清單表格 ------------------------------------------------- */
+
+.msa-review-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: .6rem; margin-bottom: 1rem; }
+.msa-review-grid dt { color: var(--msa-muted); font-size: .76rem; }
+.msa-review-grid dd { margin: .15rem 0 0; font-weight: 700; }
+
+.msa-review-table { width: 100%; border-collapse: collapse; }
+.msa-review-table caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.msa-review-table th, .msa-review-table td { border-bottom: 1px solid #e3e0d8; padding: .55rem .6rem; text-align: left; vertical-align: top; }
+.msa-review-table thead th { background: #efeae0; font-size: .78rem; letter-spacing: .03em; }
+.msa-review-table tr[data-overdue="true"] { box-shadow: inset 4px 0 0 var(--msa-danger); }
+
+.msa-filters { display: grid; grid-template-columns: minmax(14rem, 2fr) repeat(2, minmax(9rem, 1fr)) auto; align-items: end; gap: .8rem; margin-bottom: 1.2rem; padding: .9rem; border: 1px solid var(--msa-line); border-radius: .4rem; background: #efeae0; }
+.msa-filters button { min-height: 2.5rem; border: 1px solid var(--msa-line); border-radius: .3rem; background: #fff; padding: .45rem .8rem; }
+
+@media (max-width: 760px) {
+  .msa-form-grid, .msa-filters { grid-template-columns: 1fr; }
+  .msa-form-grid__wide { grid-column: auto; }
+}
