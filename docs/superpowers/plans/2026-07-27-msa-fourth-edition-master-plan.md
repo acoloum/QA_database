@@ -4,7 +4,9 @@
 
 **目標：** 依 AIAG MSA 第四版與已核准產品決策，分三個可審查、可驗證的交付段落，完成量測設備治理、MSA 研究與統計、前端工作台、核准及正式報告。
 
-**遷移拆分說明：** 核准規格以單一 `44_create_msa_and_measurement_equipment.sql` 表示整體模型；實作計畫將它細分為 migration 44（設備、校驗、匯入、準則）與 migration 45（研究、觀測、結果、決策、再研究、確效），以便分階段部署與回歸。資料語意與不可變要求不變。
+**遷移拆分說明：** 核准規格以單一 `44_create_msa_and_measurement_equipment.sql` 表示整體模型；實作計畫將它細分為 migration 44（設備、校驗、匯入、準則）與第二階段的研究遷移（研究、觀測、結果、決策、再研究、確效），以便分階段部署與回歸。資料語意與不可變要求不變。
+
+**實作後的編號修正（2026-07-27）：** 第一階段實作時另加了 `45_harden_msa_equipment_constraints.sql`（量程順序 CHECK），因此 45 已被佔用。第二階段的研究遷移改為 `46_create_msa_studies.sql`；下文與子計畫中所有「migration 45（研究）」一律指這個 46。第一階段實際交付為 migration 44 與 45 兩支。
 
 ## 執行順序
 
@@ -42,7 +44,7 @@ Gate：
 
 Gate：
 
-- migration 45 成功。
+- migration 46（研究遷移）成功。
 - 每個方法的 reference、edge、not-applicable 測試通過。
 - golden validation 全部 PASS。
 - admin 自己核准仍回 `MSA_SELF_APPROVAL_FORBIDDEN`。
@@ -92,7 +94,7 @@ Gate：
 ## 最終驗收證據清單
 
 - Git commits 與 clean/expected dirty status。
-- migration 44/45 套用紀錄。
+- migration 44/45/46 套用紀錄。
 - 設備 CSV preview/confirm batch hash 與統計。
 - 各統計方法 golden validation run IDs。
 - MSA 後端與前端完整測試輸出。

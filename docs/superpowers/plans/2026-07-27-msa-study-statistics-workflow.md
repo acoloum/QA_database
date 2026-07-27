@@ -24,7 +24,7 @@
 
 **Files:**
 
-- Create: `backend/migration/45_create_msa_studies.sql`
+- Create: `backend/migration/46_create_msa_studies.sql`
 - Modify: `backend/models.py`
 - Test: `backend/tests/test_services/test_msa_models.py`
 
@@ -226,7 +226,7 @@ Run:
 
 ```powershell
 venv\Scripts\python.exe -m pytest backend\tests\test_services\test_msa_models.py -q
-psql -U postgres -d qa_database -v ON_ERROR_STOP=1 -f backend/migration/45_create_msa_studies.sql
+psql -U postgres -d qa_database -v ON_ERROR_STOP=1 -f backend/migration/46_create_msa_studies.sql
 ```
 
 Expected: PASS；SQL COMMIT。
@@ -234,7 +234,7 @@ Expected: PASS；SQL COMMIT。
 ### Step 6：提交
 
 ```powershell
-git add backend/migration/45_create_msa_studies.sql backend/models.py backend/tests/test_services/test_msa_models.py
+git add backend/migration/46_create_msa_studies.sql backend/models.py backend/tests/test_services/test_msa_models.py
 git commit -m "資料庫：建立 MSA 研究與不可變證據模型"
 ```
 
@@ -1784,7 +1784,7 @@ def test_validation_runner_persists_pass_and_fail(db_session, monkeypatch):
 - observed/expected/differences。
 - result `PASS|FAIL`。
 
-確認已有 `PASS|FAIL` CHECK 與 immutable trigger；若缺少，回到 Task 1 修正尚未套用的 migration 45 及模型後，重新執行 Task 1 驗證，不在已套用環境事後改寫 migration。
+確認已有 `PASS|FAIL` CHECK 與 immutable trigger；若缺少，回到 Task 1 修正尚未套用的 migration 46 及模型後，重新執行 Task 1 驗證，不在已套用環境事後改寫 migration。
 
 ### Step 3：建立 golden cases
 

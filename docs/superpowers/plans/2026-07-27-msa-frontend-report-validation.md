@@ -1330,7 +1330,7 @@ Expected:
 
 記錄：
 
-- migration 44/45 已套用的資料庫與時間。
+- migration 44/45/46 已套用的資料庫與時間。
 - 實際服務 PID/listener。
 - authenticated API smoke 結果。
 - self-approval 403 證據。
