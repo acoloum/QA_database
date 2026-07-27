@@ -10,6 +10,7 @@ from ..services.msa_observation_import_service import (
 )
 from ..services.msa_observation_service import MsaObservationService
 from ..services.msa_study_service import MsaStudyService
+from ..services.msa_workflow_service import MsaWorkflowService
 from .msa_adapters import (
     handle_msa_errors as _handle_msa_errors,
     has_msa_permission as _has_msa_permission,
@@ -365,3 +366,56 @@ def analyze_msa_plan(current_user, plan_id: int):
         expected_plan_hash=payload.get("expected_plan_hash"),
     )
     return jsonify({"data": _serialize_result(result)}), 201
+
+
+# ---------------------------------------------------------------------------
+# 送審與核准
+# ---------------------------------------------------------------------------
+
+
+@msa_bp.post("/api/msa/results/<int:result_id>/submit")
+@_msa_auth_required
+@_require_msa_permission("msa.manage")
+@_handle_msa_errors
+def submit_msa_result(current_user, result_id: int):
+    """送審結果版本；條件接受必須附處置措施與期限。"""
+    result = MsaWorkflowService.submit(
+        result_id, request.get_json(silent=True), actor_id=current_user.id,
+    )
+    return jsonify({"data": _serialize_result(result)})
+
+
+@msa_bp.post("/api/msa/results/<int:result_id>/approve")
+@_msa_auth_required
+@_require_msa_permission("msa.approve")
+@_handle_msa_errors
+def approve_msa_result(current_user, result_id: int):
+    """核准結果版本；參與過本研究者一律不得核准。"""
+    result = MsaWorkflowService.approve(
+        result_id, request.get_json(silent=True), actor_id=current_user.id,
+    )
+    return jsonify({"data": _serialize_result(result)})
+
+
+@msa_bp.post("/api/msa/results/<int:result_id>/reject")
+@_msa_auth_required
+@_require_msa_permission("msa.approve")
+@_handle_msa_errors
+def reject_msa_result(current_user, result_id: int):
+    """退回結果版本；需重新分析才能再次送審。"""
+    result = MsaWorkflowService.reject(
+        result_id, request.get_json(silent=True), actor_id=current_user.id,
+    )
+    return jsonify({"data": _serialize_result(result)})
+
+
+@msa_bp.post("/api/msa/results/<int:result_id>/void")
+@_msa_auth_required
+@_require_msa_permission("msa.approve")
+@_handle_msa_errors
+def void_msa_result(current_user, result_id: int):
+    """作廢已核准的結果版本；統計證據本身仍不可修改。"""
+    result = MsaWorkflowService.void(
+        result_id, request.get_json(silent=True), actor_id=current_user.id,
+    )
+    return jsonify({"data": _serialize_result(result)})
