@@ -1,10 +1,19 @@
 """MSA 設備與校驗附件的實體權限整合測試。"""
 
+from datetime import date
 from io import BytesIO
 
 import pytest
 
-from backend.models import Role, User
+from backend.extensions import db
+from backend.models import (
+    Attachment,
+    AuditLog,
+    EquipmentCalibrationRecord,
+    MeasurementEquipment,
+    Role,
+    User,
+)
 from backend.storage.local import LocalStorage
 from backend.utils import generate_token, hash_password
 
@@ -15,6 +24,7 @@ def msa_attachment_headers(db_session):
     for code, permissions in {
         "msa_attachment_view": {"msa.view": True},
         "msa_attachment_manage": {"msa.view": True, "msa.manage": True},
+        "manager": {},
     }.items():
         db_session.add(Role(code=code, name=code, permissions=permissions))
         user = User(
@@ -35,6 +45,31 @@ def msa_attachment_headers(db_session):
     return headers
 
 
+@pytest.fixture
+def msa_attachment_targets(db_session):
+    equipment = MeasurementEquipment(
+        equipment_no="EQ-ATTACHMENT-TARGET",
+        name="附件目標設備",
+    )
+    db_session.add(equipment)
+    db_session.flush()
+    calibration = EquipmentCalibrationRecord(
+        equipment_id=equipment.id,
+        calibration_type="external",
+        calibration_date=date(2026, 7, 27),
+        result="pass",
+        status="draft",
+    )
+    db_session.add(calibration)
+    db_session.commit()
+    return {
+        "measurement_equipment": equipment.id,
+        "equipment_calibration": calibration.id,
+        "equipment_id": equipment.id,
+        "calibration_id": calibration.id,
+    }
+
+
 @pytest.mark.parametrize(
     "entity_type",
     ["measurement_equipment", "equipment_calibration"],
@@ -44,18 +79,20 @@ def test_msa_view_can_list_and_download_but_cannot_upload_or_delete(
     client,
     tmp_path,
     msa_attachment_headers,
+    msa_attachment_targets,
     entity_type,
 ):
     """若 msa.view 可寫入，或無法讀取其設備證據附件，此測試應失敗。"""
-    app.config["STORAGE"] = LocalStorage(str(tmp_path))
+    app.config["STORAGE"] = LocalStorage(str(tmp_path / "uploads"))
     manage_headers = msa_attachment_headers("msa_attachment_manage")
     view_headers = msa_attachment_headers("msa_attachment_view")
+    entity_id = msa_attachment_targets[entity_type]
     created = client.post(
         "/api/attachments/upload",
         data={
             "file": (BytesIO(b"certificate"), "certificate.txt"),
             "entity_type": entity_type,
-            "entity_id": "91",
+            "entity_id": str(entity_id),
         },
         headers=manage_headers,
         content_type="multipart/form-data",
@@ -64,7 +101,7 @@ def test_msa_view_can_list_and_download_but_cannot_upload_or_delete(
     attachment = created.get_json()
 
     listed = client.get(
-        f"/api/attachments?entity_type={entity_type}&entity_id=91",
+        f"/api/attachments?entity_type={entity_type}&entity_id={entity_id}",
         headers=view_headers,
     )
     downloaded = client.get(
@@ -76,7 +113,7 @@ def test_msa_view_can_list_and_download_but_cannot_upload_or_delete(
         data={
             "file": (BytesIO(b"forbidden"), "forbidden.txt"),
             "entity_type": entity_type,
-            "entity_id": "91",
+            "entity_id": str(entity_id),
         },
         headers=view_headers,
         content_type="multipart/form-data",
@@ -103,18 +140,20 @@ def test_msa_manage_can_upload_and_delete_own_attachment(
     client,
     tmp_path,
     msa_attachment_headers,
+    msa_attachment_targets,
     entity_type,
 ):
     """若 MSA 映射仍查找 msa.edit，manage 會錯誤地無法管理附件。"""
-    app.config["STORAGE"] = LocalStorage(str(tmp_path))
+    app.config["STORAGE"] = LocalStorage(str(tmp_path / "uploads"))
     headers = msa_attachment_headers("msa_attachment_manage")
+    entity_id = msa_attachment_targets[entity_type]
 
     created = client.post(
         "/api/attachments/upload",
         data={
             "file": (BytesIO(b"certificate"), "certificate.txt"),
             "entity_type": entity_type,
-            "entity_id": "92",
+            "entity_id": str(entity_id),
         },
         headers=headers,
         content_type="multipart/form-data",
@@ -128,3 +167,299 @@ def test_msa_manage_can_upload_and_delete_own_attachment(
 
     assert deleted.status_code == 200
     assert deleted.get_json()["message"] == "刪除成功"
+    actions = [
+        log.action
+        for log in AuditLog.query.filter_by(module="msa_attachment")
+        .order_by(AuditLog.id)
+        .all()
+    ]
+    assert actions == ["upload", "delete"]
+
+
+@pytest.mark.parametrize(
+    ("action", "method", "path"),
+    [
+        (
+            "view",
+            "get",
+            "/api/attachments?entity_type=measurement_equipment&entity_id={id}",
+        ),
+        ("edit", "post", "/api/attachments/upload"),
+    ],
+)
+def test_legacy_manager_does_not_bypass_msa_permissions(
+    app,
+    client,
+    tmp_path,
+    msa_attachment_headers,
+    msa_attachment_targets,
+    action,
+    method,
+    path,
+):
+    """既有 manager 超級放行不得越過 MSA 四層權限。"""
+    app.config["STORAGE"] = LocalStorage(str(tmp_path / "uploads"))
+    entity_id = msa_attachment_targets["measurement_equipment"]
+    kwargs = {"headers": msa_attachment_headers("manager")}
+    if action == "edit":
+        kwargs.update(
+            data={
+                "file": (BytesIO(b"manager"), "manager.txt"),
+                "entity_type": "measurement_equipment",
+                "entity_id": str(entity_id),
+            },
+            content_type="multipart/form-data",
+        )
+    response = getattr(client, method)(path.format(id=entity_id), **kwargs)
+
+    assert response.status_code == 403
+    assert response.get_json() == {
+        "error": {
+            "code": "MSA_ATTACHMENT_PERMISSION_DENIED",
+            "message": "權限不足",
+            "details": {
+                "entity_type": "measurement_equipment",
+                "permission": "msa.view" if action == "view" else "msa.manage",
+            },
+        }
+    }
+
+
+def test_msa_attachment_validation_uses_stable_error_envelope(
+    app,
+    client,
+    tmp_path,
+    msa_attachment_headers,
+    msa_attachment_targets,
+):
+    """MSA 附件欄位驗證不得回傳 legacy 字串 error。"""
+    app.config["STORAGE"] = LocalStorage(str(tmp_path / "uploads"))
+    response = client.post(
+        "/api/attachments/upload",
+        data={
+            "file": (BytesIO(b"bad"), "bad.exe"),
+            "entity_type": "measurement_equipment",
+            "entity_id": str(msa_attachment_targets["measurement_equipment"]),
+        },
+        headers=msa_attachment_headers("msa_attachment_manage"),
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 422
+    body = response.get_json()["error"]
+    assert body["code"] == "MSA_ATTACHMENT_FILE_INVALID"
+    assert body["message"]
+    assert body["details"]["entity_type"] == "measurement_equipment"
+
+
+def test_msa_attachment_upload_rejects_missing_target_before_saving_file(
+    app,
+    client,
+    tmp_path,
+    msa_attachment_headers,
+):
+    """若 MSA target 不存在，不得產生多型孤兒附件或實體檔案。"""
+    app.config["STORAGE"] = LocalStorage(str(tmp_path / "uploads"))
+    response = client.post(
+        "/api/attachments/upload",
+        data={
+            "file": (BytesIO(b"orphan"), "orphan.txt"),
+            "entity_type": "measurement_equipment",
+            "entity_id": "999999",
+        },
+        headers=msa_attachment_headers("msa_attachment_manage"),
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 404
+    assert response.get_json() == {
+        "error": {
+            "code": "MSA_ATTACHMENT_TARGET_NOT_FOUND",
+            "message": "找不到附件所屬的 MSA 實體",
+            "details": {
+                "entity_type": "measurement_equipment",
+                "entity_id": 999999,
+            },
+        }
+    }
+    assert Attachment.query.count() == 0
+    assert list(tmp_path.rglob("orphan.txt")) == []
+
+
+def test_msa_attachment_upload_rejects_approved_calibration_target(
+    app,
+    client,
+    db_session,
+    tmp_path,
+    msa_attachment_headers,
+    msa_attachment_targets,
+):
+    """核准後校驗不得再新增或改寫證據附件。"""
+    calibration = db_session.get(
+        EquipmentCalibrationRecord,
+        msa_attachment_targets["calibration_id"],
+    )
+    calibration.status = "approved"
+    db_session.commit()
+    app.config["STORAGE"] = LocalStorage(str(tmp_path / "uploads"))
+
+    response = client.post(
+        "/api/attachments/upload",
+        data={
+            "file": (BytesIO(b"late"), "late.txt"),
+            "entity_type": "equipment_calibration",
+            "entity_id": str(calibration.id),
+        },
+        headers=msa_attachment_headers("msa_attachment_manage"),
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["error"]["code"] == (
+        "MSA_ATTACHMENT_TARGET_IMMUTABLE"
+    )
+    assert Attachment.query.count() == 0
+
+
+def test_msa_attachment_missing_id_uses_stable_not_found(
+    client,
+    msa_attachment_headers,
+):
+    """附件 ID 不存在時必須回傳可程式判定的 stable code。"""
+    response = client.delete(
+        "/api/attachments/999999",
+        headers=msa_attachment_headers("msa_attachment_manage"),
+    )
+
+    assert response.status_code == 404
+    assert response.get_json() == {
+        "error": {
+            "code": "MSA_ATTACHMENT_NOT_FOUND",
+            "message": "附件不存在",
+            "details": {"attachment_id": 999999},
+        }
+    }
+
+
+def test_msa_upload_db_failure_compensates_saved_file(
+    app,
+    client,
+    monkeypatch,
+    tmp_path,
+    msa_attachment_headers,
+    msa_attachment_targets,
+):
+    """檔案儲存後 DB commit 失敗時，必須 rollback 並移除孤兒檔。"""
+    app.config["STORAGE"] = LocalStorage(str(tmp_path / "uploads"))
+
+    def fail_commit():
+        raise RuntimeError("forced commit failure")
+
+    monkeypatch.setattr("backend.services.attachment_service.db.session.commit", fail_commit)
+    response = client.post(
+        "/api/attachments/upload",
+        data={
+            "file": (BytesIO(b"rollback"), "rollback.txt"),
+            "entity_type": "measurement_equipment",
+            "entity_id": str(msa_attachment_targets["measurement_equipment"]),
+        },
+        headers=msa_attachment_headers("msa_attachment_manage"),
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 500
+    assert response.get_json()["error"]["code"] == (
+        "MSA_ATTACHMENT_PERSIST_FAILED"
+    )
+    assert Attachment.query.count() == 0
+    assert list(tmp_path.rglob("rollback.txt")) == []
+
+
+def test_msa_delete_db_failure_keeps_file_and_database_link(
+    app,
+    client,
+    monkeypatch,
+    tmp_path,
+    msa_attachment_headers,
+    msa_attachment_targets,
+):
+    """DB 刪除未提交前不得先移除實體檔案。"""
+    app.config["STORAGE"] = LocalStorage(str(tmp_path / "uploads"))
+    headers = msa_attachment_headers("msa_attachment_manage")
+    created = client.post(
+        "/api/attachments/upload",
+        data={
+            "file": (BytesIO(b"keep"), "keep.txt"),
+            "entity_type": "measurement_equipment",
+            "entity_id": str(msa_attachment_targets["measurement_equipment"]),
+        },
+        headers=headers,
+        content_type="multipart/form-data",
+    ).get_json()
+    path = app.config["STORAGE"].get_abs_path(created["file_path"])
+    assert path is not None
+
+    def fail_commit():
+        raise RuntimeError("forced delete commit failure")
+
+    monkeypatch.setattr("backend.services.attachment_service.db.session.commit", fail_commit)
+    response = client.delete(
+        f"/api/attachments/{created['id']}",
+        headers=headers,
+    )
+
+    assert response.status_code == 500
+    assert response.get_json()["error"]["code"] == (
+        "MSA_ATTACHMENT_PERSIST_FAILED"
+    )
+    assert db.session.get(Attachment, created["id"]) is not None
+    assert app.config["STORAGE"].exists(created["file_path"]) is True
+
+
+def test_msa_delete_storage_failure_restores_database_link(
+    app,
+    client,
+    monkeypatch,
+    tmp_path,
+    msa_attachment_headers,
+    msa_attachment_targets,
+):
+    """DB 已提交但實體刪檔失敗時，補償交易必須恢復附件 link。"""
+    app.config["STORAGE"] = LocalStorage(str(tmp_path / "uploads"))
+    headers = msa_attachment_headers("msa_attachment_manage")
+    created = client.post(
+        "/api/attachments/upload",
+        data={
+            "file": (BytesIO(b"restore"), "restore.txt"),
+            "entity_type": "measurement_equipment",
+            "entity_id": str(msa_attachment_targets["measurement_equipment"]),
+        },
+        headers=headers,
+        content_type="multipart/form-data",
+    ).get_json()
+
+    def fail_delete(_rel_path):
+        raise OSError("forced storage delete failure")
+
+    monkeypatch.setattr(app.config["STORAGE"], "delete", fail_delete)
+    response = client.delete(
+        f"/api/attachments/{created['id']}",
+        headers=headers,
+    )
+
+    assert response.status_code == 500
+    assert response.get_json()["error"]["code"] == (
+        "MSA_ATTACHMENT_STORAGE_DELETE_FAILED"
+    )
+    assert db.session.get(Attachment, created["id"]) is not None
+    assert app.config["STORAGE"].exists(created["file_path"]) is True
+    actions = [
+        log.action
+        for log in AuditLog.query.filter_by(
+            module="msa_attachment",
+            record_id=created["id"],
+        )
+        .order_by(AuditLog.id)
+        .all()
+    ]
+    assert actions == ["upload", "delete", "delete_compensated"]

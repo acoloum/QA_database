@@ -6,7 +6,18 @@ from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 from flask import current_app
 from ..extensions import db
-from ..models import Attachment
+from ..models import (
+    Attachment,
+    EquipmentCalibrationRecord,
+    MeasurementEquipment,
+)
+from ..utils import log_audit
+from .msa_errors import (
+    MsaConflict,
+    MsaInternalError,
+    MsaNotFound,
+    MsaValidationError,
+)
 
 # 允許的 MIME 類型白名單
 ALLOWED_MIME_TYPES = {
@@ -33,6 +44,10 @@ VALID_ENTITY_TYPES = {
     'task',
     'complaint',
     'pyrometry',
+    'measurement_equipment',
+    'equipment_calibration',
+}
+MSA_ATTACHMENT_ENTITY_TYPES = {
     'measurement_equipment',
     'equipment_calibration',
 }
@@ -73,31 +88,110 @@ class AttachmentService:
         if entity_type not in VALID_ENTITY_TYPES:
             raise ValueError(f'無效的實體類型：{entity_type}')
 
+        is_msa = entity_type in MSA_ATTACHMENT_ENTITY_TYPES
+        if is_msa:
+            AttachmentService._validate_msa_target(
+                entity_type,
+                entity_id,
+                for_write=True,
+            )
         ok, msg = AttachmentService._allowed_file(file)
         if not ok:
+            if is_msa:
+                raise MsaValidationError(
+                    'MSA_ATTACHMENT_FILE_INVALID',
+                    msg,
+                    details={'entity_type': entity_type},
+                )
             raise ValueError(msg)
 
         original = secure_filename(file.filename or 'unnamed')
+        if not original:
+            original = 'unnamed'
+        if len(original) > 255:
+            if is_msa:
+                raise MsaValidationError(
+                    'MSA_ATTACHMENT_FILE_INVALID',
+                    '附件檔名超過允許長度',
+                    details={
+                        'entity_type': entity_type,
+                        'field': 'file_name',
+                        'max_length': 255,
+                    },
+                )
+            raise ValueError('附件檔名超過允許長度')
+        if purpose is not None and len(purpose) > 30:
+            if is_msa:
+                raise MsaValidationError(
+                    'MSA_ATTACHMENT_FIELD_TOO_LONG',
+                    'purpose 超過允許長度',
+                    details={'field': 'purpose', 'max_length': 30},
+                )
+            raise ValueError('purpose 超過允許長度')
         ext = original.rsplit('.', 1)[-1].lower() if '.' in original else ''
         unique_name = f'{uuid.uuid4().hex}.{ext}' if ext else uuid.uuid4().hex
         rel_path = os.path.join('uploads', entity_type, str(entity_id), unique_name)
 
-        file_size = _get_storage().save(file, rel_path)
-
-        att = Attachment(
-            entity_type=entity_type,
-            entity_id=entity_id,
-            d_step=d_step,
-            file_name=original,
-            file_path=rel_path,
-            mime_type=file.mimetype or '',
-            file_size=file_size,
-            uploaded_by=uploader_id,
-            purpose=purpose,
-        )
-        db.session.add(att)
-        db.session.commit()
-        return AttachmentService._to_dict(att)
+        storage = _get_storage()
+        file_saved = False
+        try:
+            file_size = storage.save(file, rel_path)
+            file_saved = True
+            att = Attachment(
+                entity_type=entity_type,
+                entity_id=entity_id,
+                d_step=d_step,
+                file_name=original,
+                file_path=rel_path,
+                mime_type=file.mimetype or '',
+                file_size=file_size,
+                uploaded_by=uploader_id,
+                purpose=purpose,
+            )
+            db.session.add(att)
+            db.session.flush()
+            result = AttachmentService._to_dict(att)
+            if is_msa:
+                log_audit(
+                    uploader_id,
+                    'upload',
+                    'msa_attachment',
+                    att.id,
+                    new_val=result,
+                )
+            db.session.commit()
+            return result
+        except Exception as error:
+            db.session.rollback()
+            if file_saved:
+                try:
+                    storage.delete(rel_path)
+                except Exception as cleanup_error:
+                    if is_msa:
+                        raise MsaInternalError(
+                            'MSA_ATTACHMENT_COMPENSATION_FAILED',
+                            '附件資料儲存失敗，且孤兒檔補償清理失敗',
+                            details={
+                                'entity_type': entity_type,
+                                'entity_id': entity_id,
+                                'file_path': rel_path,
+                            },
+                        ) from cleanup_error
+            if is_msa:
+                if isinstance(
+                    error,
+                    (MsaConflict, MsaNotFound, MsaValidationError),
+                ):
+                    raise
+                raise MsaInternalError(
+                    'MSA_ATTACHMENT_PERSIST_FAILED',
+                    '附件資料未能完成儲存',
+                    details={
+                        'entity_type': entity_type,
+                        'entity_id': entity_id,
+                    },
+                ) from error
+            raise
 
     @staticmethod
     def list_by_entity(
@@ -140,10 +234,121 @@ class AttachmentService:
         if att.uploaded_by != requester_id and requester_role not in ('admin', 'manager'):
             raise PermissionError('無權限刪除此附件')
 
-        _get_storage().delete(att.file_path)
-        db.session.delete(att)
-        db.session.commit()
+        is_msa = att.entity_type in MSA_ATTACHMENT_ENTITY_TYPES
+        if not is_msa:
+            _get_storage().delete(att.file_path)
+            db.session.delete(att)
+            db.session.commit()
+            return True
+
+        AttachmentService._validate_msa_target(
+            att.entity_type,
+            att.entity_id,
+            for_write=True,
+        )
+        snapshot = AttachmentService._model_snapshot(att)
+        audit_snapshot = AttachmentService._to_dict(att)
+        storage = _get_storage()
+        try:
+            db.session.delete(att)
+            log_audit(
+                requester_id,
+                'delete',
+                'msa_attachment',
+                att_id,
+                old_val=audit_snapshot,
+            )
+            db.session.commit()
+        except Exception as error:
+            db.session.rollback()
+            raise MsaInternalError(
+                'MSA_ATTACHMENT_PERSIST_FAILED',
+                '附件刪除未能完成資料庫交易',
+                details={'attachment_id': att_id},
+            ) from error
+
+        try:
+            storage.delete(snapshot['file_path'])
+        except Exception as storage_error:
+            try:
+                restored = Attachment(**snapshot)
+                db.session.add(restored)
+                log_audit(
+                    requester_id,
+                    'delete_compensated',
+                    'msa_attachment',
+                    att_id,
+                    old_val={'deleted': True},
+                    new_val=audit_snapshot,
+                )
+                db.session.commit()
+            except Exception as compensation_error:
+                db.session.rollback()
+                raise MsaInternalError(
+                    'MSA_ATTACHMENT_COMPENSATION_FAILED',
+                    '實體檔刪除失敗，且附件連結補償失敗',
+                    details={'attachment_id': att_id},
+                ) from compensation_error
+            raise MsaInternalError(
+                'MSA_ATTACHMENT_STORAGE_DELETE_FAILED',
+                '實體檔刪除失敗，附件連結已恢復',
+                details={'attachment_id': att_id},
+            ) from storage_error
         return True
+
+    @staticmethod
+    def _validate_msa_target(
+        entity_type: str,
+        entity_id: int,
+        *,
+        for_write: bool,
+    ):
+        if entity_type == 'measurement_equipment':
+            target = db.session.get(MeasurementEquipment, entity_id)
+        elif entity_type == 'equipment_calibration':
+            target = db.session.get(EquipmentCalibrationRecord, entity_id)
+        else:
+            return None
+        if target is None:
+            raise MsaNotFound(
+                'MSA_ATTACHMENT_TARGET_NOT_FOUND',
+                '找不到附件所屬的 MSA 實體',
+                details={
+                    'entity_type': entity_type,
+                    'entity_id': entity_id,
+                },
+            )
+        if (
+            for_write
+            and entity_type == 'equipment_calibration'
+            and target.status == 'approved'
+        ):
+            raise MsaConflict(
+                'MSA_ATTACHMENT_TARGET_IMMUTABLE',
+                '核准後的校驗附件不可新增或刪除',
+                details={
+                    'entity_type': entity_type,
+                    'entity_id': entity_id,
+                    'status': target.status,
+                },
+            )
+        return target
+
+    @staticmethod
+    def _model_snapshot(att: Attachment) -> Dict[str, Any]:
+        return {
+            'id': att.id,
+            'entity_type': att.entity_type,
+            'entity_id': att.entity_id,
+            'd_step': att.d_step,
+            'file_name': att.file_name,
+            'file_path': att.file_path,
+            'mime_type': att.mime_type,
+            'file_size': att.file_size,
+            'uploaded_by': att.uploaded_by,
+            'purpose': att.purpose,
+            'uploaded_at': att.uploaded_at,
+        }
 
     @staticmethod
     def _to_dict(att: Attachment) -> Dict[str, Any]:

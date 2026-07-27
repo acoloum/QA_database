@@ -4,10 +4,11 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import or_
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 
 from ..extensions import db
 from ..models import (
+    Attachment,
     EquipmentCalibrationRecord,
     EquipmentCorrectionPoint,
     EquipmentStatusEvent,
@@ -47,11 +48,25 @@ _EQUIPMENT_FIELDS = {
     "is_reference_standard",
     "affects_product_decision",
 }
-_EQUIPMENT_PATCH_FIELDS = _EQUIPMENT_FIELDS - {"equipment_no"}
+_EQUIPMENT_PATCH_FIELDS = _EQUIPMENT_FIELDS - {"equipment_no", "status"}
 _EQUIPMENT_NUMERIC_FIELDS = {"range_min", "range_max", "resolution"}
 _EQUIPMENT_BOOLEAN_FIELDS = {
     "is_reference_standard",
     "affects_product_decision",
+}
+_EQUIPMENT_TEXT_LIMITS = {
+    "equipment_no": 80,
+    "name": 160,
+    "equipment_type": 80,
+    "manufacturer": 120,
+    "model": 120,
+    "serial_no": 160,
+    "unit": 40,
+    "department": 120,
+    "location": 200,
+    "custodian": 120,
+    "status": 30,
+    "calibration_type": 30,
 }
 _EQUIPMENT_STATUS = {
     "pending_review",
@@ -62,6 +77,12 @@ _EQUIPMENT_STATUS = {
 }
 _CALIBRATION_TYPES = {"internal", "external", "exempt"}
 _CALIBRATION_RESULTS = {"pending", "pass", "fail", "limited_use"}
+_CALIBRATION_TEXT_LIMITS = {
+    "calibration_type": 30,
+    "calibration_provider": 160,
+    "certificate_no": 160,
+    "result": 30,
+}
 _CALIBRATION_FIELDS = {
     "calibration_type",
     "calibration_date",
@@ -94,6 +115,10 @@ _CORRECTION_NUMERIC_FIELDS = {
     "correction_value",
     "range_start",
     "range_end",
+}
+_CORRECTION_TEXT_LIMITS = {
+    "measurement_mode": 80,
+    "unit": 40,
 }
 _STATUS_EVENT_TYPES = {
     "calibration_overdue",
@@ -267,6 +292,13 @@ class MsaEquipmentService:
             )
             db.session.commit()
             return result
+        except DataError as error:
+            db.session.rollback()
+            raise MsaValidationError(
+                "MSA_DATABASE_VALUE_INVALID",
+                "設備欄位不符合資料庫長度或格式限制",
+                details={},
+            ) from error
         except IntegrityError as error:
             db.session.rollback()
             raise MsaConflict(
@@ -287,6 +319,12 @@ class MsaEquipmentService:
                 "MSA_EQUIPMENT_NO_IMMUTABLE",
                 "設備編號建立後不可修改或重用",
             )
+        if "status" in payload:
+            raise MsaValidationError(
+                "MSA_STATUS_REQUIRES_EVENT",
+                "設備狀態只能透過狀態事件路由轉移",
+            )
+        equipment = MsaEquipmentService._get_equipment(equipment_id)
         data = MsaEquipmentService._normalise_equipment_payload(
             payload,
             creating=False,
@@ -295,7 +333,10 @@ class MsaEquipmentService:
             raise MsaValidationError(
                 "MSA_EQUIPMENT_PATCH_EMPTY", "未提供可修改的設備欄位"
             )
-        equipment = MsaEquipmentService._get_equipment(equipment_id)
+        MsaEquipmentService._validate_equipment_patch_invariants(
+            equipment,
+            data,
+        )
         old_value = {
             field: MsaEquipmentService._canonical_value(
                 getattr(equipment, field)
@@ -323,7 +364,7 @@ class MsaEquipmentService:
             )
             db.session.commit()
             return result
-        except (IntegrityError, ValueError) as error:
+        except (DataError, IntegrityError, ValueError) as error:
             db.session.rollback()
             raise MsaValidationError(
                 "MSA_EQUIPMENT_UPDATE_INVALID",
@@ -342,15 +383,48 @@ class MsaEquipmentService:
         data, points = MsaEquipmentService._normalise_calibration_payload(
             payload
         )
+        attachment_id = data.pop("certificate_attachment_id")
+        certificate_attachment = None
+        if attachment_id is not None:
+            certificate_attachment = (
+                MsaEquipmentService._lock_certificate_attachment(
+                    attachment_id
+                )
+            )
+            MsaEquipmentService._validate_staged_certificate_ownership(
+                certificate_attachment,
+                equipment_id=equipment_id,
+                calibration_id=None,
+            )
         record = EquipmentCalibrationRecord(
             equipment_id=equipment_id,
             status="draft",
             created_by=actor_id,
+            certificate_attachment_id=attachment_id,
             **data,
         )
         try:
             db.session.add(record)
             db.session.flush()
+            if certificate_attachment is not None:
+                old_attachment = {
+                    "entity_type": certificate_attachment.entity_type,
+                    "entity_id": certificate_attachment.entity_id,
+                }
+                certificate_attachment.entity_type = "equipment_calibration"
+                certificate_attachment.entity_id = record.id
+                log_audit(
+                    actor_id,
+                    "bind_certificate",
+                    "msa_attachment",
+                    certificate_attachment.id,
+                    old_val=old_attachment,
+                    new_val={
+                        "entity_type": "equipment_calibration",
+                        "entity_id": record.id,
+                        "calibration_id": record.id,
+                    },
+                )
             for point_data in points:
                 db.session.add(
                     EquipmentCorrectionPoint(
@@ -372,7 +446,7 @@ class MsaEquipmentService:
         except MsaServiceError:
             db.session.rollback()
             raise
-        except (IntegrityError, ValueError) as error:
+        except (DataError, IntegrityError, ValueError) as error:
             db.session.rollback()
             raise MsaValidationError(
                 "MSA_CALIBRATION_INVALID",
@@ -388,7 +462,15 @@ class MsaEquipmentService:
     ) -> dict:
         """以列鎖與 expected_status 核准 draft 校驗證據。"""
         payload = MsaEquipmentService._require_object(payload)
-        expected_status = payload.get("expected_status")
+        MsaEquipmentService._reject_unknown_fields(
+            set(payload)
+            - {"expected_status", "reason", "certificate_attachment_id"}
+        )
+        expected_status = MsaEquipmentService._required_text(
+            payload,
+            "expected_status",
+            max_length=30,
+        )
         reason = MsaEquipmentService._required_text(payload, "reason")
         if expected_status not in {"draft", "approved"}:
             raise MsaValidationError(
@@ -424,6 +506,37 @@ class MsaEquipmentService:
                 "MSA_CALIBRATION_RESULT_PENDING",
                 "結果仍為 pending 的校驗紀錄不可核准",
             )
+        requested_attachment_id = payload.get("certificate_attachment_id")
+        if requested_attachment_id is not None:
+            requested_attachment_id = MsaEquipmentService._positive_int(
+                requested_attachment_id,
+                field="certificate_attachment_id",
+            )
+        attachment_id = (
+            requested_attachment_id
+            if requested_attachment_id is not None
+            else record.certificate_attachment_id
+        )
+        certificate_attachment = None
+        attachment_old_value = None
+        if attachment_id is not None:
+            certificate_attachment = (
+                MsaEquipmentService._lock_certificate_attachment(
+                    attachment_id
+                )
+            )
+            MsaEquipmentService._validate_staged_certificate_ownership(
+                certificate_attachment,
+                equipment_id=record.equipment_id,
+                calibration_id=record.id,
+            )
+            attachment_old_value = {
+                "entity_type": certificate_attachment.entity_type,
+                "entity_id": certificate_attachment.entity_id,
+            }
+            certificate_attachment.entity_type = "equipment_calibration"
+            certificate_attachment.entity_id = record.id
+            record.certificate_attachment_id = attachment_id
         old_value = {"status": record.status}
         record.status = "approved"
         record.approval_reason = reason
@@ -431,6 +544,26 @@ class MsaEquipmentService:
         record.approved_at = datetime.now(timezone.utc)
         try:
             db.session.flush()
+            if (
+                certificate_attachment is not None
+                and attachment_old_value
+                != {
+                    "entity_type": "equipment_calibration",
+                    "entity_id": record.id,
+                }
+            ):
+                log_audit(
+                    actor_id,
+                    "bind_certificate",
+                    "msa_attachment",
+                    certificate_attachment.id,
+                    old_val=attachment_old_value,
+                    new_val={
+                        "entity_type": "equipment_calibration",
+                        "entity_id": record.id,
+                        "calibration_id": record.id,
+                    },
+                )
             result = MsaEquipmentService._calibration_to_dict(record)
             log_audit(
                 actor_id,
@@ -442,10 +575,18 @@ class MsaEquipmentService:
                     "status": "approved",
                     "approval_reason": reason,
                     "approved_by": actor_id,
+                    "certificate_attachment_id": attachment_id,
                 },
             )
             db.session.commit()
             return result
+        except DataError as error:
+            db.session.rollback()
+            raise MsaValidationError(
+                "MSA_DATABASE_VALUE_INVALID",
+                "校驗資料不符合資料庫長度或格式限制",
+                details={},
+            ) from error
         except (IntegrityError, ValueError) as error:
             db.session.rollback()
             raise MsaConflict(
@@ -460,17 +601,22 @@ class MsaEquipmentService:
         payload,
         actor_id: int,
     ) -> dict:
-        """建立影響設備可用性或 MSA 再研究判定的狀態事件。"""
-        MsaEquipmentService._get_equipment(equipment_id)
+        """以 row lock 建立事件並在同一交易轉移設備狀態。"""
         payload = MsaEquipmentService._require_object(payload)
         unknown = set(payload) - {
             "event_type",
+            "expected_status",
+            "target_status",
             "occurred_at",
             "reason",
             "triggers_msa_restudy",
         }
         MsaEquipmentService._reject_unknown_fields(unknown)
-        event_type = MsaEquipmentService._required_text(payload, "event_type")
+        event_type = MsaEquipmentService._required_text(
+            payload,
+            "event_type",
+            max_length=40,
+        )
         if event_type not in _STATUS_EVENT_TYPES:
             raise MsaValidationError(
                 "MSA_STATUS_EVENT_TYPE_INVALID",
@@ -479,6 +625,33 @@ class MsaEquipmentService:
                     "event_type": event_type,
                     "allowed": sorted(_STATUS_EVENT_TYPES),
                 },
+            )
+        expected_status = MsaEquipmentService._required_text(
+            payload,
+            "expected_status",
+            max_length=30,
+        )
+        target_status = MsaEquipmentService._required_text(
+            payload,
+            "target_status",
+            max_length=30,
+        )
+        if expected_status not in _EQUIPMENT_STATUS:
+            raise MsaValidationError(
+                "MSA_EXPECTED_STATUS_INVALID",
+                "expected_status 不在設備狀態清單",
+                details={"expected_status": expected_status},
+            )
+        if target_status not in _EQUIPMENT_STATUS:
+            raise MsaValidationError(
+                "MSA_EQUIPMENT_STATUS_INVALID",
+                "target_status 不在設備狀態清單",
+                details={"target_status": target_status},
+            )
+        if target_status == expected_status:
+            raise MsaValidationError(
+                "MSA_EQUIPMENT_STATUS_UNCHANGED",
+                "target_status 必須與 expected_status 不同",
             )
         reason = MsaEquipmentService._required_text(payload, "reason")
         triggers = payload.get("triggers_msa_restudy", False)
@@ -494,6 +667,29 @@ class MsaEquipmentService:
             if payload.get("occurred_at")
             else datetime.now(timezone.utc)
         )
+        equipment = (
+            db.session.execute(
+                db.select(MeasurementEquipment)
+                .where(MeasurementEquipment.id == equipment_id)
+                .with_for_update()
+            )
+            .scalar_one_or_none()
+        )
+        if equipment is None:
+            raise MsaNotFound(
+                "MSA_EQUIPMENT_NOT_FOUND",
+                "找不到指定的量測設備",
+                details={"equipment_id": equipment_id},
+            )
+        if equipment.status != expected_status:
+            raise MsaConflict(
+                "MSA_EQUIPMENT_STATUS_CONFLICT",
+                "設備狀態已變更，請重新載入後再建立事件",
+                details={
+                    "expected_status": expected_status,
+                    "actual_status": equipment.status,
+                },
+            )
         event = EquipmentStatusEvent(
             equipment_id=equipment_id,
             event_type=event_type,
@@ -502,18 +698,38 @@ class MsaEquipmentService:
             created_by=actor_id,
             triggers_msa_restudy=triggers,
         )
-        db.session.add(event)
-        db.session.flush()
-        result = MsaEquipmentService._status_event_to_dict(event)
-        log_audit(
-            actor_id,
-            "create_status_event",
-            "msa_equipment",
-            event.id,
-            new_val=result,
-        )
-        db.session.commit()
-        return result
+        equipment.status = target_status
+        equipment.updated_by = actor_id
+        try:
+            db.session.add(event)
+            db.session.flush()
+            result = MsaEquipmentService._status_event_to_dict(event)
+            result["previous_status"] = expected_status
+            result["target_status"] = target_status
+            log_audit(
+                actor_id,
+                "create_status_event",
+                "msa_equipment",
+                event.id,
+                old_val={
+                    "equipment_id": equipment.id,
+                    "status": expected_status,
+                },
+                new_val={
+                    "equipment_id": equipment.id,
+                    "status": target_status,
+                    "event": result,
+                },
+            )
+            db.session.commit()
+            return result
+        except (DataError, IntegrityError, ValueError) as error:
+            db.session.rollback()
+            raise MsaValidationError(
+                "MSA_STATUS_EVENT_INVALID",
+                "設備狀態事件不符合資料庫限制",
+                details={"reason": str(error)},
+            ) from error
 
     @staticmethod
     def create_link(equipment_id: int, payload, actor_id: int) -> dict:
@@ -529,10 +745,10 @@ class MsaEquipmentService:
         }
         MsaEquipmentService._reject_unknown_fields(unknown)
         source_module = MsaEquipmentService._required_text(
-            payload, "source_module"
+            payload, "source_module", max_length=50
         )
         source_entity_type = MsaEquipmentService._required_text(
-            payload, "source_entity_type"
+            payload, "source_entity_type", max_length=80
         )
         source_entity_id = MsaEquipmentService._positive_int(
             payload.get("source_entity_id"),
@@ -634,6 +850,13 @@ class MsaEquipmentService:
             )
             db.session.commit()
             return result
+        except DataError as error:
+            db.session.rollback()
+            raise MsaValidationError(
+                "MSA_DATABASE_VALUE_INVALID",
+                "來源連結欄位不符合資料庫長度或格式限制",
+                details={},
+            ) from error
         except IntegrityError as error:
             db.session.rollback()
             raise MsaConflict(
@@ -655,6 +878,9 @@ class MsaEquipmentService:
     ) -> dict:
         """以 expected id/status 將目前正式來源連結退役。"""
         payload = MsaEquipmentService._require_object(payload)
+        MsaEquipmentService._reject_unknown_fields(
+            set(payload) - {"expected_link_id", "expected_status"}
+        )
         expected_link_id = MsaEquipmentService._positive_int(
             payload.get("expected_link_id"),
             field="expected_link_id",
@@ -698,18 +924,33 @@ class MsaEquipmentService:
             )
         old_value = MsaEquipmentService._link_to_dict(link)
         link.is_current = False
-        db.session.flush()
-        result = MsaEquipmentService._link_to_dict(link)
-        log_audit(
-            actor_id,
-            "retire_link",
-            "msa_equipment",
-            link.id,
-            old_val=old_value,
-            new_val=result,
-        )
-        db.session.commit()
-        return result
+        try:
+            db.session.flush()
+            result = MsaEquipmentService._link_to_dict(link)
+            log_audit(
+                actor_id,
+                "retire_link",
+                "msa_equipment",
+                link.id,
+                old_val=old_value,
+                new_val=result,
+            )
+            db.session.commit()
+            return result
+        except DataError as error:
+            db.session.rollback()
+            raise MsaValidationError(
+                "MSA_DATABASE_VALUE_INVALID",
+                "來源連結欄位不符合資料庫長度或格式限制",
+                details={},
+            ) from error
+        except IntegrityError as error:
+            db.session.rollback()
+            raise MsaConflict(
+                "MSA_SOURCE_LINK_VERSION_CONFLICT",
+                "來源連結已變更，請重新載入後再退役",
+                details={"link_id": link_id},
+            ) from error
 
     @staticmethod
     def assert_officially_usable(
@@ -1001,11 +1242,21 @@ class MsaEquipmentService:
         data = {}
         if creating:
             data["equipment_no"] = MsaEquipmentService._required_text(
-                payload, "equipment_no"
+                payload,
+                "equipment_no",
+                max_length=_EQUIPMENT_TEXT_LIMITS["equipment_no"],
             )
-            data["name"] = MsaEquipmentService._required_text(payload, "name")
+            data["name"] = MsaEquipmentService._required_text(
+                payload,
+                "name",
+                max_length=_EQUIPMENT_TEXT_LIMITS["name"],
+            )
         elif "name" in payload:
-            data["name"] = MsaEquipmentService._required_text(payload, "name")
+            data["name"] = MsaEquipmentService._required_text(
+                payload,
+                "name",
+                max_length=_EQUIPMENT_TEXT_LIMITS["name"],
+            )
 
         for field in allowed - {"equipment_no", "name"}:
             if field not in payload:
@@ -1035,16 +1286,21 @@ class MsaEquipmentService:
                 "status",
                 "calibration_type",
             }:
-                data[field] = value
-            elif value is None:
-                data[field] = None
-            elif isinstance(value, str):
-                data[field] = value.strip() or None
+                data[field] = MsaEquipmentService._optional_text(
+                    value,
+                    field=field,
+                    max_length=_EQUIPMENT_TEXT_LIMITS[field],
+                )
+            elif field in _EQUIPMENT_TEXT_LIMITS:
+                data[field] = MsaEquipmentService._optional_text(
+                    value,
+                    field=field,
+                    max_length=_EQUIPMENT_TEXT_LIMITS[field],
+                )
             else:
-                raise MsaValidationError(
-                    "MSA_EQUIPMENT_FIELD_INVALID",
-                    f"{field} 必須是文字或 null",
-                    details={"field": field},
+                data[field] = MsaEquipmentService._optional_text(
+                    value,
+                    field=field,
                 )
 
         status = data.get("status")
@@ -1092,7 +1348,9 @@ class MsaEquipmentService:
             set(payload) - _CALIBRATION_FIELDS
         )
         calibration_type = MsaEquipmentService._required_text(
-            payload, "calibration_type"
+            payload,
+            "calibration_type",
+            max_length=_CALIBRATION_TEXT_LIMITS["calibration_type"],
         )
         if calibration_type not in _CALIBRATION_TYPES:
             raise MsaValidationError(
@@ -1100,7 +1358,11 @@ class MsaEquipmentService:
                 "校驗類型不在允許清單",
                 details={"calibration_type": calibration_type},
             )
-        result = MsaEquipmentService._required_text(payload, "result")
+        result = MsaEquipmentService._required_text(
+            payload,
+            "result",
+            max_length=_CALIBRATION_TEXT_LIMITS["result"],
+        )
         if result not in _CALIBRATION_RESULTS:
             raise MsaValidationError(
                 "MSA_CALIBRATION_RESULT_INVALID",
@@ -1150,10 +1412,16 @@ class MsaEquipmentService:
                 required=False,
             ),
             "calibration_provider": MsaEquipmentService._optional_text(
-                payload.get("calibration_provider")
+                payload.get("calibration_provider"),
+                field="calibration_provider",
+                max_length=_CALIBRATION_TEXT_LIMITS[
+                    "calibration_provider"
+                ],
             ),
             "certificate_no": MsaEquipmentService._optional_text(
-                payload.get("certificate_no")
+                payload.get("certificate_no"),
+                field="certificate_no",
+                max_length=_CALIBRATION_TEXT_LIMITS["certificate_no"],
             ),
             "traceability_standard": MsaEquipmentService._optional_text(
                 payload.get("traceability_standard")
@@ -1210,7 +1478,9 @@ class MsaEquipmentService:
             )
         for field in ("measurement_mode", "unit"):
             result[field] = MsaEquipmentService._optional_text(
-                payload.get(field)
+                payload.get(field),
+                field=field,
+                max_length=_CORRECTION_TEXT_LIMITS[field],
             )
         if (
             result["range_start"] is not None
@@ -1233,7 +1503,12 @@ class MsaEquipmentService:
         return payload
 
     @staticmethod
-    def _required_text(payload: dict, field: str) -> str:
+    def _required_text(
+        payload: dict,
+        field: str,
+        *,
+        max_length: int | None = None,
+    ) -> str:
         value = payload.get(field)
         if not isinstance(value, str) or not value.strip():
             raise MsaValidationError(
@@ -1241,17 +1516,138 @@ class MsaEquipmentService:
                 f"{field} 為必填欄位",
                 details={"field": field},
             )
-        return value.strip()
+        normalised = value.strip()
+        MsaEquipmentService._validate_text_length(
+            normalised,
+            field=field,
+            max_length=max_length,
+        )
+        return normalised
 
     @staticmethod
-    def _optional_text(value):
+    def _optional_text(
+        value,
+        *,
+        field: str = "value",
+        max_length: int | None = None,
+    ):
         if value is None:
             return None
         if not isinstance(value, str):
             raise MsaValidationError(
-                "MSA_FIELD_INVALID", "選填文字欄位必須是文字或 null"
+                "MSA_FIELD_INVALID",
+                f"{field} 必須是文字或 null",
+                details={"field": field},
             )
-        return value.strip() or None
+        normalised = value.strip() or None
+        if normalised is not None:
+            MsaEquipmentService._validate_text_length(
+                normalised,
+                field=field,
+                max_length=max_length,
+            )
+        return normalised
+
+    @staticmethod
+    def _validate_text_length(
+        value: str,
+        *,
+        field: str,
+        max_length: int | None,
+    ) -> None:
+        if max_length is not None and len(value) > max_length:
+            raise MsaValidationError(
+                "MSA_FIELD_TOO_LONG",
+                f"{field} 超過允許長度",
+                details={
+                    "field": field,
+                    "max_length": max_length,
+                },
+            )
+
+    @staticmethod
+    def _validate_equipment_patch_invariants(
+        equipment: MeasurementEquipment,
+        data: dict,
+    ) -> None:
+        """以資料庫現值與 PATCH 欄位共同驗證跨欄位限制。"""
+        range_min = data.get("range_min", equipment.range_min)
+        range_max = data.get("range_max", equipment.range_max)
+        if (
+            range_min is not None
+            and range_max is not None
+            and range_min > range_max
+        ):
+            raise MsaValidationError(
+                "MSA_EQUIPMENT_RANGE_INVALID",
+                "量程下限不得大於量程上限",
+            )
+        calibration_type = data.get(
+            "calibration_type",
+            equipment.calibration_type,
+        )
+        exemption_reason = data.get(
+            "calibration_exemption_reason",
+            equipment.calibration_exemption_reason,
+        )
+        if calibration_type == "exempt" and (
+            not isinstance(exemption_reason, str)
+            or not exemption_reason.strip()
+        ):
+            raise MsaValidationError(
+                "MSA_EQUIPMENT_EXEMPTION_REASON_MISSING",
+                "校驗豁免設備必須保存完整豁免理由",
+            )
+
+    @staticmethod
+    def _lock_certificate_attachment(
+        attachment_id: int,
+    ) -> Attachment:
+        attachment = (
+            db.session.execute(
+                db.select(Attachment)
+                .where(Attachment.id == attachment_id)
+                .with_for_update()
+            )
+            .scalar_one_or_none()
+        )
+        if attachment is None:
+            raise MsaNotFound(
+                "MSA_CERTIFICATE_ATTACHMENT_NOT_FOUND",
+                "找不到指定的校驗證書附件",
+                details={"attachment_id": attachment_id},
+            )
+        return attachment
+
+    @staticmethod
+    def _validate_staged_certificate_ownership(
+        attachment: Attachment,
+        *,
+        equipment_id: int,
+        calibration_id: int | None,
+    ) -> None:
+        belongs_to_equipment = (
+            attachment.entity_type == "measurement_equipment"
+            and attachment.entity_id == equipment_id
+        )
+        belongs_to_calibration = (
+            calibration_id is not None
+            and attachment.entity_type == "equipment_calibration"
+            and attachment.entity_id == calibration_id
+        )
+        if belongs_to_equipment or belongs_to_calibration:
+            return
+        raise MsaValidationError(
+            "MSA_CERTIFICATE_ATTACHMENT_OWNERSHIP_INVALID",
+            "校驗證書附件不屬於此設備或校驗草稿",
+            details={
+                "attachment_id": attachment.id,
+                "actual_entity_type": attachment.entity_type,
+                "actual_entity_id": attachment.entity_id,
+                "expected_equipment_id": equipment_id,
+                "expected_calibration_id": calibration_id,
+            },
+        )
 
     @staticmethod
     def _reject_unknown_fields(unknown: set) -> None:

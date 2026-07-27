@@ -35,3 +35,9 @@ class MsaValidationError(MsaServiceError):
     """MSA 輸入或資格證據未符合正式研究要求。"""
 
     status_code = 422
+
+
+class MsaInternalError(MsaServiceError):
+    """MSA 儲存或補償動作失敗，呼叫端不可自行重試狀態轉換。"""
+
+    status_code = 500

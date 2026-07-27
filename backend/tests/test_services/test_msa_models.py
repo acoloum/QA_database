@@ -75,6 +75,22 @@ def test_equipment_number_is_unique(db_session):
     db_session.rollback()
 
 
+def test_equipment_range_order_is_enforced_by_database(db_session):
+    """service 以外的寫入也不得保存量程下限大於上限的設備。"""
+    db_session.add(
+        MeasurementEquipment(
+            equipment_no="EQ-RANGE-DB",
+            name="錯誤量程設備",
+            range_min=11,
+            range_max=10,
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
 def test_only_one_current_link_exists_for_each_source_entity(db_session):
     first = _equipment(db_session, "EQ-LINK-1")
     second = _equipment(db_session, "EQ-LINK-2")

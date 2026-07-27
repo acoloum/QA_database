@@ -613,6 +613,11 @@ class MeasurementEquipment(db.Model):
             'TRIM(COALESCE("校驗豁免理由", \'\')) <> \'\'',
             name='ck_equipment_exemption_reason',
         ),
+        db.CheckConstraint(
+            '"量程下限" IS NULL OR "量程上限" IS NULL OR '
+            '"量程下限" <= "量程上限"',
+            name='ck_equipment_range_order',
+        ),
         db.Index('idx_equipment_status_due', '狀態', '設備編號'),
     )
 
