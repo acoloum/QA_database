@@ -3,6 +3,7 @@
 from flask import Blueprint, jsonify, request
 
 from ..services.msa_criteria_service import MsaCriteriaService
+from ..services.msa_design_service import MsaDesignService
 from ..services.msa_study_service import MsaStudyService
 from .msa_adapters import (
     handle_msa_errors as _handle_msa_errors,
@@ -127,3 +128,74 @@ def update_msa_study(current_user, study_id: int):
         expected_updated_at=expected_updated_at,
     )
     return jsonify({"data": MsaStudyService.serialize(study)})
+
+
+# ---------------------------------------------------------------------------
+# 研究設計與凍結
+# ---------------------------------------------------------------------------
+
+
+def _serialize_plan(plan) -> dict:
+    """計畫序列化不包含真實零件識別與參考值，避免經 API 洩漏盲測資訊。"""
+    return {
+        "id": plan.id,
+        "study_id": plan.study_id,
+        "plan_version_no": plan.plan_version_no,
+        "method_code": plan.method_code,
+        "method_version": plan.method_version,
+        "design_type": plan.design_type,
+        "part_count": plan.part_count,
+        "appraiser_count": plan.appraiser_count,
+        "trial_count": plan.trial_count,
+        "random_seed": plan.random_seed,
+        "category_set": plan.category_set,
+        "sampling_notes": plan.sampling_notes,
+        "environment_notes": plan.environment_notes,
+        "equipment_snapshot": plan.equipment_snapshot,
+        "criteria_snapshot": plan.criteria_snapshot,
+        "plan_hash": plan.plan_hash,
+        "frozen_by_id": plan.frozen_by_id,
+        "frozen_at": plan.frozen_at.isoformat() if plan.frozen_at else None,
+        "part_blind_codes": [part.blind_code for part in plan.parts],
+        "appraiser_blind_codes": [
+            appraiser.blind_code for appraiser in plan.appraisers
+        ],
+    }
+
+
+@msa_bp.post("/api/msa/studies/<int:study_id>/plans")
+@_msa_auth_required
+@_require_msa_permission("msa.manage")
+@_handle_msa_errors
+def create_msa_plan(current_user, study_id: int):
+    """為草稿研究建立設計版本。"""
+    plan = MsaDesignService.create_plan(
+        study_id,
+        request.get_json(silent=True),
+        actor_id=current_user.id,
+    )
+    return jsonify({"data": _serialize_plan(plan)}), 201
+
+
+@msa_bp.post("/api/msa/plans/<int:plan_id>/freeze")
+@_msa_auth_required
+@_require_msa_permission("msa.manage")
+@_handle_msa_errors
+def freeze_msa_plan(current_user, plan_id: int):
+    """重新驗證設備資格後凍結設計，並固定準則與隨機順序快照。"""
+    payload = request.get_json(silent=True) or {}
+    plan = MsaDesignService.freeze(
+        plan_id,
+        actor_id=current_user.id,
+        expected_plan_hash=payload.get("expected_plan_hash"),
+    )
+    return jsonify({"data": _serialize_plan(plan)})
+
+
+@msa_bp.get("/api/msa/plans/<int:plan_id>/tasks")
+@_msa_auth_required
+@_require_msa_permission("msa.execute")
+@_handle_msa_errors
+def list_msa_plan_tasks(current_user, plan_id: int):
+    """取得只含盲碼的量測任務順序。"""
+    return jsonify({"data": {"items": MsaDesignService.tasks(plan_id)}})
