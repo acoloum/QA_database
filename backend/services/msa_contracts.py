@@ -27,3 +27,26 @@ class EquipmentSnapshot:
     resolution: str | None
     unit: str | None
     calibration: dict
+
+
+@dataclass(frozen=True)
+class MsaMethodContext:
+    """交給統計引擎的受控參數；引擎不得自行查資料庫或取用目前時間。"""
+
+    method_code: str
+    method_version: str
+    alpha: float
+    study_variation_multiplier: float
+    tolerance: float | None
+    process_sigma: float | None
+    criteria: dict
+
+
+@dataclass(frozen=True)
+class MsaAnalysisOutput:
+    """統計引擎的統一輸出；判定與門檻比較由呼叫端負責。"""
+
+    applicability: dict
+    statistics: dict
+    chart_data: dict
+    warnings: tuple[dict, ...] = field(default_factory=tuple)
