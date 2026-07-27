@@ -13,7 +13,8 @@ export type EquipmentStatusEventType =
   | 'major_adjustment'
   | 'inactive'
   | 'scrapped'
-  | 'reactivated';
+  | 'reactivated'
+  | 'review_completed';
 
 /** 後端將 Decimal 序列化為固定小數文字。 */
 export type MsaDecimal = string;
@@ -122,7 +123,7 @@ export interface MsaPage<T> {
 export interface EquipmentListParams {
   page: number;
   page_size: number;
-  sort: 'equipment_no' | 'name' | 'status' | 'updated_at';
+  sort: 'equipment_no' | 'name' | 'status' | 'updated_at' | 'risk';
   order?: 'asc' | 'desc';
   status?: EquipmentStatus;
   calibration_status?: CalibrationStatus;
@@ -272,15 +273,31 @@ export interface EquipmentImportBatch {
   parser_version: string;
   uploaded_by: number | null;
   uploaded_at: string | null;
+  rows_total: number;
+  row_page: number;
+  row_page_size: number;
   rows: EquipmentImportRow[];
 }
 
-export type EquipmentImportBatchSummary = Omit<EquipmentImportBatch, 'rows'>;
+export type EquipmentImportBatchSummary = Omit<
+  EquipmentImportBatch,
+  'rows' | 'rows_total' | 'row_page' | 'row_page_size'
+>;
 
 export interface EquipmentImportHistoryParams {
   page: number;
   page_size: number;
 }
+
+export interface EquipmentImportRowPageParams {
+  row_page: number;
+  row_page_size: number;
+}
+
+export type MeasurementEquipmentMutationResult = Omit<
+  MeasurementEquipment,
+  'calibration_status' | 'next_calibration_date' | 'calibration_block_reason'
+>;
 
 export interface PreviewMsaEquipmentImportInput {
   file: File;

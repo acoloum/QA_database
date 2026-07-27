@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
+import { Modal } from 'react-bootstrap';
 
 import EquipmentDetailDrawer from '../../components/msa/EquipmentDetailDrawer';
 import EquipmentStatusBadge from '../../components/msa/EquipmentStatusBadge';
@@ -31,15 +32,6 @@ const CALIBRATION_STATUS_OPTIONS: Array<{ value: CalibrationStatus; label: strin
   { value: 'valid', label: '有效' },
   { value: 'exempt', label: '免校' },
 ];
-
-const riskRank = (equipment: MeasurementEquipment) => {
-  if (equipment.calibration_status === 'failed') return 0;
-  if (equipment.calibration_status === 'expired') return 1;
-  if (equipment.status === 'pending_review') return 2;
-  if (equipment.status === 'maintenance') return 3;
-  if (equipment.calibration_status === 'due_soon') return 4;
-  return 5;
-};
 
 const errorText = (error: unknown) => (
   error instanceof Error ? error.message : '設備資料未儲存，請檢查輸入內容。'
@@ -92,7 +84,7 @@ export default function MeasurementEquipmentPage() {
   const [params, setParams] = useState<EquipmentListParams>({
     page: 1,
     page_size: 25,
-    sort: 'equipment_no',
+    sort: 'risk',
     order: 'asc',
   });
   const query = useMsaEquipment(params);
@@ -100,13 +92,7 @@ export default function MeasurementEquipmentPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const items = useMemo(
-    () => [...(query.data?.items ?? [])].sort((left, right) => (
-      riskRank(left) - riskRank(right)
-      || left.equipment_no.localeCompare(right.equipment_no, 'zh-Hant')
-    )),
-    [query.data?.items],
-  );
+  const items: MeasurementEquipment[] = query.data?.items ?? [];
 
   const count = (predicate: (item: MeasurementEquipment) => boolean) => (
     items.filter(predicate).length
@@ -237,7 +223,7 @@ export default function MeasurementEquipmentPage() {
           onClick={() => setParams({
             page: 1,
             page_size: 25,
-            sort: 'equipment_no',
+            sort: 'risk',
             order: 'asc',
           })}
         >
@@ -360,24 +346,17 @@ export default function MeasurementEquipmentPage() {
         onHide={() => setSelectedId(null)}
       />
 
-      {showCreate && (
-        <div className="msa-dialog-backdrop">
-          <section
-            className="msa-create-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="create-equipment-title"
-          >
-            <header>
-              <h2 id="create-equipment-title">新增量測設備</h2>
-              <button
-                type="button"
-                aria-label="關閉新增設備"
-                onClick={() => setShowCreate(false)}
-              >
-                ×
-              </button>
-            </header>
+      <Modal
+        show={showCreate}
+        onHide={() => setShowCreate(false)}
+        restoreFocus
+        aria-labelledby="create-equipment-title"
+        dialogClassName="msa-create-dialog"
+      >
+        <Modal.Header closeButton>
+          <Modal.Title id="create-equipment-title">新增量測設備</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -396,7 +375,7 @@ export default function MeasurementEquipmentPage() {
                 });
               }}
             >
-              <label>設備編號<input name="equipment_no" required /></label>
+              <label>設備編號<input name="equipment_no" required autoFocus /></label>
               <label>設備名稱<input name="name" required /></label>
               <label>設備類型<input name="equipment_type" /></label>
               <label>序號<input name="serial_no" /></label>
@@ -411,9 +390,8 @@ export default function MeasurementEquipmentPage() {
                 建立待確認設備
               </button>
             </form>
-          </section>
-        </div>
-      )}
+        </Modal.Body>
+      </Modal>
     </main>
   );
 }

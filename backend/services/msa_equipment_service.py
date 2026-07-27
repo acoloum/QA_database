@@ -137,6 +137,7 @@ _STATUS_EVENT_TYPES = {
     "inactive",
     "scrapped",
     "reactivated",
+    "review_completed",
 }
 _SOURCE_ENTITY_MODELS = {
     ("pyrometry", "Recorder"): Recorder,
@@ -172,11 +173,14 @@ class MsaEquipmentService:
         )
         sort_name = args.get("sort", "equipment_no")
         sort_column = _SORT_FIELDS.get(sort_name)
-        if sort_column is None:
+        if sort_column is None and sort_name != "risk":
             raise MsaServiceError(
                 "MSA_SORT_INVALID",
                 "不支援的設備排序欄位",
-                details={"sort": sort_name, "allowed": sorted(_SORT_FIELDS)},
+                details={
+                    "sort": sort_name,
+                    "allowed": sorted([*_SORT_FIELDS, "risk"]),
+                },
             )
         order = args.get("order", "asc")
         if order not in {"asc", "desc"}:
@@ -233,6 +237,7 @@ class MsaEquipmentService:
                 latest_calibration.result.notin_(("pass", "limited_use")),
                 "failed",
             ),
+            (latest_calibration.next_due_date.is_(None), "missing"),
             (latest_calibration.next_due_date < as_of, "expired"),
             (
                 latest_calibration.next_due_date
@@ -286,9 +291,32 @@ class MsaEquipmentService:
             )
 
         total = query.count()
-        ordering = sort_column.desc() if order == "desc" else sort_column.asc()
+        if sort_name == "risk":
+            risk_expression = case(
+                (calibration_status_expression == "failed", 0),
+                (calibration_status_expression == "expired", 1),
+                (MeasurementEquipment.status == "pending_review", 2),
+                (MeasurementEquipment.status == "maintenance", 3),
+                (calibration_status_expression == "due_soon", 4),
+                else_=5,
+            )
+            ordering = (
+                risk_expression.desc()
+                if order == "desc"
+                else risk_expression.asc()
+            )
+        else:
+            ordering = (
+                sort_column.desc()
+                if order == "desc"
+                else sort_column.asc()
+            )
         items = (
-            query.order_by(ordering, MeasurementEquipment.id.asc())
+            query.order_by(
+                ordering,
+                MeasurementEquipment.equipment_no.asc(),
+                MeasurementEquipment.id.asc(),
+            )
             .offset((page - 1) * page_size)
             .limit(page_size)
             .all()
@@ -762,6 +790,27 @@ class MsaEquipmentService:
             raise MsaValidationError(
                 "MSA_EQUIPMENT_STATUS_UNCHANGED",
                 "target_status 必須與 expected_status 不同",
+            )
+        expected_event_type = (
+            "review_completed"
+            if expected_status == "pending_review"
+            and target_status == "active"
+            else "reactivated"
+            if target_status == "active"
+            else "major_adjustment"
+            if target_status == "pending_review"
+            else target_status
+        )
+        if event_type != expected_event_type:
+            raise MsaValidationError(
+                "MSA_STATUS_EVENT_TRANSITION_INVALID",
+                "事件類型與設備狀態轉移不一致",
+                details={
+                    "event_type": event_type,
+                    "expected_event_type": expected_event_type,
+                    "expected_status": expected_status,
+                    "target_status": target_status,
+                },
             )
         reason = MsaEquipmentService._required_text(payload, "reason")
         triggers = payload.get("triggers_msa_restudy", False)
@@ -1278,18 +1327,18 @@ class MsaEquipmentService:
                     "pending": "待確認",
                 }.get(calibration.result, calibration.result)
                 block_reason = f"最新已核准校驗結果為{result_label}"
+            elif calibration.next_due_date is None:
+                summary_status = "missing"
+                block_reason = "最新已核准校驗紀錄缺少下次校驗日"
             elif (
-                calibration.next_due_date is not None
-                and calibration.next_due_date < as_of
+                calibration.next_due_date < as_of
             ):
                 summary_status = "expired"
                 block_reason = (
                     f"校驗已於 {calibration.next_due_date.isoformat()} 到期"
                 )
             elif (
-                calibration.next_due_date is not None
-                and calibration.next_due_date
-                <= as_of + timedelta(days=30)
+                calibration.next_due_date <= as_of + timedelta(days=30)
             ):
                 summary_status = "due_soon"
                 block_reason = None

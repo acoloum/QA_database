@@ -84,7 +84,11 @@ describe('MSA 設備匯入資料層', () => {
     const wrapper = createWrapper(queryClient);
     const params = { page: 1, page_size: 20 };
     const history = renderHook(() => useMsaImportHistory(params), { wrapper });
-    const detail = renderHook(() => useMsaImportBatch(41), { wrapper });
+    const rowParams = { row_page: 2, row_page_size: 100 };
+    const detail = renderHook(
+      () => useMsaImportBatch(41, rowParams),
+      { wrapper },
+    );
 
     await act(async () => {
       await Promise.all([
@@ -97,6 +101,9 @@ describe('MSA 設備匯入資料層', () => {
       '/measurement-equipment/imports',
       { params },
     );
-    expect(api.get).toHaveBeenCalledWith('/measurement-equipment/imports/41');
+    expect(api.get).toHaveBeenCalledWith(
+      '/measurement-equipment/imports/41',
+      { params: rowParams },
+    );
   });
 });

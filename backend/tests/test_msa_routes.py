@@ -11,6 +11,8 @@ from backend.models import (
     EquipmentCalibrationRecord,
     EquipmentCorrectionPoint,
     EquipmentStatusEvent,
+    EquipmentImportBatch,
+    EquipmentImportRow,
     MeasurementEquipment,
     MeasurementEquipmentLink,
     MsaCriteriaProfile,
@@ -583,7 +585,12 @@ def test_equipment_import_history_lists_batches_and_loads_row_evidence(
         "items": [{
             key: value
             for key, value in preview.items()
-            if key != "rows"
+            if key not in {
+                "rows",
+                "rows_total",
+                "row_page",
+                "row_page_size",
+            }
         }],
         "page": 1,
         "page_size": 20,
@@ -1271,6 +1278,105 @@ def test_status_event_rejects_stale_expected_status_without_partial_changes(
     ).count() == 0
 
 
+def test_pending_review_activation_requires_review_completed_event(
+    client,
+    db_session,
+    msa_user_headers,
+):
+    """防止待審核完成被誤記為重新啟用，或接受語意不符的事件。"""
+    equipment = _create_equipment(client, msa_user_headers)
+    wrong = client.post(
+        f"/api/measurement-equipment/{equipment['id']}/status-events",
+        json={
+            "event_type": "reactivated",
+            "expected_status": "pending_review",
+            "target_status": "active",
+            "reason": "完成主檔與證據審查",
+        },
+        headers=msa_user_headers("msa_manage"),
+    )
+    created = client.post(
+        f"/api/measurement-equipment/{equipment['id']}/status-events",
+        json={
+            "event_type": "review_completed",
+            "expected_status": "pending_review",
+            "target_status": "active",
+            "reason": "完成主檔與證據審查",
+        },
+        headers=msa_user_headers("msa_manage"),
+    )
+
+    assert wrong.status_code == 422
+    assert wrong.get_json()["error"]["code"] == (
+        "MSA_STATUS_EVENT_TRANSITION_INVALID"
+    )
+    assert created.status_code == 201
+    assert created.get_json()["data"]["event_type"] == "review_completed"
+    assert db_session.get(
+        MeasurementEquipment, equipment["id"]
+    ).status == "active"
+
+
+def test_import_detail_pages_rows_without_loading_the_whole_batch(
+    client,
+    db_session,
+    msa_user_headers,
+):
+    """防止大型匯入批次一次回傳全部逐列資料。"""
+    batch = EquipmentImportBatch(
+        original_filename="large.csv",
+        file_sha256="a" * 64,
+        file_size=50_000,
+        status="previewed",
+        total_rows=205,
+        success_rows=0,
+        pending_rows=205,
+        rejected_rows=0,
+        parser_version="msa-equipment-csv-1",
+    )
+    db_session.add(batch)
+    db_session.flush()
+    db_session.add_all([
+        EquipmentImportRow(
+            batch_id=batch.id,
+            row_number=index + 2,
+            raw_data={"設備編號": f"EQ-{index:04d}"},
+            normalized_data={"equipment_no": f"EQ-{index:04d}"},
+            issue_codes=["MSA_IMPORT_MODEL_MISSING"],
+            issue_description="型號缺漏",
+        )
+        for index in range(205)
+    ])
+    db_session.commit()
+
+    response = client.get(
+        (
+            f"/api/measurement-equipment/imports/{batch.id}"
+            "?row_page=2&row_page_size=100"
+        ),
+        headers=msa_user_headers("msa_view"),
+    )
+    too_large = client.get(
+        (
+            f"/api/measurement-equipment/imports/{batch.id}"
+            "?row_page=1&row_page_size=101"
+        ),
+        headers=msa_user_headers("msa_view"),
+    )
+
+    data = response.get_json()["data"]
+    assert response.status_code == 200
+    assert data["rows_total"] == 205
+    assert data["row_page"] == 2
+    assert data["row_page_size"] == 100
+    assert len(data["rows"]) == 100
+    assert data["rows"][0]["source_row_no"] == 102
+    assert too_large.status_code == 422
+    assert too_large.get_json()["error"]["code"] == (
+        "MSA_IMPORT_PAGINATION_INVALID"
+    )
+
+
 def test_current_source_link_switch_is_guarded_by_expected_id(
     client,
     db_session,
@@ -1490,7 +1596,7 @@ def test_all_equipment_mutations_write_audit_logs(
     client.post(
         f"/api/measurement-equipment/{equipment['id']}/status-events",
         json={
-            "event_type": "major_adjustment",
+            "event_type": "maintenance",
             "expected_status": "pending_review",
             "target_status": "maintenance",
             "reason": "更換量測頭",

@@ -8,7 +8,6 @@ from ..services.msa_equipment_service import MsaEquipmentService
 from ..services.msa_errors import MsaValidationError
 from ..services.msa_import_service import (
     MsaImportService,
-    serialize_import_batch,
 )
 from .msa_adapters import (
     handle_msa_errors as _handle_msa_errors,
@@ -53,7 +52,9 @@ def list_import_batches(current_user):
 @_handle_msa_errors
 def get_import_batch(current_user, batch_id: int):
     """取得指定匯入批次的逐列檢閱證據。"""
-    return jsonify({"data": MsaImportService.get_batch(batch_id)})
+    return jsonify({
+        "data": MsaImportService.get_batch(batch_id, request.args)
+    })
 
 
 @measurement_equipment_bp.post(
@@ -73,9 +74,7 @@ def preview_import(current_user):
             field="as_of",
         ),
     )
-    return jsonify(
-        {"data": serialize_import_batch(batch, include_rows=True)}
-    ), 201
+    return jsonify({"data": MsaImportService.get_batch(batch.id)}), 201
 
 
 @measurement_equipment_bp.post(
@@ -100,9 +99,7 @@ def confirm_import(current_user, batch_id: int):
             field="confirmation_date",
         ),
     )
-    return jsonify(
-        {"data": serialize_import_batch(batch, include_rows=True)}
-    )
+    return jsonify({"data": MsaImportService.get_batch(batch.id)})
 
 
 @measurement_equipment_bp.get("/api/measurement-equipment")

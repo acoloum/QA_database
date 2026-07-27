@@ -3,6 +3,7 @@ import { Offcanvas } from 'react-bootstrap';
 
 import { useAuth } from '../../context/useAuth';
 import {
+  useDownloadMsaCertificate,
   useMsaEquipmentDetail,
   useMsaStatusEvent,
 } from '../../hooks/useMsaEquipment';
@@ -24,12 +25,38 @@ interface EquipmentDetailDrawerProps {
 
 type Tab = 'master' | 'calibration' | 'events' | 'links' | 'studies';
 
-const statusEventType = (targetStatus: EquipmentStatus) => {
-  if (targetStatus === 'active') return 'reactivated' as const;
+const statusEventType = (
+  sourceStatus: EquipmentStatus,
+  targetStatus: EquipmentStatus,
+) => {
+  if (targetStatus === 'active') {
+    return sourceStatus === 'pending_review'
+      ? 'review_completed' as const
+      : 'reactivated' as const;
+  }
   if (targetStatus === 'maintenance') return 'maintenance' as const;
   if (targetStatus === 'inactive') return 'inactive' as const;
   if (targetStatus === 'scrapped') return 'scrapped' as const;
   return 'major_adjustment' as const;
+};
+
+const STATUS_OPTIONS: Array<{ value: EquipmentStatus; label: string }> = [
+  { value: 'pending_review', label: '待確認' },
+  { value: 'active', label: '使用中' },
+  { value: 'maintenance', label: '維修' },
+  { value: 'inactive', label: '停用' },
+  { value: 'scrapped', label: '報廢' },
+];
+
+const EVENT_LABELS: Record<EquipmentStatusEvent['event_type'], string> = {
+  calibration_overdue: '校驗逾期',
+  calibration_failed: '校驗失敗',
+  maintenance: '進入維修',
+  major_adjustment: '重大調整',
+  inactive: '停用',
+  scrapped: '報廢',
+  reactivated: '重新啟用',
+  review_completed: '審查完成',
 };
 
 const tabs: Array<{ id: Tab; label: string }> = [
@@ -48,10 +75,27 @@ export default function EquipmentDetailDrawer({
   const { hasPermission } = useAuth();
   const detail = useMsaEquipmentDetail(equipmentId);
   const statusEvent = useMsaStatusEvent();
+  const downloadCertificate = useDownloadMsaCertificate();
   const [activeTab, setActiveTab] = useState<Tab>('master');
   const [targetStatus, setTargetStatus] = useState<EquipmentStatus>('maintenance');
   const [statusReason, setStatusReason] = useState('');
+  const [statusError, setStatusError] = useState<string | null>(null);
   const equipment = detail.data;
+  const availableStatuses = STATUS_OPTIONS.filter(
+    (option) => option.value !== equipment?.status,
+  );
+  const selectedTargetStatus = (
+    targetStatus === equipment?.status
+      ? availableStatuses[0]?.value
+      : targetStatus
+  ) ?? 'active';
+
+  const selectTab = (tab: Tab) => {
+    setActiveTab(tab);
+    requestAnimationFrame(() => {
+      document.getElementById(`equipment-tab-${tab}-tab`)?.focus();
+    });
+  };
 
   return (
     <Offcanvas
@@ -90,9 +134,23 @@ export default function EquipmentDetailDrawer({
                   key={tab.id}
                   type="button"
                   role="tab"
+                  id={`equipment-tab-${tab.id}-tab`}
+                  aria-controls={`equipment-tab-${tab.id}`}
                   aria-selected={activeTab === tab.id}
+                  tabIndex={activeTab === tab.id ? 0 : -1}
                   className={activeTab === tab.id ? 'is-active' : ''}
                   onClick={() => setActiveTab(tab.id)}
+                  onKeyDown={(event) => {
+                    const index = tabs.findIndex((item) => item.id === tab.id);
+                    let nextIndex = index;
+                    if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+                    else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+                    else if (event.key === 'Home') nextIndex = 0;
+                    else if (event.key === 'End') nextIndex = tabs.length - 1;
+                    else return;
+                    event.preventDefault();
+                    selectTab(tabs[nextIndex].id);
+                  }}
                 >
                   {tab.label}
                 </button>
@@ -100,7 +158,12 @@ export default function EquipmentDetailDrawer({
             </div>
 
             {activeTab === 'master' && (
-              <section className="msa-evidence-panel" aria-labelledby="equipment-master-title">
+              <section
+                className="msa-evidence-panel"
+                role="tabpanel"
+                id="equipment-tab-master"
+                aria-labelledby="equipment-tab-master-tab"
+              >
                 <h2 id="equipment-master-title">主檔與量測能力</h2>
                 <dl className="msa-definition-grid">
                   <div><dt>設備編號</dt><dd className="msa-mono">{equipment.equipment_no}</dd></div>
@@ -117,12 +180,19 @@ export default function EquipmentDetailDrawer({
                     className="msa-status-form"
                     onSubmit={(event) => {
                       event.preventDefault();
+                      setStatusError(null);
                       void statusEvent.mutateAsync({
                         equipmentId: equipment.id,
-                        event_type: statusEventType(targetStatus),
+                        event_type: statusEventType(equipment.status, selectedTargetStatus),
                         expected_status: equipment.status,
-                        target_status: targetStatus,
+                        target_status: selectedTargetStatus,
                         reason: statusReason.trim(),
+                      }).catch((error: unknown) => {
+                        setStatusError(
+                          error instanceof Error
+                            ? error.message
+                            : '設備狀態未變更，請重新載入後再試。',
+                        );
                       });
                     }}
                   >
@@ -130,15 +200,17 @@ export default function EquipmentDetailDrawer({
                     <label>
                       目標狀態
                       <select
-                        value={targetStatus}
+                        value={selectedTargetStatus}
                         onChange={(event) => setTargetStatus(event.target.value as EquipmentStatus)}
                       >
-                        <option value="maintenance">維修</option>
-                        <option value="inactive">停用</option>
-                        <option value="scrapped">報廢</option>
-                        <option value="active">重新啟用</option>
+                        {availableStatuses.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
                       </select>
                     </label>
+                    {statusError && <p role="alert">{statusError}</p>}
                     <label>
                       變更原因
                       <textarea
@@ -160,7 +232,12 @@ export default function EquipmentDetailDrawer({
             )}
 
             {activeTab === 'calibration' && (
-              <section className="msa-evidence-panel" aria-labelledby="equipment-calibration-title">
+              <section
+                className="msa-evidence-panel"
+                role="tabpanel"
+                id="equipment-tab-calibration"
+                aria-labelledby="equipment-tab-calibration-tab"
+              >
                 <h2 id="equipment-calibration-title">校驗證據與補正點</h2>
                 {equipment.calibrations.length === 0 && <p>尚無校驗紀錄。</p>}
                 {equipment.calibrations.map((record: EquipmentCalibration) => (
@@ -176,7 +253,20 @@ export default function EquipmentDetailDrawer({
                     <p>
                       證書附件：
                       {record.certificate_attachment_id
-                        ? <span className="msa-mono">#{record.certificate_attachment_id}</span>
+                        ? (
+                          <button
+                            type="button"
+                            className="msa-button msa-button--quiet"
+                            disabled={downloadCertificate.isPending}
+                            aria-label={`下載證書 ${record.certificate_no || record.id}`}
+                            onClick={() => void downloadCertificate.mutateAsync({
+                              attachmentId: record.certificate_attachment_id!,
+                              filename: `${record.certificate_no || `calibration-${record.id}`}.pdf`,
+                            })}
+                          >
+                            下載附件 #{record.certificate_attachment_id}
+                          </button>
+                        )
                         : '未附檔'}
                     </p>
                     {record.correction_points.length > 0 && (
@@ -207,7 +297,12 @@ export default function EquipmentDetailDrawer({
             )}
 
             {activeTab === 'events' && (
-              <section className="msa-evidence-panel" aria-labelledby="equipment-events-title">
+              <section
+                className="msa-evidence-panel"
+                role="tabpanel"
+                id="equipment-tab-events"
+                aria-labelledby="equipment-tab-events-tab"
+              >
                 <h2 id="equipment-events-title">狀態事件</h2>
                 {equipment.status_events.length === 0
                   ? <p>尚無狀態事件。</p>
@@ -215,7 +310,7 @@ export default function EquipmentDetailDrawer({
                     <ol className="msa-timeline">
                       {equipment.status_events.map((event: EquipmentStatusEvent) => (
                         <li key={event.id}>
-                          <strong>{event.event_type}</strong>
+                          <strong>{EVENT_LABELS[event.event_type]}</strong>
                           <time>{new Date(event.occurred_at).toLocaleString('zh-TW')}</time>
                           <p>{event.reason || '未填寫原因'}</p>
                         </li>
@@ -226,21 +321,42 @@ export default function EquipmentDetailDrawer({
             )}
 
             {activeTab === 'links' && (
-              <section className="msa-evidence-panel" aria-labelledby="equipment-links-title">
+              <section
+                className="msa-evidence-panel"
+                role="tabpanel"
+                id="equipment-tab-links"
+                aria-labelledby="equipment-tab-links-tab"
+              >
                 <h2 id="equipment-links-title">CQI-9 來源連結</h2>
                 {equipment.links.length === 0
                   ? <p>此設備沒有 CQI-9 專用來源連結。</p>
                   : equipment.links.map((link: EquipmentLink) => (
                     <p key={link.id}>
-                      <strong>{link.source_entity_type} #{link.source_entity_id}</strong>
+                      <a href={
+                        link.source_entity_type === 'Recorder'
+                          ? '/pyrometry/recorders'
+                          : '/pyrometry/thermocouples'
+                      }>
+                        <strong>{link.source_entity_type} #{link.source_entity_id}</strong>
+                      </a>
                       {' · '}{link.is_current ? '目前正式連結' : '歷史連結'}
+                      <small>
+                        請在
+                        {link.source_entity_type === 'Recorder' ? '記錄器' : '熱電偶'}
+                        校正頁查詢 ID {link.source_entity_id}
+                      </small>
                     </p>
                   ))}
               </section>
             )}
 
             {activeTab === 'studies' && (
-              <section className="msa-evidence-panel" aria-labelledby="equipment-studies-title">
+              <section
+                className="msa-evidence-panel"
+                role="tabpanel"
+                id="equipment-tab-studies"
+                aria-labelledby="equipment-tab-studies-tab"
+              >
                 <h2 id="equipment-studies-title">引用本設備的 MSA 研究</h2>
                 <p>研究引用將於研究模組啟用後呈現</p>
               </section>

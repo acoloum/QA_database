@@ -12,11 +12,13 @@ import type {
   EquipmentStatusEvent,
   MeasurementEquipment,
   MeasurementEquipmentDetail,
+  MeasurementEquipmentMutationResult,
   MsaPage,
   MsaStatusEventInput,
   RetireMsaEquipmentLinkInput,
   UpdateMsaEquipmentInput,
 } from '../types/msa';
+import { downloadBlob } from '../utils/downloadFile';
 
 interface ApiEnvelope<T> {
   data: T;
@@ -29,7 +31,9 @@ export const msaKeys = {
   equipmentRoot: ['msa', 'equipment'] as const,
   equipment: (params: EquipmentListParams) => ['msa', 'equipment', params] as const,
   equipmentDetail: (id: number) => ['msa', 'equipment', 'detail', id] as const,
-  importBatch: (id: number) => ['msa', 'equipment-import', id] as const,
+  importBatch: (id: number, params?: { row_page: number; row_page_size: number }) => (
+    ['msa', 'equipment-import', id, ...(params ? [params] : [])] as const
+  ),
   importHistory: (params: { page: number; page_size: number }) => (
     ['msa', 'equipment-import', 'history', params] as const
   ),
@@ -76,7 +80,7 @@ export const useMsaEquipmentDetail = (equipmentId: number | null) => useQuery({
 
 export const useCreateMsaEquipment = () => {
   const queryClient = useQueryClient();
-  return useMutation<MeasurementEquipment, unknown, CreateMsaEquipmentInput>({
+  return useMutation<MeasurementEquipmentMutationResult, unknown, CreateMsaEquipmentInput>({
     mutationFn: async (payload: CreateMsaEquipmentInput) => unwrap(
       await api.post<ApiEnvelope<MeasurementEquipment>>('/measurement-equipment', payload),
     ),
@@ -86,16 +90,36 @@ export const useCreateMsaEquipment = () => {
 
 export const useUpdateMsaEquipment = () => {
   const queryClient = useQueryClient();
-  return useMutation<MeasurementEquipment, unknown, { equipmentId: number; payload: UpdateMsaEquipmentInput }>({
+  return useMutation<MeasurementEquipmentMutationResult, unknown, { equipmentId: number; payload: UpdateMsaEquipmentInput }>({
     mutationFn: async ({ equipmentId, payload }: { equipmentId: number; payload: UpdateMsaEquipmentInput }) => unwrap(
       await api.patch<ApiEnvelope<MeasurementEquipment>>(`/measurement-equipment/${equipmentId}`, payload),
     ),
     onSuccess: (
-      _equipment: MeasurementEquipment,
+      _equipment: MeasurementEquipmentMutationResult,
       { equipmentId }: { equipmentId: number; payload: UpdateMsaEquipmentInput },
     ) => invalidateEquipment(queryClient, equipmentId),
   });
 };
+
+export const useDownloadMsaCertificate = () => useMutation<
+  void,
+  unknown,
+  { attachmentId: number; filename: string }
+>({
+  mutationFn: async ({
+    attachmentId,
+    filename,
+  }: {
+    attachmentId: number;
+    filename: string;
+  }) => {
+    const response = await api.get(
+      `/attachments/${attachmentId}/download`,
+      { responseType: 'blob' },
+    );
+    downloadBlob(response.data, filename);
+  },
+});
 
 export const useMsaStatusEvent = () => {
   const queryClient = useQueryClient();

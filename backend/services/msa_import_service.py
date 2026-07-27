@@ -637,6 +637,9 @@ def serialize_import_batch(
     batch: EquipmentImportBatch,
     *,
     include_rows: bool = False,
+    rows: list[EquipmentImportRow] | None = None,
+    row_page: int = 1,
+    row_page_size: int = 100,
 ) -> dict:
     """輸出穩定批次 envelope，不暴露 ORM 內部欄名。"""
     data = {
@@ -656,7 +659,14 @@ def serialize_import_batch(
         ),
     }
     if include_rows:
-        rows = sorted(batch.rows, key=lambda row: (row.row_number, row.id))
+        serialized_rows = rows if rows is not None else []
+        data.update(
+            {
+                "rows_total": batch.total_rows,
+                "row_page": row_page,
+                "row_page_size": row_page_size,
+            }
+        )
         data["rows"] = [
             {
                 "id": row.id,
@@ -673,7 +683,7 @@ def serialize_import_batch(
                     else None
                 ),
             }
-            for row in rows
+            for row in serialized_rows
         ]
     return data
 
@@ -716,8 +726,8 @@ class MsaImportService:
         }
 
     @staticmethod
-    def get_batch(batch_id: int) -> dict:
-        """取得單一批次及逐列原始、正規化與人工處置證據。"""
+    def get_batch(batch_id: int, args=None) -> dict:
+        """以有界分頁取得逐列原始、正規化與人工處置證據。"""
         batch = db.session.get(EquipmentImportBatch, batch_id)
         if batch is None:
             raise MsaNotFound(
@@ -725,7 +735,35 @@ class MsaImportService:
                 "找不到設備匯入批次",
                 details={"batch_id": batch_id},
             )
-        return serialize_import_batch(batch, include_rows=True)
+        args = args or {}
+        row_page = MsaImportService._bounded_page_argument(
+            args.get("row_page", 1),
+            field="row_page",
+            maximum=10_000,
+        )
+        row_page_size = MsaImportService._bounded_page_argument(
+            args.get("row_page_size", 100),
+            field="row_page_size",
+            maximum=100,
+        )
+        rows = (
+            EquipmentImportRow.query
+            .filter_by(batch_id=batch.id)
+            .order_by(
+                EquipmentImportRow.row_number.asc(),
+                EquipmentImportRow.id.asc(),
+            )
+            .offset((row_page - 1) * row_page_size)
+            .limit(row_page_size)
+            .all()
+        )
+        return serialize_import_batch(
+            batch,
+            include_rows=True,
+            rows=rows,
+            row_page=row_page,
+            row_page_size=row_page_size,
+        )
 
     @staticmethod
     def _bounded_page_argument(

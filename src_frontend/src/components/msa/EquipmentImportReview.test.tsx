@@ -10,6 +10,7 @@ const authMock = vi.hoisted(() => vi.fn());
 const previewMock = vi.hoisted(() => vi.fn());
 const confirmMock = vi.hoisted(() => vi.fn());
 const historyMock = vi.hoisted(() => vi.fn());
+const batchDetailMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../context/useAuth', () => ({
   useAuth: () => authMock(),
@@ -27,11 +28,9 @@ vi.mock('../../hooks/useMsaImports', () => ({
     error: null,
   }),
   useMsaImportHistory: () => historyMock(),
-  useMsaImportBatch: () => ({
-    data: undefined,
-    isLoading: false,
-    isError: false,
-  }),
+  useMsaImportBatch: (batchId: number | null, params: unknown) => (
+    batchDetailMock(batchId, params)
+  ),
 }));
 
 const batch: EquipmentImportBatch = {
@@ -47,6 +46,9 @@ const batch: EquipmentImportBatch = {
   parser_version: 'msa-equipment-csv-1',
   uploaded_by: 7,
   uploaded_at: '2026-07-27T08:00:00+00:00',
+  rows_total: 2,
+  row_page: 1,
+  row_page_size: 100,
   rows: [
     {
       id: 71,
@@ -121,6 +123,138 @@ describe('設備匯入檢閱', () => {
     expect(screen.getByRole('columnheader', { name: '正規化值' })).toBeInTheDocument();
     expect(screen.getByText('MSA_IMPORT_AMBIGUOUS_CALIBRATION_TYPE')).toBeInTheDocument();
   });
+
+  it('免校理由缺漏可直接填理由，不依賴校驗類別問題碼', async () => {
+    const user = userEvent.setup();
+    const exemptBatch: EquipmentImportBatch = {
+      ...batch,
+      total_rows: 1,
+      pending_rows: 1,
+      rows_total: 1,
+      rows: [{
+        ...batch.rows[0],
+        normalized: { equipment_no: 'EQ-071', calibration_type: 'exempt' },
+        issue_codes: ['MSA_IMPORT_EXEMPTION_REASON_MISSING'],
+      }],
+    };
+    render(<EquipmentImportReview batch={exemptBatch} onConfirm={vi.fn()} />);
+
+    const row = screen.getByRole('row', { name: /原始列 2/ });
+    await user.selectOptions(within(row).getByLabelText('列 2 處置'), 'accept');
+    expect(within(row).getByLabelText('列 2 免校理由')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '確認匯入' })).toBeDisabled();
+    await user.type(within(row).getByLabelText('列 2 免校理由'), '僅供目視參考');
+    expect(screen.getByRole('button', { name: '確認匯入' })).toBeEnabled();
+  });
+
+  it('序號問題必須填寫序號或拒絕，未知 blocking issue 只能拒絕', async () => {
+    const user = userEvent.setup();
+    const serialBatch: EquipmentImportBatch = {
+      ...batch,
+      total_rows: 2,
+      pending_rows: 2,
+      rows_total: 2,
+      rows: [
+        {
+          ...batch.rows[0],
+          issue_codes: ['MSA_IMPORT_SERIAL_UNSUPPORTED_PREFIX'],
+        },
+        {
+          ...batch.rows[1],
+          issue_codes: ['MSA_IMPORT_FUTURE_BLOCKING_CODE'],
+        },
+      ],
+    };
+    render(<EquipmentImportReview batch={serialBatch} onConfirm={vi.fn()} />);
+
+    const serialRow = screen.getByRole('row', { name: /原始列 2/ });
+    await user.selectOptions(within(serialRow).getByLabelText('列 2 處置'), 'accept');
+    expect(within(serialRow).getByLabelText('列 2 序號')).toBeInTheDocument();
+
+    const unknownRow = screen.getByRole('row', { name: /原始列 3/ });
+    expect(
+      within(unknownRow).getByLabelText('列 3 處置').querySelectorAll('option'),
+    ).toHaveLength(2);
+    await user.selectOptions(within(unknownRow).getByLabelText('列 3 處置'), 'reject');
+    expect(screen.getByRole('button', { name: '確認匯入' })).toBeDisabled();
+    await user.type(within(serialRow).getByLabelText('列 2 序號'), 'SN-071');
+    expect(screen.getByRole('button', { name: '確認匯入' })).toBeEnabled();
+  });
+
+  it('多個可修復問題必須全部填妥才視為完成', async () => {
+    const user = userEvent.setup();
+    const combinedBatch: EquipmentImportBatch = {
+      ...batch,
+      total_rows: 1,
+      pending_rows: 1,
+      rows_total: 1,
+      rows: [{
+        ...batch.rows[0],
+        issue_codes: [
+          'MSA_IMPORT_AMBIGUOUS_CALIBRATION_TYPE',
+          'MSA_IMPORT_RESOLUTION_MISSING',
+          'MSA_IMPORT_MODEL_MISSING',
+        ],
+      }],
+    };
+    render(<EquipmentImportReview batch={combinedBatch} onConfirm={vi.fn()} />);
+    const row = screen.getByRole('row', { name: /原始列 2/ });
+
+    await user.selectOptions(within(row).getByLabelText('列 2 處置'), 'accept');
+    await user.selectOptions(within(row).getByLabelText('列 2 校驗類別映射'), 'external');
+    await user.type(within(row).getByLabelText('列 2 解析度'), '0.01');
+    expect(screen.getByRole('button', { name: '確認匯入' })).toBeDisabled();
+    await user.type(within(row).getByLabelText('列 2 型號'), 'M-01');
+    expect(screen.getByRole('button', { name: '確認匯入' })).toBeEnabled();
+  });
+
+  it('逐列處置跨分頁保留，直到全部 pending rows 完成才可確認', async () => {
+    const user = userEvent.setup();
+    const onPageChange = vi.fn();
+    const firstPage: EquipmentImportBatch = {
+      ...batch,
+      total_rows: 2,
+      pending_rows: 2,
+      rows_total: 2,
+      row_page_size: 1,
+      rows: [{
+        ...batch.rows[0],
+        issue_codes: ['MSA_IMPORT_MODEL_MISSING'],
+      }],
+    };
+    const { rerender } = render(
+      <EquipmentImportReview
+        batch={firstPage}
+        onConfirm={vi.fn()}
+        onRowPageChange={onPageChange}
+      />,
+    );
+    let row = screen.getByRole('row', { name: /原始列 2/ });
+    await user.selectOptions(within(row).getByLabelText('列 2 處置'), 'accept');
+    await user.type(within(row).getByLabelText('列 2 型號'), 'M-01');
+    expect(screen.getByRole('button', { name: '確認匯入' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: '下一頁逐列證據' }));
+    expect(onPageChange).toHaveBeenCalledWith(2);
+
+    rerender(
+      <EquipmentImportReview
+        batch={{
+          ...firstPage,
+          row_page: 2,
+          rows: [{
+            ...batch.rows[1],
+            issue_codes: ['MSA_IMPORT_CUSTODIAN_MISSING'],
+          }],
+        }}
+        onConfirm={vi.fn()}
+        onRowPageChange={onPageChange}
+      />,
+    );
+    row = screen.getByRole('row', { name: /原始列 3/ });
+    await user.selectOptions(within(row).getByLabelText('列 3 處置'), 'pending_review');
+    await user.type(within(row).getByLabelText('列 3 保管人'), '王小明');
+    expect(screen.getByRole('button', { name: '確認匯入' })).toBeEnabled();
+  });
 });
 
 describe('設備匯入紀錄頁', () => {
@@ -129,6 +263,11 @@ describe('設備匯入紀錄頁', () => {
     authMock.mockReturnValue({ hasPermission: () => true });
     historyMock.mockReturnValue({
       data: { items: [], page: 1, page_size: 20, total: 0 },
+      isLoading: false,
+      isError: false,
+    });
+    batchDetailMock.mockReturnValue({
+      data: undefined,
       isLoading: false,
       isError: false,
     });
@@ -164,5 +303,61 @@ describe('設備匯入紀錄頁', () => {
     expect(screen.queryByLabelText('設備清單檔案')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '預覽匯入' })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '匯入稽核歷程' })).toBeInTheDocument();
+  });
+
+  it('大型批次從歷程載入時以 row_page 分頁查詢', async () => {
+    const user = userEvent.setup();
+    historyMock.mockReturnValue({
+      data: {
+        items: [{
+          id: batch.id,
+          original_filename: batch.original_filename,
+          file_sha256: batch.file_sha256,
+          file_size: batch.file_size,
+          status: batch.status,
+          total_rows: batch.total_rows,
+          success_rows: batch.success_rows,
+          pending_rows: batch.pending_rows,
+          rejected_rows: batch.rejected_rows,
+          parser_version: batch.parser_version,
+          uploaded_by: batch.uploaded_by,
+          uploaded_at: batch.uploaded_at,
+        }],
+        page: 1,
+        page_size: 20,
+        total: 1,
+      },
+      isLoading: false,
+      isError: false,
+    });
+    batchDetailMock.mockImplementation((
+      batchId: number | null,
+      requestedParams?: { row_page: number; row_page_size: number },
+    ) => {
+      const params = requestedParams ?? { row_page: 1, row_page_size: 100 };
+      return {
+      data: batchId == null ? undefined : {
+        ...batch,
+        rows_total: 2,
+        row_page: params.row_page,
+        row_page_size: 1,
+        rows: [batch.rows[params.row_page - 1]],
+      },
+      isLoading: false,
+      isError: false,
+      };
+    });
+
+    render(<MsaImportHistoryPage />);
+    await user.click(screen.getByRole('button', { name: '檢視逐列證據' }));
+    expect(batchDetailMock).toHaveBeenLastCalledWith(41, {
+      row_page: 1,
+      row_page_size: 100,
+    });
+    await user.click(screen.getByRole('button', { name: '下一頁逐列證據' }));
+    expect(batchDetailMock).toHaveBeenLastCalledWith(41, {
+      row_page: 2,
+      row_page_size: 100,
+    });
   });
 });

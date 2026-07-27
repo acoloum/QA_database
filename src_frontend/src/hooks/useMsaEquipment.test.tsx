@@ -6,11 +6,13 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../services/api';
+import { downloadBlob } from '../utils/downloadFile';
 import type { CreateMsaEquipmentLinkInput } from '../types/msa';
 import {
   isMsaEquipmentListQuery,
   msaKeys,
   useCreateMsaEquipment,
+  useDownloadMsaCertificate,
   useMsaEquipment,
   useMsaEquipmentDetail,
   useMsaStatusEvent,
@@ -18,6 +20,9 @@ import {
 
 vi.mock('../services/api', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
+}));
+vi.mock('../utils/downloadFile', () => ({
+  downloadBlob: vi.fn(),
 }));
 
 const createWrapper = (queryClient: QueryClient) => ({ children }: { children: ReactNode }) => (
@@ -140,5 +145,30 @@ describe('MSA 設備資料層', () => {
       await expect(result.current.mutateAsync({ equipment_no: 'EQ-009', name: '高度規' })).rejects.toBe(backendError);
     });
     await waitFor(() => expect(result.current.isError).toBe(true));
+  });
+
+  it('校驗證書透過共用 API 帶認證下載 blob，不使用裸連結', async () => {
+    const certificate = new Blob(['certificate'], { type: 'application/pdf' });
+    vi.mocked(api.get).mockResolvedValue({ data: certificate });
+    const queryClient = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    });
+    const { result } = renderHook(
+      () => useDownloadMsaCertificate(),
+      { wrapper: createWrapper(queryClient) },
+    );
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        attachmentId: 99,
+        filename: 'CERT-20.pdf',
+      });
+    });
+
+    expect(api.get).toHaveBeenCalledWith(
+      '/attachments/99/download',
+      { responseType: 'blob' },
+    );
+    expect(downloadBlob).toHaveBeenCalledWith(certificate, 'CERT-20.pdf');
   });
 });

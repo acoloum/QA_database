@@ -646,3 +646,108 @@ def test_list_rejects_unbounded_or_non_whitelisted_summary_arguments(
         MsaEquipmentService.list(args)
 
     assert error.value.code == code
+
+
+def test_pass_calibration_without_next_due_is_missing_everywhere(
+    db_session,
+):
+    """防止缺少到期日的 pass 紀錄在清單、篩選或明細被標成可用。"""
+    equipment = _equipment(
+        db_session, "EQ-MISSING-DUE", status="active"
+    )
+    _calibration(db_session, equipment, next_due_date=None)
+    db_session.commit()
+
+    listed = MsaEquipmentService.list(
+        {
+            "page": "1",
+            "page_size": "25",
+            "sort": "equipment_no",
+            "as_of": STUDY_DATE.isoformat(),
+        }
+    )
+    filtered = MsaEquipmentService.list(
+        {
+            "page": "1",
+            "page_size": "25",
+            "sort": "equipment_no",
+            "calibration_status": "missing",
+            "as_of": STUDY_DATE.isoformat(),
+        }
+    )
+    detail = MsaEquipmentService.get(equipment.id)
+
+    assert listed["items"][0]["calibration_status"] == "missing"
+    assert listed["items"][0]["next_calibration_date"] is None
+    assert "下次校驗日" in listed["items"][0]["calibration_block_reason"]
+    assert [item["equipment_no"] for item in filtered["items"]] == [
+        "EQ-MISSING-DUE"
+    ]
+    assert detail["calibration_status"] == "missing"
+    with pytest.raises(MsaValidationError) as error:
+        MsaEquipmentService.assert_officially_usable(
+            equipment.id, on_date=STUDY_DATE
+        )
+    assert error.value.code == "MSA_EQUIPMENT_CALIBRATION_MISSING"
+
+
+def test_risk_sort_orders_the_full_result_before_pagination(db_session):
+    """防止前端只排序單頁，使高風險設備落到後頁。"""
+    fixtures = [
+        ("EQ-REST", "active", "valid"),
+        ("EQ-DUE", "active", "due_soon"),
+        ("EQ-MAINT", "maintenance", "valid"),
+        ("EQ-PENDING", "pending_review", "valid"),
+        ("EQ-EXPIRED", "active", "expired"),
+        ("EQ-FAILED", "active", "failed"),
+        ("EQ-MISSING", "active", "missing"),
+    ]
+    for equipment_no, status, risk in fixtures:
+        equipment = _equipment(
+            db_session, equipment_no, status=status
+        )
+        if risk == "failed":
+            _calibration(db_session, equipment, result="fail")
+        elif risk == "expired":
+            _calibration(
+                db_session,
+                equipment,
+                next_due_date=STUDY_DATE - timedelta(days=1),
+            )
+        elif risk == "due_soon":
+            _calibration(
+                db_session,
+                equipment,
+                next_due_date=STUDY_DATE + timedelta(days=5),
+            )
+        elif risk == "valid":
+            _calibration(
+                db_session,
+                equipment,
+                next_due_date=STUDY_DATE + timedelta(days=90),
+            )
+    db_session.commit()
+
+    pages = [
+        MsaEquipmentService.list(
+            {
+                "page": str(page),
+                "page_size": "2",
+                "sort": "risk",
+                "order": "asc",
+                "as_of": STUDY_DATE.isoformat(),
+            }
+        )
+        for page in range(1, 5)
+    ]
+
+    assert [item["equipment_no"] for page in pages for item in page["items"]] == [
+        "EQ-FAILED",
+        "EQ-EXPIRED",
+        "EQ-PENDING",
+        "EQ-MAINT",
+        "EQ-DUE",
+        "EQ-MISSING",
+        "EQ-REST",
+    ]
+    assert all(page["total"] == 7 for page in pages)

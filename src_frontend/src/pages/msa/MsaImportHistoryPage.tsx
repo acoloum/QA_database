@@ -22,8 +22,12 @@ export default function MsaImportHistoryPage() {
   const [file, setFile] = useState<File | null>(null);
   const [currentBatch, setCurrentBatch] = useState<EquipmentImportBatch | null>(null);
   const [historyBatchId, setHistoryBatchId] = useState<number | null>(null);
+  const [rowPage, setRowPage] = useState(1);
   const history = useMsaImportHistory({ page, page_size: 20 });
-  const historyBatch = useMsaImportBatch(historyBatchId);
+  const historyBatch = useMsaImportBatch(historyBatchId, {
+    row_page: rowPage,
+    row_page_size: 100,
+  });
   const preview = usePreviewMsaEquipmentImport();
   const confirm = useConfirmMsaEquipmentImport();
   const shownBatch = currentBatch ?? historyBatch.data ?? null;
@@ -36,6 +40,7 @@ export default function MsaImportHistoryPage() {
       batchId: shownBatch.id,
       resolutions,
     });
+    setRowPage(1);
     setCurrentBatch(confirmed);
   };
 
@@ -72,6 +77,7 @@ export default function MsaImportHistoryPage() {
               if (!file) return;
               void preview.mutateAsync({ file }).then((batch: EquipmentImportBatch) => {
                 setHistoryBatchId(null);
+                setRowPage(1);
                 setCurrentBatch(batch);
               });
             }}
@@ -96,6 +102,13 @@ export default function MsaImportHistoryPage() {
           batch={shownBatch}
           onConfirm={canManage && shownBatch.status === 'previewed' ? confirmBatch : undefined}
           isConfirming={confirm.isPending}
+          onRowPageChange={(nextPage) => {
+            setRowPage(nextPage);
+            if (currentBatch) {
+              setHistoryBatchId(currentBatch.id);
+              setCurrentBatch(null);
+            }
+          }}
         />
       )}
 
@@ -140,6 +153,7 @@ export default function MsaImportHistoryPage() {
                       onClick={() => {
                         setCurrentBatch(null);
                         setHistoryBatchId(batch.id);
+                        setRowPage(1);
                       }}
                     >
                       檢視逐列證據

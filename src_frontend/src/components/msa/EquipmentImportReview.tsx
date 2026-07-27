@@ -12,13 +12,20 @@ interface EquipmentImportReviewProps {
     resolutions: Record<number, EquipmentImportResolution>,
   ) => void | Promise<void>;
   isConfirming?: boolean;
+  onRowPageChange?: (page: number) => void;
 }
 
-const UNIMPORTABLE = new Set([
-  'MSA_IMPORT_EQUIPMENT_NO_MISSING',
-  'MSA_IMPORT_EQUIPMENT_NAME_MISSING',
-  'MSA_IMPORT_EQUIPMENT_NO_DUPLICATE_IN_FILE',
-  'MSA_IMPORT_QUANTITY_REQUIRES_SPLIT',
+const REPAIRABLE_ISSUES = new Set([
+  'MSA_IMPORT_AMBIGUOUS_CALIBRATION_TYPE',
+  'MSA_IMPORT_CALIBRATION_TYPE_INVALID',
+  'MSA_IMPORT_EXEMPTION_REASON_MISSING',
+  'MSA_IMPORT_RESOLUTION_MISSING',
+  'MSA_IMPORT_RESOLUTION_INVALID',
+  'MSA_IMPORT_MODEL_MISSING',
+  'MSA_IMPORT_CUSTODIAN_MISSING',
+  'MSA_IMPORT_UNIT_MISSING',
+  'MSA_IMPORT_SERIAL_PREFIX_WITHOUT_VALUE',
+  'MSA_IMPORT_SERIAL_UNSUPPORTED_PREFIX',
 ]);
 
 const ISSUE_LABELS: Record<string, string> = {
@@ -30,6 +37,8 @@ const ISSUE_LABELS: Record<string, string> = {
   MSA_IMPORT_MODEL_MISSING: '型號缺漏',
   MSA_IMPORT_CUSTODIAN_MISSING: '保管人缺漏',
   MSA_IMPORT_UNIT_MISSING: '單位缺漏',
+  MSA_IMPORT_SERIAL_PREFIX_WITHOUT_VALUE: '序號前綴後缺少序號',
+  MSA_IMPORT_SERIAL_UNSUPPORTED_PREFIX: '序號前綴需人工確認',
 };
 
 const plainValue = (value: unknown) => {
@@ -45,7 +54,7 @@ const isComplete = (
   if (issueCodes.length === 0) return true;
   if (!resolution?.action) return false;
   if (resolution.action === 'reject') return true;
-  if (issueCodes.some((code) => UNIMPORTABLE.has(code))) return false;
+  if (issueCodes.some((code) => !REPAIRABLE_ISSUES.has(code))) return false;
   if (
     issueCodes.some((code) => (
       code === 'MSA_IMPORT_AMBIGUOUS_CALIBRATION_TYPE'
@@ -54,7 +63,10 @@ const isComplete = (
     && !resolution.calibration_type
   ) return false;
   if (
-    resolution.calibration_type === 'exempt'
+    (
+      resolution.calibration_type === 'exempt'
+      || issueCodes.includes('MSA_IMPORT_EXEMPTION_REASON_MISSING')
+    )
     && !resolution.calibration_exemption_reason?.trim()
   ) return false;
   if (
@@ -67,6 +79,13 @@ const isComplete = (
   if (issueCodes.includes('MSA_IMPORT_MODEL_MISSING') && !resolution.model?.trim()) return false;
   if (issueCodes.includes('MSA_IMPORT_CUSTODIAN_MISSING') && !resolution.custodian?.trim()) return false;
   if (issueCodes.includes('MSA_IMPORT_UNIT_MISSING') && !resolution.unit?.trim()) return false;
+  if (
+    issueCodes.some((code) => (
+      code === 'MSA_IMPORT_SERIAL_PREFIX_WITHOUT_VALUE'
+      || code === 'MSA_IMPORT_SERIAL_UNSUPPORTED_PREFIX'
+    ))
+    && !resolution.serial_no?.trim()
+  ) return false;
   return true;
 };
 
@@ -74,23 +93,36 @@ export default function EquipmentImportReview({
   batch,
   onConfirm,
   isConfirming = false,
+  onRowPageChange,
 }: EquipmentImportReviewProps) {
   const [resolutions, setResolutions] = useState<
     Record<number, EquipmentImportResolution>
   >({});
-  const issueRows = batch.rows.filter((row) => row.issue_codes.length > 0);
-  const unresolvedRows = useMemo(
-    () => issueRows.filter((row) => !isComplete(
-      row.issue_codes,
-      resolutions[row.id],
-    )),
-    [issueRows, resolutions],
+  const [resolutionIssues, setResolutionIssues] = useState<
+    Record<number, string[]>
+  >({});
+  const unresolvedCount = useMemo(
+    () => Math.max(
+      0,
+      batch.pending_rows - Object.entries(resolutions).filter(
+        ([rowId, resolution]) => isComplete(
+          resolutionIssues[Number(rowId)] ?? [],
+          resolution,
+        ),
+      ).length,
+    ),
+    [batch.pending_rows, resolutionIssues, resolutions],
   );
 
   const update = (
     rowId: number,
+    issueCodes: string[],
     patch: Partial<EquipmentImportResolution>,
   ) => {
+    setResolutionIssues((current) => ({
+      ...current,
+      [rowId]: issueCodes,
+    }));
     setResolutions((current) => ({
       ...current,
       [rowId]: { ...current[rowId], ...patch },
@@ -126,7 +158,7 @@ export default function EquipmentImportReview({
           <span>拒絕 {batch.rejected_rows} 筆</span>
         </div>
       ) : (
-        <p className="msa-import-pending">待人工確認 {issueRows.length} 筆</p>
+        <p className="msa-import-pending">待人工確認 {batch.pending_rows} 筆</p>
       )}
 
       <div className="msa-import-table-wrap">
@@ -178,13 +210,17 @@ export default function EquipmentImportReview({
                           列 {row.source_row_no} 處置
                           <select
                             value={resolution.action ?? ''}
-                            onChange={(event) => update(row.id, {
+                            onChange={(event) => update(row.id, row.issue_codes, {
                               action: event.target.value as EquipmentImportResolution['action'],
                             })}
                           >
                             <option value="">請選擇</option>
-                            <option value="accept">接受匯入</option>
-                            <option value="pending_review">建立為待確認</option>
+                            {row.issue_codes.every((code) => REPAIRABLE_ISSUES.has(code)) && (
+                              <>
+                                <option value="accept">接受匯入</option>
+                                <option value="pending_review">建立為待確認</option>
+                              </>
+                            )}
                             <option value="reject">拒絕此列</option>
                           </select>
                         </label>
@@ -196,7 +232,7 @@ export default function EquipmentImportReview({
                             列 {row.source_row_no} 校驗類別映射
                             <select
                               value={resolution.calibration_type ?? ''}
-                              onChange={(event) => update(row.id, {
+                              onChange={(event) => update(row.id, row.issue_codes, {
                                 calibration_type: event.target.value as CalibrationType,
                               })}
                             >
@@ -207,12 +243,15 @@ export default function EquipmentImportReview({
                             </select>
                           </label>
                         )}
-                        {resolution.calibration_type === 'exempt' && resolution.action !== 'reject' && (
+                        {(
+                          resolution.calibration_type === 'exempt'
+                          || row.issue_codes.includes('MSA_IMPORT_EXEMPTION_REASON_MISSING')
+                        ) && resolution.action !== 'reject' && (
                           <label>
                             列 {row.source_row_no} 免校理由
                             <input
                               value={resolution.calibration_exemption_reason ?? ''}
-                              onChange={(event) => update(row.id, {
+                              onChange={(event) => update(row.id, row.issue_codes, {
                                 calibration_exemption_reason: event.target.value,
                               })}
                             />
@@ -227,7 +266,11 @@ export default function EquipmentImportReview({
                             <input
                               inputMode="decimal"
                               value={String(resolution.resolution ?? '')}
-                              onChange={(event) => update(row.id, { resolution: event.target.value })}
+                              onChange={(event) => update(
+                                row.id,
+                                row.issue_codes,
+                                { resolution: event.target.value },
+                              )}
                             />
                           </label>
                         )}
@@ -236,7 +279,9 @@ export default function EquipmentImportReview({
                             列 {row.source_row_no} 單位
                             <input
                               value={resolution.unit ?? ''}
-                              onChange={(event) => update(row.id, { unit: event.target.value })}
+                              onChange={(event) => update(
+                                row.id, row.issue_codes, { unit: event.target.value },
+                              )}
                             />
                           </label>
                         )}
@@ -245,7 +290,9 @@ export default function EquipmentImportReview({
                             列 {row.source_row_no} 型號
                             <input
                               value={resolution.model ?? ''}
-                              onChange={(event) => update(row.id, { model: event.target.value })}
+                              onChange={(event) => update(
+                                row.id, row.issue_codes, { model: event.target.value },
+                              )}
                             />
                           </label>
                         )}
@@ -254,7 +301,23 @@ export default function EquipmentImportReview({
                             列 {row.source_row_no} 保管人
                             <input
                               value={resolution.custodian ?? ''}
-                              onChange={(event) => update(row.id, { custodian: event.target.value })}
+                              onChange={(event) => update(
+                                row.id, row.issue_codes, { custodian: event.target.value },
+                              )}
+                            />
+                          </label>
+                        )}
+                        {row.issue_codes.some((code) => (
+                          code === 'MSA_IMPORT_SERIAL_PREFIX_WITHOUT_VALUE'
+                          || code === 'MSA_IMPORT_SERIAL_UNSUPPORTED_PREFIX'
+                        )) && resolution.action !== 'reject' && (
+                          <label>
+                            列 {row.source_row_no} 序號
+                            <input
+                              value={resolution.serial_no ?? ''}
+                              onChange={(event) => update(
+                                row.id, row.issue_codes, { serial_no: event.target.value },
+                              )}
                             />
                           </label>
                         )}
@@ -269,17 +332,38 @@ export default function EquipmentImportReview({
           </tbody>
         </table>
       </div>
+      {batch.rows_total > batch.row_page_size && (
+        <nav className="msa-pagination" aria-label="逐列證據分頁">
+          <button
+            type="button"
+            aria-label="上一頁逐列證據"
+            disabled={batch.row_page <= 1}
+            onClick={() => onRowPageChange?.(batch.row_page - 1)}
+          >
+            上一頁
+          </button>
+          <span>第 {batch.row_page} 頁 · 共 {batch.rows_total} 列</span>
+          <button
+            type="button"
+            aria-label="下一頁逐列證據"
+            disabled={(batch.row_page * batch.row_page_size) >= batch.rows_total}
+            onClick={() => onRowPageChange?.(batch.row_page + 1)}
+          >
+            下一頁
+          </button>
+        </nav>
+      )}
       {batch.status === 'previewed' && onConfirm && (
         <footer className="msa-import-review__footer">
           <p aria-live="polite">
-            {unresolvedRows.length > 0
-              ? `尚有 ${unresolvedRows.length} 列 blocking issue 未解決`
+            {unresolvedCount > 0
+              ? `尚有 ${unresolvedCount} 列 blocking issue 未解決`
               : '所有 blocking issue 已逐列處置'}
           </p>
           <button
             type="button"
             className="msa-button msa-button--primary"
-            disabled={unresolvedRows.length > 0 || isConfirming}
+            disabled={unresolvedCount > 0 || isConfirming}
             onClick={() => void onConfirm(resolutions)}
           >
             確認匯入

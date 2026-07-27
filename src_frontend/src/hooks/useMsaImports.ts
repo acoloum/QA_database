@@ -6,6 +6,7 @@ import type {
   EquipmentImportBatch,
   EquipmentImportBatchSummary,
   EquipmentImportHistoryParams,
+  EquipmentImportRowPageParams,
   MsaPage,
   PreviewMsaEquipmentImportInput,
 } from '../types/msa';
@@ -35,11 +36,18 @@ export const useMsaImportHistory = (params: EquipmentImportHistoryParams) => use
   ),
 });
 
-export const useMsaImportBatch = (batchId: number | null) => useQuery({
-  queryKey: msaKeys.importBatch(batchId ?? 0),
+export const useMsaImportBatch = (
+  batchId: number | null,
+  params: EquipmentImportRowPageParams = {
+    row_page: 1,
+    row_page_size: 100,
+  },
+) => useQuery({
+  queryKey: msaKeys.importBatch(batchId ?? 0, params),
   queryFn: async () => unwrap(
     await api.get<ApiEnvelope<EquipmentImportBatch>>(
       `/measurement-equipment/imports/${batchId}`,
+      { params },
     ),
   ),
   enabled: batchId != null,
