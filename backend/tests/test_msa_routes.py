@@ -13,6 +13,8 @@ from backend.models import (
     EquipmentStatusEvent,
     MeasurementEquipment,
     MeasurementEquipmentLink,
+    MsaCriteriaProfile,
+    MsaCriteriaVersion,
     Recorder,
     Role,
     Thermocouple,
@@ -112,6 +114,248 @@ def _import_csv_bytes():
         "設備編號,名稱,狀態,類別,解析度,單位\n"
         "EQ-IMPORT-API,API 測試量具,使用中,外校,0.01,mm\n"
     ).encode("utf-8-sig")
+
+
+def _criteria_profile_payload(name="API 一般計量準則"):
+    return {
+        "name": name,
+        "customer_scope": "一般顧客",
+        "applicable_study_types": ["grr_anova", "stability"],
+    }
+
+
+def _criteria_version_payload(**overrides):
+    payload = {
+        "method_version": "MSA4-1.0",
+        "effective_date": "2026-07-27",
+        "thresholds": {
+            "grr_accept_max": 8,
+            "grr_conditional_max": 20,
+            "ndc_min": 5,
+        },
+        "stability_rules": {
+            "rule_set": "WECO",
+            "enabled_rules": [1, 2, 3, 4],
+        },
+        "conditional_actions": ["記錄接受理由", "建立改善與監控措施"],
+        "basis": "AIAG MSA 第四版及顧客要求",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _create_criteria_profile(client, headers, name="API 一般計量準則"):
+    response = client.post(
+        "/api/msa/criteria",
+        json=_criteria_profile_payload(name),
+        headers=headers("msa_manage"),
+    )
+    assert response.status_code == 201
+    return response.get_json()["data"]
+
+
+def _create_criteria_version(client, headers, profile_id, **overrides):
+    response = client.post(
+        f"/api/msa/criteria/{profile_id}/versions",
+        json=_criteria_version_payload(**overrides),
+        headers=headers("msa_manage"),
+    )
+    assert response.status_code == 201
+    return response.get_json()["data"]
+
+
+def test_criteria_routes_use_stable_auth_and_permission_envelopes(
+    client,
+    msa_user_headers,
+):
+    missing_auth = client.get("/api/msa/criteria")
+    invalid_auth = client.get(
+        "/api/msa/criteria",
+        headers={"Authorization": "Bearer invalid-token"},
+    )
+    forbidden_list = client.get(
+        "/api/msa/criteria",
+        headers=msa_user_headers("no_msa"),
+    )
+    forbidden_create = client.post(
+        "/api/msa/criteria",
+        json=_criteria_profile_payload(),
+        headers=msa_user_headers("msa_execute"),
+    )
+
+    assert missing_auth.status_code == 401
+    assert missing_auth.get_json() == {
+        "error": {
+            "code": "MSA_AUTH_REQUIRED",
+            "message": "缺少認證 Token",
+            "details": {},
+        }
+    }
+    assert invalid_auth.status_code == 401
+    assert invalid_auth.get_json()["error"] == {
+        "code": "MSA_AUTH_INVALID_TOKEN",
+        "message": "無效或過期的 Token",
+        "details": {},
+    }
+    assert forbidden_list.status_code == 403
+    assert forbidden_list.get_json()["error"] == {
+        "code": "MSA_PERMISSION_DENIED",
+        "message": "權限不足",
+        "details": {"permission": "msa.view"},
+    }
+    assert forbidden_create.status_code == 403
+    assert forbidden_create.get_json()["error"]["details"] == {
+        "permission": "msa.manage"
+    }
+
+
+def test_manage_can_create_profile_and_complete_draft_version(
+    client,
+    msa_user_headers,
+):
+    profile = _create_criteria_profile(client, msa_user_headers)
+    version = _create_criteria_version(
+        client,
+        msa_user_headers,
+        profile["id"],
+    )
+
+    assert profile["name"] == "API 一般計量準則"
+    assert profile["current_version_id"] is None
+    assert version["profile_id"] == profile["id"]
+    assert version["status"] == "draft"
+    assert version["is_current"] is False
+    assert version["thresholds"]["alpha"] == 0.05
+    assert version["thresholds"]["kappa_min"] == 0.75
+    assert version["stability_rules"] == {
+        "rule_set": "WECO",
+        "enabled_rules": [1, 2, 3, 4],
+    }
+    assert version["conditional_actions"] == [
+        "記錄接受理由",
+        "建立改善與監控措施",
+    ]
+    assert version["basis"] == "AIAG MSA 第四版及顧客要求"
+
+
+def test_criteria_list_requires_view_and_uses_bounded_sorting(
+    client,
+    msa_user_headers,
+):
+    _create_criteria_profile(client, msa_user_headers, "B 準則")
+    _create_criteria_profile(client, msa_user_headers, "A 準則")
+
+    response = client.get(
+        "/api/msa/criteria?page=1&page_size=1&sort=name&order=asc",
+        headers=msa_user_headers("msa_view"),
+    )
+    invalid = client.get(
+        "/api/msa/criteria?page_size=101",
+        headers=msa_user_headers("msa_view"),
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["data"]["total"] == 2
+    assert response.get_json()["data"]["items"][0]["name"] == "A 準則"
+    assert invalid.status_code == 422
+    assert invalid.get_json()["error"]["code"] == "MSA_CRITERIA_PAGE_SIZE_INVALID"
+
+
+def test_only_msa_approve_can_approve_criteria_version(
+    client,
+    db_session,
+    msa_user_headers,
+):
+    profile = _create_criteria_profile(client, msa_user_headers)
+    version = _create_criteria_version(
+        client,
+        msa_user_headers,
+        profile["id"],
+    )
+    payload = {"expected_status": "draft"}
+
+    forbidden = client.post(
+        f"/api/msa/criteria/versions/{version['id']}/approve",
+        json=payload,
+        headers=msa_user_headers("msa_manage"),
+    )
+    approved = client.post(
+        f"/api/msa/criteria/versions/{version['id']}/approve",
+        json=payload,
+        headers=msa_user_headers("msa_approve"),
+    )
+    stale = client.post(
+        f"/api/msa/criteria/versions/{version['id']}/approve",
+        json=payload,
+        headers=msa_user_headers("msa_approve"),
+    )
+
+    assert forbidden.status_code == 403
+    assert approved.status_code == 200
+    assert approved.get_json()["data"]["status"] == "approved"
+    assert approved.get_json()["data"]["is_current"] is True
+    assert stale.status_code == 409
+    assert stale.get_json()["error"]["code"] == "MSA_VERSION_CONFLICT"
+    db_session.expire_all()
+    persisted_profile = db_session.get(MsaCriteriaProfile, profile["id"])
+    persisted_version = db_session.get(MsaCriteriaVersion, version["id"])
+    assert persisted_profile.current_version_id == persisted_version.id
+    assert persisted_version.status == "approved"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"expected_status": "approved"},
+        {"expected_status": "draft", "unexpected": True},
+    ],
+)
+def test_criteria_approve_rejects_invalid_payload(
+    client,
+    msa_user_headers,
+    payload,
+):
+    profile = _create_criteria_profile(client, msa_user_headers)
+    version = _create_criteria_version(
+        client,
+        msa_user_headers,
+        profile["id"],
+    )
+
+    response = client.post(
+        f"/api/msa/criteria/versions/{version['id']}/approve",
+        json=payload,
+        headers=msa_user_headers("msa_approve"),
+    )
+
+    assert response.status_code == 422
+    assert response.get_json()["error"]["code"] in {
+        "MSA_EXPECTED_STATUS_INVALID",
+        "MSA_UNKNOWN_FIELDS",
+    }
+
+
+def test_criteria_validation_and_not_found_use_stable_envelope(
+    client,
+    msa_user_headers,
+):
+    invalid = client.post(
+        "/api/msa/criteria",
+        json={"name": "  "},
+        headers=msa_user_headers("msa_manage"),
+    )
+    missing = client.post(
+        "/api/msa/criteria/999999/versions",
+        json=_criteria_version_payload(),
+        headers=msa_user_headers("msa_manage"),
+    )
+
+    assert invalid.status_code == 422
+    assert set(invalid.get_json()["error"]) == {"code", "message", "details"}
+    assert invalid.get_json()["error"]["code"] == "MSA_CRITERIA_PROFILE_INVALID"
+    assert missing.status_code == 404
+    assert missing.get_json()["error"]["code"] == "MSA_CRITERIA_PROFILE_NOT_FOUND"
 
 
 def test_equipment_import_preview_requires_msa_manage(

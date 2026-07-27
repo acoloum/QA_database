@@ -25,6 +25,7 @@ from .routes.pyrometry import pyrometry_bp
 from .routes.spc_studies import spc_studies_bp
 from .routes.mechanical import mechanical_bp
 from .routes.measurement_equipment import measurement_equipment_bp
+from .routes.msa import msa_bp
 from .storage import create_storage_backend
 
 app = Flask(__name__)
@@ -81,6 +82,7 @@ app.register_blueprint(pyrometry_bp)
 app.register_blueprint(spc_studies_bp)
 app.register_blueprint(mechanical_bp)
 app.register_blueprint(measurement_equipment_bp)
+app.register_blueprint(msa_bp)
 
 # ============================================================
 # 前端 SPA 服務（生產：waitress 單一程序同時服務前端與 /api）
