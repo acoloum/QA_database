@@ -20,6 +20,8 @@ _ENTITY_PERMISSION_PREFIX = {
     'task': 'task',
     'complaint': 'complaint',
     'pyrometry': 'pyrometry',
+    'measurement_equipment': 'msa',
+    'equipment_calibration': 'msa',
 }
 
 
@@ -34,6 +36,9 @@ def _has_entity_permission(current_user, entity_type: str, action: str) -> bool:
     role = Role.query.filter_by(code=role_code).first() if role_code else None
     if not role:
         return False
+    if entity_type in {'measurement_equipment', 'equipment_calibration'}:
+        required = 'msa.view' if action == 'view' else 'msa.manage'
+        return role.has_permission(required)
     if action == 'view' and role.has_permission(f'{prefix}.edit'):
         return True
     return role.has_permission(f'{prefix}.{action}')
