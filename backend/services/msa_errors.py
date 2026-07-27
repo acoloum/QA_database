@@ -37,6 +37,18 @@ class MsaValidationError(MsaServiceError):
     status_code = 422
 
 
+class MsaMethodNotApplicable(MsaValidationError):
+    """資料或設計不符合此統計方法的前提，不得產生偽正式結果。"""
+
+    def __init__(self, reason: str, message: str, *, details=None):
+        payload = {"reason": reason}
+        payload.update(details or {})
+        super().__init__(
+            "MSA_METHOD_NOT_APPLICABLE", message, details=payload,
+        )
+        self.reason = reason
+
+
 class MsaInternalError(MsaServiceError):
     """MSA 儲存或補償動作失敗，呼叫端不可自行重試狀態轉換。"""
 

@@ -84,17 +84,17 @@ def _descriptor(
 METHODS = {
     "MSA4_GRR_RANGE_1_0": _descriptor(
         "MSA4_GRR_RANGE_1_0",
-        "backend.services.msa_grr:analyze_range",
+        "backend.services.msa_variable_grr:analyze_range",
         {"parts": 5, "appraisers": 2, "trials": 1},
     ),
     "MSA4_GRR_XBAR_R_1_0": _descriptor(
         "MSA4_GRR_XBAR_R_1_0",
-        "backend.services.msa_grr:analyze_xbar_r",
+        "backend.services.msa_variable_grr:analyze_xbar_r",
         {"parts": 2, "appraisers": 2, "trials": 2},
     ),
     "MSA4_GRR_ANOVA_1_0": _descriptor(
         "MSA4_GRR_ANOVA_1_0",
-        "backend.services.msa_anova:analyze_crossed_anova",
+        "backend.services.msa_variable_grr:analyze_crossed_anova",
         {"parts": 2, "appraisers": 2, "trials": 2},
         interaction_policy="reduce_when_p_ge_alpha",
     ),

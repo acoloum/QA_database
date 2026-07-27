@@ -1,0 +1,126 @@
+{
+  "description": "2 評價人 × 3 零件 × 2 試驗的平衡交叉設計；期望值由獨立算式計算，未使用待測引擎。",
+  "design": {
+    "parts": 3,
+    "appraisers": 2,
+    "trials": 2
+  },
+  "context": {
+    "method_code": "MSA4_GRR_XBAR_R_1_0",
+    "method_version": "1.0",
+    "alpha": 0.05,
+    "study_variation_multiplier": 6.0,
+    "tolerance": 1.0,
+    "process_sigma": null,
+    "criteria": {
+      "grr_accept_max": 10,
+      "grr_conditional_max": 30,
+      "ndc_min": 5
+    }
+  },
+  "observations": [
+    {
+      "part": "P01",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": 10.0
+    },
+    {
+      "part": "P01",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": 10.02
+    },
+    {
+      "part": "P02",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": 10.1
+    },
+    {
+      "part": "P02",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": 10.12
+    },
+    {
+      "part": "P03",
+      "appraiser": "A01",
+      "trial": 1,
+      "value": 10.2
+    },
+    {
+      "part": "P03",
+      "appraiser": "A01",
+      "trial": 2,
+      "value": 10.18
+    },
+    {
+      "part": "P01",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": 10.04
+    },
+    {
+      "part": "P01",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": 10.02
+    },
+    {
+      "part": "P02",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": 10.14
+    },
+    {
+      "part": "P02",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": 10.12
+    },
+    {
+      "part": "P03",
+      "appraiser": "A02",
+      "trial": 1,
+      "value": 10.22
+    },
+    {
+      "part": "P03",
+      "appraiser": "A02",
+      "trial": 2,
+      "value": 10.24
+    }
+  ],
+  "expected": {
+    "r_bar": 0.01999999999999987,
+    "ev": 0.017730496453900596,
+    "av": 0.022505239674539327,
+    "av_raw_variance": 0.000506485812808459,
+    "grr": 0.028650590173855767,
+    "pv": 0.11222681630242248,
+    "tv": 0.11582622593647744,
+    "ndc": 5,
+    "percent_study_variation": {
+      "ev": 15.307842684630446,
+      "av": 19.430176104401323,
+      "grr": 24.735840214260804,
+      "pv": 96.89240532102896
+    },
+    "percent_tolerance": {
+      "ev": 10.638297872340358,
+      "av": 13.503143804723596,
+      "grr": 17.19035410431346,
+      "pv": 67.3360897814535
+    },
+    "appraiser_means": {
+      "A01": 10.103333333333333,
+      "A02": 10.13
+    },
+    "part_means": {
+      "P01": 10.02,
+      "P02": 10.12,
+      "P03": 10.21
+    }
+  }
+}
