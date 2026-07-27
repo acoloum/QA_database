@@ -1112,6 +1112,607 @@ event.listen(
 )
 
 
+# ============================================================
+# MSA 研究生命週期：計畫、盲測觀測、不可變結果與工作流證據
+# ============================================================
+
+
+class MsaStudy(db.Model):
+    """一次量測系統分析研究的識別資料、規格範圍與目前狀態。"""
+
+    __tablename__ = 'MSA研究'
+    __table_args__ = (
+        db.CheckConstraint(
+            '"規格下限" IS NULL OR "規格上限" IS NULL '
+            'OR "規格下限" < "規格上限"',
+            name='ck_msa_study_spec_order',
+        ),
+        db.Index('idx_msa_study_status_due', '狀態', '下次到期日'),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    study_no = db.Column('研究編號', db.String(40), nullable=False, unique=True)
+    study_type = db.Column('研究類型', db.String(40), nullable=False)
+    measurement_purpose = db.Column('量測目的', db.String(40), nullable=False)
+    characteristic = db.Column('品質特性', db.String(200), nullable=False)
+    unit = db.Column('單位', db.String(40), nullable=False)
+    lsl = db.Column('規格下限', db.Numeric, nullable=True)
+    usl = db.Column('規格上限', db.Numeric, nullable=True)
+    no_tolerance_reason = db.Column('無公差原因', db.Text, nullable=True)
+    process_sigma = db.Column('製程標準差', db.Numeric, nullable=True)
+    criteria_profile_id = db.Column(
+        '準則設定ID', db.Integer, db.ForeignKey('MSA準則設定.識別碼'),
+        nullable=True,
+    )
+    responsible_user_id = db.Column(
+        '負責人ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    primary_executor_id = db.Column(
+        '主要執行者ID', db.Integer, db.ForeignKey('使用者.識別碼'),
+        nullable=True,
+    )
+    status = db.Column('狀態', db.String(30), nullable=False, default='draft')
+    current_plan_version_id = db.Column(
+        '目前計畫版本ID', db.Integer, nullable=True
+    )
+    current_result_version_id = db.Column(
+        '目前結果版本ID', db.Integer, nullable=True
+    )
+    previous_approved_study_id = db.Column(
+        '前次核准研究ID', db.Integer, db.ForeignKey('MSA研究.識別碼'),
+        nullable=True,
+    )
+    next_due_date = db.Column('下次到期日', db.Date, nullable=True)
+    created_by_id = db.Column(
+        '建立者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    created_at = db.Column(
+        '建立時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_by_id = db.Column(
+        '更新者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    updated_at = db.Column(
+        '更新時間', db.DateTime(timezone=True), nullable=False,
+        default=utc_now, onupdate=utc_now,
+    )
+
+    equipment_links = db.relationship(
+        'MsaStudyEquipment', back_populates='study',
+    )
+    plan_versions = db.relationship(
+        'MsaPlanVersion', back_populates='study',
+        order_by='MsaPlanVersion.plan_version_no',
+        foreign_keys='MsaPlanVersion.study_id',
+    )
+    result_versions = db.relationship(
+        'MsaResultVersion', back_populates='study',
+        order_by='MsaResultVersion.result_version_no',
+        foreign_keys='MsaResultVersion.study_id',
+    )
+
+
+class MsaStudyEquipment(db.Model):
+    """研究實際使用的量測設備及其角色與量測模式。"""
+
+    __tablename__ = 'MSA研究設備'
+    __table_args__ = (
+        db.UniqueConstraint(
+            '研究ID', '設備ID', '角色', '量測模式',
+            name='uq_msa_study_equipment_role',
+        ),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    study_id = db.Column(
+        '研究ID', db.Integer, db.ForeignKey('MSA研究.識別碼'), nullable=False
+    )
+    equipment_id = db.Column(
+        '設備ID', db.Integer, db.ForeignKey('量測設備.識別碼'), nullable=False
+    )
+    role = db.Column('角色', db.String(40), nullable=False)
+    measurement_mode = db.Column(
+        '量測模式', db.String(60), nullable=False, default='default'
+    )
+    note = db.Column('備註', db.Text, nullable=True)
+
+    study = db.relationship('MsaStudy', back_populates='equipment_links')
+    equipment = db.relationship('MeasurementEquipment')
+
+
+class MsaPlanVersion(db.Model):
+    """研究設計版本；凍結後即為不可變的正式設計證據。"""
+
+    __tablename__ = 'MSA計畫版本'
+    __table_args__ = (
+        db.UniqueConstraint(
+            '研究ID', '計畫版本號', name='uq_msa_plan_revision'
+        ),
+        db.CheckConstraint(
+            '"零件數" > 0 AND "評價人數" > 0 AND "試驗次數" > 0',
+            name='ck_msa_plan_counts',
+        ),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    study_id = db.Column(
+        '研究ID', db.Integer, db.ForeignKey('MSA研究.識別碼'), nullable=False
+    )
+    plan_version_no = db.Column('計畫版本號', db.Integer, nullable=False)
+    method_code = db.Column('方法代碼', db.String(80), nullable=False)
+    method_version = db.Column('方法版本', db.String(40), nullable=False)
+    design_type = db.Column(
+        '設計型態', db.String(40), nullable=False, default='crossed'
+    )
+    part_count = db.Column('零件數', db.Integer, nullable=False)
+    appraiser_count = db.Column('評價人數', db.Integer, nullable=False)
+    trial_count = db.Column('試驗次數', db.Integer, nullable=False)
+    random_seed = db.Column('隨機種子', db.BigInteger, nullable=False)
+    randomized_order = db.Column(
+        '隨機順序', db.JSON, nullable=False, default=list
+    )
+    equipment_snapshot = db.Column(
+        '設備快照', db.JSON, nullable=False, default=dict
+    )
+    criteria_snapshot = db.Column(
+        '準則快照', db.JSON, nullable=False, default=dict
+    )
+    category_set = db.Column(
+        '計數類別集合', db.JSON, nullable=False, default=list
+    )
+    sampling_notes = db.Column('抽樣說明', db.Text, nullable=True)
+    environment_notes = db.Column('環境說明', db.Text, nullable=True)
+    plan_hash = db.Column('計畫雜湊', db.String(64), nullable=True)
+    frozen_by_id = db.Column(
+        '凍結者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    frozen_at = db.Column('凍結時間', db.DateTime(timezone=True), nullable=True)
+    created_by_id = db.Column(
+        '建立者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    created_at = db.Column(
+        '建立時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+    study = db.relationship(
+        'MsaStudy', back_populates='plan_versions', foreign_keys=[study_id],
+    )
+    parts = db.relationship(
+        'MsaPart', back_populates='plan_version',
+        order_by='MsaPart.part_no',
+    )
+    appraisers = db.relationship(
+        'MsaAppraiser', back_populates='plan_version',
+        order_by='MsaAppraiser.appraiser_no',
+    )
+    observations = db.relationship(
+        'MsaObservation', back_populates='plan_version',
+        foreign_keys='MsaObservation.plan_version_id',
+    )
+
+    @property
+    def is_frozen(self) -> bool:
+        return self.frozen_at is not None
+
+
+class MsaPart(db.Model):
+    """計畫中的樣本零件；盲碼供評價人辨識，真實識別與參考值不外流。"""
+
+    __tablename__ = 'MSA零件'
+    __table_args__ = (
+        db.UniqueConstraint('計畫版本ID', '零件序號', name='uq_msa_part_no'),
+        db.UniqueConstraint(
+            '計畫版本ID', '盲碼', name='uq_msa_part_blind_code'
+        ),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    plan_version_id = db.Column(
+        '計畫版本ID', db.Integer, db.ForeignKey('MSA計畫版本.識別碼'),
+        nullable=False,
+    )
+    part_no = db.Column('零件序號', db.Integer, nullable=False)
+    blind_code = db.Column('盲碼', db.String(40), nullable=False)
+    part_identifier = db.Column('零件識別', db.String(200), nullable=True)
+    reference_value = db.Column('參考值', db.Numeric, nullable=True)
+    reference_uncertainty = db.Column(
+        '參考不確定度', db.Numeric, nullable=True
+    )
+    note = db.Column('備註', db.Text, nullable=True)
+
+    plan_version = db.relationship('MsaPlanVersion', back_populates='parts')
+
+
+class MsaAppraiser(db.Model):
+    """計畫中的評價人；盲碼用於統計輸出，不揭露其他人的讀值。"""
+
+    __tablename__ = 'MSA評價人'
+    __table_args__ = (
+        db.UniqueConstraint(
+            '計畫版本ID', '評價人序號', name='uq_msa_appraiser_no'
+        ),
+        db.UniqueConstraint(
+            '計畫版本ID', '盲碼', name='uq_msa_appraiser_blind_code'
+        ),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    plan_version_id = db.Column(
+        '計畫版本ID', db.Integer, db.ForeignKey('MSA計畫版本.識別碼'),
+        nullable=False,
+    )
+    appraiser_no = db.Column('評價人序號', db.Integer, nullable=False)
+    blind_code = db.Column('盲碼', db.String(40), nullable=False)
+    user_id = db.Column(
+        '使用者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    name = db.Column('姓名', db.String(120), nullable=False)
+    qualification = db.Column('資格說明', db.Text, nullable=True)
+
+    plan_version = db.relationship(
+        'MsaPlanVersion', back_populates='appraisers'
+    )
+
+
+class MsaObservationImportBatch(db.Model):
+    """觀測 Excel 匯入批次；以檔案指紋讓確認具冪等性。"""
+
+    __tablename__ = 'MSA觀測匯入批次'
+    __table_args__ = (
+        db.UniqueConstraint(
+            '計畫版本ID', '檔案SHA256', name='uq_msa_observation_import_sha'
+        ),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    plan_version_id = db.Column(
+        '計畫版本ID', db.Integer, db.ForeignKey('MSA計畫版本.識別碼'),
+        nullable=False,
+    )
+    file_name = db.Column('檔案名稱', db.String(255), nullable=False)
+    file_sha256 = db.Column('檔案SHA256', db.String(64), nullable=False)
+    plan_hash = db.Column('計畫雜湊', db.String(64), nullable=True)
+    status = db.Column(
+        '狀態', db.String(30), nullable=False, default='previewed'
+    )
+    issues = db.Column('問題', db.JSON, nullable=False, default=list)
+    stats = db.Column('統計', db.JSON, nullable=False, default=dict)
+    created_by_id = db.Column(
+        '建立者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    created_at = db.Column(
+        '建立時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class MsaObservation(db.Model):
+    """單筆盲測讀值；修正以新增後繼紀錄表達，原紀錄只可作廢。"""
+
+    __tablename__ = 'MSA觀測'
+    __table_args__ = (
+        db.CheckConstraint(
+            '("計量讀值" IS NOT NULL AND "計數分類" IS NULL) OR '
+            '("計量讀值" IS NULL AND "計數分類" IS NOT NULL)',
+            name='ck_msa_observation_one_value',
+        ),
+        db.CheckConstraint('"試驗次數" > 0', name='ck_msa_observation_trial'),
+        db.Index(
+            'uq_msa_effective_observation',
+            '計畫版本ID', '零件ID', '評價人ID', '試驗次數',
+            unique=True,
+            sqlite_where=db.text('"是否有效" = 1'),
+            postgresql_where=db.text('"是否有效" IS TRUE'),
+        ),
+        db.Index(
+            'idx_msa_observation_plan_order', '計畫版本ID', '實際輸入順序'
+        ),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    plan_version_id = db.Column(
+        '計畫版本ID', db.Integer, db.ForeignKey('MSA計畫版本.識別碼'),
+        nullable=False,
+    )
+    part_id = db.Column(
+        '零件ID', db.Integer, db.ForeignKey('MSA零件.識別碼'), nullable=False
+    )
+    appraiser_id = db.Column(
+        '評價人ID', db.Integer, db.ForeignKey('MSA評價人.識別碼'),
+        nullable=False,
+    )
+    trial_no = db.Column('試驗次數', db.Integer, nullable=False)
+    requested_order = db.Column('要求順序', db.Integer, nullable=False)
+    actual_entry_order = db.Column('實際輸入順序', db.Integer, nullable=False)
+    numeric_value = db.Column('計量讀值', db.Numeric, nullable=True)
+    attribute_value = db.Column('計數分類', db.String(80), nullable=True)
+    measured_at = db.Column('量測時間', db.DateTime(timezone=True), nullable=True)
+    source = db.Column('來源', db.String(30), nullable=False)
+    entered_by_id = db.Column(
+        '輸入者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=False
+    )
+    is_effective = db.Column(
+        '是否有效', db.Boolean, nullable=False, default=True
+    )
+    supersedes_id = db.Column(
+        '取代來源ID', db.Integer, db.ForeignKey('MSA觀測.識別碼'),
+        nullable=True,
+    )
+    correction_reason = db.Column('修正理由', db.Text, nullable=True)
+    import_batch_id = db.Column(
+        '匯入批次ID', db.Integer, db.ForeignKey('MSA觀測匯入批次.識別碼'),
+        nullable=True,
+    )
+    created_at = db.Column(
+        '建立時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+    plan_version = db.relationship(
+        'MsaPlanVersion', back_populates='observations',
+        foreign_keys=[plan_version_id],
+    )
+    part = db.relationship('MsaPart')
+    appraiser = db.relationship('MsaAppraiser')
+    supersedes = db.relationship('MsaObservation', remote_side=[id])
+
+
+class MsaResultVersion(db.Model):
+    """不可變的分析結果版本；只有工作流狀態可再變更。"""
+
+    __tablename__ = 'MSA結果版本'
+    __table_args__ = (
+        db.UniqueConstraint(
+            '研究ID', '結果版本號', name='uq_msa_result_revision'
+        ),
+        db.Index(
+            'uq_msa_one_submitted_result', '研究ID',
+            unique=True,
+            sqlite_where=db.text('"狀態" = \'submitted\''),
+            postgresql_where=db.text('"狀態" = \'submitted\''),
+        ),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    study_id = db.Column(
+        '研究ID', db.Integer, db.ForeignKey('MSA研究.識別碼'), nullable=False
+    )
+    plan_version_id = db.Column(
+        '計畫版本ID', db.Integer, db.ForeignKey('MSA計畫版本.識別碼'),
+        nullable=False,
+    )
+    result_version_no = db.Column('結果版本號', db.Integer, nullable=False)
+    method_code = db.Column('方法代碼', db.String(80), nullable=False)
+    method_version = db.Column('方法版本', db.String(40), nullable=False)
+    code_version = db.Column('程式版本', db.String(80), nullable=False)
+    data_hash = db.Column('資料雜湊', db.String(64), nullable=False)
+    raw_data_summary = db.Column('原始資料摘要', db.JSON, nullable=False)
+    applicability_result = db.Column('適用性結果', db.JSON, nullable=False)
+    statistics = db.Column('統計結果', db.JSON, nullable=False)
+    chart_data = db.Column('圖表資料', db.JSON, nullable=False)
+    criteria_snapshot = db.Column('準則快照', db.JSON, nullable=False)
+    conclusion = db.Column('結論', db.JSON, nullable=False)
+    warnings = db.Column('警告', db.JSON, nullable=False, default=list)
+    blockers = db.Column('阻擋條件', db.JSON, nullable=False, default=list)
+    status = db.Column(
+        '狀態', db.String(30), nullable=False, default='analyzed'
+    )
+    created_by_id = db.Column(
+        '建立者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    created_at = db.Column(
+        '建立時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+    study = db.relationship(
+        'MsaStudy', back_populates='result_versions', foreign_keys=[study_id],
+    )
+    plan_version = db.relationship('MsaPlanVersion')
+
+
+class MsaWorkflowDecision(db.Model):
+    """append-only 的工作流決策軌跡，含職責分離檢查結果。"""
+
+    __tablename__ = 'MSA工作流決策'
+    __table_args__ = (
+        db.Index('idx_msa_decision_study', '研究ID', '建立時間'),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    study_id = db.Column(
+        '研究ID', db.Integer, db.ForeignKey('MSA研究.識別碼'), nullable=False
+    )
+    result_version_id = db.Column(
+        '結果版本ID', db.Integer, db.ForeignKey('MSA結果版本.識別碼'),
+        nullable=True,
+    )
+    action = db.Column('動作', db.String(40), nullable=False)
+    from_status = db.Column('原狀態', db.String(30), nullable=True)
+    to_status = db.Column('新狀態', db.String(30), nullable=True)
+    reason = db.Column('理由', db.Text, nullable=True)
+    actor_id = db.Column(
+        '執行者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=False
+    )
+    separation_check = db.Column(
+        '職責分離檢查', db.JSON, nullable=False, default=dict
+    )
+    extra_data = db.Column('附加資料', db.JSON, nullable=False, default=dict)
+    created_at = db.Column(
+        '建立時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class MsaRestudyRequest(db.Model):
+    """由週期或設備／方法事件觸發的再研究要求，以來源事件保持冪等。"""
+
+    __tablename__ = 'MSA再研究要求'
+    __table_args__ = (
+        db.Index(
+            'uq_msa_restudy_source_event',
+            '來源研究ID', '觸發類型', '來源實體類型', '來源實體ID',
+            unique=True,
+            sqlite_where=db.text('"來源實體ID" IS NOT NULL'),
+            postgresql_where=db.text('"來源實體ID" IS NOT NULL'),
+        ),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    source_study_id = db.Column(
+        '來源研究ID', db.Integer, db.ForeignKey('MSA研究.識別碼'),
+        nullable=False,
+    )
+    trigger_type = db.Column('觸發類型', db.String(60), nullable=False)
+    source_entity_type = db.Column('來源實體類型', db.String(60), nullable=False)
+    source_entity_id = db.Column('來源實體ID', db.Integer, nullable=True)
+    trigger_payload = db.Column(
+        '觸發內容', db.JSON, nullable=False, default=dict
+    )
+    due_date = db.Column('到期日', db.Date, nullable=True)
+    status = db.Column('狀態', db.String(30), nullable=False, default='open')
+    new_study_id = db.Column(
+        '新研究ID', db.Integer, db.ForeignKey('MSA研究.識別碼'), nullable=True
+    )
+    created_by_id = db.Column(
+        '建立者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    created_at = db.Column(
+        '建立時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class MsaValidationRun(db.Model):
+    """統計引擎的 golden validation 執行紀錄；PASS 與 FAIL 都必須留存。"""
+
+    __tablename__ = 'MSA軟體確效執行'
+    __table_args__ = (
+        db.CheckConstraint(
+            '"結果" IN (\'PASS\', \'FAIL\')',
+            name='ck_msa_validation_result',
+        ),
+        db.Index('idx_msa_validation_case', '案例代碼', '執行時間'),
+    )
+
+    id = db.Column('識別碼', db.Integer, primary_key=True)
+    case_code = db.Column('案例代碼', db.String(120), nullable=False)
+    fixture_hash = db.Column('資料指紋', db.String(64), nullable=False)
+    method_versions = db.Column(
+        '方法版本', db.JSON, nullable=False, default=dict
+    )
+    code_version = db.Column('程式版本', db.String(80), nullable=True)
+    tolerances = db.Column('容許誤差', db.JSON, nullable=False, default=dict)
+    observed = db.Column('觀測值', db.JSON, nullable=False, default=dict)
+    expected = db.Column('期望值', db.JSON, nullable=False, default=dict)
+    differences = db.Column('差異', db.JSON, nullable=False, default=list)
+    result = db.Column('結果', db.String(10), nullable=False)
+    executed_by_id = db.Column(
+        '執行者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    executed_at = db.Column(
+        '執行時間', db.DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+def _changed_attribute_keys(target) -> set:
+    """回傳這次 flush 實際被改動的屬性名稱。"""
+    state = inspect(target)
+    changed = set()
+    for attribute in state.attrs:
+        history = attribute.load_history()
+        if history.has_changes():
+            changed.add(attribute.key)
+    return changed
+
+
+def _block_frozen_plan_change(_mapper, connection, target):
+    """凍結後的計畫版本是正式設計證據，不得再改寫。"""
+    table = target.__table__
+    frozen_at = connection.execute(
+        db.select(table.c['凍結時間']).where(table.c['識別碼'] == target.id)
+    ).scalar_one_or_none()
+    if frozen_at is not None:
+        raise ValueError('凍結後的 MSA 計畫版本不可修改')
+
+
+def _block_frozen_plan_delete(_mapper, connection, target):
+    table = target.__table__
+    frozen_at = connection.execute(
+        db.select(table.c['凍結時間']).where(table.c['識別碼'] == target.id)
+    ).scalar_one_or_none()
+    if frozen_at is not None:
+        raise ValueError('凍結後的 MSA 計畫版本不可刪除')
+
+
+def _assert_plan_not_frozen(connection, plan_version_id):
+    frozen_at = connection.execute(
+        db.select(MsaPlanVersion.__table__.c['凍結時間']).where(
+            MsaPlanVersion.__table__.c['識別碼'] == plan_version_id
+        )
+    ).scalar_one_or_none()
+    if frozen_at is not None:
+        raise ValueError('凍結後的 MSA 計畫內容不可修改或刪除')
+
+
+def _block_frozen_plan_child_change(_mapper, connection, target):
+    _assert_plan_not_frozen(connection, target.plan_version_id)
+
+
+# 觀測唯一允許的變更：把有效紀錄作廢，讓後繼紀錄接手。
+_OBSERVATION_RETIRE_ONLY = {'is_effective'}
+
+
+def _block_observation_change(_mapper, _connection, target):
+    changed = _changed_attribute_keys(target)
+    if changed <= _OBSERVATION_RETIRE_ONLY and target.is_effective is False:
+        return
+    raise ValueError('MSA 觀測不可直接修改；請建立後繼紀錄')
+
+
+def _block_observation_delete(_mapper, _connection, _target):
+    raise ValueError('MSA 觀測不可刪除；請以作廢與後繼紀錄表達修正')
+
+
+# 結果版本唯一允許的變更：工作流狀態。
+_RESULT_WORKFLOW_ONLY = {'status'}
+
+
+def _block_result_change(_mapper, _connection, target):
+    changed = _changed_attribute_keys(target)
+    if changed <= _RESULT_WORKFLOW_ONLY:
+        return
+    raise ValueError('MSA 結果版本的統計證據不可修改')
+
+
+def _block_result_delete(_mapper, _connection, _target):
+    raise ValueError('MSA 結果版本不可刪除')
+
+
+def _block_decision_change(_mapper, _connection, _target):
+    raise ValueError('MSA 工作流決策不可修改或刪除')
+
+
+def _block_validation_run_change(_mapper, _connection, _target):
+    raise ValueError('MSA 軟體確效執行不可修改或刪除')
+
+
+event.listen(MsaPlanVersion, 'before_update', _block_frozen_plan_change)
+event.listen(MsaPlanVersion, 'before_delete', _block_frozen_plan_delete)
+
+for _msa_plan_child in (MsaPart, MsaAppraiser):
+    event.listen(
+        _msa_plan_child, 'before_update', _block_frozen_plan_child_change
+    )
+    event.listen(
+        _msa_plan_child, 'before_delete', _block_frozen_plan_child_change
+    )
+
+event.listen(MsaObservation, 'before_update', _block_observation_change)
+event.listen(MsaObservation, 'before_delete', _block_observation_delete)
+event.listen(MsaResultVersion, 'before_update', _block_result_change)
+event.listen(MsaResultVersion, 'before_delete', _block_result_delete)
+event.listen(MsaWorkflowDecision, 'before_update', _block_decision_change)
+event.listen(MsaWorkflowDecision, 'before_delete', _block_decision_change)
+event.listen(MsaValidationRun, 'before_update', _block_validation_run_change)
+event.listen(MsaValidationRun, 'before_delete', _block_validation_run_change)
+
+
 class VendorToleranceMain(db.Model):
     __tablename__ = '廠商公差主檔'
     id = db.Column('識別碼', db.Integer, primary_key=True)
