@@ -306,7 +306,14 @@ class AttachmentService:
         if entity_type == 'measurement_equipment':
             target = db.session.get(MeasurementEquipment, entity_id)
         elif entity_type == 'equipment_calibration':
-            target = db.session.get(EquipmentCalibrationRecord, entity_id)
+            target = (
+                db.session.execute(
+                    db.select(EquipmentCalibrationRecord)
+                    .where(EquipmentCalibrationRecord.id == entity_id)
+                    .with_for_update()
+                )
+                .scalar_one_or_none()
+            )
         else:
             return None
         if target is None:

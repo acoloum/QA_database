@@ -25,6 +25,7 @@ def msa_attachment_headers(db_session):
         "msa_attachment_view": {"msa.view": True},
         "msa_attachment_manage": {"msa.view": True, "msa.manage": True},
         "manager": {},
+        "admin": {},
     }.items():
         db_session.add(Role(code=code, name=code, permissions=permissions))
         user = User(
@@ -321,13 +322,132 @@ def test_msa_attachment_upload_rejects_approved_calibration_target(
     assert Attachment.query.count() == 0
 
 
+@pytest.mark.parametrize("operation", ["upload", "delete"])
+def test_msa_calibration_attachment_write_locks_target_before_status_check(
+    app,
+    client,
+    db_session,
+    monkeypatch,
+    tmp_path,
+    msa_attachment_headers,
+    msa_attachment_targets,
+    operation,
+):
+    """移除校驗目標的 FOR UPDATE 時，上傳與刪除都必須偵測契約退化。"""
+    app.config["STORAGE"] = LocalStorage(str(tmp_path / "uploads"))
+    headers = msa_attachment_headers("msa_attachment_manage")
+    calibration_id = msa_attachment_targets["calibration_id"]
+    attachment = None
+    if operation == "delete":
+        attachment = Attachment(
+            entity_type="equipment_calibration",
+            entity_id=calibration_id,
+            file_name="locked-target.txt",
+            file_path=(
+                f"uploads/equipment_calibration/{calibration_id}/"
+                "locked-target.txt"
+            ),
+            mime_type="text/plain",
+            file_size=6,
+            uploaded_by=User.query.filter_by(
+                username="msa_attachment_manage"
+            ).one().id,
+        )
+        db_session.add(attachment)
+        db_session.commit()
+
+    original_execute = db.session.execute
+    locked_calibration_queries = []
+
+    def capture_execute(statement, *args, **kwargs):
+        entity = None
+        descriptions = getattr(statement, "column_descriptions", ())
+        if descriptions:
+            entity = descriptions[0].get("entity")
+        if (
+            entity is EquipmentCalibrationRecord
+            and getattr(statement, "_for_update_arg", None) is not None
+        ):
+            locked_calibration_queries.append(statement)
+        return original_execute(statement, *args, **kwargs)
+
+    monkeypatch.setattr(db.session, "execute", capture_execute)
+    if operation == "upload":
+        response = client.post(
+            "/api/attachments/upload",
+            data={
+                "file": (BytesIO(b"locked"), "locked-target.txt"),
+                "entity_type": "equipment_calibration",
+                "entity_id": str(calibration_id),
+            },
+            headers=headers,
+            content_type="multipart/form-data",
+        )
+        assert response.status_code == 201
+    else:
+        response = client.delete(
+            f"/api/attachments/{attachment.id}",
+            headers=headers,
+        )
+        assert response.status_code == 200
+
+    assert len(locked_calibration_queries) == 1
+
+
+def test_msa_attachment_delete_rechecks_locked_calibration_status(
+    app,
+    client,
+    db_session,
+    tmp_path,
+    msa_attachment_headers,
+    msa_attachment_targets,
+):
+    """校驗核准後，既有附件也不得再由共用刪除路由移除。"""
+    app.config["STORAGE"] = LocalStorage(str(tmp_path / "uploads"))
+    calibration_id = msa_attachment_targets["calibration_id"]
+    uploader = User.query.filter_by(
+        username="msa_attachment_manage"
+    ).one()
+    attachment = Attachment(
+        entity_type="equipment_calibration",
+        entity_id=calibration_id,
+        file_name="approved.txt",
+        file_path=(
+            f"uploads/equipment_calibration/{calibration_id}/approved.txt"
+        ),
+        mime_type="text/plain",
+        file_size=8,
+        uploaded_by=uploader.id,
+    )
+    db_session.add(attachment)
+    db_session.flush()
+    attachment_id = attachment.id
+    calibration = db_session.get(
+        EquipmentCalibrationRecord,
+        calibration_id,
+    )
+    calibration.status = "approved"
+    db_session.commit()
+
+    response = client.delete(
+        f"/api/attachments/{attachment_id}",
+        headers=msa_attachment_headers("msa_attachment_manage"),
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()["error"]["code"] == (
+        "MSA_ATTACHMENT_TARGET_IMMUTABLE"
+    )
+    assert db_session.get(Attachment, attachment_id) is not None
+
+
 def test_msa_attachment_missing_id_uses_stable_not_found(
     client,
     msa_attachment_headers,
 ):
-    """附件 ID 不存在時必須回傳可程式判定的 stable code。"""
+    """明確提供 MSA 實體 context 時，missing ID 使用 stable code。"""
     response = client.delete(
-        "/api/attachments/999999",
+        "/api/attachments/999999?entity_type=measurement_equipment",
         headers=msa_attachment_headers("msa_attachment_manage"),
     )
 
@@ -339,6 +459,29 @@ def test_msa_attachment_missing_id_uses_stable_not_found(
             "details": {"attachment_id": 999999},
         }
     }
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("get", "/api/attachments/999999/download"),
+        ("delete", "/api/attachments/999999"),
+    ],
+)
+def test_shared_missing_attachment_keeps_legacy_error_contract(
+    client,
+    msa_attachment_headers,
+    method,
+    path,
+):
+    """共用路由缺少實體 context 時，不得把不存在 ID 猜成 MSA。"""
+    response = getattr(client, method)(
+        path,
+        headers=msa_attachment_headers("admin"),
+    )
+
+    assert response.status_code == 404
+    assert response.get_json() == {"error": "附件不存在"}
 
 
 def test_msa_upload_db_failure_compensates_saved_file(

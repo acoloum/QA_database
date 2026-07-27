@@ -89,6 +89,19 @@ def _msa_service_error(error: MsaServiceError):
     )
 
 
+def _missing_attachment_error(att_id: int):
+    """只有呼叫端明確提供 MSA 實體 context 時才使用 MSA 契約。"""
+    entity_type = request.args.get('entity_type')
+    if entity_type in MSA_ATTACHMENT_ENTITY_TYPES:
+        return _msa_error(
+            'MSA_ATTACHMENT_NOT_FOUND',
+            '附件不存在',
+            404,
+            details={'attachment_id': att_id},
+        )
+    return jsonify({'error': '附件不存在'}), 404
+
+
 @attachment_bp.route('/api/attachments/upload', methods=['POST'])
 @auth_required
 def upload_attachment(current_user):
@@ -218,12 +231,7 @@ def download_attachment(current_user, att_id: int):
     """GET /api/attachments/<id>/download"""
     att = AttachmentService.get_by_id(att_id)
     if not att:
-        return _msa_error(
-            'MSA_ATTACHMENT_NOT_FOUND',
-            '附件不存在',
-            404,
-            details={'attachment_id': att_id},
-        )
+        return _missing_attachment_error(att_id)
 
     permission_error = _require_entity_permission(current_user, att['entity_type'], 'view')
     if permission_error:
@@ -261,12 +269,7 @@ def delete_attachment(current_user, att_id: int):
     try:
         att = AttachmentService.get_by_id(att_id)
         if not att:
-            return _msa_error(
-                'MSA_ATTACHMENT_NOT_FOUND',
-                '附件不存在',
-                404,
-                details={'attachment_id': att_id},
-            )
+            return _missing_attachment_error(att_id)
         is_msa = att['entity_type'] in MSA_ATTACHMENT_ENTITY_TYPES
         permission_error = _require_entity_permission(current_user, att['entity_type'], 'edit')
         if permission_error:
