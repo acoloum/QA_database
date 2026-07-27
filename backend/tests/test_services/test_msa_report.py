@@ -514,6 +514,8 @@ def test_missing_cjk_font_refuses_to_produce_a_garbled_pdf(
     import backend.services.msa_report as report_module
 
     monkeypatch.setattr(report_module, "CJK_FONT_CANDIDATES", ())
+    # 同時停掉目錄掃描，模擬完全沒有安裝中文字型的伺服器
+    monkeypatch.setattr(report_module, "CJK_FONT_SEARCH_DIRS", ())
     monkeypatch.setattr(
         pdfmetrics, "getRegisteredFontNames", lambda: ["Helvetica"],
     )
@@ -539,3 +541,25 @@ def test_pdf_is_also_rebuilt_only_from_the_saved_result(
 
     assert before == after
     assert "PDF 產生後更名的設備" not in after
+
+
+def test_font_discovery_finds_cjk_fonts_without_hardcoded_filenames(
+    db_session, approved_msa_result, monkeypatch,
+):
+    """發行版的 Noto 檔名會變動，因此掃描機制必須能獨立找到字型。"""
+    from reportlab.pdfbase import pdfmetrics
+
+    import backend.services.msa_report as report_module
+
+    discovered = report_module._discover_cjk_fonts()
+    assert discovered, "在本機標準字型目錄應能掃描到 CJK 字型"
+
+    # 清掉明確候選，只留掃描結果，確認 PDF 仍可產生且中文可抽取
+    monkeypatch.setattr(report_module, "CJK_FONT_CANDIDATES", ())
+    monkeypatch.setattr(
+        pdfmetrics, "getRegisteredFontNames", lambda: ["Helvetica"],
+    )
+
+    text = _pdf_text(MsaReportService.generate_pdf(approved_msa_result.id))
+
+    assert "量測系統分析報告" in text

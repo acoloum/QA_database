@@ -62,26 +62,66 @@ CJK_FONT_CANDIDATES = (
     "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
 )
 
+# 各發行版的 Noto CJK 檔名會隨版本改變，因此除了明確候選之外再掃描
+# 標準字型目錄；只要裝了任一 CJK 字型套件就能找到，不必綁死檔名。
+CJK_FONT_SEARCH_DIRS = (
+    "/usr/share/fonts",
+    "/usr/local/share/fonts",
+    "C:/Windows/Fonts",
+)
+CJK_FONT_PATTERNS = (
+    "NotoSansCJK*", "NotoSerifCJK*", "NotoSansTC*", "SourceHanSans*",
+    "wqy-*", "msjh*", "mingliu*", "kaiu*",
+)
+
 CJK_FONT_NAME = "MSA-CJK"
 PDF_WATERMARK_TEXT = "未核准"
+
+
+def _discover_cjk_fonts():
+    """掃描標準字型目錄，回傳可能的 CJK 字型檔路徑。"""
+    from glob import glob
+
+    found = []
+    for directory in CJK_FONT_SEARCH_DIRS:
+        if not os.path.isdir(directory):
+            continue
+        for pattern in CJK_FONT_PATTERNS:
+            for suffix in (".ttc", ".otf", ".ttf"):
+                found.extend(sorted(glob(
+                    os.path.join(directory, "**", pattern + suffix),
+                    recursive=True,
+                )))
+    return found
 
 
 def register_cjk_font() -> str:
     """註冊可用的繁體中文字型；找不到就明確失敗而不是輸出亂碼。"""
     if CJK_FONT_NAME in pdfmetrics.getRegisteredFontNames():
         return CJK_FONT_NAME
-    for path in CJK_FONT_CANDIDATES:
+
+    for path in (*CJK_FONT_CANDIDATES, *_discover_cjk_fonts()):
         if not os.path.exists(path):
             continue
         try:
-            pdfmetrics.registerFont(TTFont(CJK_FONT_NAME, path))
+            # .ttc 內含多個字體，取第一個子字體即可
+            font = (
+                TTFont(CJK_FONT_NAME, path, subfontIndex=0)
+                if path.lower().endswith(".ttc")
+                else TTFont(CJK_FONT_NAME, path)
+            )
+            pdfmetrics.registerFont(font)
             return CJK_FONT_NAME
         except Exception:
             continue
+
     raise MsaValidationError(
         "MSA_REPORT_FONT_MISSING",
         "伺服器缺少可用的繁體中文字型，無法產生正式 PDF",
-        details={"candidates": list(CJK_FONT_CANDIDATES)},
+        details={
+            "candidates": list(CJK_FONT_CANDIDATES),
+            "searched_dirs": list(CJK_FONT_SEARCH_DIRS),
+        },
     )
 
 

@@ -24,9 +24,12 @@ RUN npm run build
 FROM python:3.12-slim
 
 # Install Nginx and required system packages
+# fonts-noto-cjk 是 MSA 正式 PDF 報告的必要條件：缺少中文字型時
+# 報告服務會直接失敗而不是輸出亂碼，因此映像檔必須內含字型。
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
     libpq-dev \
+    fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
