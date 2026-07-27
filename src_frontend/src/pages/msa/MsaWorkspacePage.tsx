@@ -34,7 +34,7 @@ const blockingEquipment = (item: MeasurementEquipment) =>
   || item.calibration_status === 'missing';
 
 const studyWorkItems = (studies: MsaStudy[]): MsaWorkItem[] => studies.flatMap(
-  (study) => {
+  (study): MsaWorkItem[] => {
     if (study.status === 'submitted') {
       return [{
         id: `study-${study.id}-approval`,

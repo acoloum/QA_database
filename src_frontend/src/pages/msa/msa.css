@@ -358,3 +358,13 @@ button.msa-risk-card:hover { box-shadow: 0 3px 10px rgba(23, 33, 38, .1); }
 .msa-blind-entry button:disabled { opacity: .5; cursor: not-allowed; }
 
 .msa-inline-error { color: var(--msa-danger); font-weight: 700; }
+
+/* --- 圖表 ----------------------------------------------------------- */
+
+.msa-chart { margin: 0 0 1.4rem; border: 1px solid var(--msa-line); border-radius: .4rem; background: var(--msa-panel); padding: 1rem; }
+.msa-chart figcaption h3 { margin: 0 0 .3rem; font-size: 1.05rem; }
+/* 摘要永遠可見：黑白列印或螢幕閱讀器都要讀得到結論 */
+.msa-chart__summary { margin: 0 0 .8rem; color: var(--msa-ink); font-size: .88rem; line-height: 1.55; }
+.msa-chart__canvas { height: 18rem; margin-bottom: .8rem; }
+.msa-chart__actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .8rem; }
+.msa-chart__actions button { min-height: 2.3rem; border: 1px solid var(--msa-line); border-radius: .3rem; background: #fff; padding: .4rem .8rem; font-weight: 700; }
