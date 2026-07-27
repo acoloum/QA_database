@@ -289,6 +289,39 @@ def validate_upload_file(
 
 
 # ==================================================
+# 規格字串正規化（公差比對共用）
+# ==================================================
+def normalize_spec_for_match(spec: Optional[str]) -> str:
+    """正規化規格字串供公差比對：統一分隔符號並把數值段轉為標準數值寫法。
+
+    公差比對是逐段字串相等，因此「4」與「4.0」原本被視為不同段而配對失敗——
+    早期公差建檔把 4.0 記成 4，出貨規格卻寫 4.0（或反之），導致該規格查不到
+    任何公差、所有項目靜默不判定。此處把每個數值段以 float 再輸出標準寫法
+    （4.0→4、2.50→2.5、.5→0.5），使兩種寫法正規化後相同。
+
+    非數值段（如 Ø44 之類）維持原樣僅去空白與大寫化，避免誤改。
+    """
+    if not spec:
+        return ''
+    text = str(spec).strip().replace('×', '*').replace('x', '*').replace('X', '*')
+    while '**' in text:
+        text = text.replace('**', '*')
+    text = re.sub(r'\s+', '', text)
+    if text.upper() in ('NONE', 'NULL', ''):
+        return ''
+    segments = []
+    for part in text.split('*'):
+        if not part:
+            continue
+        try:
+            # %g 會去掉尾隨 0（4.0→4、2.50→2.5），並保留必要精度
+            segments.append(f'{float(part):g}')
+        except ValueError:
+            segments.append(part.upper())
+    return '*'.join(segments)
+
+
+# ==================================================
 # Spec Nominal Parser (C-2)
 # ==================================================
 def parse_spec_nominals(spec: Optional[str]) -> Dict[str, float]:

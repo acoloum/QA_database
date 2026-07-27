@@ -10,13 +10,13 @@ class ExtrusionToleranceService:
 
     @staticmethod
     def _normalize_spec(s: str) -> str:
-        """標準化規格字串（統一分隔符號）"""
-        if not s:
-            return ''
-        s = str(s).strip().replace('×', '*').replace('x', '*').replace('X', '*')
-        while '**' in s:
-            s = s.replace('**', '*')
-        return s.strip()
+        """標準化規格字串（統一分隔符號，並把數值段轉為標準數值寫法）。
+
+        數值段正規化使「4」與「4.0」視為相同——早期公差建檔把 4.0 記成 4，
+        出貨/機械規格卻寫 4.0（或反之），逐段字串比對會配對失敗而查不到公差。
+        """
+        from ..utils import normalize_spec_for_match
+        return normalize_spec_for_match(s)
 
     @staticmethod
     def _match_material(material: str, candidate_material: str) -> bool:

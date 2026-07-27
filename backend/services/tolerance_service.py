@@ -268,12 +268,8 @@ class ToleranceService:
         
         spec = args.get('spec')
 
-        def normalize_spec(s):
-            if not s: return ''
-            s = str(s).strip().replace('×', '*').replace('x', '*')
-            while '**' in s: s = s.replace('**', '*')
-            if s.upper() in ('NONE', 'NULL', ''): return ''
-            return s.strip()
+        # 共用正規化：統一分隔符號，並把數值段轉為標準寫法使 4 與 4.0 視為相同
+        from ..utils import normalize_spec_for_match as normalize_spec
 
         input_spec = normalize_spec(spec)
 
