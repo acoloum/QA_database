@@ -30,6 +30,9 @@ export const msaKeys = {
   equipment: (params: EquipmentListParams) => ['msa', 'equipment', params] as const,
   equipmentDetail: (id: number) => ['msa', 'equipment', 'detail', id] as const,
   importBatch: (id: number) => ['msa', 'equipment-import', id] as const,
+  importHistory: (params: { page: number; page_size: number }) => (
+    ['msa', 'equipment-import', 'history', params] as const
+  ),
   criteria: () => ['msa', 'criteria'] as const,
 };
 

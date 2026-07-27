@@ -34,6 +34,28 @@ def _optional_iso_date(value, *, field: str) -> date | None:
         ) from error
 
 
+@measurement_equipment_bp.get(
+    "/api/measurement-equipment/imports"
+)
+@_msa_auth_required
+@_require_msa_permission("msa.view")
+@_handle_msa_errors
+def list_import_batches(current_user):
+    """列出可追溯的設備匯入批次。"""
+    return jsonify({"data": MsaImportService.list_batches(request.args)})
+
+
+@measurement_equipment_bp.get(
+    "/api/measurement-equipment/imports/<int:batch_id>"
+)
+@_msa_auth_required
+@_require_msa_permission("msa.view")
+@_handle_msa_errors
+def get_import_batch(current_user, batch_id: int):
+    """取得指定匯入批次的逐列檢閱證據。"""
+    return jsonify({"data": MsaImportService.get_batch(batch_id)})
+
+
 @measurement_equipment_bp.post(
     "/api/measurement-equipment/imports/preview"
 )

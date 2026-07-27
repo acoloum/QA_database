@@ -557,6 +557,58 @@ def test_equipment_import_preview_and_confirm_use_stable_envelope(
     assert MeasurementEquipment.query.count() == 1
 
 
+def test_equipment_import_history_lists_batches_and_loads_row_evidence(
+    client,
+    msa_user_headers,
+):
+    """防止匯入歷程頁只能依賴前端暫存，重新載入後失去逐列證據。"""
+    preview = client.post(
+        "/api/measurement-equipment/imports/preview?as_of=2026-07-27",
+        data={"file": (BytesIO(_import_csv_bytes()), "equipment.csv")},
+        content_type="multipart/form-data",
+        headers=msa_user_headers("msa_manage"),
+    ).get_json()["data"]
+
+    history = client.get(
+        "/api/measurement-equipment/imports?page=1&page_size=20",
+        headers=msa_user_headers("msa_view"),
+    )
+    detail = client.get(
+        f"/api/measurement-equipment/imports/{preview['id']}",
+        headers=msa_user_headers("msa_view"),
+    )
+
+    assert history.status_code == 200
+    assert history.get_json()["data"] == {
+        "items": [{
+            key: value
+            for key, value in preview.items()
+            if key != "rows"
+        }],
+        "page": 1,
+        "page_size": 20,
+        "total": 1,
+    }
+    assert detail.status_code == 200
+    assert detail.get_json()["data"]["rows"] == preview["rows"]
+
+
+def test_equipment_import_history_requires_msa_view(
+    client,
+    msa_user_headers,
+):
+    """防止匯入原始值與人工處置證據暴露給無 MSA 檢視權限帳號。"""
+    response = client.get(
+        "/api/measurement-equipment/imports",
+        headers=msa_user_headers("no_msa"),
+    )
+
+    assert response.status_code == 403
+    assert response.get_json()["error"]["details"] == {
+        "permission": "msa.view"
+    }
+
+
 def test_equipment_import_error_uses_stable_msa_envelope(
     client,
     msa_user_headers,

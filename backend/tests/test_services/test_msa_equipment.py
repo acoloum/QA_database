@@ -15,6 +15,7 @@ from backend.models import (
     MeasurementEquipment,
 )
 from backend.services.msa_equipment_service import MsaEquipmentService
+from backend.services.msa_errors import MsaServiceError
 from backend.services.msa_errors import MsaValidationError
 from backend.services.msa_errors import MsaNotFound
 
@@ -450,3 +451,198 @@ def test_passing_calibration_returns_snapshot_with_correction_evidence(db_sessio
             }
         ],
     }
+
+
+def test_list_reports_calibration_summary_from_latest_approved_record(
+    db_session,
+):
+    """防止清單使用較舊或 draft 校驗，導致風險排序與正式證據不一致。"""
+    due_soon = _equipment(
+        db_session, "EQ-LIST-DUE", status="active"
+    )
+    _calibration(
+        db_session,
+        due_soon,
+        calibration_date=STUDY_DATE - timedelta(days=30),
+        next_due_date=STUDY_DATE + timedelta(days=30),
+    )
+    _calibration(
+        db_session,
+        due_soon,
+        calibration_date=STUDY_DATE - timedelta(days=1),
+        next_due_date=STUDY_DATE - timedelta(days=1),
+        result="fail",
+        status="draft",
+    )
+    expired = _equipment(
+        db_session, "EQ-LIST-EXPIRED", status="active"
+    )
+    _calibration(
+        db_session,
+        expired,
+        next_due_date=STUDY_DATE - timedelta(days=1),
+    )
+    failed = _equipment(
+        db_session, "EQ-LIST-FAILED", status="active"
+    )
+    _calibration(db_session, failed, result="fail")
+    valid = _equipment(
+        db_session, "EQ-LIST-VALID", status="active"
+    )
+    _calibration(
+        db_session,
+        valid,
+        next_due_date=STUDY_DATE + timedelta(days=31),
+    )
+    missing = _equipment(
+        db_session, "EQ-LIST-MISSING", status="active"
+    )
+    exempt = _equipment(
+        db_session,
+        "EQ-LIST-EXEMPT",
+        status="active",
+        calibration_type="exempt",
+        calibration_exemption_reason="依內控規範免校驗",
+    )
+    db_session.commit()
+
+    result = MsaEquipmentService.list(
+        {
+            "page": "1",
+            "page_size": "25",
+            "sort": "equipment_no",
+            "as_of": STUDY_DATE.isoformat(),
+        }
+    )
+    items = {item["equipment_no"]: item for item in result["items"]}
+
+    assert items["EQ-LIST-DUE"]["calibration_status"] == "due_soon"
+    assert (
+        items["EQ-LIST-DUE"]["next_calibration_date"]
+        == (STUDY_DATE + timedelta(days=30)).isoformat()
+    )
+    assert items["EQ-LIST-DUE"]["calibration_block_reason"] is None
+    assert items["EQ-LIST-EXPIRED"]["calibration_status"] == "expired"
+    assert "2026-07-26" in items["EQ-LIST-EXPIRED"][
+        "calibration_block_reason"
+    ]
+    assert items["EQ-LIST-FAILED"]["calibration_status"] == "failed"
+    assert "失敗" in items["EQ-LIST-FAILED"]["calibration_block_reason"]
+    assert items["EQ-LIST-VALID"]["calibration_status"] == "valid"
+    assert items["EQ-LIST-MISSING"]["calibration_status"] == "missing"
+    assert "尚無" in items["EQ-LIST-MISSING"]["calibration_block_reason"]
+    assert items["EQ-LIST-EXEMPT"]["calibration_status"] == "exempt"
+    assert items["EQ-LIST-EXEMPT"]["next_calibration_date"] is None
+
+
+def test_list_calibration_status_filter_preserves_total_and_date_boundaries(
+    db_session,
+):
+    """防止校驗篩選只作用於頁面資料，或把到期當日誤判為逾期。"""
+    expired = _equipment(
+        db_session, "EQ-FILTER-EXPIRED", status="active"
+    )
+    _calibration(
+        db_session,
+        expired,
+        next_due_date=STUDY_DATE - timedelta(days=1),
+    )
+    due_today = _equipment(
+        db_session, "EQ-FILTER-TODAY", status="active"
+    )
+    _calibration(
+        db_session,
+        due_today,
+        next_due_date=STUDY_DATE,
+    )
+    db_session.commit()
+
+    result = MsaEquipmentService.list(
+        {
+            "page": "1",
+            "page_size": "25",
+            "sort": "equipment_no",
+            "calibration_status": "expired",
+            "as_of": STUDY_DATE.isoformat(),
+        }
+    )
+
+    assert result["total"] == 1
+    assert [item["equipment_no"] for item in result["items"]] == [
+        "EQ-FILTER-EXPIRED"
+    ]
+
+
+def test_list_calibration_summary_uses_fixed_query_count(db_session):
+    """防止每台設備各查一次校驗，造成設備數增加時的 N+1 查詢。"""
+    for index in range(8):
+        equipment = _equipment(
+            db_session, f"EQ-QUERY-{index:02d}", status="active"
+        )
+        _calibration(db_session, equipment)
+    db_session.commit()
+    select_count = 0
+
+    def count_selects(
+        _connection, _cursor, statement, _parameters, _context, _executemany
+    ):
+        nonlocal select_count
+        if statement.lstrip().upper().startswith("SELECT"):
+            select_count += 1
+
+    event.listen(db.engine, "before_cursor_execute", count_selects)
+    try:
+        result = MsaEquipmentService.list(
+            {
+                "page": "1",
+                "page_size": "25",
+                "sort": "equipment_no",
+                "as_of": STUDY_DATE.isoformat(),
+            }
+        )
+    finally:
+        event.remove(db.engine, "before_cursor_execute", count_selects)
+
+    assert len(result["items"]) == 8
+    assert select_count == 2
+
+
+def test_detail_uses_the_same_calibration_summary_contract_as_list(
+    db_session,
+):
+    """防止 drawer 取得明細後遺失校驗狀態，導致 badge 無法呈現。"""
+    equipment = _equipment(
+        db_session, "EQ-DETAIL-SUMMARY", status="active"
+    )
+    _calibration(
+        db_session,
+        equipment,
+        next_due_date=date.today() - timedelta(days=1),
+    )
+    db_session.commit()
+
+    detail = MsaEquipmentService.get(equipment.id)
+
+    assert detail["calibration_status"] == "expired"
+    assert detail["next_calibration_date"] == (
+        date.today() - timedelta(days=1)
+    ).isoformat()
+    assert "到期" in detail["calibration_block_reason"]
+
+
+@pytest.mark.parametrize(
+    ("args", "code"),
+    [
+        ({"page": "10001"}, "MSA_PAGE_INVALID"),
+        ({"calibration_status": "unknown"}, "MSA_CALIBRATION_STATUS_INVALID"),
+        ({"as_of": "2026/07/27"}, "MSA_AS_OF_INVALID"),
+    ],
+)
+def test_list_rejects_unbounded_or_non_whitelisted_summary_arguments(
+    db_session, args, code
+):
+    """防止巨大 offset、未知狀態或模糊日期進入設備清單查詢。"""
+    with pytest.raises(MsaServiceError) as error:
+        MsaEquipmentService.list(args)
+
+    assert error.value.code == code

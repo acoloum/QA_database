@@ -33,6 +33,8 @@ const ThermocoupleCalibrationPage = lazy(() => import('./pages/pyrometry/Thermoc
 const AdvancedSpcPage = lazy(() => import('./pages/spc/AdvancedSpcPage'));
 const MechanicalTestListPage = lazy(() => import('./pages/mechanical/MechanicalTestListPage'));
 const MsaWorkspacePage = lazy(() => import('./pages/msa/MsaWorkspacePage'));
+const MeasurementEquipmentPage = lazy(() => import('./pages/msa/MeasurementEquipmentPage'));
+const MsaImportHistoryPage = lazy(() => import('./pages/msa/MsaImportHistoryPage'));
 
 const PageFallback = () => (
   <div className="d-flex align-items-center justify-content-center py-5 text-muted">
@@ -85,6 +87,8 @@ function App() {
                 <Route path="/pyrometry/thermocouples" element={<ThermocoupleCalibrationPage />} />
                 <Route path="/mechanical" element={<MechanicalTestListPage />} />
                 <Route path="/msa" element={<MsaViewRoute><MsaWorkspacePage /></MsaViewRoute>} />
+                <Route path="/msa/equipment" element={<MsaViewRoute><MeasurementEquipmentPage /></MsaViewRoute>} />
+                <Route path="/msa/imports" element={<MsaViewRoute><MsaImportHistoryPage /></MsaViewRoute>} />
               </Route>
             </Route>
 

@@ -682,6 +682,79 @@ class MsaImportService:
     """設備 CSV 預覽／確認兩階段交易服務。"""
 
     @staticmethod
+    def list_batches(args) -> dict:
+        """以有界分頁列出受控匯入批次，不在清單重複傳送逐列內容。"""
+        page = MsaImportService._bounded_page_argument(
+            args.get("page", 1),
+            field="page",
+            maximum=10_000,
+        )
+        page_size = MsaImportService._bounded_page_argument(
+            args.get("page_size", 20),
+            field="page_size",
+            maximum=100,
+        )
+        query = EquipmentImportBatch.query
+        total = query.count()
+        batches = (
+            query.order_by(
+                EquipmentImportBatch.uploaded_at.desc(),
+                EquipmentImportBatch.id.desc(),
+            )
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+        return {
+            "items": [
+                serialize_import_batch(batch, include_rows=False)
+                for batch in batches
+            ],
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+        }
+
+    @staticmethod
+    def get_batch(batch_id: int) -> dict:
+        """取得單一批次及逐列原始、正規化與人工處置證據。"""
+        batch = db.session.get(EquipmentImportBatch, batch_id)
+        if batch is None:
+            raise MsaNotFound(
+                "MSA_IMPORT_BATCH_NOT_FOUND",
+                "找不到設備匯入批次",
+                details={"batch_id": batch_id},
+            )
+        return serialize_import_batch(batch, include_rows=True)
+
+    @staticmethod
+    def _bounded_page_argument(
+        value,
+        *,
+        field: str,
+        maximum: int,
+    ) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError) as error:
+            raise MsaValidationError(
+                "MSA_IMPORT_PAGINATION_INVALID",
+                f"{field} 必須是整數",
+                details={"field": field, "value": value},
+            ) from error
+        if parsed < 1 or parsed > maximum:
+            raise MsaValidationError(
+                "MSA_IMPORT_PAGINATION_INVALID",
+                f"{field} 超出允許範圍",
+                details={
+                    "field": field,
+                    "minimum": 1,
+                    "maximum": maximum,
+                },
+            )
+        return parsed
+
+    @staticmethod
     def preview(
         source,
         original_filename: str | None = None,

@@ -1,10 +1,11 @@
 """MSA 量測設備主檔、校驗證據與正式研究資格服務。"""
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import or_
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.exc import DataError, IntegrityError
+from sqlalchemy.orm import aliased
 
 from ..extensions import db
 from ..models import (
@@ -77,6 +78,14 @@ _EQUIPMENT_STATUS = {
 }
 _CALIBRATION_TYPES = {"internal", "external", "exempt"}
 _CALIBRATION_RESULTS = {"pending", "pass", "fail", "limited_use"}
+_CALIBRATION_SUMMARY_STATUS = {
+    "valid",
+    "due_soon",
+    "expired",
+    "failed",
+    "missing",
+    "exempt",
+}
 _CALIBRATION_TEXT_LIMITS = {
     "calibration_type": 30,
     "calibration_provider": 160,
@@ -151,7 +160,7 @@ class MsaEquipmentService:
             args.get("page", 1),
             field="page",
             minimum=1,
-            maximum=None,
+            maximum=10_000,
             code="MSA_PAGE_INVALID",
         )
         page_size = MsaEquipmentService._parse_bounded_int(
@@ -177,7 +186,71 @@ class MsaEquipmentService:
                 details={"order": order},
             )
 
-        query = MeasurementEquipment.query
+        as_of = MsaEquipmentService._parse_iso_date_argument(
+            args.get("as_of"),
+            field="as_of",
+            default=date.today(),
+            code="MSA_AS_OF_INVALID",
+        )
+        latest_calibration = aliased(
+            EquipmentCalibrationRecord,
+            name="latest_approved_calibration",
+        )
+        latest_calibration_id = (
+            db.select(EquipmentCalibrationRecord.id)
+            .where(
+                EquipmentCalibrationRecord.equipment_id
+                == MeasurementEquipment.id,
+                EquipmentCalibrationRecord.status == "approved",
+                EquipmentCalibrationRecord.calibration_date <= as_of,
+                or_(
+                    EquipmentCalibrationRecord.effective_date.is_(None),
+                    EquipmentCalibrationRecord.effective_date <= as_of,
+                ),
+            )
+            .order_by(
+                EquipmentCalibrationRecord.calibration_date.desc(),
+                EquipmentCalibrationRecord.id.desc(),
+            )
+            .limit(1)
+            .correlate(MeasurementEquipment)
+            .scalar_subquery()
+        )
+        exempt_condition = and_(
+            MeasurementEquipment.calibration_type == "exempt",
+            func.trim(
+                func.coalesce(
+                    MeasurementEquipment.calibration_exemption_reason,
+                    "",
+                )
+            )
+            != "",
+        )
+        calibration_status_expression = case(
+            (exempt_condition, "exempt"),
+            (latest_calibration.id.is_(None), "missing"),
+            (
+                latest_calibration.result.notin_(("pass", "limited_use")),
+                "failed",
+            ),
+            (latest_calibration.next_due_date < as_of, "expired"),
+            (
+                latest_calibration.next_due_date
+                <= as_of + timedelta(days=30),
+                "due_soon",
+            ),
+            else_="valid",
+        )
+        query = (
+            db.session.query(
+                MeasurementEquipment,
+                latest_calibration,
+            )
+            .outerjoin(
+                latest_calibration,
+                latest_calibration.id == latest_calibration_id,
+            )
+        )
         status = args.get("status")
         if status:
             if status not in _EQUIPMENT_STATUS:
@@ -187,6 +260,20 @@ class MsaEquipmentService:
                     details={"status": status},
                 )
             query = query.filter(MeasurementEquipment.status == status)
+        calibration_status = args.get("calibration_status")
+        if calibration_status:
+            if calibration_status not in _CALIBRATION_SUMMARY_STATUS:
+                raise MsaServiceError(
+                    "MSA_CALIBRATION_STATUS_INVALID",
+                    "校驗狀態不在允許清單",
+                    details={
+                        "calibration_status": calibration_status,
+                        "allowed": sorted(_CALIBRATION_SUMMARY_STATUS),
+                    },
+                )
+            query = query.filter(
+                calibration_status_expression == calibration_status
+            )
         keyword = (args.get("q") or "").strip()
         if keyword:
             pattern = f"%{keyword}%"
@@ -208,8 +295,12 @@ class MsaEquipmentService:
         )
         return {
             "items": [
-                MsaEquipmentService._equipment_to_dict(item)
-                for item in items
+                MsaEquipmentService._equipment_summary_to_dict(
+                    equipment,
+                    calibration,
+                    as_of=as_of,
+                )
+                for equipment, calibration in items
             ],
             "page": page,
             "page_size": page_size,
@@ -220,18 +311,37 @@ class MsaEquipmentService:
     def get(equipment_id: int) -> dict:
         """取得設備主檔及其校驗、狀態事件與來源連結。"""
         equipment = MsaEquipmentService._get_equipment(equipment_id)
-        data = MsaEquipmentService._equipment_to_dict(equipment)
+        as_of = date.today()
+        calibration_records = (
+            EquipmentCalibrationRecord.query
+            .filter_by(equipment_id=equipment.id)
+            .order_by(
+                EquipmentCalibrationRecord.calibration_date.desc(),
+                EquipmentCalibrationRecord.id.desc(),
+            )
+            .all()
+        )
+        latest_approved = next(
+            (
+                record
+                for record in calibration_records
+                if record.status == "approved"
+                and record.calibration_date <= as_of
+                and (
+                    record.effective_date is None
+                    or record.effective_date <= as_of
+                )
+            ),
+            None,
+        )
+        data = MsaEquipmentService._equipment_summary_to_dict(
+            equipment,
+            latest_approved,
+            as_of=as_of,
+        )
         data["calibrations"] = [
             MsaEquipmentService._calibration_to_dict(record)
-            for record in (
-                EquipmentCalibrationRecord.query
-                .filter_by(equipment_id=equipment.id)
-                .order_by(
-                    EquipmentCalibrationRecord.calibration_date.desc(),
-                    EquipmentCalibrationRecord.id.desc(),
-                )
-                .all()
-            )
+            for record in calibration_records
         ]
         data["status_events"] = [
             MsaEquipmentService._status_event_to_dict(event)
@@ -1138,6 +1248,64 @@ class MsaEquipmentService:
         }
 
     @staticmethod
+    def _equipment_summary_to_dict(
+        equipment: MeasurementEquipment,
+        calibration: EquipmentCalibrationRecord | None,
+        *,
+        as_of: date,
+    ) -> dict:
+        """輸出清單所需校驗摘要，不觸發 ORM 關聯查詢。"""
+        data = MsaEquipmentService._equipment_to_dict(equipment)
+        exemption_reason = (
+            equipment.calibration_exemption_reason or ""
+        ).strip()
+        if equipment.calibration_type == "exempt" and exemption_reason:
+            summary_status = "exempt"
+            next_calibration_date = None
+            block_reason = None
+        elif calibration is None:
+            summary_status = "missing"
+            next_calibration_date = None
+            block_reason = "尚無已核准校驗紀錄"
+        else:
+            next_calibration_date = MsaEquipmentService._canonical_value(
+                calibration.next_due_date
+            )
+            if calibration.result not in {"pass", "limited_use"}:
+                summary_status = "failed"
+                result_label = {
+                    "fail": "失敗",
+                    "pending": "待確認",
+                }.get(calibration.result, calibration.result)
+                block_reason = f"最新已核准校驗結果為{result_label}"
+            elif (
+                calibration.next_due_date is not None
+                and calibration.next_due_date < as_of
+            ):
+                summary_status = "expired"
+                block_reason = (
+                    f"校驗已於 {calibration.next_due_date.isoformat()} 到期"
+                )
+            elif (
+                calibration.next_due_date is not None
+                and calibration.next_due_date
+                <= as_of + timedelta(days=30)
+            ):
+                summary_status = "due_soon"
+                block_reason = None
+            else:
+                summary_status = "valid"
+                block_reason = None
+        data.update(
+            {
+                "calibration_status": summary_status,
+                "next_calibration_date": next_calibration_date,
+                "calibration_block_reason": block_reason,
+            }
+        )
+        return data
+
+    @staticmethod
     def _calibration_to_dict(record: EquipmentCalibrationRecord) -> dict:
         points = (
             EquipmentCorrectionPoint.query
@@ -1687,6 +1855,25 @@ class MsaEquipmentService:
                 },
             )
         return parsed
+
+    @staticmethod
+    def _parse_iso_date_argument(
+        value,
+        *,
+        field: str,
+        default: date,
+        code: str,
+    ) -> date:
+        if value in (None, ""):
+            return default
+        try:
+            return date.fromisoformat(str(value))
+        except (TypeError, ValueError) as error:
+            raise MsaServiceError(
+                code,
+                f"{field} 必須是 ISO 日期",
+                details={"field": field, "value": value},
+            ) from error
 
     @staticmethod
     def _positive_int(value, *, field: str) -> int:

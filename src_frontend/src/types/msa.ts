@@ -5,6 +5,7 @@ export type EquipmentStatus = 'pending_review' | 'active' | 'maintenance' | 'ina
 export type CalibrationType = 'internal' | 'external' | 'exempt';
 export type CalibrationResult = 'pending' | 'pass' | 'fail' | 'limited_use';
 export type CalibrationRecordStatus = 'draft' | 'approved';
+export type CalibrationStatus = 'valid' | 'due_soon' | 'expired' | 'failed' | 'missing' | 'exempt';
 export type EquipmentStatusEventType =
   | 'calibration_overdue'
   | 'calibration_failed'
@@ -36,6 +37,9 @@ export interface MeasurementEquipment {
   calibration_type: CalibrationType | null;
   calibration_exemption_reason: string | null;
   calibration_interval_months: number | null;
+  calibration_status: CalibrationStatus;
+  next_calibration_date: string | null;
+  calibration_block_reason: string | null;
   is_reference_standard: boolean;
   affects_product_decision: boolean;
   created_by: number | null;
@@ -121,7 +125,9 @@ export interface EquipmentListParams {
   sort: 'equipment_no' | 'name' | 'status' | 'updated_at';
   order?: 'asc' | 'desc';
   status?: EquipmentStatus;
+  calibration_status?: CalibrationStatus;
   q?: string;
+  as_of?: string;
 }
 
 export interface CreateMsaEquipmentInput {
@@ -267,6 +273,13 @@ export interface EquipmentImportBatch {
   uploaded_by: number | null;
   uploaded_at: string | null;
   rows: EquipmentImportRow[];
+}
+
+export type EquipmentImportBatchSummary = Omit<EquipmentImportBatch, 'rows'>;
+
+export interface EquipmentImportHistoryParams {
+  page: number;
+  page_size: number;
 }
 
 export interface PreviewMsaEquipmentImportInput {

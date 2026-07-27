@@ -7,9 +7,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import api from '../services/api';
 import { isMsaEquipmentListQuery } from './useMsaEquipment';
-import { useConfirmMsaEquipmentImport, usePreviewMsaEquipmentImport } from './useMsaImports';
+import {
+  isMsaImportHistoryQuery,
+  useConfirmMsaEquipmentImport,
+  useMsaImportBatch,
+  useMsaImportHistory,
+  usePreviewMsaEquipmentImport,
+} from './useMsaImports';
 
-vi.mock('../services/api', () => ({ default: { post: vi.fn() } }));
+vi.mock('../services/api', () => ({
+  default: { get: vi.fn(), post: vi.fn() },
+}));
 
 const createWrapper = (queryClient: QueryClient) => ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -57,7 +65,38 @@ describe('MSA 設備匯入資料層', () => {
     });
     expect(invalidateSpy.mock.calls.map(([options]: [{ predicate?: unknown; queryKey?: readonly unknown[] }]) => options)).toEqual([
       { queryKey: ['msa', 'equipment-import', 41] },
+      { predicate: isMsaImportHistoryQuery },
       { predicate: isMsaEquipmentListQuery },
     ]);
+  });
+
+  it('以有界分頁讀取匯入歷程，並可按批次載入逐列證據', async () => {
+    vi.mocked(api.get)
+      .mockResolvedValueOnce({
+        data: { data: { items: [], page: 1, page_size: 20, total: 0 } },
+      })
+      .mockResolvedValueOnce({
+        data: { data: { id: 41, status: 'previewed', rows: [] } },
+      });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = createWrapper(queryClient);
+    const params = { page: 1, page_size: 20 };
+    const history = renderHook(() => useMsaImportHistory(params), { wrapper });
+    const detail = renderHook(() => useMsaImportBatch(41), { wrapper });
+
+    await act(async () => {
+      await Promise.all([
+        history.result.current.refetch(),
+        detail.result.current.refetch(),
+      ]);
+    });
+
+    expect(api.get).toHaveBeenCalledWith(
+      '/measurement-equipment/imports',
+      { params },
+    );
+    expect(api.get).toHaveBeenCalledWith('/measurement-equipment/imports/41');
   });
 });
