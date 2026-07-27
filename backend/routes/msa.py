@@ -480,3 +480,18 @@ def download_msa_excel(current_user, version_id: int):
             ".spreadsheetml.sheet"
         ),
     )
+
+
+@msa_bp.get("/api/msa/results/<int:version_id>/report.pdf")
+@_msa_auth_required
+@_require_msa_permission("msa.view")
+@_handle_msa_errors
+def download_msa_pdf(current_user, version_id: int):
+    """由已保存的結果版本重建 PDF；未核准者帶明顯浮水印。"""
+    output = MsaReportService.generate_pdf(version_id)
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=f"MSA_{version_id}.pdf",
+        mimetype="application/pdf",
+    )

@@ -7,10 +7,26 @@
 
 from decimal import Decimal
 from io import BytesIO
+import os
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import (
+    KeepTogether,
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 from ..extensions import db
 from ..models import MsaResultVersion, MsaWorkflowDecision, User
@@ -36,6 +52,37 @@ _DISPOSITION_LABELS = {
     "unacceptable": "不可接受",
     "indeterminate": "無法判定",
 }
+
+# 正式 PDF 必須能正確呈現繁體中文；找不到字型時不得以 Helvetica 輸出亂碼
+CJK_FONT_CANDIDATES = (
+    "C:/Windows/Fonts/msjh.ttc",
+    "C:/Windows/Fonts/mingliu.ttc",
+    "C:/Windows/Fonts/kaiu.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+)
+
+CJK_FONT_NAME = "MSA-CJK"
+PDF_WATERMARK_TEXT = "未核准"
+
+
+def register_cjk_font() -> str:
+    """註冊可用的繁體中文字型；找不到就明確失敗而不是輸出亂碼。"""
+    if CJK_FONT_NAME in pdfmetrics.getRegisteredFontNames():
+        return CJK_FONT_NAME
+    for path in CJK_FONT_CANDIDATES:
+        if not os.path.exists(path):
+            continue
+        try:
+            pdfmetrics.registerFont(TTFont(CJK_FONT_NAME, path))
+            return CJK_FONT_NAME
+        except Exception:
+            continue
+    raise MsaValidationError(
+        "MSA_REPORT_FONT_MISSING",
+        "伺服器缺少可用的繁體中文字型，無法產生正式 PDF",
+        details={"candidates": list(CJK_FONT_CANDIDATES)},
+    )
 
 
 class MsaReportService:
@@ -63,6 +110,244 @@ class MsaReportService:
         workbook.save(output)
         output.seek(0)
         return output
+
+    @staticmethod
+    def generate_pdf(result_version_id: int) -> BytesIO:
+        snapshot = MsaReportService._load_snapshot(result_version_id)
+        font = register_cjk_font()
+        result = snapshot["result"]
+        study = snapshot["study"]
+        approved = result.status == "approved"
+
+        output = BytesIO()
+        document = SimpleDocTemplate(
+            output,
+            pagesize=A4,
+            title=f"MSA {study.get('study_no')} 量測系統分析報告",
+            author="QC Database",
+            subject=f"結果版本 {result.id}／資料雜湊 {result.data_hash[:12]}",
+            leftMargin=18 * mm, rightMargin=18 * mm,
+            topMargin=20 * mm, bottomMargin=18 * mm,
+        )
+        styles = MsaReportService._pdf_styles(font)
+        story = MsaReportService._pdf_story(snapshot, styles, approved)
+
+        footer = (
+            f"研究 {study.get('study_no')}｜結果版本 {result.id}"
+            f"｜資料雜湊 {result.data_hash[:12]}"
+        )
+        document.build(
+            story,
+            onFirstPage=lambda canvas, doc: _draw_page_furniture(
+                canvas, doc, font, footer, approved,
+            ),
+            onLaterPages=lambda canvas, doc: _draw_page_furniture(
+                canvas, doc, font, footer, approved,
+            ),
+        )
+        output.seek(0)
+        return output
+
+    @staticmethod
+    def _pdf_styles(font: str) -> dict:
+        base = getSampleStyleSheet()
+        return {
+            "title": ParagraphStyle(
+                "MsaTitle", parent=base["Title"], fontName=font,
+                fontSize=18, leading=24,
+            ),
+            "heading": ParagraphStyle(
+                "MsaHeading", parent=base["Heading2"], fontName=font,
+                fontSize=13, leading=18, spaceBefore=10, spaceAfter=6,
+                textColor=colors.HexColor("#1F3B39"),
+            ),
+            "body": ParagraphStyle(
+                "MsaBody", parent=base["BodyText"], fontName=font,
+                fontSize=9.5, leading=14,
+            ),
+            "notice": ParagraphStyle(
+                "MsaNotice", parent=base["BodyText"], fontName=font,
+                fontSize=11, leading=16,
+                textColor=colors.HexColor("#A63440"),
+            ),
+        }
+
+    @staticmethod
+    def _pdf_story(snapshot, styles, approved: bool) -> list:
+        result = snapshot["result"]
+        study = snapshot["study"]
+        plan = snapshot["plan"]
+        conclusion = snapshot["conclusion"]
+        criteria = snapshot["criteria"]
+        font = styles["body"].fontName
+        story = []
+
+        # 1. 封面與研究結論
+        story.append(Paragraph("MSA 量測系統分析報告", styles["title"]))
+        if not approved:
+            story.append(Paragraph(UNAPPROVED_NOTICE, styles["notice"]))
+        story.append(Spacer(1, 6))
+        story.append(_pdf_table([
+            ("研究編號", study.get("study_no")),
+            ("品質特性", study.get("characteristic")),
+            ("單位", study.get("unit")),
+            ("研究類型", study.get("study_type")),
+            ("結果狀態", result.status),
+            ("系統處置", _DISPOSITION_LABELS.get(
+                conclusion.get("system_disposition"),
+                conclusion.get("system_disposition"),
+            )),
+            ("百分比口徑", conclusion.get("percent_basis")),
+            ("工程判斷", conclusion.get("engineering_judgment") or "未附加"),
+        ], font))
+        for reason in conclusion.get("reasons") or []:
+            story.append(Paragraph(f"• {reason}", styles["body"]))
+
+        # 2. 研究設計與適用性
+        story.append(Paragraph("研究設計與適用性", styles["heading"]))
+        story.append(_pdf_table([
+            ("方法代碼", plan.get("method_code")),
+            ("方法版本", plan.get("method_version")),
+            ("設計", (
+                f"{plan.get('part_count')} 零件 × "
+                f"{plan.get('appraiser_count')} 評價人 × "
+                f"{plan.get('trial_count')} 試驗"
+            )),
+            ("計畫雜湊", plan.get("plan_hash")),
+            ("凍結時間", plan.get("frozen_at")),
+        ], font))
+        applicability = result.applicability_result or {}
+        story.append(_pdf_table(
+            [(str(key), _pdf_text(value))
+             for key, value in sorted(applicability.items())],
+            font,
+        ))
+
+        # 3. 設備／校驗／解析度
+        story.append(Paragraph("設備、校驗與解析度", styles["heading"]))
+        equipment = plan.get("equipment_snapshot") or {}
+        assessment = equipment.get("resolution_assessment") or {}
+        story.append(_pdf_table([
+            ("資格檢查日", equipment.get("checked_on")),
+            ("解析度評估", assessment.get("level")),
+            ("評估說明", assessment.get("reason")),
+        ], font))
+        story.append(_pdf_grid(
+            ["角色", "設備編號", "名稱", "解析度", "校驗結果", "下次校驗日"],
+            [
+                [
+                    item.get("role"), item.get("equipment_no"),
+                    item.get("name"), item.get("resolution"),
+                    (item.get("calibration") or {}).get("result"),
+                    (item.get("calibration") or {}).get("next_due_date"),
+                ]
+                for item in equipment.get("items") or []
+            ],
+            font,
+        ))
+
+        story.append(PageBreak())
+
+        # 4. 原始資料摘要
+        story.append(Paragraph("原始資料摘要", styles["heading"]))
+        observations = snapshot["observations"]
+        story.append(Paragraph(
+            f"有效觀測共 {len(observations)} 筆，依實際輸入順序保存。",
+            styles["body"],
+        ))
+        story.append(_pdf_grid(
+            ["順序", "零件", "評價人", "試驗", "讀值"],
+            [
+                [
+                    row.get("actual_entry_order"), row.get("part_blind_code"),
+                    row.get("appraiser_blind_code"), row.get("trial_no"),
+                    row.get("numeric_value") or row.get("attribute_value"),
+                ]
+                for row in observations[:40]
+            ],
+            font,
+        ))
+        if len(observations) > 40:
+            story.append(Paragraph(
+                f"（此處僅列前 40 筆，完整讀值請見 Excel 報告）",
+                styles["body"],
+            ))
+
+        # 5. 方法統計證據
+        story.append(Paragraph("統計證據", styles["heading"]))
+        rows = []
+        _flatten(snapshot["statistics"], "", rows)
+        story.append(_pdf_grid(
+            ["統計項目", "值"],
+            [[path, _pdf_text(value)] for path, value in rows],
+            font,
+        ))
+
+        # 6. 圖表資料
+        story.append(PageBreak())
+        story.append(Paragraph("圖表資料", styles["heading"]))
+        story.append(Paragraph(
+            "以下數值直接取自結果版本保存的圖表資料，與畫面顯示相同。",
+            styles["body"],
+        ))
+        chart_rows = []
+        _flatten(snapshot["charts"], "", chart_rows)
+        story.append(_pdf_grid(
+            ["圖表資料路徑", "值"],
+            [[path, _pdf_text(value)] for path, value in chart_rows[:60]],
+            font,
+        ))
+
+        # 7. 準則與三層判定
+        story.append(Paragraph("準則與三層判定", styles["heading"]))
+        story.append(_pdf_table([
+            ("準則設定", criteria.get("profile_name")),
+            ("準則版本", criteria.get("version_no")),
+            ("生效日", criteria.get("effective_date")),
+            ("百分比口徑", criteria.get("percent_basis")),
+            ("口徑來源", criteria.get("percent_basis_source")),
+        ], font))
+        story.append(_pdf_grid(
+            ["門檻", "值"],
+            [
+                [key, _pdf_text(value)]
+                for key, value in sorted(
+                    (criteria.get("thresholds") or {}).items()
+                )
+            ],
+            font,
+        ))
+        story.append(_pdf_table([
+            ("客觀統計結果", _pdf_text(
+                conclusion.get("statistical_result")
+            )),
+            ("系統處置", conclusion.get("system_disposition")),
+            ("人工工程判斷", conclusion.get("engineering_judgment") or "未附加"),
+        ], font))
+
+        # 8. 核准與稽核歷程
+        story.append(Paragraph("核准與稽核歷程", styles["heading"]))
+        story.append(_pdf_grid(
+            ["動作", "狀態轉移", "執行者", "時間", "理由"],
+            [
+                [
+                    row.get("action"),
+                    f"{row.get('from_status')} → {row.get('to_status')}",
+                    row.get("actor"), row.get("created_at"),
+                    row.get("reason"),
+                ]
+                for row in snapshot["workflow"]
+            ],
+            font,
+        ))
+        story.append(KeepTogether(_pdf_table([
+            ("結果版本ID", result.id),
+            ("資料雜湊", result.data_hash),
+            ("方法代碼", result.method_code),
+            ("方法版本", result.method_version),
+            ("程式版本", result.code_version),
+        ], font)))
+        return story
 
     # ------------------------------------------------------------------
     # 快照載入
@@ -498,6 +783,92 @@ def _write_table(
         )
     if freeze:
         sheet.freeze_panes = sheet.cell(row=start_row + 1, column=1)
+
+
+# ----------------------------------------------------------------------
+# PDF 版面
+# ----------------------------------------------------------------------
+
+
+def _pdf_text(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list, tuple)):
+        return _compact(value)
+    if isinstance(value, float):
+        return f"{value:.10g}"
+    return str(value)
+
+
+def _pdf_table(pairs, font: str) -> Table:
+    table = Table(
+        [[str(label), Paragraph(
+            _pdf_text(value),
+            ParagraphStyle("cell", fontName=font, fontSize=9, leading=12),
+        )] for label, value in pairs],
+        colWidths=[38 * mm, 132 * mm],
+        hAlign="LEFT",
+    )
+    table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), font),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#42605E")),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.25, colors.HexColor("#D5DEDE")),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    return table
+
+
+def _pdf_grid(headers, rows, font: str) -> Table:
+    style = ParagraphStyle("grid", fontName=font, fontSize=8, leading=11)
+    data = [[Paragraph(str(header), style) for header in headers]]
+    for row in rows:
+        data.append([Paragraph(_pdf_text(cell), style) for cell in row])
+    if len(data) == 1:
+        data.append([Paragraph("（無資料）", style)] + [
+            Paragraph("", style) for _ in headers[1:]
+        ])
+
+    width = 174 * mm
+    table = Table(
+        data, colWidths=[width / len(headers)] * len(headers),
+        hAlign="LEFT", repeatRows=1,
+    )
+    table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), font),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F3B39")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D5DEDE")),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    return table
+
+
+def _draw_page_furniture(canvas, doc, font, footer, approved) -> None:
+    """每頁都帶研究編號、結果版本與資料雜湊短碼；未核准另加浮水印。"""
+    canvas.saveState()
+    if not approved:
+        canvas.setFont(font, 60)
+        canvas.setFillColor(colors.HexColor("#A63440"))
+        canvas.setFillAlpha(0.16)
+        canvas.translate(A4[0] / 2, A4[1] / 2)
+        canvas.rotate(45)
+        canvas.drawCentredString(0, 0, PDF_WATERMARK_TEXT)
+        canvas.restoreState()
+        canvas.saveState()
+
+    canvas.setFont(font, 7.5)
+    canvas.setFillColor(colors.HexColor("#5D6F70"))
+    canvas.drawString(18 * mm, 10 * mm, footer)
+    canvas.drawRightString(
+        A4[0] - 18 * mm, 10 * mm, f"第 {canvas.getPageNumber()} 頁",
+    )
+    canvas.restoreState()
 
 
 def _autosize(sheet) -> None:

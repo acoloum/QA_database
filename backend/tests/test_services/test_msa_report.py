@@ -406,3 +406,136 @@ def test_incomplete_evidence_is_refused_instead_of_recomputed(
 
     assert error.value.code == "MSA_REPORT_EVIDENCE_INCOMPLETE"
     assert "effective_observations" in error.value.details["missing"]
+
+
+# ---------------------------------------------------------------------------
+# PDF 報告
+# ---------------------------------------------------------------------------
+
+
+def _pdf_text(output):
+    from pypdf import PdfReader
+
+    return "\n".join(page.extract_text() or "" for page in PdfReader(output).pages)
+
+
+def test_approved_pdf_has_no_draft_watermark(db_session, approved_msa_result):
+    from pypdf import PdfReader
+
+    output = MsaReportService.generate_pdf(approved_msa_result.id)
+    reader = PdfReader(output)
+    text = "\n".join(page.extract_text() or "" for page in reader.pages)
+
+    assert approved_msa_result.study.study_no in text
+    assert "未核准" not in text
+    assert reader.metadata.title.startswith("MSA ")
+
+
+@pytest.mark.parametrize("status", ["analyzed", "submitted"])
+def test_unapproved_pdf_carries_the_watermark(
+    db_session, people, analyzed_msa_result, status,
+):
+    if status == "submitted":
+        MsaWorkflowService.submit(
+            analyzed_msa_result.id,
+            {"expected_status": "analyzed", "reason": "送審"},
+            actor_id=people["executor"].id,
+        )
+
+    text = _pdf_text(MsaReportService.generate_pdf(analyzed_msa_result.id))
+
+    assert "未核准" in text
+
+
+def test_pdf_repeats_traceable_identifiers_on_every_page(
+    db_session, approved_msa_result,
+):
+    from pypdf import PdfReader
+
+    reader = PdfReader(MsaReportService.generate_pdf(approved_msa_result.id))
+    short_hash = approved_msa_result.data_hash[:12]
+
+    assert len(reader.pages) > 1
+    for index, page in enumerate(reader.pages):
+        text = page.extract_text() or ""
+        assert approved_msa_result.study.study_no in text, index
+        assert str(approved_msa_result.id) in text, index
+        assert short_hash in text, index
+
+
+def test_pdf_renders_traditional_chinese_extractably(
+    db_session, approved_msa_result,
+):
+    text = _pdf_text(MsaReportService.generate_pdf(approved_msa_result.id))
+
+    assert "量測系統分析報告" in text
+    assert "核准與稽核歷程" in text
+    assert "外徑" in text
+
+
+def test_pdf_chart_values_come_from_the_saved_chart_data(
+    db_session, approved_msa_result,
+):
+    text = _pdf_text(MsaReportService.generate_pdf(approved_msa_result.id))
+
+    assert "圖表資料" in text
+    saved = approved_msa_result.chart_data["part_means"]
+    first_key = sorted(saved)[0]
+    assert f"part_means.{first_key}" in text.replace("\n", "")
+
+
+def test_pdf_contains_the_required_evidence_sections(
+    db_session, approved_msa_result,
+):
+    text = _pdf_text(MsaReportService.generate_pdf(approved_msa_result.id))
+
+    for section in (
+        "研究設計與適用性", "設備、校驗與解析度", "原始資料摘要",
+        "統計證據", "圖表資料", "準則與三層判定", "核准與稽核歷程",
+    ):
+        assert section in text, section
+
+
+def test_pdf_reports_three_conclusion_layers(
+    db_session, approved_msa_result,
+):
+    text = _pdf_text(MsaReportService.generate_pdf(approved_msa_result.id))
+
+    assert "客觀統計結果" in text
+    assert "系統處置" in text
+    assert "人工工程判斷" in text
+
+
+def test_missing_cjk_font_refuses_to_produce_a_garbled_pdf(
+    db_session, approved_msa_result, monkeypatch,
+):
+    from reportlab.pdfbase import pdfmetrics
+
+    import backend.services.msa_report as report_module
+
+    monkeypatch.setattr(report_module, "CJK_FONT_CANDIDATES", ())
+    monkeypatch.setattr(
+        pdfmetrics, "getRegisteredFontNames", lambda: ["Helvetica"],
+    )
+
+    with pytest.raises(MsaValidationError) as error:
+        MsaReportService.generate_pdf(approved_msa_result.id)
+
+    assert error.value.code == "MSA_REPORT_FONT_MISSING"
+
+
+def test_pdf_is_also_rebuilt_only_from_the_saved_result(
+    db_session, approved_msa_result,
+):
+    before = _pdf_text(MsaReportService.generate_pdf(approved_msa_result.id))
+
+    equipment = MeasurementEquipment.query.filter_by(
+        equipment_no="EQ-REPORT-1"
+    ).one()
+    equipment.name = "PDF 產生後更名的設備"
+    db_session.commit()
+
+    after = _pdf_text(MsaReportService.generate_pdf(approved_msa_result.id))
+
+    assert before == after
+    assert "PDF 產生後更名的設備" not in after
