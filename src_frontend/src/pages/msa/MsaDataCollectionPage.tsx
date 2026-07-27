@@ -51,7 +51,10 @@ export default function MsaDataCollectionPage() {
   const [batch, setBatch] = useState<MsaObservationImportBatch | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
-  const items: MsaBlindTask[] = tasks.data?.items ?? [];
+  // 先固定 items 的參照，後續 useMemo 才不會每次 render 都失效
+  const items: MsaBlindTask[] = useMemo(
+    () => tasks.data?.items ?? [], [tasks.data],
+  );
   const pending = useMemo(
     () => items.filter((task) => !task.recorded), [items],
   );

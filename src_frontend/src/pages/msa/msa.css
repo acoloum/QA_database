@@ -368,3 +368,56 @@ button.msa-risk-card:hover { box-shadow: 0 3px 10px rgba(23, 33, 38, .1); }
 .msa-chart__canvas { height: 18rem; margin-bottom: .8rem; }
 .msa-chart__actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .8rem; }
 .msa-chart__actions button { min-height: 2.3rem; border: 1px solid var(--msa-line); border-radius: .3rem; background: #fff; padding: .4rem .8rem; font-weight: 700; }
+
+/* --- 結果結論區 ----------------------------------------------------- */
+
+.msa-result-hero { border: 1px solid var(--msa-line); border-top: 6px solid var(--msa-accent); border-radius: .4rem; background: var(--msa-panel); padding: 1.2rem; margin-bottom: 1.4rem; }
+.msa-result-hero[data-tone="warning"] { border-top-color: var(--msa-warning); }
+.msa-result-hero[data-tone="danger"] { border-top-color: var(--msa-danger); }
+.msa-result-hero[data-tone="neutral"] { border-top-color: var(--msa-muted); }
+.msa-result-hero__verdict { display: flex; align-items: center; gap: .9rem; margin-bottom: 1rem; }
+.msa-result-hero__verdict strong { font-size: 1.9rem; line-height: 1.1; }
+.msa-result-hero__icon { display: grid; place-items: center; width: 3rem; height: 3rem; border: 2px solid currentColor; border-radius: 50%; font-size: 1.5rem; font-weight: 800; }
+.msa-result-hero[data-tone="ok"] .msa-result-hero__icon { color: var(--msa-accent); }
+.msa-result-hero[data-tone="warning"] .msa-result-hero__icon { color: var(--msa-warning); }
+.msa-result-hero[data-tone="danger"] .msa-result-hero__icon { color: var(--msa-danger); }
+.msa-result-hero[data-tone="neutral"] .msa-result-hero__icon { color: var(--msa-muted); }
+.msa-result-hero__reasons ul { margin: .3rem 0 0; padding-left: 1.2rem; }
+
+/* --- 工作流列 ------------------------------------------------------- */
+
+.msa-workflow-bar { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 1rem; border: 1px solid var(--msa-line); border-radius: .4rem; background: #efeae0; padding: .9rem 1rem; margin-bottom: 1.4rem; }
+.msa-workflow-bar__actions, .msa-workflow-bar__downloads { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+.msa-workflow-bar__action { display: grid; gap: .2rem; }
+.msa-workflow-bar button { min-height: 2.5rem; border: 1px solid var(--msa-accent); border-radius: .3rem; background: var(--msa-accent); color: #fff; padding: .45rem .9rem; font-weight: 720; }
+.msa-workflow-bar__downloads button { background: #fff; color: var(--msa-ink); border-color: var(--msa-line); }
+.msa-workflow-bar button:disabled { opacity: .5; cursor: not-allowed; }
+.msa-workflow-bar small { font-size: .74rem; color: var(--msa-muted); }
+
+/* --- 證據分層 ------------------------------------------------------- */
+
+.msa-evidence-layers { display: grid; gap: .7rem; }
+.msa-evidence-layer { border: 1px solid var(--msa-line); border-radius: .4rem; background: var(--msa-panel); }
+.msa-evidence-layer h2 { margin: 0; font-size: 1rem; }
+.msa-evidence-layer h2 button {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: .1rem .7rem;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--msa-ink);
+  padding: .85rem 1rem;
+  text-align: left;
+  font: inherit;
+  font-weight: 720;
+}
+.msa-evidence-layer h2 button small { grid-column: 2; color: var(--msa-muted); font-weight: 500; font-size: .8rem; }
+.msa-evidence-layer > div { border-top: 1px solid var(--msa-line); padding: 1rem; }
+.msa-evidence-layer h3 { font-size: .95rem; margin-top: 1rem; }
+.msa-evidence-layer h3:first-child { margin-top: 0; }
+
+.msa-dialog-actions { display: flex; justify-content: flex-end; gap: .6rem; margin-top: .8rem; }
+.msa-dialog-actions button { min-height: 2.5rem; border: 1px solid var(--msa-line); border-radius: .3rem; background: #fff; padding: .45rem 1rem; font-weight: 700; }
+.msa-dialog-actions button[type="submit"] { border-color: var(--msa-accent); background: var(--msa-accent); color: #fff; }

@@ -9,6 +9,9 @@ interface MsaAccessibleChartProps {
   children?: React.ReactNode;
 }
 
+/** UTF-8 BOM；Excel 需要它才會正確辨識中文 CSV 而不是顯示亂碼。 */
+const UTF8_BOM = String.fromCharCode(0xFEFF);
+
 /**
  * 每張 MSA 圖表都必須同時提供文字摘要與資料表：
  * 看不到顏色、用螢幕閱讀器，或把報告印成黑白時，結論都要讀得出來。
@@ -38,8 +41,9 @@ export default function MsaAccessibleChart({
         </button>
         <button
           type="button"
+          // 前置 BOM，Excel 才會以 UTF-8 開啟而不是亂碼
           onClick={() => downloadResponseBlob(
-            `﻿${toCsv(model)}`,
+            `${UTF8_BOM}${toCsv(model)}`,
             `${model.title}.csv`,
             'text/csv;charset=utf-8',
           )}
