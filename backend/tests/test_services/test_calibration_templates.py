@@ -2,8 +2,9 @@ import os
 
 import pytest
 from flask import Flask
-from sqlalchemy import func, text
+from sqlalchemy import event, func, text
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import Session
 
 from backend.extensions import db
 from backend.models import (
@@ -444,6 +445,38 @@ def test_create_version_rolls_back_all_points_when_later_point_is_invalid(
     assert CalibrationTemplatePoint.query.count() == 0
 
 
+def test_create_version_rejects_environment_key_collision_without_writes(
+    db_session,
+):
+    actor = _user(db_session, "environment_collision_create")
+    template = CalibrationTemplateService.create(
+        _template_payload(template_code="CAL-ENV-COLLISION-CREATE"),
+        actor.id,
+    )
+    audit_count = AuditLog.query.count()
+
+    with pytest.raises(CalibrationValidationError) as error:
+        CalibrationTemplateService.create_version(
+            template["id"],
+            _version_payload(
+                environment_requirements={
+                    " temperature ": {"required": True},
+                    "temperature": {"required": False},
+                }
+            ),
+            actor.id,
+        )
+
+    assert error.value.code == "CALIBRATION_FIELD_INVALID"
+    assert error.value.details == {
+        "field": "environment_requirements",
+        "requirement": "temperature",
+    }
+    assert CalibrationTemplateVersion.query.count() == 0
+    assert CalibrationTemplatePoint.query.count() == 0
+    assert AuditLog.query.count() == audit_count
+
+
 def test_create_version_returns_not_found_without_writes(db_session):
     actor = _user(db_session, "missing_template")
 
@@ -508,28 +541,163 @@ def test_update_version_replaces_points_atomically_and_increments_once(
     assert CalibrationTemplatePoint.query.count() == 1
 
 
-def test_update_version_rolls_back_scalar_and_point_changes_together(
+def test_update_version_rejects_environment_key_collision_without_writes(
     db_session,
 ):
-    actor = _user(db_session, "atomic_update")
+    actor = _user(db_session, "environment_collision_update")
     _template, version = _create_version(db_session, actor)
+    persisted_before = db_session.get(CalibrationTemplateVersion, version["id"])
+    original_environment = dict(persisted_before.environment_requirements)
+    original_point_ids = [point.id for point in persisted_before.points]
+    audit_count = AuditLog.query.count()
 
-    with pytest.raises(CalibrationValidationError):
+    with pytest.raises(CalibrationValidationError) as error:
         CalibrationTemplateService.update_version(
             version["id"],
             {
                 "expected_version": version["row_version"],
-                "procedure_name": "不得殘留",
-                "points": [_point(nominal_value="Infinity")],
+                "environment_requirements": {
+                    " temperature ": {"required": True},
+                    "temperature": {"required": False},
+                },
             },
             actor.id,
         )
 
+    assert error.value.code == "CALIBRATION_FIELD_INVALID"
+    assert error.value.details == {
+        "field": "environment_requirements",
+        "requirement": "temperature",
+    }
+    db_session.expire_all()
+    persisted = db_session.get(CalibrationTemplateVersion, version["id"])
+    assert persisted.environment_requirements == original_environment
+    assert persisted.row_version == version["row_version"]
+    assert [point.id for point in persisted.points] == original_point_ids
+    assert AuditLog.query.count() == audit_count
+
+
+def test_update_version_rolls_back_after_replacement_point_dml_and_audit_failure(
+    db_session,
+    monkeypatch,
+):
+    actor = _user(db_session, "atomic_update")
+    _template, version = _create_version(db_session, actor)
+    persisted_before = db_session.get(CalibrationTemplateVersion, version["id"])
+    original_point_ids = [point.id for point in persisted_before.points]
+    audit_count = AuditLog.query.count()
+    statements = []
+
+    def track_dml(
+        _connection,
+        _cursor,
+        statement,
+        _parameters,
+        _context,
+        _executemany,
+    ):
+        statements.append(statement)
+
+    def fail_after_dml(*_args, **_kwargs):
+        raise RuntimeError("稽核寫入失敗")
+
+    event.listen(db.engine, "before_cursor_execute", track_dml)
+    monkeypatch.setattr(
+        "backend.services.calibration_template_service.log_audit",
+        fail_after_dml,
+    )
+    try:
+        with pytest.raises(RuntimeError, match="稽核寫入失敗"):
+            CalibrationTemplateService.update_version(
+                version["id"],
+                {
+                    "expected_version": version["row_version"],
+                    "procedure_name": "不得殘留",
+                    "points": [
+                        _point(
+                            point_order=2,
+                            point_code="P02",
+                            nominal_value="20",
+                        )
+                    ],
+                },
+                actor.id,
+            )
+    finally:
+        event.remove(db.engine, "before_cursor_execute", track_dml)
+
+    assert any(
+        statement.lstrip().upper().startswith("DELETE")
+        and "校正模板校正點" in statement
+        for statement in statements
+    )
+    assert any(
+        statement.lstrip().upper().startswith("INSERT")
+        and "校正模板校正點" in statement
+        for statement in statements
+    )
     db_session.expire_all()
     persisted = db_session.get(CalibrationTemplateVersion, version["id"])
     assert persisted.procedure_name == "游標卡尺內校"
     assert persisted.row_version == version["row_version"]
+    assert [point.id for point in persisted.points] == original_point_ids
     assert [point.point_code for point in persisted.points] == ["P01"]
+    assert AuditLog.query.count() == audit_count
+
+
+def test_create_version_rolls_back_after_version_and_point_dml_and_audit_failure(
+    db_session,
+    monkeypatch,
+):
+    actor = _user(db_session, "atomic_create_version")
+    template = CalibrationTemplateService.create(
+        _template_payload(template_code="CAL-ATOMIC-CREATE-VERSION"),
+        actor.id,
+    )
+    audit_count = AuditLog.query.count()
+    statements = []
+
+    def track_dml(
+        _connection,
+        _cursor,
+        statement,
+        _parameters,
+        _context,
+        _executemany,
+    ):
+        statements.append(statement)
+
+    def fail_after_dml(*_args, **_kwargs):
+        raise RuntimeError("稽核寫入失敗")
+
+    event.listen(db.engine, "before_cursor_execute", track_dml)
+    monkeypatch.setattr(
+        "backend.services.calibration_template_service.log_audit",
+        fail_after_dml,
+    )
+    try:
+        with pytest.raises(RuntimeError, match="稽核寫入失敗"):
+            CalibrationTemplateService.create_version(
+                template["id"],
+                _version_payload(),
+                actor.id,
+            )
+    finally:
+        event.remove(db.engine, "before_cursor_execute", track_dml)
+
+    assert any(
+        statement.lstrip().upper().startswith("INSERT")
+        and "校正模板版本" in statement
+        for statement in statements
+    )
+    assert any(
+        statement.lstrip().upper().startswith("INSERT")
+        and "校正模板校正點" in statement
+        for statement in statements
+    )
+    assert CalibrationTemplateVersion.query.count() == 0
+    assert CalibrationTemplatePoint.query.count() == 0
+    assert AuditLog.query.count() == audit_count
 
 
 def test_submit_requires_at_least_one_required_point(db_session):
@@ -955,6 +1123,35 @@ def test_postgresql_trigger_blocks_frozen_template_evidence_changes(
             connection.execute(
                 text(
                     """
+                    INSERT INTO "校正模板校正點" (
+                        "模板版本ID", "點位順序", "點位代碼", "量測模式",
+                        "名目值", "單位", "參考值輸入模式", "必要重複次數",
+                        "誤差下限", "誤差上限", "判定基礎", "重複性規則",
+                        "重複性上限", "資格範圍代碼", "必填"
+                    ) VALUES (
+                        :successor_id, 1, 'P01', '外徑', 10, 'mm',
+                        'certified_value', 3, -0.02, 0.02,
+                        'all_readings', 'range', 0.01, 'OD-0-150', TRUE
+                    )
+                    """
+                ),
+                {"successor_id": successor_id},
+            )
+            required_point_count = connection.execute(
+                text(
+                    """
+                    SELECT COUNT(*)
+                    FROM "校正模板校正點"
+                    WHERE "模板版本ID" = :successor_id
+                      AND "必填" IS TRUE
+                    """
+                ),
+                {"successor_id": successor_id},
+            ).scalar_one()
+            assert required_point_count >= 1
+            connection.execute(
+                text(
+                    """
                     UPDATE "校正模板版本"
                     SET "狀態" = 'submitted',
                         "送審者ID" = :submitter_id,
@@ -1169,23 +1366,141 @@ def test_postgresql_service_orders_controlled_supersession_before_new_approval(
             db.engine.dispose()
 
 
-def test_list_uses_bounded_pagination_and_deterministic_decimal_strings(
+def test_list_returns_only_current_approved_summary_without_history_loading(
     db_session,
 ):
     actor = _user(db_session, "list_templates")
-    template, _version = _create_version(db_session, actor)
-
-    result = CalibrationTemplateService.list(
-        {"page": "1", "page_size": "25", "sort": "template_code", "order": "asc"}
+    approver = _user(db_session, "list_templates_approver")
+    template, submitted = _submit_version(db_session, actor)
+    approved = CalibrationTemplateService.approve_version(
+        submitted["id"],
+        {
+            "expected_version": submitted["row_version"],
+            "reason": "核准清單摘要版本",
+        },
+        approver.id,
+    )
+    for version_index in range(2, 7):
+        CalibrationTemplateService.create_version(
+            template["id"],
+            _version_payload(
+                revision_reason=f"歷史草稿 {version_index}",
+                points=[
+                    _point(
+                        point_order=point_index,
+                        point_code=f"P{point_index:03}",
+                        nominal_value=str(point_index),
+                    )
+                    for point_index in range(1, 31)
+                ],
+            ),
+            actor.id,
+        )
+    second_template = CalibrationTemplateService.create(
+        _template_payload(template_code="CAL-LIST-SECOND"),
+        actor.id,
     )
 
+    db_session.expire_all()
+    statements = []
+    relationship_loads = []
+
+    def track_sql(
+        _connection,
+        _cursor,
+        statement,
+        _parameters,
+        _context,
+        _executemany,
+    ):
+        statements.append(statement)
+
+    def track_orm(execute_state):
+        if execute_state.is_relationship_load:
+            relationship_loads.append(str(execute_state.statement))
+
+    event.listen(db.engine, "before_cursor_execute", track_sql)
+    event.listen(Session, "do_orm_execute", track_orm)
+    try:
+        result = CalibrationTemplateService.list(
+            {
+                "page": "1",
+                "page_size": "100",
+                "sort": "template_code",
+                "order": "asc",
+            }
+        )
+    finally:
+        event.remove(db.engine, "before_cursor_execute", track_sql)
+        event.remove(Session, "do_orm_execute", track_orm)
+
     assert result["page"] == 1
-    assert result["page_size"] == 25
-    assert result["total"] == 1
-    assert result["items"][0]["id"] == template["id"]
-    nominal = result["items"][0]["versions"][0]["points"][0]["nominal_value"]
-    assert nominal == "10"
-    assert not isinstance(nominal, float)
+    assert result["page_size"] == 100
+    assert result["total"] == 2
+    assert len(statements) == 2
+    assert relationship_loads == []
+    items_by_id = {item["id"]: item for item in result["items"]}
+    item = items_by_id[template["id"]]
+    assert set(item) == {
+        "id",
+        "template_code",
+        "name",
+        "equipment_type",
+        "description",
+        "status",
+        "current_approved_version_id",
+        "current_approved_version",
+    }
+    assert "versions" not in item
+    assert item["current_approved_version"] == {
+        "id": approved["id"],
+        "version_no": approved["version_no"],
+        "procedure_code": "WI-CAL-001",
+        "procedure_name": "游標卡尺內校",
+        "status": "approved",
+        "row_version": approved["row_version"],
+        "approved_at": approved["approved_at"],
+    }
+    assert "points" not in item["current_approved_version"]
+    assert items_by_id[second_template["id"]]["current_approved_version"] is None
+
+
+def test_get_keeps_complete_history_and_points_without_global_version_limit(
+    db_session,
+):
+    actor = _user(db_session, "get_complete_history")
+    template, _version = _create_version(db_session, actor)
+    for version_index in range(2, 8):
+        CalibrationTemplateService.create_version(
+            template["id"],
+            _version_payload(
+                revision_reason=f"完整歷史 {version_index}",
+                points=[
+                    _point(
+                        point_order=point_index,
+                        point_code=f"P{point_index:03}",
+                        nominal_value=str(point_index),
+                    )
+                    for point_index in range(1, 26)
+                ],
+            ),
+            actor.id,
+        )
+
+    detail = CalibrationTemplateService.get(template["id"])
+
+    assert len(detail["versions"]) == 7
+    assert [version["version_no"] for version in detail["versions"]] == [
+        7,
+        6,
+        5,
+        4,
+        3,
+        2,
+        1,
+    ]
+    assert len(detail["versions"][0]["points"]) == 25
+    assert detail["versions"][0]["points"][-1]["point_code"] == "P025"
 
 
 @pytest.mark.parametrize(

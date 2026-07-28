@@ -1,6 +1,7 @@
 import pytest
 
 from backend.models import (
+    AuditLog,
     CalibrationTemplate,
     CalibrationTemplatePoint,
     CalibrationTemplateVersion,
@@ -187,7 +188,10 @@ def test_list_and_get_return_stable_data_envelopes(
 
     assert listed.status_code == 200
     assert listed.get_json()["data"]["total"] == 1
-    assert listed.get_json()["data"]["items"][0]["id"] == template["id"]
+    listed_item = listed.get_json()["data"]["items"][0]
+    assert listed_item["id"] == template["id"]
+    assert listed_item["current_approved_version"] is None
+    assert "versions" not in listed_item
     assert detail.status_code == 200
     assert detail.get_json()["data"]["versions"][0]["id"] == version["id"]
     assert (
@@ -284,6 +288,81 @@ def test_create_template_and_version_return_201(
     assert CalibrationTemplate.query.count() == 1
     assert CalibrationTemplateVersion.query.count() == 1
     assert CalibrationTemplatePoint.query.count() == 1
+
+
+def test_create_version_environment_key_collision_returns_422_and_zero_writes(
+    client,
+    calibration_users,
+):
+    token = calibration_users["manager"]["token"]
+    template = _create_template(client, token, code="CAL-ROUTE-ENV-CREATE")
+    audit_count = AuditLog.query.count()
+    payload = _version_payload()
+    payload["environment_requirements"] = {
+        " temperature ": {"required": True},
+        "temperature": {"required": False},
+    }
+
+    response = client.post(
+        f"/api/calibration-templates/{template['id']}/versions",
+        headers=_authorization(token),
+        json=payload,
+    )
+
+    assert response.status_code == 422
+    assert response.get_json()["error"] == {
+        "code": "CALIBRATION_FIELD_INVALID",
+        "message": "環境要求名稱正規化後不可重複",
+        "details": {
+            "field": "environment_requirements",
+            "requirement": "temperature",
+        },
+    }
+    assert CalibrationTemplateVersion.query.count() == 0
+    assert CalibrationTemplatePoint.query.count() == 0
+    assert AuditLog.query.count() == audit_count
+
+
+def test_patch_version_environment_key_collision_returns_422_and_zero_writes(
+    client,
+    calibration_users,
+    db_session,
+):
+    token = calibration_users["manager"]["token"]
+    template = _create_template(client, token, code="CAL-ROUTE-ENV-UPDATE")
+    version = _create_version(client, token, template["id"])
+    persisted_before = db_session.get(CalibrationTemplateVersion, version["id"])
+    original_environment = dict(persisted_before.environment_requirements)
+    original_point_ids = [point.id for point in persisted_before.points]
+    audit_count = AuditLog.query.count()
+
+    response = client.patch(
+        f"/api/calibration-template-versions/{version['id']}",
+        headers=_authorization(token),
+        json={
+            "expected_version": version["row_version"],
+            "environment_requirements": {
+                " temperature ": {"required": True},
+                "temperature": {"required": False},
+            },
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.get_json()["error"] == {
+        "code": "CALIBRATION_FIELD_INVALID",
+        "message": "環境要求名稱正規化後不可重複",
+        "details": {
+            "field": "environment_requirements",
+            "requirement": "temperature",
+        },
+    }
+    db_session.expire_all()
+    persisted = db_session.get(CalibrationTemplateVersion, version["id"])
+    assert persisted.environment_requirements == original_environment
+    assert persisted.row_version == version["row_version"]
+    assert [point.id for point in persisted.points] == original_point_ids
+    assert AuditLog.query.count() == audit_count
 
 
 def test_patch_version_returns_200_and_conflict_returns_409(

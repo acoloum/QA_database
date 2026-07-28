@@ -8,7 +8,7 @@ import re
 
 from sqlalchemy import func
 from sqlalchemy.exc import DataError, IntegrityError
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 
 from ..extensions import db
 from ..models import (
@@ -209,24 +209,28 @@ class CalibrationTemplateService:
             if order == "asc"
             else CalibrationTemplate.id.desc()
         )
-        templates = (
+        current_approved_version = aliased(CalibrationTemplateVersion)
+        template_rows = (
             db.session.execute(
-                statement.options(
-                    selectinload(CalibrationTemplate.versions).selectinload(
-                        CalibrationTemplateVersion.points
-                    )
+                statement.add_columns(current_approved_version)
+                .outerjoin(
+                    current_approved_version,
+                    CalibrationTemplate.current_approved_version_id
+                    == current_approved_version.id,
                 )
                 .order_by(ordering, tie_breaker)
                 .offset((page - 1) * page_size)
                 .limit(page_size)
             )
-            .scalars()
             .all()
         )
         return {
             "items": [
-                CalibrationTemplateService.serialize_template(template)
-                for template in templates
+                CalibrationTemplateService.serialize_template_summary(
+                    template,
+                    current_version,
+                )
+                for template, current_version in template_rows
             ],
             "page": page,
             "page_size": page_size,
@@ -428,6 +432,7 @@ class CalibrationTemplateService:
             old_snapshot = CalibrationTemplateService.serialize_version(version)
             for field, value in changes.items():
                 setattr(version, field, value)
+            version.row_version += 1
             if replacement_points is not None:
                 for point in list(version.points):
                     db.session.delete(point)
@@ -440,7 +445,6 @@ class CalibrationTemplateService:
                         )
                     )
                 db.session.flush()
-            version.row_version += 1
             db.session.flush()
             snapshot = CalibrationTemplateService.serialize_version(version)
             log_audit(
@@ -723,6 +727,40 @@ class CalibrationTemplateService:
                 )
             ]
         return result
+
+    @staticmethod
+    def serialize_template_summary(
+        template: CalibrationTemplate,
+        current_approved_version: CalibrationTemplateVersion | None,
+    ) -> dict:
+        """輸出清單所需的模板與目前核准版摘要，不讀取歷史關聯。"""
+        result = CalibrationTemplateService.serialize_template(
+            template,
+            include_versions=False,
+        )
+        result["current_approved_version"] = (
+            CalibrationTemplateService.serialize_version_summary(
+                current_approved_version
+            )
+            if current_approved_version is not None
+            else None
+        )
+        return result
+
+    @staticmethod
+    def serialize_version_summary(version: CalibrationTemplateVersion) -> dict:
+        """輸出模板清單固定使用的目前核准版摘要。"""
+        return {
+            "id": version.id,
+            "version_no": version.version_no,
+            "procedure_code": version.procedure_code,
+            "procedure_name": version.procedure_name,
+            "status": version.status,
+            "row_version": version.row_version,
+            "approved_at": (
+                version.approved_at.isoformat() if version.approved_at else None
+            ),
+        }
 
     @staticmethod
     def serialize_version(version: CalibrationTemplateVersion) -> dict:
@@ -1159,6 +1197,15 @@ class CalibrationTemplateService:
                 max_length=80,
                 required=True,
             )
+            if name in normalized:
+                raise CalibrationValidationError(
+                    "CALIBRATION_FIELD_INVALID",
+                    "環境要求名稱正規化後不可重複",
+                    details={
+                        "field": "environment_requirements",
+                        "requirement": name,
+                    },
+                )
             if not isinstance(raw_rule, dict):
                 raise CalibrationValidationError(
                     "CALIBRATION_FIELD_INVALID",
