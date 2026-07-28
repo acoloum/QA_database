@@ -895,7 +895,10 @@ def test_postgresql_trigger_blocks_frozen_template_evidence_changes(
             ),
             {"version_id": version_id},
         ).scalar_one()
-        actor_id = connection.execute(
+        submitter_id = connection.execute(
+            text('INSERT INTO "使用者" DEFAULT VALUES RETURNING "識別碼"')
+        ).scalar_one()
+        approver_id = connection.execute(
             text('INSERT INTO "使用者" DEFAULT VALUES RETURNING "識別碼"')
         ).scalar_one()
         connection.execute(
@@ -903,20 +906,23 @@ def test_postgresql_trigger_blocks_frozen_template_evidence_changes(
                 """
                 UPDATE "校正模板版本"
                 SET "狀態" = 'submitted',
-                    "送審者ID" = :actor_id,
+                    "送審者ID" = :submitter_id,
                     "送審時間" = CURRENT_TIMESTAMP,
                     "資料版本" = "資料版本" + 1
                 WHERE "識別碼" = :version_id
                 """
             ),
-            {"actor_id": actor_id, "version_id": version_id},
+            {
+                "submitter_id": submitter_id,
+                "version_id": version_id,
+            },
         )
         connection.execute(
             text(
                 """
                 UPDATE "校正模板版本"
                 SET "狀態" = 'approved',
-                    "核准者ID" = :actor_id,
+                    "核准者ID" = :approver_id,
                     "核准時間" = CURRENT_TIMESTAMP,
                     "核准理由" = '核准',
                     "退回理由" = NULL,
@@ -924,7 +930,10 @@ def test_postgresql_trigger_blocks_frozen_template_evidence_changes(
                 WHERE "識別碼" = :version_id
                 """
             ),
-            {"actor_id": actor_id, "version_id": version_id},
+            {
+                "approver_id": approver_id,
+                "version_id": version_id,
+            },
         )
         if status == "superseded":
             successor_id = connection.execute(
@@ -948,13 +957,16 @@ def test_postgresql_trigger_blocks_frozen_template_evidence_changes(
                     """
                     UPDATE "校正模板版本"
                     SET "狀態" = 'submitted',
-                        "送審者ID" = :actor_id,
+                        "送審者ID" = :submitter_id,
                         "送審時間" = CURRENT_TIMESTAMP,
                         "資料版本" = "資料版本" + 1
                     WHERE "識別碼" = :successor_id
                     """
                 ),
-                {"actor_id": actor_id, "successor_id": successor_id},
+                {
+                    "submitter_id": submitter_id,
+                    "successor_id": successor_id,
+                },
             )
             connection.execute(
                 text(
@@ -976,7 +988,7 @@ def test_postgresql_trigger_blocks_frozen_template_evidence_changes(
                     """
                     UPDATE "校正模板版本"
                     SET "狀態" = 'approved',
-                        "核准者ID" = :actor_id,
+                        "核准者ID" = :approver_id,
                         "核准時間" = CURRENT_TIMESTAMP,
                         "核准理由" = '核准',
                         "退回理由" = NULL,
@@ -984,7 +996,10 @@ def test_postgresql_trigger_blocks_frozen_template_evidence_changes(
                     WHERE "識別碼" = :successor_id
                     """
                 ),
-                {"actor_id": actor_id, "successor_id": successor_id},
+                {
+                    "approver_id": approver_id,
+                    "successor_id": successor_id,
+                },
             )
         connection.commit()
 
