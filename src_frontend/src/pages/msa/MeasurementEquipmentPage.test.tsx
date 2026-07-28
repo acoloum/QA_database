@@ -236,8 +236,9 @@ describe('量測設備頁', () => {
   it('具 msa.manage 權限時可編輯主檔並保留未修改欄位的目前值', async () => {
     const user = userEvent.setup();
     const refetch = vi.fn();
+    const equipmentWithEmptyRangeMin = { ...detail, range_min: null };
     equipmentDetailMock.mockImplementation((equipmentId: number | null) => ({
-      data: equipmentId === 1 ? detail : undefined,
+      data: equipmentId === 1 ? equipmentWithEmptyRangeMin : undefined,
       isLoading: false,
       isError: false,
       refetch,
@@ -260,7 +261,7 @@ describe('量測設備頁', () => {
         manufacturer: 'Mitutoyo',
         model: 'M-01',
         serial_no: 'SN-001',
-        range_min: '0.0000000000',
+        range_min: null,
         range_max: '25.0000000000',
         resolution: '0.0010000000',
         unit: 'mm',
