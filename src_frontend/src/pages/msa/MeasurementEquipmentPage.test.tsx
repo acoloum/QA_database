@@ -16,6 +16,7 @@ const equipmentDetailMock = vi.hoisted(() => vi.fn());
 const createCalibrationMock = vi.hoisted(() => vi.fn());
 const approveCalibrationMock = vi.hoisted(() => vi.fn());
 const statusEventMock = vi.hoisted(() => vi.fn());
+const updateEquipmentMock = vi.hoisted(() => vi.fn());
 const downloadCertificateMock = vi.hoisted(() => vi.fn());
 
 beforeAll(() => {
@@ -39,6 +40,7 @@ vi.mock('../../hooks/useMsaEquipment', () => ({
   useMsaEquipment: (params: unknown) => equipmentQueryMock(params),
   useMsaEquipmentDetail: (equipmentId: number | null) => equipmentDetailMock(equipmentId),
   useCreateMsaEquipment: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateMsaEquipment: () => ({ mutateAsync: updateEquipmentMock, isPending: false }),
   useMsaStatusEvent: () => ({ mutateAsync: statusEventMock, isPending: false }),
   useDownloadMsaCertificate: () => ({
     mutateAsync: downloadCertificateMock,
@@ -154,6 +156,7 @@ describe('量測設備頁', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     statusEventMock.mockResolvedValue({});
+    updateEquipmentMock.mockResolvedValue({});
     downloadCertificateMock.mockResolvedValue(undefined);
     authMock.mockReturnValue({
       hasPermission: () => true,
@@ -226,7 +229,49 @@ describe('量測設備頁', () => {
 
     await user.click(screen.getAllByRole('button', { name: /查看 EQ-001/ })[0]);
     expect(await screen.findByRole('dialog', { name: /EQ-001/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '編輯主檔' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '變更設備狀態' })).not.toBeInTheDocument();
+  });
+
+  it('具 msa.manage 權限時可編輯主檔並保留未修改欄位的目前值', async () => {
+    const user = userEvent.setup();
+    const refetch = vi.fn();
+    equipmentDetailMock.mockImplementation((equipmentId: number | null) => ({
+      data: equipmentId === 1 ? detail : undefined,
+      isLoading: false,
+      isError: false,
+      refetch,
+    }));
+
+    render(<MeasurementEquipmentPage />);
+
+    await user.click(screen.getAllByRole('button', { name: /查看 EQ-001/ })[0]);
+    await user.click(screen.getByRole('button', { name: '編輯主檔' }));
+    const name = screen.getByLabelText('設備名稱');
+    await user.clear(name);
+    await user.type(name, '外徑分厘卡（已校正）');
+    await user.click(screen.getByRole('button', { name: '儲存主檔' }));
+
+    await waitFor(() => expect(updateEquipmentMock).toHaveBeenCalledWith({
+      equipmentId: 1,
+      payload: {
+        name: '外徑分厘卡（已校正）',
+        equipment_type: '分厘卡',
+        manufacturer: 'Mitutoyo',
+        model: 'M-01',
+        serial_no: 'SN-001',
+        range_min: '0.0000000000',
+        range_max: '25.0000000000',
+        resolution: '0.0010000000',
+        unit: 'mm',
+        department: '品保部',
+        location: '量測室',
+        custodian: '王小明',
+        calibration_type: 'external',
+        calibration_interval_months: 12,
+      },
+    }));
+    await waitFor(() => expect(refetch).toHaveBeenCalled());
   });
 
   it('逾期設備顯示阻擋原因，並提供表格與行動版校驗標籤卡', () => {
