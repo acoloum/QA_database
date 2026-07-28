@@ -1846,6 +1846,14 @@ def _reject_self_template_successor(target, value, _old_value, _initiator):
     return value
 
 
+def _block_template_version_insert(_mapper, _connection, target):
+    if (
+        target.successor_version_id is not None
+        or target.successor_version is not None
+    ):
+        raise ValueError('新建校正模板版本不可預設後繼版本')
+
+
 def _block_frozen_template_version_update(_mapper, connection, target):
     state = inspect(target)
     changed_columns = {
@@ -1853,30 +1861,89 @@ def _block_frozen_template_version_update(_mapper, connection, target):
         for column in state.mapper.column_attrs
         if state.attrs[column.key].history.has_changes()
     }
+    if state.attrs.successor_version.history.has_changes():
+        changed_columns.add('successor_version_id')
     if not changed_columns:
         return
 
     original = _persisted_template_version(connection, target.id)
-    original_status = original['狀態'] if original is not None else None
-    if original_status not in {'approved', 'superseded'}:
+    status_history = state.attrs.status.history
+    original_status = (
+        status_history.deleted[0]
+        if status_history.deleted
+        else original['狀態'] if original is not None else None
+    )
+    row_version_history = state.attrs.row_version.history
+    original_row_version = (
+        row_version_history.deleted[0]
+        if row_version_history.deleted
+        else original['資料版本'] if original is not None else None
+    )
+
+    if original_status in {'rejected', 'superseded'}:
+        raise ValueError('退回或已取代的校正模板版本不可修改')
+
+    if target.status not in {
+        'draft',
+        'submitted',
+        'approved',
+        'rejected',
+        'superseded',
+    }:
+        # 未知值交由資料庫 CHECK constraint 統一拒絕。
+        return
+
+    if original_status == 'draft' and target.status == 'draft':
         if 'successor_version_id' in changed_columns:
             raise ValueError('後繼版本只能在核准版本受控取代時設定')
         return
-    allowed_supersession_columns = {
-        'status',
-        'successor_version_id',
-        'row_version',
+
+    allowed_transition_columns = {
+        ('draft', 'submitted'): {
+            'status',
+            'submitted_by',
+            'submitted_at',
+            'row_version',
+        },
+        ('submitted', 'approved'): {
+            'status',
+            'approved_by',
+            'approved_at',
+            'approval_reason',
+            'rejection_reason',
+            'row_version',
+        },
+        ('submitted', 'rejected'): {
+            'status',
+            'approved_by',
+            'approved_at',
+            'approval_reason',
+            'rejection_reason',
+            'row_version',
+        },
+        ('approved', 'superseded'): {
+            'status',
+            'successor_version_id',
+            'row_version',
+        },
     }
-    is_controlled_supersession = (
-        original_status == 'approved'
-        and target.status == 'superseded'
-        and changed_columns <= allowed_supersession_columns
-    )
-    if not is_controlled_supersession:
-        raise ValueError('核准或已取代的校正模板版本不可修改')
-    if target.row_version != original['資料版本'] + 1:
-        raise ValueError('受控取代時資料版本必須精確增加 1')
-    _validate_template_successor(connection, target, original)
+    transition = (original_status, target.status)
+    allowed_columns = allowed_transition_columns.get(transition)
+    if allowed_columns is None:
+        raise ValueError('不允許的校正模板版本狀態轉態')
+    if not changed_columns <= allowed_columns:
+        raise ValueError('校正模板版本轉態欄位不符合白名單')
+    if target.row_version != original_row_version + 1:
+        raise ValueError('狀態轉態時資料版本必須精確增加 1')
+
+    if transition == ('submitted', 'approved'):
+        if target.rejection_reason is not None:
+            raise ValueError('核准時必須清除退回理由')
+    elif transition == ('submitted', 'rejected'):
+        if target.approval_reason is not None:
+            raise ValueError('退回時必須清除核准理由')
+    elif transition == ('approved', 'superseded'):
+        _validate_template_successor(connection, target, original)
 
 
 def _block_frozen_template_version_delete(_mapper, connection, target):
@@ -1931,6 +1998,11 @@ event.listen(
     'set',
     _reject_self_template_successor,
     retval=True,
+)
+event.listen(
+    CalibrationTemplateVersion,
+    'before_insert',
+    _block_template_version_insert,
 )
 event.listen(
     CalibrationTemplateVersion,

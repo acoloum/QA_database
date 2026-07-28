@@ -362,25 +362,96 @@ BEGIN
         RETURN OLD;
     END IF;
 
-    IF OLD."狀態" = 'superseded' THEN
-        RAISE EXCEPTION '已取代的校正模板版本不可修改';
+    IF NEW."狀態" NOT IN (
+        'draft', 'submitted', 'approved', 'rejected', 'superseded'
+    ) THEN
+        -- 未知值交由資料表 CHECK constraint 統一拒絕。
+        RETURN NEW;
+    END IF;
+
+    IF OLD."狀態" IN ('rejected', 'superseded') THEN
+        RAISE EXCEPTION '退回或已取代的校正模板版本不可修改';
+    END IF;
+
+    IF OLD."狀態" = 'draft' THEN
+        IF NEW."狀態" = 'draft' THEN
+            IF NEW."後繼版本ID"
+                IS DISTINCT FROM OLD."後繼版本ID" THEN
+                RAISE EXCEPTION
+                    '後繼版本只能在核准版本受控取代時設定';
+            END IF;
+            RETURN NEW;
+        END IF;
+
+        IF NEW."狀態" <> 'submitted' THEN
+            RAISE EXCEPTION '不允許的校正模板版本狀態轉態';
+        END IF;
+        IF (
+            to_jsonb(NEW)
+            - ARRAY['狀態', '送審者ID', '送審時間', '資料版本']
+        ) IS DISTINCT FROM (
+            to_jsonb(OLD)
+            - ARRAY['狀態', '送審者ID', '送審時間', '資料版本']
+        ) THEN
+            RAISE EXCEPTION '校正模板版本轉態欄位不符合白名單';
+        END IF;
+        IF NEW."資料版本" <> OLD."資料版本" + 1 THEN
+            RAISE EXCEPTION '狀態轉態時資料版本必須精確增加 1';
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    IF OLD."狀態" = 'submitted' THEN
+        IF NEW."狀態" NOT IN ('approved', 'rejected') THEN
+            RAISE EXCEPTION '不允許的校正模板版本狀態轉態';
+        END IF;
+        IF (
+            to_jsonb(NEW)
+            - ARRAY[
+                '狀態', '核准者ID', '核准時間', '核准理由',
+                '退回理由', '資料版本'
+            ]
+        ) IS DISTINCT FROM (
+            to_jsonb(OLD)
+            - ARRAY[
+                '狀態', '核准者ID', '核准時間', '核准理由',
+                '退回理由', '資料版本'
+            ]
+        ) THEN
+            RAISE EXCEPTION '校正模板版本轉態欄位不符合白名單';
+        END IF;
+        IF NEW."資料版本" <> OLD."資料版本" + 1 THEN
+            RAISE EXCEPTION '狀態轉態時資料版本必須精確增加 1';
+        END IF;
+        IF NEW."狀態" = 'approved'
+            AND NEW."退回理由" IS NOT NULL THEN
+            RAISE EXCEPTION '核准時必須清除退回理由';
+        END IF;
+        IF NEW."狀態" = 'rejected'
+            AND NEW."核准理由" IS NOT NULL THEN
+            RAISE EXCEPTION '退回時必須清除核准理由';
+        END IF;
+        RETURN NEW;
     END IF;
 
     IF OLD."狀態" = 'approved' THEN
         IF NEW."狀態" <> 'superseded'
-            OR NEW."後繼版本ID" IS NULL
-            OR (
+            OR NEW."後繼版本ID" IS NULL THEN
+            RAISE EXCEPTION
+                '核准的校正模板版本只允許連結後繼版本後取代';
+        END IF;
+        IF (
                 to_jsonb(NEW)
                 - ARRAY['狀態', '後繼版本ID', '資料版本']
             ) IS DISTINCT FROM (
                 to_jsonb(OLD)
                 - ARRAY['狀態', '後繼版本ID', '資料版本']
             ) THEN
-            RAISE EXCEPTION '核准的校正模板版本只允許連結後繼版本後取代';
+            RAISE EXCEPTION '校正模板版本轉態欄位不符合白名單';
         END IF;
 
         IF NEW."資料版本" <> OLD."資料版本" + 1 THEN
-            RAISE EXCEPTION '受控取代時資料版本必須精確增加 1';
+            RAISE EXCEPTION '狀態轉態時資料版本必須精確增加 1';
         END IF;
         IF NEW."後繼版本ID" = OLD."識別碼" THEN
             RAISE EXCEPTION '後繼版本不可指向自身';
@@ -424,11 +495,7 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    IF NEW."後繼版本ID" IS DISTINCT FROM OLD."後繼版本ID" THEN
-        RAISE EXCEPTION '後繼版本只能在核准版本受控取代時設定';
-    END IF;
-
-    RETURN NEW;
+    RAISE EXCEPTION '不允許的校正模板版本狀態轉態';
 END;
 $$ LANGUAGE plpgsql;
 
