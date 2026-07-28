@@ -19,6 +19,7 @@ ROLES = [
             'patrol.create': True, 'patrol.edit_own': True, 'patrol.view': True,
             'spc.view': True,
             'msa.view': True, 'msa.execute': True,
+            'calibration.view': True, 'calibration.execute': True,
             'pyrometry.edit': True, 'pyrometry.view': True,
             'task.create': True, 'task.edit': True,
         }
@@ -35,6 +36,8 @@ ROLES = [
             'patrol.create': True, 'patrol.edit': True, 'patrol.view': True,
             'spc.view': True, 'spc.manage': True,
             'msa.view': True, 'msa.execute': True, 'msa.manage': True,
+            'calibration.view': True, 'calibration.execute': True,
+            'calibration.manage': True,
             'pyrometry.edit': True, 'pyrometry.view': True,
             'task.create': True, 'task.edit': True,
         }
@@ -53,6 +56,7 @@ ROLES = [
             'patrol.create': True, 'patrol.edit': True, 'patrol.delete': True, 'patrol.view': True,
             'spc.view': True, 'spc.manage': True, 'spc.approve': True,
             'msa.view': True, 'msa.execute': True, 'msa.manage': True, 'msa.approve': True,
+            'calibration.view': True, 'calibration.approve': True,
             'pyrometry.edit': True, 'pyrometry.delete': True, 'pyrometry.view': True,
             'task.create': True, 'task.edit': True, 'task.delete': True,
         }
@@ -71,6 +75,8 @@ ROLES = [
             'patrol.create': True, 'patrol.edit': True, 'patrol.delete': True, 'patrol.view': True,
             'spc.view': True, 'spc.manage': True, 'spc.approve': True,
             'msa.view': True, 'msa.execute': True, 'msa.manage': True, 'msa.approve': True,
+            'calibration.view': True, 'calibration.execute': True,
+            'calibration.manage': True, 'calibration.approve': True,
             'pyrometry.edit': True, 'pyrometry.delete': True, 'pyrometry.view': True,
             'task.create': True, 'task.edit': True, 'task.delete': True,
             'user.manage': True,
