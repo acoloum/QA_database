@@ -230,7 +230,15 @@ SET "資料等級" = 'summary_legacy',
 COMMIT;
 ```
 
-補齊規格內所有 check constraint、unique constraint、索引及 PostgreSQL JSONB 型別。Migration 測試讀取 SQL，確認沒有 `DROP TABLE`、舊資料更新不生成詳細讀值，且所有新表與保護 trigger 名稱存在。
+補齊規格內所有 check constraint、unique constraint、索引及 PostgreSQL JSONB 型別。Migration 測試不得以搜尋 SQL 原始文字作為證據；必須連線到明確的 PostgreSQL 測試資料庫，在每次測試建立隨機命名的隔離 schema，建立最小前置資料表與 legacy fixture，套用完整 Migration 49，實際驗證：
+
+- 新表、欄位、索引及外鍵可由 PostgreSQL catalog／SQLAlchemy inspector 查得。
+- legacy 校驗紀錄保持原資料且標示 `summary_legacy`，不生成原始讀值。
+- 非法重複版號、校正點、試驗序號及矛盾允差由實際 INSERT/UPDATE 觸發 constraint。
+- submitted／approved 證據的 UPDATE/DELETE 由實際操作觸發 PostgreSQL trigger。
+- Migration 不移除既有設備、校驗紀錄及補正點。
+
+測試使用 `CALIBRATION_TEST_DATABASE_URL`，不得輸出連線字串或密碼。fixture 在 `finally` 中以明確 schema 名稱清除；沒有 PostgreSQL 測試連線時，單元測試可明確 skip，但 Task 1 完成前必須在本機 PostgreSQL 實際執行一次並取得 PASS。
 
 - [ ] **Step 5: 執行模型與 migration 測試**
 
