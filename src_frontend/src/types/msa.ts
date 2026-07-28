@@ -70,6 +70,8 @@ export interface EquipmentCalibration {
   next_due_date: string | null;
   calibration_provider: string | null;
   certificate_no: string | null;
+  reference_standard_no: string | null;
+  reference_standard_due_date: string | null;
   traceability_standard: string | null;
   uncertainty_statement: string | null;
   result: CalibrationResult;
@@ -173,6 +175,8 @@ export interface CreateMsaCalibrationInput {
   next_due_date?: string | null;
   calibration_provider?: string | null;
   certificate_no?: string | null;
+  reference_standard_no?: string | null;
+  reference_standard_due_date?: string | null;
   traceability_standard?: string | null;
   uncertainty_statement?: string | null;
   result: CalibrationResult;

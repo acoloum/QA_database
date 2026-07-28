@@ -761,6 +761,12 @@ class EquipmentCalibrationRecord(db.Model):
     )
     restriction_conditions = db.Column('限制條件', db.Text, nullable=True)
     approval_reason = db.Column('核准理由', db.Text, nullable=True)
+    reference_standard_no = db.Column(
+        '參考標準器編號', db.String(160), nullable=True
+    )
+    reference_standard_due_date = db.Column(
+        '參考標準器有效期', db.Date, nullable=True
+    )
     certificate_attachment_id = db.Column(
         '原始證書附件ID', db.Integer, db.ForeignKey('附件.識別碼'),
         nullable=True,

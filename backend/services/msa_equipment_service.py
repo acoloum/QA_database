@@ -90,6 +90,7 @@ _CALIBRATION_TEXT_LIMITS = {
     "calibration_type": 30,
     "calibration_provider": 160,
     "certificate_no": 160,
+    "reference_standard_no": 160,
     "result": 30,
 }
 _CALIBRATION_FIELDS = {
@@ -99,6 +100,8 @@ _CALIBRATION_FIELDS = {
     "next_due_date",
     "calibration_provider",
     "certificate_no",
+    "reference_standard_no",
+    "reference_standard_due_date",
     "traceability_standard",
     "uncertainty_statement",
     "result",
@@ -1393,6 +1396,10 @@ class MsaEquipmentService:
             ),
             "calibration_provider": record.calibration_provider,
             "certificate_no": record.certificate_no,
+            "reference_standard_no": record.reference_standard_no,
+            "reference_standard_due_date": MsaEquipmentService._canonical_value(
+                record.reference_standard_due_date
+            ),
             "traceability_standard": record.traceability_standard,
             "uncertainty_statement": record.uncertainty_statement,
             "result": record.result,
@@ -1655,6 +1662,16 @@ class MsaEquipmentService:
                 payload.get("certificate_no"),
                 field="certificate_no",
                 max_length=_CALIBRATION_TEXT_LIMITS["certificate_no"],
+            ),
+            "reference_standard_no": MsaEquipmentService._optional_text(
+                payload.get("reference_standard_no"),
+                field="reference_standard_no",
+                max_length=_CALIBRATION_TEXT_LIMITS["reference_standard_no"],
+            ),
+            "reference_standard_due_date": MsaEquipmentService._parse_date(
+                payload.get("reference_standard_due_date"),
+                field="reference_standard_due_date",
+                required=False,
             ),
             "traceability_standard": MsaEquipmentService._optional_text(
                 payload.get("traceability_standard")

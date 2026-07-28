@@ -250,6 +250,14 @@ export default function EquipmentDetailDrawer({
                       {record.calibration_date} → {record.next_due_date || '未設定到期日'}
                     </p>
                     <p>{record.traceability_standard || '未填寫追溯標準'}</p>
+                    {record.reference_standard_no && (
+                      <p className="msa-mono">
+                        參考標準器：{record.reference_standard_no}
+                        {record.reference_standard_due_date && (
+                          <small>（有效期至 {record.reference_standard_due_date}）</small>
+                        )}
+                      </p>
+                    )}
                     <p>
                       證書附件：
                       {record.certificate_attachment_id

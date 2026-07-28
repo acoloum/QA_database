@@ -66,6 +66,8 @@ export default function EquipmentCalibrationForm({
         next_due_date: String(data.get('next_due_date') || '') || null,
         calibration_provider: String(data.get('calibration_provider') || '') || null,
         certificate_no: String(data.get('certificate_no') || '') || null,
+        reference_standard_no: String(data.get('reference_standard_no') || '') || null,
+        reference_standard_due_date: String(data.get('reference_standard_due_date') || '') || null,
         traceability_standard: String(data.get('traceability_standard') || '') || null,
         uncertainty_statement: String(data.get('uncertainty_statement') || '') || null,
         result,
@@ -153,6 +155,14 @@ export default function EquipmentCalibrationForm({
             <label>
               證書編號
               <input name="certificate_no" />
+            </label>
+            <label>
+              參考標準器編號
+              <input name="reference_standard_no" placeholder="標準件 / 量塊編號" />
+            </label>
+            <label>
+              標準器有效期
+              <input name="reference_standard_due_date" type="date" />
             </label>
             <label>
               適用量測模式

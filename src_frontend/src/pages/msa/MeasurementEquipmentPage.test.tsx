@@ -93,6 +93,8 @@ const calibration: EquipmentCalibration = {
   next_due_date: '2027-01-20',
   calibration_provider: '校驗實驗室',
   certificate_no: 'CERT-20',
+  reference_standard_no: null,
+  reference_standard_due_date: null,
   traceability_standard: 'CNS 1234',
   uncertainty_statement: 'U=0.002 mm',
   result: 'pass',
