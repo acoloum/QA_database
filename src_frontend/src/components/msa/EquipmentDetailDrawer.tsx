@@ -6,8 +6,10 @@ import {
   useDownloadMsaCertificate,
   useMsaEquipmentDetail,
   useMsaStatusEvent,
+  useUpdateMsaEquipment,
 } from '../../hooks/useMsaEquipment';
 import type {
+  CalibrationType,
   EquipmentCalibration,
   EquipmentCorrectionPoint,
   EquipmentLink,
@@ -75,8 +77,11 @@ export default function EquipmentDetailDrawer({
   const { hasPermission } = useAuth();
   const detail = useMsaEquipmentDetail(equipmentId);
   const statusEvent = useMsaStatusEvent();
+  const updateEquipment = useUpdateMsaEquipment();
   const downloadCertificate = useDownloadMsaCertificate();
   const [activeTab, setActiveTab] = useState<Tab>('master');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [targetStatus, setTargetStatus] = useState<EquipmentStatus>('maintenance');
   const [statusReason, setStatusReason] = useState('');
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -175,6 +180,135 @@ export default function EquipmentDetailDrawer({
                   <div><dt>位置</dt><dd>{equipment.location || '未填寫'}</dd></div>
                   <div><dt>保管人</dt><dd>{equipment.custodian || '未填寫'}</dd></div>
                 </dl>
+                {hasPermission('msa.manage') && !isEditing && (
+                  <button
+                    type="button"
+                    className="msa-button msa-button--quiet"
+                    onClick={() => setIsEditing(true)}
+                  >
+                    編輯主檔
+                  </button>
+                )}
+                {hasPermission('msa.manage') && isEditing && (
+                  <form
+                    className="msa-edit-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      setEditError(null);
+                      const data = new FormData(event.currentTarget);
+                      void updateEquipment.mutateAsync({
+                        equipmentId: equipment.id,
+                        payload: {
+                          name: String(data.get('name')),
+                          equipment_type: String(data.get('equipment_type') || '') || null,
+                          manufacturer: String(data.get('manufacturer') || '') || null,
+                          model: String(data.get('model') || '') || null,
+                          serial_no: String(data.get('serial_no') || '') || null,
+                          range_min: String(data.get('range_min') || '') || null,
+                          range_max: String(data.get('range_max') || '') || null,
+                          resolution: String(data.get('resolution') || '') || null,
+                          unit: String(data.get('unit') || '') || null,
+                          department: String(data.get('department') || '') || null,
+                          location: String(data.get('location') || '') || null,
+                          custodian: String(data.get('custodian') || '') || null,
+                          calibration_type: (String(data.get('calibration_type') || '') || null) as CalibrationType | null,
+                          calibration_interval_months: data.get('calibration_interval_months')
+                            ? Number(data.get('calibration_interval_months'))
+                            : null,
+                        },
+                      }).then(() => {
+                        setIsEditing(false);
+                        void detail.refetch();
+                      }).catch((error: unknown) => {
+                        setEditError(
+                          error instanceof Error
+                            ? error.message
+                            : '主檔未更新，請檢查輸入內容。',
+                        );
+                      });
+                    }}
+                  >
+                    <h3>編輯主檔</h3>
+                    <label>
+                      設備名稱
+                      <input name="name" defaultValue={equipment.name} required />
+                    </label>
+                    <label>
+                      型式
+                      <input name="equipment_type" defaultValue={equipment.equipment_type ?? ''} />
+                    </label>
+                    <label>
+                      製造商
+                      <input name="manufacturer" defaultValue={equipment.manufacturer ?? ''} />
+                    </label>
+                    <label>
+                      型號
+                      <input name="model" defaultValue={equipment.model ?? ''} />
+                    </label>
+                    <label>
+                      序號
+                      <input name="serial_no" defaultValue={equipment.serial_no ?? ''} />
+                    </label>
+                    <label>
+                      量程下限
+                      <input name="range_min" inputMode="decimal" defaultValue={equipment.range_min ?? ''} />
+                    </label>
+                    <label>
+                      量程上限
+                      <input name="range_max" inputMode="decimal" defaultValue={equipment.range_max ?? ''} />
+                    </label>
+                    <label>
+                      解析度
+                      <input name="resolution" inputMode="decimal" defaultValue={equipment.resolution ?? ''} />
+                    </label>
+                    <label>
+                      單位
+                      <input name="unit" defaultValue={equipment.unit ?? ''} />
+                    </label>
+                    <label>
+                      部門
+                      <input name="department" defaultValue={equipment.department ?? ''} />
+                    </label>
+                    <label>
+                      位置
+                      <input name="location" defaultValue={equipment.location ?? ''} />
+                    </label>
+                    <label>
+                      保管人
+                      <input name="custodian" defaultValue={equipment.custodian ?? ''} />
+                    </label>
+                    <label>
+                      校驗類別
+                      <select name="calibration_type" defaultValue={equipment.calibration_type ?? ''}>
+                        <option value="">未設定</option>
+                        <option value="external">外校</option>
+                        <option value="internal">內校</option>
+                        <option value="exempt">免校</option>
+                      </select>
+                    </label>
+                    <label>
+                      校驗週期（月）
+                      <input name="calibration_interval_months" type="number" min="0" defaultValue={equipment.calibration_interval_months ?? ''} />
+                    </label>
+                    {editError && <p role="alert">{editError}</p>}
+                    <div className="msa-edit-form__actions">
+                      <button
+                        type="button"
+                        className="msa-button msa-button--quiet"
+                        onClick={() => setIsEditing(false)}
+                      >
+                        取消
+                      </button>
+                      <button
+                        className="msa-button msa-button--primary"
+                        type="submit"
+                        disabled={updateEquipment.isPending}
+                      >
+                        儲存主檔
+                      </button>
+                    </div>
+                  </form>
+                )}
                 {hasPermission('msa.manage') && (
                   <form
                     className="msa-status-form"
