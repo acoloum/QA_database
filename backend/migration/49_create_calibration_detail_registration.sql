@@ -58,6 +58,10 @@ CREATE INDEX idx_calibration_template_version_status
 CREATE INDEX idx_calibration_template_version_successor
     ON "校正模板版本" ("後繼版本ID");
 
+CREATE UNIQUE INDEX uq_calibration_template_one_approved
+    ON "校正模板版本" ("模板ID")
+    WHERE "狀態" = 'approved';
+
 CREATE TABLE "校正模板校正點" (
     "識別碼" SERIAL PRIMARY KEY,
     "模板版本ID" INTEGER NOT NULL
@@ -339,7 +343,18 @@ CREATE INDEX idx_calibration_reference_snapshot_approved_record
 
 CREATE OR REPLACE FUNCTION calibration_block_frozen_template_version_change()
 RETURNS TRIGGER AS $$
+DECLARE
+    successor_template_id INTEGER;
+    successor_version_no INTEGER;
+    creates_cycle BOOLEAN;
 BEGIN
+    IF TG_OP = 'INSERT' THEN
+        IF NEW."後繼版本ID" IS NOT NULL THEN
+            RAISE EXCEPTION '後繼版本只能在核准版本受控取代時設定';
+        END IF;
+        RETURN NEW;
+    END IF;
+
     IF TG_OP = 'DELETE' THEN
         IF OLD."狀態" IN ('approved', 'superseded') THEN
             RAISE EXCEPTION '核准或已取代的校正模板版本不可刪除';
@@ -352,18 +367,65 @@ BEGIN
     END IF;
 
     IF OLD."狀態" = 'approved' THEN
-        IF NEW."狀態" = 'superseded'
-            AND NEW."後繼版本ID" IS NOT NULL
-            AND (
+        IF NEW."狀態" <> 'superseded'
+            OR NEW."後繼版本ID" IS NULL
+            OR (
                 to_jsonb(NEW)
                 - ARRAY['狀態', '後繼版本ID', '資料版本']
-            ) = (
+            ) IS DISTINCT FROM (
                 to_jsonb(OLD)
                 - ARRAY['狀態', '後繼版本ID', '資料版本']
             ) THEN
-            RETURN NEW;
+            RAISE EXCEPTION '核准的校正模板版本只允許連結後繼版本後取代';
         END IF;
-        RAISE EXCEPTION '核准的校正模板版本只允許連結後繼版本後取代';
+
+        IF NEW."資料版本" <> OLD."資料版本" + 1 THEN
+            RAISE EXCEPTION '受控取代時資料版本必須精確增加 1';
+        END IF;
+        IF NEW."後繼版本ID" = OLD."識別碼" THEN
+            RAISE EXCEPTION '後繼版本不可指向自身';
+        END IF;
+
+        SELECT version."模板ID", version."版本號"
+        INTO successor_template_id, successor_version_no
+        FROM "校正模板版本" AS version
+        WHERE version."識別碼" = NEW."後繼版本ID";
+
+        IF successor_template_id IS NULL THEN
+            RAISE EXCEPTION '指定的後繼版本不存在';
+        END IF;
+        IF successor_template_id <> OLD."模板ID" THEN
+            RAISE EXCEPTION '後繼版本必須屬於同一模板';
+        END IF;
+        IF successor_version_no <= OLD."版本號" THEN
+            RAISE EXCEPTION '後繼版本號必須嚴格大於原版本';
+        END IF;
+
+        WITH RECURSIVE successor_chain AS (
+            SELECT version."識別碼", version."後繼版本ID"
+            FROM "校正模板版本" AS version
+            WHERE version."識別碼" = NEW."後繼版本ID"
+            UNION
+            SELECT version."識別碼", version."後繼版本ID"
+            FROM "校正模板版本" AS version
+            JOIN successor_chain AS chain
+              ON version."識別碼" = chain."後繼版本ID"
+        )
+        SELECT EXISTS (
+            SELECT 1
+            FROM successor_chain
+            WHERE "識別碼" = OLD."識別碼"
+        )
+        INTO creates_cycle;
+
+        IF creates_cycle THEN
+            RAISE EXCEPTION '後繼版本不可形成循環';
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    IF NEW."後繼版本ID" IS DISTINCT FROM OLD."後繼版本ID" THEN
+        RAISE EXCEPTION '後繼版本只能在核准版本受控取代時設定';
     END IF;
 
     RETURN NEW;
@@ -371,7 +433,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_calibration_template_version_frozen_immutable
-    BEFORE UPDATE OR DELETE ON "校正模板版本"
+    BEFORE INSERT OR UPDATE OR DELETE ON "校正模板版本"
     FOR EACH ROW
     EXECUTE FUNCTION calibration_block_frozen_template_version_change();
 
@@ -381,6 +443,20 @@ DECLARE
     original_status VARCHAR(20);
     destination_status VARCHAR(20);
 BEGIN
+    IF TG_OP = 'INSERT' THEN
+        SELECT version."狀態"
+        INTO destination_status
+        FROM "校正模板版本" AS version
+        WHERE version."識別碼" = NEW."模板版本ID";
+
+        IF destination_status IN (
+            'submitted', 'approved', 'rejected', 'superseded'
+        ) THEN
+            RAISE EXCEPTION '送審後的模板校正點不可新增';
+        END IF;
+        RETURN NEW;
+    END IF;
+
     SELECT version."狀態"
     INTO original_status
     FROM "校正模板版本" AS version
@@ -408,7 +484,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_calibration_template_point_controlled_immutable
-    BEFORE UPDATE OR DELETE ON "校正模板校正點"
+    BEFORE INSERT OR UPDATE OR DELETE ON "校正模板校正點"
     FOR EACH ROW
     EXECUTE FUNCTION calibration_block_controlled_template_point_change();
 

@@ -128,6 +128,45 @@ def test_calibration_models_expose_approved_design_relationships():
     assert "approved_calibration_record" in snapshot_relationships
 
 
+def test_template_version_has_single_approved_partial_unique_index():
+    indexes = {
+        index.name: index
+        for index in CalibrationTemplateVersion.__table__.indexes
+    }
+    index = indexes.get("uq_calibration_template_one_approved")
+
+    assert index is not None
+    assert index.unique is True
+    assert str(index.dialect_options["postgresql"]["where"]) == (
+        '"狀態" = \'approved\''
+    )
+    assert str(index.dialect_options["sqlite"]["where"]) == (
+        '"狀態" = \'approved\''
+    )
+
+
+@pytest.mark.parametrize(
+    ("model", "attribute_name", "expected_default"),
+    [
+        (CalibrationTemplatePoint, "uncertainty_required", "false"),
+        (CalibrationTemplatePoint, "required", "true"),
+        (EquipmentCalibrationPoint, "uncertainty_required", "false"),
+        (EquipmentCalibrationPoint, "required", "true"),
+        (EquipmentCalibrationPoint, "completed_reading_count", "0"),
+    ],
+)
+def test_calibration_boolean_and_count_defaults_match_migration(
+    model,
+    attribute_name,
+    expected_default,
+):
+    column = getattr(model, attribute_name).property.columns[0]
+
+    assert column.nullable is False
+    assert column.server_default is not None
+    assert str(column.server_default.arg).lower() == expected_default
+
+
 def _template_version(db_session):
     template = CalibrationTemplate(
         template_code="CAL-CALIPER",
@@ -145,6 +184,27 @@ def _template_version(db_session):
         environment_requirements={"temperature": {"required": True}},
         allow_limited_use=True,
         status="draft",
+    )
+    db_session.add(version)
+    db_session.flush()
+    return version
+
+
+def _sibling_template_version(
+    db_session,
+    template,
+    version_no,
+    *,
+    status="draft",
+):
+    version = CalibrationTemplateVersion(
+        template=template,
+        version_no=version_no,
+        procedure_code=f"WI-CAL-{version_no:03d}",
+        procedure_name=f"游標卡尺校正第 {version_no} 版",
+        default_repetitions=3,
+        environment_requirements={},
+        status=status,
     )
     db_session.add(version)
     db_session.flush()
@@ -368,6 +428,58 @@ def test_template_point_rejects_unknown_rule_value(
     db_session.rollback()
 
 
+@pytest.mark.parametrize(
+    "status",
+    ["submitted", "rejected", "approved", "superseded"],
+)
+def test_controlled_template_version_rejects_new_point(
+    db_session,
+    status,
+):
+    version = _template_version(db_session)
+    version.status = status
+    db_session.commit()
+    _template_point(
+        db_session,
+        template_version_id=version.id,
+        point_order=2,
+        point_code="P02",
+    )
+
+    with pytest.raises(ValueError, match="模板校正點"):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_draft_template_version_allows_new_point(db_session):
+    version = _template_version(db_session)
+    point = _template_point(
+        db_session,
+        template_version_id=version.id,
+        point_order=2,
+        point_code="P02",
+    )
+
+    db_session.commit()
+
+    assert point.template_version_id == version.id
+
+
+def test_template_rejects_two_approved_versions(db_session):
+    first = _template_version(db_session)
+    _sibling_template_version(
+        db_session,
+        first.template,
+        2,
+        status="approved",
+    )
+    first.status = "approved"
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
 @pytest.mark.parametrize("status", ["in_progress", "ready_for_submission"])
 def test_detailed_record_accepts_execution_status(db_session, status):
     record = _calibration_record(
@@ -501,25 +613,125 @@ def test_approved_template_version_allows_controlled_supersession(db_session):
     version = _template_version(db_session)
     version.status = "approved"
     db_session.commit()
-    successor = CalibrationTemplateVersion(
-        template_id=version.template_id,
-        version_no=2,
-        procedure_code="WI-CAL-002",
-        procedure_name="游標卡尺校正第二版",
-        default_repetitions=3,
-        environment_requirements={},
-        status="approved",
+    successor = _sibling_template_version(
+        db_session,
+        version.template,
+        2,
+        status="submitted",
     )
-    db_session.add(successor)
-    db_session.flush()
 
     version.status = "superseded"
-    version.successor_version_id = successor.id
+    version.successor_version = successor
     version.row_version += 1
+    db_session.flush()
+    successor.status = "approved"
+    version.template.current_approved_version = successor
     db_session.commit()
 
     assert version.status == "superseded"
     assert version.successor_version is successor
+    assert successor.status == "approved"
+    assert version.template.current_approved_version is successor
+
+
+@pytest.mark.parametrize(
+    ("case_name", "row_version_delta"),
+    [
+        ("self", 1),
+        ("cross_template", 1),
+        ("backward", 1),
+        ("row_version_unchanged", 0),
+        ("row_version_jump", 2),
+    ],
+)
+def test_controlled_supersession_rejects_invalid_successor(
+    db_session,
+    case_name,
+    row_version_delta,
+):
+    first = _template_version(db_session)
+    if case_name == "self":
+        old = first
+        successor = first
+    elif case_name == "cross_template":
+        old = first
+        other_template = CalibrationTemplate(
+            template_code="CAL-CROSS-TEMPLATE",
+            name="跨模板",
+            equipment_type="游標卡尺",
+        )
+        db_session.add(other_template)
+        successor = _sibling_template_version(
+            db_session,
+            other_template,
+            2,
+            status="submitted",
+        )
+    elif case_name == "backward":
+        successor = first
+        old = _sibling_template_version(
+            db_session,
+            first.template,
+            2,
+            status="approved",
+        )
+    else:
+        old = first
+        successor = _sibling_template_version(
+            db_session,
+            first.template,
+            2,
+            status="submitted",
+        )
+    old.status = "approved"
+    db_session.commit()
+
+    next_row_version = old.row_version + row_version_delta
+    old.status = "superseded"
+    if case_name == "self":
+        with pytest.raises(ValueError, match="後繼版本"):
+            old.successor_version = successor
+        db_session.rollback()
+        return
+    old.successor_version = successor
+    old.row_version = next_row_version
+
+    expected_message = (
+        "資料版本" if case_name.startswith("row_version") else "後繼版本"
+    )
+    with pytest.raises(ValueError, match=expected_message):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_controlled_supersession_rejects_two_version_cycle(db_session):
+    old = _template_version(db_session)
+    successor = _sibling_template_version(
+        db_session,
+        old.template,
+        2,
+        status="submitted",
+    )
+    old.status = "approved"
+    db_session.commit()
+
+    successor_id = successor.id
+    old_row_version = old.row_version
+    old.status = "superseded"
+    old.successor_version_id = successor_id
+    old.row_version = old_row_version + 1
+    db_session.commit()
+    successor.status = "approved"
+    db_session.commit()
+
+    successor_row_version = successor.row_version
+    successor.status = "superseded"
+    successor.successor_version = old
+    successor.row_version = successor_row_version + 1
+
+    with pytest.raises(ValueError, match="後繼版本"):
+        db_session.commit()
+    db_session.rollback()
 
 
 @pytest.mark.parametrize(

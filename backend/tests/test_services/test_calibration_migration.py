@@ -194,6 +194,46 @@ def _insert_detailed_evidence(connection, *, status="draft"):
     }
 
 
+def _insert_template(connection):
+    return connection.execute(text(
+        """
+        INSERT INTO "校正模板" (
+            "模板代碼", "名稱", "適用設備類型"
+        ) VALUES (
+            :template_code, '游標卡尺', '游標卡尺'
+        )
+        RETURNING "識別碼"
+        """
+    ), {"template_code": f"CAL-{uuid4().hex}"}).scalar_one()
+
+
+def _insert_template_version(
+    connection,
+    template_id,
+    version_no,
+    *,
+    status="draft",
+):
+    return connection.execute(text(
+        """
+        INSERT INTO "校正模板版本" (
+            "模板ID", "版本號", "程序代碼", "程序名稱",
+            "預設重複次數", "環境要求", "狀態"
+        ) VALUES (
+            :template_id, :version_no, :procedure_code, :procedure_name,
+            3, '{}'::JSONB, :status
+        )
+        RETURNING "識別碼"
+        """
+    ), {
+        "template_id": template_id,
+        "version_no": version_no,
+        "procedure_code": f"WI-CAL-{version_no:03d}",
+        "procedure_name": f"游標卡尺校正第 {version_no} 版",
+        "status": status,
+    }).scalar_one()
+
+
 def _column_names(inspector, table_name, schema_name):
     return {
         column["name"]
@@ -371,6 +411,22 @@ def test_migration_creates_tables_columns_indexes_and_foreign_keys(
         for index_name, expected_columns in table_indexes.items():
             assert actual_indexes[index_name] == expected_columns
 
+    approved_index = None
+    with engine.connect() as connection:
+        approved_index = connection.execute(text(
+            """
+            SELECT indexdef
+            FROM pg_indexes
+            WHERE schemaname = :schema_name
+              AND indexname = 'uq_calibration_template_one_approved'
+            """
+        ), {"schema_name": schema_name}).scalar_one_or_none()
+    assert approved_index is not None
+    assert "CREATE UNIQUE INDEX" in approved_index
+    assert '"模板ID"' in approved_index
+    assert "WHERE" in approved_index
+    assert "'approved'" in approved_index
+
     expected_unique_columns = {
         "校正模板": {("模板代碼",)},
         "校正模板版本": {("模板ID", "版本號")},
@@ -500,6 +556,27 @@ def test_migration_creates_tables_columns_indexes_and_foreign_keys(
             )
         }
         assert columns[column_name]["type"].__class__.__name__ == "JSONB"
+
+    expected_defaults = {
+        ("校正模板校正點", "要求不確定度"): "false",
+        ("校正模板校正點", "必填"): "true",
+        ("設備校正點", "要求不確定度"): "false",
+        ("設備校正點", "必填"): "true",
+        ("設備校正點", "完整讀值數"): "0",
+    }
+    for (table_name, column_name), expected_default in (
+        expected_defaults.items()
+    ):
+        columns = {
+            column["name"]: column
+            for column in inspector.get_columns(
+                table_name,
+                schema=schema_name,
+            )
+        }
+        column = columns[column_name]
+        assert column["nullable"] is False
+        assert str(column["default"]).lower() == expected_default
 
 
 def test_migration_preserves_legacy_data_without_creating_raw_readings(
@@ -1129,6 +1206,115 @@ def test_reference_snapshot_rejects_unknown_approved_record(
         connection.rollback()
 
 
+@pytest.mark.parametrize(
+    "status",
+    ["submitted", "rejected", "approved", "superseded"],
+)
+def test_database_blocks_new_point_in_controlled_template_version(
+    migrated_postgresql,
+    status,
+):
+    with _connect(migrated_postgresql) as connection:
+        template_id = _insert_template(connection)
+        version_id = _insert_template_version(
+            connection,
+            template_id,
+            1,
+            status=status,
+        )
+        connection.commit()
+
+        with pytest.raises(DBAPIError, match="模板校正點"):
+            connection.execute(text(
+                """
+                INSERT INTO "校正模板校正點" (
+                    "模板版本ID", "點位順序", "點位代碼", "量測模式",
+                    "名目值", "單位", "參考值輸入模式", "必要重複次數",
+                    "判定基礎", "重複性規則"
+                ) VALUES (
+                    :version_id, 1, 'P01', '外徑', 10, 'mm',
+                    'certified_value', 3, 'all_readings', 'none'
+                )
+                """
+            ), {"version_id": version_id})
+        connection.rollback()
+
+
+def test_database_allows_new_point_in_draft_template_version(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        template_id = _insert_template(connection)
+        version_id = _insert_template_version(connection, template_id, 1)
+
+        point_id = connection.execute(text(
+            """
+            INSERT INTO "校正模板校正點" (
+                "模板版本ID", "點位順序", "點位代碼", "量測模式",
+                "名目值", "單位", "參考值輸入模式", "必要重複次數",
+                "判定基礎", "重複性規則"
+            ) VALUES (
+                :version_id, 1, 'P01', '外徑', 10, 'mm',
+                'certified_value', 3, 'all_readings', 'none'
+            )
+            RETURNING "識別碼"
+            """
+        ), {"version_id": version_id}).scalar_one()
+        connection.commit()
+
+        assert point_id is not None
+
+
+def test_database_rejects_two_approved_versions_in_same_transaction(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        template_id = _insert_template(connection)
+
+        with pytest.raises(IntegrityError):
+            connection.execute(text(
+                """
+                INSERT INTO "校正模板版本" (
+                    "模板ID", "版本號", "程序代碼", "程序名稱",
+                    "預設重複次數", "環境要求", "狀態"
+                ) VALUES
+                    (
+                        :template_id, 1, 'WI-CAL-001', '第一版',
+                        3, '{}'::JSONB, 'approved'
+                    ),
+                    (
+                        :template_id, 2, 'WI-CAL-002', '第二版',
+                        3, '{}'::JSONB, 'approved'
+                    )
+                """
+            ), {"template_id": template_id})
+        connection.rollback()
+
+
+def test_database_rejects_two_approved_versions_across_transactions(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as first_connection:
+        template_id = _insert_template(first_connection)
+        _insert_template_version(
+            first_connection,
+            template_id,
+            1,
+            status="approved",
+        )
+        first_connection.commit()
+
+    with _connect(migrated_postgresql) as second_connection:
+        with pytest.raises(IntegrityError):
+            _insert_template_version(
+                second_connection,
+                template_id,
+                2,
+                status="approved",
+            )
+        second_connection.rollback()
+
+
 @pytest.mark.parametrize("status", ["approved", "superseded"])
 @pytest.mark.parametrize("operation", ["update", "delete"])
 def test_database_blocks_frozen_template_version_changes(
@@ -1170,29 +1356,22 @@ def test_database_allows_controlled_template_version_supersession(
     migrated_postgresql,
 ):
     with _connect(migrated_postgresql) as connection:
-        evidence = _insert_detailed_evidence(connection)
-        successor_id = connection.execute(text(
-            """
-            INSERT INTO "校正模板版本" (
-                "模板ID", "版本號", "程序代碼", "程序名稱",
-                "預設重複次數", "環境要求", "狀態"
-            )
-            SELECT "模板ID", 2, 'WI-CAL-002', '游標卡尺校正第二版',
-                   3, '{}'::JSONB, 'approved'
-            FROM "校正模板版本"
-            WHERE "識別碼" = :version_id
-            RETURNING "識別碼"
-            """
-        ), {"version_id": evidence["version_id"]}).scalar_one()
-        connection.execute(text(
-            """
-            UPDATE "校正模板版本"
-            SET "狀態" = 'approved'
-            WHERE "識別碼" = :version_id
-            """
-        ), {"version_id": evidence["version_id"]})
+        template_id = _insert_template(connection)
+        version_id = _insert_template_version(
+            connection,
+            template_id,
+            1,
+            status="approved",
+        )
+        successor_id = _insert_template_version(
+            connection,
+            template_id,
+            2,
+            status="submitted",
+        )
         connection.commit()
 
+        # 受控核准使用單一交易：先讓舊版離開 approved，再核准新版。
         connection.execute(text(
             """
             UPDATE "校正模板版本"
@@ -1202,8 +1381,26 @@ def test_database_allows_controlled_template_version_supersession(
             WHERE "識別碼" = :version_id
             """
         ), {
-            "version_id": evidence["version_id"],
+            "version_id": version_id,
             "successor_id": successor_id,
+        })
+        connection.execute(text(
+            """
+            UPDATE "校正模板版本"
+            SET "狀態" = 'approved',
+                "資料版本" = "資料版本" + 1
+            WHERE "識別碼" = :successor_id
+            """
+        ), {"successor_id": successor_id})
+        connection.execute(text(
+            """
+            UPDATE "校正模板"
+            SET "目前核准版本ID" = :successor_id
+            WHERE "識別碼" = :template_id
+            """
+        ), {
+            "successor_id": successor_id,
+            "template_id": template_id,
         })
         connection.commit()
 
@@ -1213,8 +1410,148 @@ def test_database_allows_controlled_template_version_supersession(
             FROM "校正模板版本"
             WHERE "識別碼" = :version_id
             """
-        ), {"version_id": evidence["version_id"]}).one()
+        ), {"version_id": version_id}).one()
         assert version == ("superseded", successor_id, 2)
+        assert connection.execute(text(
+            """
+            SELECT "狀態"
+            FROM "校正模板版本"
+            WHERE "識別碼" = :successor_id
+            """
+        ), {"successor_id": successor_id}).scalar_one() == "approved"
+        assert connection.execute(text(
+            """
+            SELECT "目前核准版本ID"
+            FROM "校正模板"
+            WHERE "識別碼" = :template_id
+            """
+        ), {"template_id": template_id}).scalar_one() == successor_id
+
+
+@pytest.mark.parametrize(
+    ("case_name", "row_version_expression", "expected_message"),
+    [
+        ("self", '"資料版本" + 1', "後繼版本"),
+        ("cross_template", '"資料版本" + 1', "後繼版本"),
+        ("backward", '"資料版本" + 1', "後繼版本"),
+        ("row_version_unchanged", '"資料版本"', "資料版本"),
+        ("row_version_jump", '"資料版本" + 2', "資料版本"),
+    ],
+)
+def test_database_rejects_invalid_template_successor(
+    migrated_postgresql,
+    case_name,
+    row_version_expression,
+    expected_message,
+):
+    with _connect(migrated_postgresql) as connection:
+        template_id = _insert_template(connection)
+        if case_name == "backward":
+            successor_id = _insert_template_version(
+                connection,
+                template_id,
+                1,
+                status="submitted",
+            )
+            old_id = _insert_template_version(
+                connection,
+                template_id,
+                2,
+                status="approved",
+            )
+        else:
+            old_id = _insert_template_version(
+                connection,
+                template_id,
+                1,
+                status="approved",
+            )
+            if case_name == "self":
+                successor_id = old_id
+            elif case_name == "cross_template":
+                other_template_id = _insert_template(connection)
+                successor_id = _insert_template_version(
+                    connection,
+                    other_template_id,
+                    2,
+                    status="submitted",
+                )
+            else:
+                successor_id = _insert_template_version(
+                    connection,
+                    template_id,
+                    2,
+                    status="submitted",
+                )
+        connection.commit()
+
+        with pytest.raises(DBAPIError, match=expected_message):
+            connection.execute(text(
+                f"""
+                UPDATE "校正模板版本"
+                SET "狀態" = 'superseded',
+                    "後繼版本ID" = :successor_id,
+                    "資料版本" = {row_version_expression}
+                WHERE "識別碼" = :old_id
+                """
+            ), {
+                "successor_id": successor_id,
+                "old_id": old_id,
+            })
+        connection.rollback()
+
+
+def test_database_rejects_two_version_successor_cycle(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        template_id = _insert_template(connection)
+        old_id = _insert_template_version(
+            connection,
+            template_id,
+            1,
+            status="approved",
+        )
+        successor_id = _insert_template_version(
+            connection,
+            template_id,
+            2,
+            status="submitted",
+        )
+        connection.commit()
+
+        connection.execute(text(
+            """
+            UPDATE "校正模板版本"
+            SET "狀態" = 'superseded',
+                "後繼版本ID" = :successor_id,
+                "資料版本" = "資料版本" + 1
+            WHERE "識別碼" = :old_id
+            """
+        ), {"successor_id": successor_id, "old_id": old_id})
+        connection.execute(text(
+            """
+            UPDATE "校正模板版本"
+            SET "狀態" = 'approved'
+            WHERE "識別碼" = :successor_id
+            """
+        ), {"successor_id": successor_id})
+        connection.commit()
+
+        with pytest.raises(DBAPIError, match="後繼版本"):
+            connection.execute(text(
+                """
+                UPDATE "校正模板版本"
+                SET "狀態" = 'superseded',
+                    "後繼版本ID" = :old_id,
+                    "資料版本" = "資料版本" + 1
+                WHERE "識別碼" = :successor_id
+                """
+            ), {
+                "old_id": old_id,
+                "successor_id": successor_id,
+            })
+        connection.rollback()
 
 
 @pytest.mark.parametrize(

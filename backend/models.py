@@ -662,6 +662,13 @@ class CalibrationTemplateVersion(db.Model):
             'idx_calibration_template_version_successor',
             '後繼版本ID',
         ),
+        db.Index(
+            'uq_calibration_template_one_approved',
+            '模板ID',
+            unique=True,
+            postgresql_where=db.text('"狀態" = \'approved\''),
+            sqlite_where=db.text('"狀態" = \'approved\''),
+        ),
     )
 
     id = db.Column('識別碼', db.Integer, primary_key=True)
@@ -742,7 +749,6 @@ class CalibrationTemplateVersion(db.Model):
         back_populates='predecessor_versions',
         remote_side=[id],
         foreign_keys=[successor_version_id],
-        post_update=True,
     )
     predecessor_versions = db.relationship(
         'CalibrationTemplateVersion',
@@ -838,9 +844,19 @@ class CalibrationTemplatePoint(db.Model):
         '資格範圍終點', db.Numeric, nullable=True
     )
     uncertainty_required = db.Column(
-        '要求不確定度', db.Boolean, nullable=False, default=False
+        '要求不確定度',
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default=db.false(),
     )
-    required = db.Column('必填', db.Boolean, nullable=False, default=True)
+    required = db.Column(
+        '必填',
+        db.Boolean,
+        nullable=False,
+        default=True,
+        server_default=db.true(),
+    )
     instruction = db.Column('操作提示', db.Text, nullable=True)
 
     template_version = db.relationship(
@@ -1312,9 +1328,19 @@ class EquipmentCalibrationPoint(db.Model):
         '資格範圍終點', db.Numeric, nullable=True
     )
     uncertainty_required = db.Column(
-        '要求不確定度', db.Boolean, nullable=False, default=False
+        '要求不確定度',
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default=db.false(),
     )
-    required = db.Column('必填', db.Boolean, nullable=False, default=True)
+    required = db.Column(
+        '必填',
+        db.Boolean,
+        nullable=False,
+        default=True,
+        server_default=db.true(),
+    )
     average_value = db.Column('平均值', db.Numeric, nullable=True)
     error_value = db.Column('誤差值', db.Numeric, nullable=True)
     repeatability_value = db.Column('重複性值', db.Numeric, nullable=True)
@@ -1329,7 +1355,11 @@ class EquipmentCalibrationPoint(db.Model):
     )
     coverage_factor = db.Column('涵蓋因子', db.Numeric, nullable=True)
     completed_reading_count = db.Column(
-        '完整讀值數', db.Integer, nullable=False, default=0
+        '完整讀值數',
+        db.Integer,
+        nullable=False,
+        default=0,
+        server_default='0',
     )
     result = db.Column('結果', db.String(30), nullable=False)
     remarks = db.Column('備註', db.Text, nullable=True)
@@ -1757,6 +1787,65 @@ def _persisted_template_version_status(connection, version):
     ).scalar_one_or_none()
 
 
+def _persisted_template_version(connection, version_id):
+    if version_id is None:
+        return None
+    table = CalibrationTemplateVersion.__table__
+    return connection.execute(
+        db.select(
+            table.c['識別碼'],
+            table.c['模板ID'],
+            table.c['版本號'],
+            table.c['狀態'],
+            table.c['資料版本'],
+            table.c['後繼版本ID'],
+        ).where(table.c['識別碼'] == version_id)
+    ).mappings().one_or_none()
+
+
+def _assigned_successor_id(target):
+    if target.successor_version_id is not None:
+        return target.successor_version_id
+    history = inspect(target).attrs.successor_version.history
+    if history.added and history.added[0] is not None:
+        return history.added[0].id
+    return None
+
+
+def _validate_template_successor(connection, target, original):
+    successor_id = _assigned_successor_id(target)
+    if successor_id is None:
+        raise ValueError('受控取代必須指定後繼版本')
+    if successor_id == target.id:
+        raise ValueError('後繼版本不可指向自身')
+
+    successor = _persisted_template_version(connection, successor_id)
+    if successor is None:
+        raise ValueError('指定的後繼版本不存在')
+    if successor['模板ID'] != original['模板ID']:
+        raise ValueError('後繼版本必須屬於同一模板')
+    if successor['版本號'] <= original['版本號']:
+        raise ValueError('後繼版本號必須嚴格大於原版本')
+
+    visited = set()
+    current = successor
+    while current is not None:
+        current_id = current['識別碼']
+        if current_id == target.id or current_id in visited:
+            raise ValueError('後繼版本不可形成循環')
+        visited.add(current_id)
+        current = _persisted_template_version(
+            connection,
+            current['後繼版本ID'],
+        )
+
+
+def _reject_self_template_successor(target, value, _old_value, _initiator):
+    if value is target:
+        raise ValueError('後繼版本不可指向自身')
+    return value
+
+
 def _block_frozen_template_version_update(_mapper, connection, target):
     state = inspect(target)
     changed_columns = {
@@ -1767,8 +1856,11 @@ def _block_frozen_template_version_update(_mapper, connection, target):
     if not changed_columns:
         return
 
-    original_status = _persisted_template_version_status(connection, target)
+    original = _persisted_template_version(connection, target.id)
+    original_status = original['狀態'] if original is not None else None
     if original_status not in {'approved', 'superseded'}:
+        if 'successor_version_id' in changed_columns:
+            raise ValueError('後繼版本只能在核准版本受控取代時設定')
         return
     allowed_supersession_columns = {
         'status',
@@ -1778,11 +1870,13 @@ def _block_frozen_template_version_update(_mapper, connection, target):
     is_controlled_supersession = (
         original_status == 'approved'
         and target.status == 'superseded'
-        and target.successor_version_id is not None
         and changed_columns <= allowed_supersession_columns
     )
     if not is_controlled_supersession:
         raise ValueError('核准或已取代的校正模板版本不可修改')
+    if target.row_version != original['資料版本'] + 1:
+        raise ValueError('受控取代時資料版本必須精確增加 1')
+    _validate_template_successor(connection, target, original)
 
 
 def _block_frozen_template_version_delete(_mapper, connection, target):
@@ -1833,6 +1927,12 @@ def _block_controlled_template_point_change(
 
 
 event.listen(
+    CalibrationTemplateVersion.successor_version,
+    'set',
+    _reject_self_template_successor,
+    retval=True,
+)
+event.listen(
     CalibrationTemplateVersion,
     'before_update',
     _block_frozen_template_version_update,
@@ -1841,6 +1941,11 @@ event.listen(
     CalibrationTemplateVersion,
     'before_delete',
     _block_frozen_template_version_delete,
+)
+event.listen(
+    CalibrationTemplatePoint,
+    'before_insert',
+    _block_controlled_template_point_change,
 )
 event.listen(
     CalibrationTemplatePoint,
