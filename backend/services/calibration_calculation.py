@@ -4,9 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import (
+    Context,
     Decimal,
     DecimalException,
+    DivisionByZero,
+    Inexact,
     InvalidOperation,
+    Overflow,
+    ROUND_HALF_EVEN,
+    Rounded,
     localcontext,
 )
 from typing import Literal, Sequence
@@ -17,6 +23,14 @@ CALIBRATION_NUMERIC_FAILURE = "CALIBRATION_NUMERIC_FAILURE"
 
 _MAX_SIGNIFICANT_DIGITS = 50
 _MAX_DECIMAL_EXPONENT = 1000
+_MAX_POSITIVE_INTEGER = 2_147_483_647
+_CONTEXT_EMIN = -999_999
+_CONTEXT_EMAX = 999_999
+_EXACT_PRECISION = (
+    4 * _MAX_DECIMAL_EXPONENT
+    + 4 * _MAX_SIGNIFICANT_DIGITS
+    + 64
+)
 
 ReadingResult = Literal[
     "pending",
@@ -30,6 +44,39 @@ CalibrationResult = Literal["pending", "pass", "fail", "limited_use"]
 
 class _NumericFailure(ValueError):
     """內部數值防線；對外一律轉成穩定 blocker。"""
+
+
+def _build_context(
+    *,
+    precision: int,
+    trap_rounding: bool = False,
+) -> Context:
+    """建立不繼承執行緒狀態的完整固定 Decimal context。"""
+
+    context = Context(
+        prec=precision,
+        rounding=ROUND_HALF_EVEN,
+        Emin=_CONTEXT_EMIN,
+        Emax=_CONTEXT_EMAX,
+        capitals=1,
+        clamp=0,
+    )
+    context.clear_flags()
+    context.clear_traps()
+    context.traps[InvalidOperation] = True
+    context.traps[DivisionByZero] = True
+    context.traps[Overflow] = True
+    if trap_rounding:
+        context.traps[Inexact] = True
+        context.traps[Rounded] = True
+    return context
+
+
+_EXACT_CONTEXT = _build_context(
+    precision=_EXACT_PRECISION,
+    trap_rounding=True,
+)
+_EVIDENCE_CONTEXT = _build_context(precision=_MAX_SIGNIFICANT_DIGITS)
 
 
 @dataclass(frozen=True)
@@ -127,13 +174,7 @@ def _decimal(value: object | None) -> Decimal | None:
     if not converted.is_finite():
         raise _NumericFailure
 
-    decimal_tuple = converted.as_tuple()
-    exponent = decimal_tuple.exponent
-    if not isinstance(exponent, int):
-        raise _NumericFailure
-    if len(decimal_tuple.digits) > _MAX_SIGNIFICANT_DIGITS:
-        raise _NumericFailure
-    if abs(exponent) > _MAX_DECIMAL_EXPONENT:
+    if len(converted.as_tuple().digits) > _MAX_SIGNIFICANT_DIGITS:
         raise _NumericFailure
     if converted and abs(converted.adjusted()) > _MAX_DECIMAL_EXPONENT:
         raise _NumericFailure
@@ -141,7 +182,12 @@ def _decimal(value: object | None) -> Decimal | None:
 
 
 def _positive_integer(value: object) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value <= 0
+        or value > _MAX_POSITIVE_INTEGER
+    ):
         raise _NumericFailure
     return value
 
@@ -182,6 +228,40 @@ def _within_limits(
     if upper_limit is not None and value > upper_limit:
         return False
     return True
+
+
+def _mean_within_limits(
+    error_sum: Decimal,
+    error_count: Decimal,
+    lower_limit: Decimal | None,
+    upper_limit: Decimal | None,
+) -> bool:
+    with localcontext(_EXACT_CONTEXT):
+        if (
+            lower_limit is not None
+            and error_sum < lower_limit * error_count
+        ):
+            return False
+        if (
+            upper_limit is not None
+            and error_sum > upper_limit * error_count
+        ):
+            return False
+    return True
+
+
+def _stddev_within_limit(
+    variance_numerator: Decimal,
+    variance_denominator: Decimal,
+    repeatability_limit: Decimal,
+) -> bool:
+    with localcontext(_EXACT_CONTEXT):
+        limit_square_relation = (
+            repeatability_limit
+            * repeatability_limit
+            * variance_denominator
+        )
+        return variance_numerator <= limit_square_relation
 
 
 def _validate_rule(
@@ -299,8 +379,7 @@ def calculate_point(
         correction = None
         if indicated_value is not None and effective_reference is not None:
             try:
-                with localcontext() as context:
-                    context.prec = _MAX_SIGNIFICANT_DIGITS
+                with localcontext(_EXACT_CONTEXT):
                     error = _decimal(
                         indicated_value - effective_reference
                     )
@@ -345,35 +424,42 @@ def calculate_point(
     maximum_error = None
     error_range = None
     sample_stddev = None
+    error_sum = None
+    error_count = None
+    variance_numerator = None
+    variance_denominator = None
     if completed_errors:
         try:
-            with localcontext() as context:
-                context.prec = _MAX_SIGNIFICANT_DIGITS
+            with localcontext(_EXACT_CONTEXT):
                 error_count = Decimal(len(completed_errors))
-                mean_error = (
-                    sum(completed_errors, Decimal("0")) / error_count
-                )
-                mean_correction = -mean_error
+                error_sum = sum(completed_errors, Decimal("0"))
+                _decimal(error_sum)
                 minimum_error = min(completed_errors)
                 maximum_error = max(completed_errors)
                 error_range = maximum_error - minimum_error
-                for value in (
-                    mean_error,
-                    mean_correction,
-                    minimum_error,
-                    maximum_error,
-                    error_range,
-                ):
-                    _decimal(value)
+                _decimal(error_range)
                 if len(completed_errors) >= 2:
-                    sample_variance = (
-                        sum(
-                            (value - mean_error) ** 2
-                            for value in completed_errors
-                        )
-                        / Decimal(len(completed_errors) - 1)
+                    sum_of_squares = sum(
+                        value * value for value in completed_errors
                     )
-                    _decimal(sample_variance)
+                    variance_numerator = (
+                        error_count * sum_of_squares
+                        - error_sum * error_sum
+                    )
+                    variance_denominator = (
+                        error_count
+                        * Decimal(len(completed_errors) - 1)
+                    )
+                    if variance_numerator < 0:
+                        raise _NumericFailure
+
+            with localcontext(_EVIDENCE_CONTEXT):
+                mean_error = _decimal(error_sum / error_count)
+                mean_correction = _decimal(-mean_error)
+                if variance_numerator is not None:
+                    sample_variance = (
+                        variance_numerator / variance_denominator
+                    )
                     sample_stddev = _decimal(sample_variance.sqrt())
         except (_NumericFailure, DecimalException, OverflowError):
             return _numeric_failure_result(rule)
@@ -396,8 +482,9 @@ def calculate_point(
                 item.result == "pass" for item in calculated_readings
             )
         else:
-            error_rule_passed = _within_limits(
-                mean_error,
+            error_rule_passed = _mean_within_limits(
+                error_sum,
+                error_count,
                 lower_limit,
                 upper_limit,
             )
@@ -406,7 +493,11 @@ def calculate_point(
         if rule.repeatability_rule == "range":
             repeatability_passed = error_range <= repeatability_limit
         elif rule.repeatability_rule == "stddev":
-            repeatability_passed = sample_stddev <= repeatability_limit
+            repeatability_passed = _stddev_within_limit(
+                variance_numerator,
+                variance_denominator,
+                repeatability_limit,
+            )
 
         point_result = (
             "pass"
@@ -475,8 +566,10 @@ def calculate_calibration(
         )
     )
 
-    if pending_points:
-        result: CalibrationResult = "pending"
+    if failed_scope_codes and not passed_scope_codes:
+        result: CalibrationResult = "fail"
+    elif pending_points:
+        result = "pending"
     elif len(passed_scope_codes) == len(scope_points):
         result = "pass"
     elif (

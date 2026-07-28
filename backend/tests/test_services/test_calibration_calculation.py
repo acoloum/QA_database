@@ -1,5 +1,12 @@
 from dataclasses import FrozenInstanceError
-from decimal import Decimal
+from decimal import (
+    Decimal,
+    Inexact,
+    ROUND_DOWN,
+    ROUND_UP,
+    Subnormal,
+    localcontext,
+)
 
 import pytest
 
@@ -66,6 +73,17 @@ def failing_point(*, point_code="P01", scope_code="OD-0-150"):
             required_repetitions=1,
         ),
         [reading("10.100")],
+    )
+
+
+def pending_point(*, point_code="P01", scope_code="OD-0-150"):
+    return calculate_point(
+        rule(
+            point_code=point_code,
+            scope_code=scope_code,
+            required_repetitions=1,
+        ),
+        [reading(None)],
     )
 
 
@@ -424,6 +442,151 @@ def test_non_finite_trial_number_returns_numeric_failure():
     assert result.blockers == (CALIBRATION_NUMERIC_FAILURE,)
 
 
+@pytest.mark.parametrize("rounding", [ROUND_DOWN, ROUND_UP])
+def test_calculation_is_independent_from_caller_decimal_context(rounding):
+    point_rule = rule(
+        reference_value=Decimal("0"),
+        required_repetitions=3,
+        error_lower_limit=Decimal("-2000"),
+        error_upper_limit=Decimal("2000"),
+    )
+    readings = [
+        reading(Decimal("0.001"), trial_no=1),
+        reading(Decimal("1000"), trial_no=2),
+        reading(Decimal("1001"), trial_no=3),
+    ]
+    expected = calculate_point(point_rule, readings)
+
+    with localcontext() as context:
+        context.prec = 3
+        context.rounding = rounding
+        context.Emin = -2
+        context.Emax = 2
+        context.clamp = 1
+        context.traps[Inexact] = True
+        context.traps[Subnormal] = True
+        actual = calculate_point(point_rule, readings)
+
+    assert expected.result == "pass"
+    assert actual == expected
+
+
+def test_error_above_endpoint_is_not_rounded_back_to_limit():
+    result = calculate_point(
+        rule(
+            reference_value=Decimal("-1E-50"),
+            required_repetitions=1,
+            error_lower_limit=None,
+            error_upper_limit=Decimal("1"),
+        ),
+        [reading(Decimal("1"))],
+    )
+
+    assert result.result == "pending"
+    assert result.blockers == (CALIBRATION_NUMERIC_FAILURE,)
+
+
+def test_large_exponent_span_is_not_truncated_before_precision_check():
+    result = calculate_point(
+        rule(
+            reference_value=Decimal("1E+1000"),
+            required_repetitions=1,
+            error_lower_limit=Decimal("-1E+1000"),
+            error_upper_limit=Decimal("0"),
+        ),
+        [reading(Decimal("-1E-1000"))],
+    )
+
+    assert result.result == "pending"
+    assert result.blockers == (CALIBRATION_NUMERIC_FAILURE,)
+
+
+def test_mean_error_decision_uses_exact_sum_relation():
+    rounded_mean = Decimal(
+        "0.33333333333333333333333333333333333333333333333333"
+    )
+    result = calculate_point(
+        rule(
+            reference_value=Decimal("0"),
+            required_repetitions=3,
+            error_lower_limit=None,
+            error_upper_limit=rounded_mean,
+            evaluation_basis="mean_error",
+        ),
+        [
+            reading(Decimal("0"), trial_no=1),
+            reading(Decimal("0"), trial_no=2),
+            reading(Decimal("1"), trial_no=3),
+        ],
+    )
+
+    assert result.mean_error == rounded_mean
+    assert result.result == "fail"
+
+
+def test_stddev_decision_uses_exact_variance_relation():
+    rounded_stddev = Decimal(
+        "0.70710678118654752440084436210484903928483593768847"
+    )
+    result = calculate_point(
+        rule(
+            reference_value=Decimal("0"),
+            required_repetitions=2,
+            error_lower_limit=Decimal("-2"),
+            error_upper_limit=Decimal("2"),
+            repeatability_rule="stddev",
+            repeatability_limit=rounded_stddev,
+        ),
+        [
+            reading(Decimal("0"), trial_no=1),
+            reading(Decimal("1"), trial_no=2),
+        ],
+    )
+
+    assert result.sample_stddev == rounded_stddev
+    assert result.result == "fail"
+
+
+def test_required_repetitions_above_postgresql_integer_returns_failure():
+    result = calculate_point(
+        rule(required_repetitions=2_147_483_648),
+        [reading(Decimal("10.000"))],
+    )
+
+    assert result.result == "pending"
+    assert result.blockers == (CALIBRATION_NUMERIC_FAILURE,)
+
+
+def test_trial_number_above_postgresql_integer_returns_failure():
+    result = calculate_point(
+        rule(required_repetitions=1),
+        [
+            reading(
+                Decimal("10.000"),
+                trial_no=2_147_483_648,
+            )
+        ],
+    )
+
+    assert result.result == "pending"
+    assert result.blockers == (CALIBRATION_NUMERIC_FAILURE,)
+
+
+def test_adjusted_exponent_boundary_allows_insignificant_trailing_zero():
+    result = calculate_point(
+        rule(
+            reference_value=Decimal("0"),
+            required_repetitions=1,
+            error_lower_limit=Decimal("0"),
+            error_upper_limit=Decimal("1E-999"),
+        ),
+        [reading(Decimal("1.0E-1000"))],
+    )
+
+    assert result.errors == (Decimal("1.0E-1000"),)
+    assert result.result == "pass"
+
+
 def test_calculated_error_exponent_overflow_returns_numeric_failure():
     result = calculate_point(
         rule(
@@ -536,19 +699,13 @@ def test_all_required_scopes_passing_returns_pass():
 
 
 def test_pending_required_scope_keeps_calibration_pending():
-    pending_point = calculate_point(
-        rule(
-            point_code="P02",
-            scope_code="OD-150-300",
-            required_repetitions=1,
-        ),
-        [reading(None)],
-    )
-
     result = calculate_calibration(
         [
             passing_point(scope_code="OD-0-150"),
-            pending_point,
+            pending_point(
+                point_code="P02",
+                scope_code="OD-150-300",
+            ),
         ],
         allow_limited_use=True,
     )
@@ -556,6 +713,43 @@ def test_pending_required_scope_keeps_calibration_pending():
     assert result.result == "pending"
     assert result.passed_scope_codes == ("OD-0-150",)
     assert result.failed_scope_codes == ()
+    assert result.blockers == ("CALIBRATION_READING_MISSING",)
+
+
+def test_fail_and_pending_without_passing_scope_returns_fail():
+    result = calculate_calibration(
+        [
+            failing_point(scope_code="OD-0-150"),
+            pending_point(
+                point_code="P02",
+                scope_code="OD-150-300",
+            ),
+        ],
+        allow_limited_use=True,
+    )
+
+    assert result.result == "fail"
+    assert result.passed_scope_codes == ()
+    assert result.failed_scope_codes == ("OD-0-150",)
+    assert result.blockers == ("CALIBRATION_READING_MISSING",)
+
+
+def test_pass_fail_and_pending_waits_before_limited_use_decision():
+    result = calculate_calibration(
+        [
+            passing_point(scope_code="OD-0-150"),
+            failing_point(scope_code="OD-150-300"),
+            pending_point(
+                point_code="P03",
+                scope_code="ID-0-150",
+            ),
+        ],
+        allow_limited_use=True,
+    )
+
+    assert result.result == "pending"
+    assert result.passed_scope_codes == ("OD-0-150",)
+    assert result.failed_scope_codes == ("OD-150-300",)
     assert result.blockers == ("CALIBRATION_READING_MISSING",)
 
 
