@@ -176,9 +176,18 @@ def _decimal(value: object | None) -> Decimal | None:
 
     if len(converted.as_tuple().digits) > _MAX_SIGNIFICANT_DIGITS:
         raise _NumericFailure
-    if converted and abs(converted.adjusted()) > _MAX_DECIMAL_EXPONENT:
+    if abs(converted.adjusted()) > _MAX_DECIMAL_EXPONENT:
         raise _NumericFailure
     return converted
+
+
+def _derived_decimal(value: Decimal) -> Decimal:
+    """驗證衍生證據，並將合法運算產生的零正規化。"""
+
+    if value.is_zero():
+        value = Decimal("0")
+    _decimal(value)
+    return value
 
 
 def _positive_integer(value: object) -> int:
@@ -380,10 +389,16 @@ def calculate_point(
         if indicated_value is not None and effective_reference is not None:
             try:
                 with localcontext(_EXACT_CONTEXT):
-                    error = _decimal(
-                        indicated_value - effective_reference
-                    )
-                    correction = _decimal(-error)
+                    if effective_reference.is_zero():
+                        exact_error = indicated_value
+                    elif indicated_value.is_zero():
+                        exact_error = effective_reference.copy_negate()
+                    else:
+                        exact_error = (
+                            indicated_value - effective_reference
+                        )
+                    error = _derived_decimal(exact_error)
+                    correction = _derived_decimal(error.copy_negate())
             except (_NumericFailure, DecimalException, OverflowError):
                 return _numeric_failure_result(rule)
             completed_errors.append(error)
@@ -433,11 +448,11 @@ def calculate_point(
             with localcontext(_EXACT_CONTEXT):
                 error_count = Decimal(len(completed_errors))
                 error_sum = sum(completed_errors, Decimal("0"))
-                _decimal(error_sum)
                 minimum_error = min(completed_errors)
                 maximum_error = max(completed_errors)
-                error_range = maximum_error - minimum_error
-                _decimal(error_range)
+                error_range = _derived_decimal(
+                    maximum_error - minimum_error
+                )
                 if len(completed_errors) >= 2:
                     sum_of_squares = sum(
                         value * value for value in completed_errors
@@ -454,13 +469,17 @@ def calculate_point(
                         raise _NumericFailure
 
             with localcontext(_EVIDENCE_CONTEXT):
-                mean_error = _decimal(error_sum / error_count)
-                mean_correction = _decimal(-mean_error)
+                mean_error = _derived_decimal(error_sum / error_count)
+                mean_correction = _derived_decimal(
+                    mean_error.copy_negate()
+                )
                 if variance_numerator is not None:
                     sample_variance = (
                         variance_numerator / variance_denominator
                     )
-                    sample_stddev = _decimal(sample_variance.sqrt())
+                    sample_stddev = _derived_decimal(
+                        sample_variance.sqrt()
+                    )
         except (_NumericFailure, DecimalException, OverflowError):
             return _numeric_failure_result(rule)
 

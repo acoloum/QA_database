@@ -471,6 +471,48 @@ def test_calculation_is_independent_from_caller_decimal_context(rounding):
     assert actual == expected
 
 
+def test_error_sum_may_exceed_output_significant_digit_limit():
+    value = Decimal("9" * 50)
+    result = calculate_point(
+        rule(
+            reference_value=Decimal("0"),
+            required_repetitions=2,
+            error_lower_limit=Decimal("0"),
+            error_upper_limit=value,
+        ),
+        [
+            reading(value, trial_no=1),
+            reading(value, trial_no=2),
+        ],
+    )
+
+    assert result.errors == (value, value)
+    assert result.mean_error == value
+    assert result.error_range == Decimal("0")
+    assert result.result == "pass"
+
+
+def test_error_sum_exponent_carry_does_not_reject_valid_mean():
+    value = Decimal("9E+1000")
+    result = calculate_point(
+        rule(
+            reference_value=Decimal("0"),
+            required_repetitions=2,
+            error_lower_limit=Decimal("0"),
+            error_upper_limit=value,
+        ),
+        [
+            reading(value, trial_no=1),
+            reading(value, trial_no=2),
+        ],
+    )
+
+    assert result.errors == (value, value)
+    assert result.mean_error == value
+    assert result.error_range == Decimal("0E+1000")
+    assert result.result == "pass"
+
+
 def test_error_above_endpoint_is_not_rounded_back_to_limit():
     result = calculate_point(
         rule(
@@ -584,6 +626,44 @@ def test_adjusted_exponent_boundary_allows_insignificant_trailing_zero():
     )
 
     assert result.errors == (Decimal("1.0E-1000"),)
+    assert result.result == "pass"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [Decimal("0E-1001"), Decimal("0E+1001")],
+)
+def test_zero_outside_adjusted_exponent_limit_returns_failure(value):
+    result = calculate_point(
+        rule(
+            reference_value=Decimal("0"),
+            required_repetitions=1,
+            error_lower_limit=Decimal("-1"),
+            error_upper_limit=Decimal("1"),
+        ),
+        [reading(value)],
+    )
+
+    assert result.result == "pending"
+    assert result.blockers == (CALIBRATION_NUMERIC_FAILURE,)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [Decimal("0E-1000"), Decimal("0E+1000")],
+)
+def test_zero_at_adjusted_exponent_limit_is_valid(value):
+    result = calculate_point(
+        rule(
+            reference_value=Decimal("0"),
+            required_repetitions=1,
+            error_lower_limit=Decimal("-1"),
+            error_upper_limit=Decimal("1"),
+        ),
+        [reading(value)],
+    )
+
+    assert result.errors == (value,)
     assert result.result == "pass"
 
 
