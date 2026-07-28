@@ -1,8 +1,10 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { EquipmentImportBatch } from '../../types/msa';
+import type { EquipmentImportBatch, EquipmentImportResolution } from '../../types/msa';
+import type { IssueMap, ResolutionMap } from './EquipmentImportReview';
 import MsaImportHistoryPage from '../../pages/msa/MsaImportHistoryPage';
 import EquipmentImportReview from './EquipmentImportReview';
 
@@ -79,11 +81,44 @@ const batch: EquipmentImportBatch = {
   ],
 };
 
+const StatefulReview = ({
+  initialBatch,
+  onConfirm,
+  onRowPageChange,
+}: {
+  initialBatch: EquipmentImportBatch;
+  onConfirm?: (resolutions: ResolutionMap) => void | Promise<void>;
+  onRowPageChange?: (page: number) => void;
+}) => {
+  const [resolutions, setResolutions] = useState<ResolutionMap>({});
+  const [resolutionIssues, setResolutionIssues] = useState<IssueMap>({});
+
+  const handleResolutionChange = (
+    rowId: number,
+    issueCodes: string[],
+    patch: Partial<EquipmentImportResolution>,
+  ) => {
+    setResolutionIssues((c) => ({ ...c, [rowId]: issueCodes }));
+    setResolutions((c) => ({ ...c, [rowId]: { ...c[rowId], ...patch } }));
+  };
+
+  return (
+    <EquipmentImportReview
+      batch={initialBatch}
+      resolutions={resolutions}
+      resolutionIssues={resolutionIssues}
+      onResolutionChange={handleResolutionChange}
+      onConfirm={onConfirm}
+      onRowPageChange={onRowPageChange}
+    />
+  );
+};
+
 describe('設備匯入檢閱', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('不以 HTML 呈現來源提醒文字', () => {
-    render(<EquipmentImportReview batch={batch} />);
+    render(<StatefulReview initialBatch={batch} />);
 
     expect(screen.getByText(/校驗即將到期/)).toBeInTheDocument();
     expect(document.querySelector('span.danger')).toBeNull();
@@ -92,7 +127,7 @@ describe('設備匯入檢閱', () => {
   it('逐列解決遊校映射後才能確認，且不提供全部忽略', async () => {
     const user = userEvent.setup();
     const onConfirm = vi.fn();
-    render(<EquipmentImportReview batch={batch} onConfirm={onConfirm} />);
+    render(<StatefulReview initialBatch={batch} onConfirm={onConfirm} />);
 
     expect(screen.getByText('待人工確認 1 筆')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '確認匯入' })).toBeDisabled();
@@ -111,7 +146,7 @@ describe('設備匯入檢閱', () => {
   });
 
   it('以三階段 stepper 與逐列原始/正規化/問題碼建立證據軌', () => {
-    render(<EquipmentImportReview batch={batch} />);
+    render(<StatefulReview initialBatch={batch} />);
 
     const stepper = screen.getByLabelText('設備匯入階段');
     expect(within(stepper).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
@@ -137,7 +172,7 @@ describe('設備匯入檢閱', () => {
         issue_codes: ['MSA_IMPORT_EXEMPTION_REASON_MISSING'],
       }],
     };
-    render(<EquipmentImportReview batch={exemptBatch} onConfirm={vi.fn()} />);
+    render(<StatefulReview initialBatch={exemptBatch} onConfirm={vi.fn()} />);
 
     const row = screen.getByRole('row', { name: /原始列 2/ });
     await user.selectOptions(within(row).getByLabelText('列 2 處置'), 'accept');
@@ -165,7 +200,7 @@ describe('設備匯入檢閱', () => {
         },
       ],
     };
-    render(<EquipmentImportReview batch={serialBatch} onConfirm={vi.fn()} />);
+    render(<StatefulReview initialBatch={serialBatch} onConfirm={vi.fn()} />);
 
     const serialRow = screen.getByRole('row', { name: /原始列 2/ });
     await user.selectOptions(within(serialRow).getByLabelText('列 2 處置'), 'accept');
@@ -197,7 +232,7 @@ describe('設備匯入檢閱', () => {
         ],
       }],
     };
-    render(<EquipmentImportReview batch={combinedBatch} onConfirm={vi.fn()} />);
+    render(<StatefulReview initialBatch={combinedBatch} onConfirm={vi.fn()} />);
     const row = screen.getByRole('row', { name: /原始列 2/ });
 
     await user.selectOptions(within(row).getByLabelText('列 2 處置'), 'accept');
@@ -222,13 +257,33 @@ describe('設備匯入檢閱', () => {
         issue_codes: ['MSA_IMPORT_MODEL_MISSING'],
       }],
     };
-    const { rerender } = render(
-      <EquipmentImportReview
-        batch={firstPage}
-        onConfirm={vi.fn()}
-        onRowPageChange={onPageChange}
-      />,
-    );
+
+    const StatefulWrapper = ({ currentPageBatch }: { currentPageBatch: EquipmentImportBatch }) => {
+      const [resolutions, setResolutions] = useState<ResolutionMap>({});
+      const [resolutionIssues, setResolutionIssues] = useState<IssueMap>({});
+
+      const handleResolutionChange = (
+        rowId: number,
+        issueCodes: string[],
+        patch: Partial<EquipmentImportResolution>,
+      ) => {
+        setResolutionIssues((c) => ({ ...c, [rowId]: issueCodes }));
+        setResolutions((c) => ({ ...c, [rowId]: { ...c[rowId], ...patch } }));
+      };
+
+      return (
+        <EquipmentImportReview
+          batch={currentPageBatch}
+          resolutions={resolutions}
+          resolutionIssues={resolutionIssues}
+          onResolutionChange={handleResolutionChange}
+          onConfirm={vi.fn()}
+          onRowPageChange={onPageChange}
+        />
+      );
+    };
+
+    const { rerender } = render(<StatefulWrapper currentPageBatch={firstPage} />);
     let row = screen.getByRole('row', { name: /原始列 2/ });
     await user.selectOptions(within(row).getByLabelText('列 2 處置'), 'accept');
     await user.type(within(row).getByLabelText('列 2 型號'), 'M-01');
@@ -236,20 +291,15 @@ describe('設備匯入檢閱', () => {
     await user.click(screen.getByRole('button', { name: '下一頁逐列證據' }));
     expect(onPageChange).toHaveBeenCalledWith(2);
 
-    rerender(
-      <EquipmentImportReview
-        batch={{
-          ...firstPage,
-          row_page: 2,
-          rows: [{
-            ...batch.rows[1],
-            issue_codes: ['MSA_IMPORT_CUSTODIAN_MISSING'],
-          }],
-        }}
-        onConfirm={vi.fn()}
-        onRowPageChange={onPageChange}
-      />,
-    );
+    const secondPageBatch: EquipmentImportBatch = {
+      ...firstPage,
+      row_page: 2,
+      rows: [{
+        ...batch.rows[1],
+        issue_codes: ['MSA_IMPORT_CUSTODIAN_MISSING'],
+      }],
+    };
+    rerender(<StatefulWrapper currentPageBatch={secondPageBatch} />);
     row = screen.getByRole('row', { name: /原始列 3/ });
     await user.selectOptions(within(row).getByLabelText('列 3 處置'), 'pending_review');
     await user.type(within(row).getByLabelText('列 3 保管人'), '王小明');

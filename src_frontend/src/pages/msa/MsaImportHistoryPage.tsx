@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import EquipmentImportReview from '../../components/msa/EquipmentImportReview';
+import type { IssueMap, ResolutionMap } from '../../components/msa/EquipmentImportReview';
 import { useAuth } from '../../context/useAuth';
 import {
   useConfirmMsaEquipmentImport,
@@ -23,6 +24,8 @@ export default function MsaImportHistoryPage() {
   const [currentBatch, setCurrentBatch] = useState<EquipmentImportBatch | null>(null);
   const [historyBatchId, setHistoryBatchId] = useState<number | null>(null);
   const [rowPage, setRowPage] = useState(1);
+  const [resolutions, setResolutions] = useState<ResolutionMap>({});
+  const [resolutionIssues, setResolutionIssues] = useState<IssueMap>({});
   const history = useMsaImportHistory({ page, page_size: 20 });
   const historyBatch = useMsaImportBatch(historyBatchId, {
     row_page: rowPage,
@@ -31,6 +34,18 @@ export default function MsaImportHistoryPage() {
   const preview = usePreviewMsaEquipmentImport();
   const confirm = useConfirmMsaEquipmentImport();
   const shownBatch = currentBatch ?? historyBatch.data ?? null;
+
+  const handleResolutionChange = (
+    rowId: number,
+    issueCodes: string[],
+    patch: Partial<EquipmentImportResolution>,
+  ) => {
+    setResolutionIssues((current) => ({ ...current, [rowId]: issueCodes }));
+    setResolutions((current) => ({
+      ...current,
+      [rowId]: { ...current[rowId], ...patch },
+    }));
+  };
 
   const confirmBatch = async (
     resolutions: Record<number, EquipmentImportResolution>,
@@ -100,6 +115,9 @@ export default function MsaImportHistoryPage() {
       {shownBatch && (
         <EquipmentImportReview
           batch={shownBatch}
+          resolutions={resolutions}
+          resolutionIssues={resolutionIssues}
+          onResolutionChange={handleResolutionChange}
           onConfirm={canManage && shownBatch.status === 'previewed' ? confirmBatch : undefined}
           isConfirming={confirm.isPending}
           onRowPageChange={(nextPage) => {

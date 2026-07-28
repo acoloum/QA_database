@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import type {
   CalibrationType,
@@ -6,11 +6,19 @@ import type {
   EquipmentImportResolution,
 } from '../../types/msa';
 
+export type ResolutionMap = Record<number, EquipmentImportResolution>;
+export type IssueMap = Record<number, string[]>;
+
 interface EquipmentImportReviewProps {
   batch: EquipmentImportBatch;
-  onConfirm?: (
-    resolutions: Record<number, EquipmentImportResolution>,
-  ) => void | Promise<void>;
+  resolutions: ResolutionMap;
+  resolutionIssues: IssueMap;
+  onResolutionChange: (
+    rowId: number,
+    issueCodes: string[],
+    patch: Partial<EquipmentImportResolution>,
+  ) => void;
+  onConfirm?: (resolutions: ResolutionMap) => void | Promise<void>;
   isConfirming?: boolean;
   onRowPageChange?: (page: number) => void;
 }
@@ -91,16 +99,13 @@ const isComplete = (
 
 export default function EquipmentImportReview({
   batch,
+  resolutions,
+  resolutionIssues,
+  onResolutionChange,
   onConfirm,
   isConfirming = false,
   onRowPageChange,
 }: EquipmentImportReviewProps) {
-  const [resolutions, setResolutions] = useState<
-    Record<number, EquipmentImportResolution>
-  >({});
-  const [resolutionIssues, setResolutionIssues] = useState<
-    Record<number, string[]>
-  >({});
   const unresolvedCount = useMemo(
     () => Math.max(
       0,
@@ -113,21 +118,6 @@ export default function EquipmentImportReview({
     ),
     [batch.pending_rows, resolutionIssues, resolutions],
   );
-
-  const update = (
-    rowId: number,
-    issueCodes: string[],
-    patch: Partial<EquipmentImportResolution>,
-  ) => {
-    setResolutionIssues((current) => ({
-      ...current,
-      [rowId]: issueCodes,
-    }));
-    setResolutions((current) => ({
-      ...current,
-      [rowId]: { ...current[rowId], ...patch },
-    }));
-  };
 
   return (
     <section className="msa-import-review" aria-labelledby={`import-review-${batch.id}`}>
@@ -210,9 +200,9 @@ export default function EquipmentImportReview({
                           列 {row.source_row_no} 處置
                           <select
                             value={resolution.action ?? ''}
-                            onChange={(event) => update(row.id, row.issue_codes, {
-                              action: event.target.value as EquipmentImportResolution['action'],
-                            })}
+onChange={(event) => onResolutionChange(row.id, row.issue_codes, {
+                                action: event.target.value as EquipmentImportResolution['action'],
+                              })}
                           >
                             <option value="">請選擇</option>
                             {row.issue_codes.every((code) => REPAIRABLE_ISSUES.has(code)) && (
@@ -232,7 +222,7 @@ export default function EquipmentImportReview({
                             列 {row.source_row_no} 校驗類別映射
                             <select
                               value={resolution.calibration_type ?? ''}
-                              onChange={(event) => update(row.id, row.issue_codes, {
+                              onChange={(event) => onResolutionChange(row.id, row.issue_codes, {
                                 calibration_type: event.target.value as CalibrationType,
                               })}
                             >
@@ -251,7 +241,7 @@ export default function EquipmentImportReview({
                             列 {row.source_row_no} 免校理由
                             <input
                               value={resolution.calibration_exemption_reason ?? ''}
-                              onChange={(event) => update(row.id, row.issue_codes, {
+                              onChange={(event) => onResolutionChange(row.id, row.issue_codes, {
                                 calibration_exemption_reason: event.target.value,
                               })}
                             />
@@ -266,7 +256,7 @@ export default function EquipmentImportReview({
                             <input
                               inputMode="decimal"
                               value={String(resolution.resolution ?? '')}
-                              onChange={(event) => update(
+                              onChange={(event) => onResolutionChange(
                                 row.id,
                                 row.issue_codes,
                                 { resolution: event.target.value },
@@ -279,7 +269,7 @@ export default function EquipmentImportReview({
                             列 {row.source_row_no} 單位
                             <input
                               value={resolution.unit ?? ''}
-                              onChange={(event) => update(
+                              onChange={(event) => onResolutionChange(
                                 row.id, row.issue_codes, { unit: event.target.value },
                               )}
                             />
@@ -290,7 +280,7 @@ export default function EquipmentImportReview({
                             列 {row.source_row_no} 型號
                             <input
                               value={resolution.model ?? ''}
-                              onChange={(event) => update(
+                              onChange={(event) => onResolutionChange(
                                 row.id, row.issue_codes, { model: event.target.value },
                               )}
                             />
@@ -301,7 +291,7 @@ export default function EquipmentImportReview({
                             列 {row.source_row_no} 保管人
                             <input
                               value={resolution.custodian ?? ''}
-                              onChange={(event) => update(
+                              onChange={(event) => onResolutionChange(
                                 row.id, row.issue_codes, { custodian: event.target.value },
                               )}
                             />
@@ -315,7 +305,7 @@ export default function EquipmentImportReview({
                             列 {row.source_row_no} 序號
                             <input
                               value={resolution.serial_no ?? ''}
-                              onChange={(event) => update(
+                              onChange={(event) => onResolutionChange(
                                 row.id, row.issue_codes, { serial_no: event.target.value },
                               )}
                             />
