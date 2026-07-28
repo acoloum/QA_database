@@ -3,6 +3,7 @@
 from functools import wraps
 
 from flask import current_app, jsonify
+from werkzeug.exceptions import HTTPException
 
 from ..services.calibration_errors import CalibrationServiceError
 from ..utils import auth_required, require_permission
@@ -28,6 +29,8 @@ def handle_calibration_errors(function):
                 ),
                 error.status_code,
             )
+        except HTTPException:
+            raise
         except Exception:
             current_app.logger.exception("校正服務發生未預期錯誤")
             return (

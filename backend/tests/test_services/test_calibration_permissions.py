@@ -1,7 +1,7 @@
 """校正模組獨立認證、權限與錯誤轉接器的整合測試。"""
 
 import pytest
-from flask import Flask, jsonify, request
+from flask import Flask, abort, jsonify, request
 
 from backend.extensions import db
 from backend.models import CalibrationTemplate, Role, User
@@ -103,6 +103,21 @@ def calibration_api():
     def raise_internal_error(current_user):
         raise RuntimeError("內部資料庫密碼不得回傳")
 
+    @app.get("/api/calibration-http-not-found")
+    @calibration_auth_required
+    @require_calibration_permission("calibration.view")
+    @handle_calibration_errors
+    def raise_http_not_found(current_user):
+        abort(404)
+
+    @app.post("/api/calibration-json")
+    @calibration_auth_required
+    @require_calibration_permission("calibration.view")
+    @handle_calibration_errors
+    def parse_calibration_json(current_user):
+        request.get_json()
+        return "", 204
+
     with app.app_context():
         db.create_all()
         db.session.add_all(
@@ -155,6 +170,12 @@ def calibration_api():
                 password=hash_password("pw12345678"),
                 role="admin",
                 is_active=False,
+            ),
+            "active_admin": User(
+                username="active_admin_without_role_row",
+                password=hash_password("pw12345678"),
+                role="admin",
+                is_active=True,
             ),
         }
         db.session.add_all(users.values())
@@ -334,6 +355,56 @@ def test_unexpected_exception_returns_sanitized_error(calibration_api):
         }
     }
     assert "內部資料庫密碼" not in response.get_data(as_text=True)
+
+
+def test_http_not_found_is_not_converted_to_calibration_internal_error(
+    calibration_api,
+):
+    client, tokens, _app = calibration_api
+
+    response = client.get(
+        "/api/calibration-http-not-found",
+        headers=_authorization(tokens["approver"]),
+    )
+
+    assert response.status_code == 404
+    assert "CALIBRATION_INTERNAL_ERROR" not in response.get_data(as_text=True)
+
+
+def test_malformed_json_is_not_converted_to_calibration_internal_error(
+    calibration_api,
+):
+    client, tokens, _app = calibration_api
+
+    response = client.post(
+        "/api/calibration-json",
+        data="{",
+        content_type="application/json",
+        headers=_authorization(tokens["approver"]),
+    )
+
+    assert response.status_code == 400
+    assert "CALIBRATION_INTERNAL_ERROR" not in response.get_data(as_text=True)
+
+
+def test_active_admin_without_role_row_can_create_calibration_template(
+    calibration_api,
+):
+    client, tokens, app = calibration_api
+    with app.app_context():
+        assert Role.query.filter_by(code="admin").first() is None
+
+    response = client.post(
+        "/api/calibration-templates",
+        headers=_authorization(tokens["active_admin"]),
+        json=_template_payload("CAL-ACTIVE-ADMIN"),
+    )
+
+    assert response.status_code == 201
+    with app.app_context():
+        template = CalibrationTemplate.query.one()
+        assert template.template_code == "CAL-ACTIVE-ADMIN"
+        assert CalibrationTemplate.query.count() == 1
 
 
 def test_seed_roles_follow_exact_calibration_permission_matrix():
