@@ -1,4 +1,6 @@
+import json
 import os
+from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
@@ -161,11 +163,12 @@ def _insert_detailed_evidence(connection, *, status="draft"):
             "校驗紀錄ID", "模板校正點ID", "點位順序", "點位代碼",
             "量測模式", "名目值", "單位", "參考值",
             "誤差下限", "誤差上限", "判定基礎", "重複性規則",
-            "重複性上限", "結果"
+            "重複性上限", "參考值輸入模式", "必要重複次數", "結果"
         ) VALUES (
             :record_id, :template_point_id, 1, 'P01', '外徑',
             10, 'mm', 10, -0.02, 0.02,
-            'all_readings', 'range', 0.01, 'pass'
+            'all_readings', 'range', 0.01,
+            'certified_value', 3, 'pass'
         )
         RETURNING "識別碼"
         """
@@ -253,29 +256,40 @@ def test_migration_creates_tables_columns_indexes_and_foreign_keys(
             "識別碼", "模板ID", "版本號", "程序代碼", "程序名稱",
             "程序說明", "預設重複次數", "環境要求", "允許限制使用",
             "狀態", "資料版本", "建立者ID", "建立時間", "核准者ID",
-            "核准時間",
+            "核准時間", "修訂原因", "送審者ID", "送審時間",
+            "核准理由", "退回理由", "後繼版本ID",
         },
         "校正模板校正點": {
             "識別碼", "模板版本ID", "點位順序", "點位代碼",
             "量測模式", "名目值", "單位", "參考值輸入模式",
             "必要重複次數", "誤差下限", "誤差上限", "判定基礎",
-            "重複性規則", "重複性上限", "資格範圍代碼", "必填",
+            "重複性規則", "重複性上限", "資格範圍代碼",
+            "資格範圍起點", "資格範圍終點", "要求不確定度",
+            "必填", "操作提示",
         },
         "設備校正點": {
             "識別碼", "校驗紀錄ID", "模板校正點ID", "點位順序",
             "點位代碼", "量測模式", "名目值", "單位", "參考值",
             "誤差下限", "誤差上限", "判定基礎", "重複性規則",
             "重複性上限", "資格範圍代碼", "平均值", "誤差值",
-            "重複性值", "結果", "備註",
+            "重複性值", "結果", "備註", "參考值輸入模式",
+            "必要重複次數", "資格範圍起點", "資格範圍終點",
+            "要求不確定度", "必填", "平均器差", "平均補正值",
+            "最小器差", "最大器差", "器差極差", "樣本標準差",
+            "擴充不確定度", "涵蓋因子", "完整讀值數",
         },
         "設備校正原始讀值": {
             "識別碼", "設備校正點ID", "試驗序號", "器示值",
             "誤差值", "結果", "輸入者ID", "輸入時間",
+            "標準器讀值", "有效參考值", "補正值", "最後修訂者ID",
+            "最後修訂時間", "修訂原因",
         },
         "校正參考標準器快照": {
             "識別碼", "校驗紀錄ID", "參考標準設備ID", "設備編號",
             "名稱", "證書編號", "校驗有效期", "追溯標準", "快照資料",
-            "建立時間",
+            "建立時間", "型號", "序號", "量程下限", "量程上限",
+            "解析度", "單位", "核准校驗紀錄ID", "校驗日期",
+            "結果", "資料雜湊",
         },
     }
     for table_name, expected_columns in expected_table_columns.items():
@@ -300,6 +314,11 @@ def test_migration_creates_tables_columns_indexes_and_foreign_keys(
         "退回理由",
         "作廢理由",
         "後繼紀錄ID",
+        "程序代碼",
+        "程序名稱",
+        "校正地點",
+        "開始時間",
+        "完成時間",
     }
     assert expected_record_columns <= _column_names(
         inspector,
@@ -310,6 +329,7 @@ def test_migration_creates_tables_columns_indexes_and_foreign_keys(
     expected_indexes = {
         "校正模板版本": {
             "idx_calibration_template_version_status": ("模板ID", "狀態"),
+            "idx_calibration_template_version_successor": ("後繼版本ID",),
         },
         "校正模板校正點": {
             "idx_calibration_template_point_version": (
@@ -337,6 +357,9 @@ def test_migration_creates_tables_columns_indexes_and_foreign_keys(
         },
         "校正參考標準器快照": {
             "idx_calibration_reference_snapshot_record": ("校驗紀錄ID",),
+            "idx_calibration_reference_snapshot_approved_record": (
+                "核准校驗紀錄ID",
+            ),
         },
     }
     for table_name, table_indexes in expected_indexes.items():
@@ -378,7 +401,9 @@ def test_migration_creates_tables_columns_indexes_and_foreign_keys(
         "校正模板版本": {
             (("模板ID",), "校正模板", ("識別碼",)),
             (("建立者ID",), "使用者", ("識別碼",)),
+            (("送審者ID",), "使用者", ("識別碼",)),
             (("核准者ID",), "使用者", ("識別碼",)),
+            (("後繼版本ID",), "校正模板版本", ("識別碼",)),
         },
         "校正模板校正點": {
             (("模板版本ID",), "校正模板版本", ("識別碼",)),
@@ -396,10 +421,12 @@ def test_migration_creates_tables_columns_indexes_and_foreign_keys(
         "設備校正原始讀值": {
             (("設備校正點ID",), "設備校正點", ("識別碼",)),
             (("輸入者ID",), "使用者", ("識別碼",)),
+            (("最後修訂者ID",), "使用者", ("識別碼",)),
         },
         "校正參考標準器快照": {
             (("校驗紀錄ID",), "設備校驗紀錄", ("識別碼",)),
             (("參考標準設備ID",), "量測設備", ("識別碼",)),
+            (("核准校驗紀錄ID",), "設備校驗紀錄", ("識別碼",)),
         },
     }
     for table_name, expected_targets in expected_foreign_keys.items():
@@ -408,6 +435,54 @@ def test_migration_creates_tables_columns_indexes_and_foreign_keys(
             table_name,
             schema_name,
         )
+
+    expected_check_constraints = {
+        "校正模板版本": {
+            "ck_calibration_template_default_repetitions",
+            "ck_calibration_template_version_row_version",
+            "ck_calibration_template_version_status",
+        },
+        "校正模板校正點": {
+            "ck_calibration_template_point_repetitions",
+            "ck_calibration_template_point_error_order",
+            "ck_calibration_template_point_repeatability",
+            "ck_calibration_template_point_qualification_range",
+            "ck_calibration_template_point_reference_mode",
+            "ck_calibration_template_point_evaluation_basis",
+            "ck_calibration_template_point_repeatability_rule",
+        },
+        "設備校驗紀錄": {
+            "ck_equipment_calibration_data_level",
+            "ck_equipment_calibration_detailed_evidence",
+            "ck_equipment_calibration_status",
+            "ck_equipment_calibration_row_version",
+        },
+        "設備校正點": {
+            "ck_equipment_calibration_point_error_order",
+            "ck_equipment_calibration_point_repeatability",
+            "ck_equipment_calibration_point_repetitions",
+            "ck_equipment_calibration_point_completed_count",
+            "ck_equipment_calibration_point_qualification_range",
+            "ck_equipment_calibration_point_reference_mode",
+            "ck_equipment_calibration_point_evaluation_basis",
+            "ck_equipment_calibration_point_repeatability_rule",
+            "ck_equipment_calibration_point_result",
+            "ck_equipment_calibration_point_reference_required",
+        },
+        "設備校正原始讀值": {
+            "ck_equipment_calibration_reading_trial",
+            "ck_equipment_calibration_reading_result",
+        },
+    }
+    for table_name, expected_constraints in expected_check_constraints.items():
+        actual_constraints = {
+            constraint["name"]
+            for constraint in inspector.get_check_constraints(
+                table_name,
+                schema=schema_name,
+            )
+        }
+        assert expected_constraints <= actual_constraints
 
     jsonb_columns = {
         ("校正模板版本", "環境要求"),
@@ -695,6 +770,514 @@ def test_database_rejects_invalid_record_invariant(
                     "record_id": evidence["record_id"],
                 },
             )
+        connection.rollback()
+
+
+def test_database_rejects_unknown_template_version_status(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(connection)
+        connection.commit()
+
+        with pytest.raises(IntegrityError):
+            connection.execute(text(
+                """
+                UPDATE "校正模板版本"
+                SET "狀態" = 'unknown'
+                WHERE "識別碼" = :version_id
+                """
+            ), {"version_id": evidence["version_id"]})
+        connection.rollback()
+
+
+def test_database_rejects_reversed_template_qualification_range(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(connection)
+        connection.commit()
+
+        with pytest.raises(IntegrityError):
+            connection.execute(text(
+                """
+                UPDATE "校正模板校正點"
+                SET "資格範圍起點" = 150,
+                    "資格範圍終點" = 0
+                WHERE "識別碼" = :template_point_id
+                """
+            ), {"template_point_id": evidence["template_point_id"]})
+        connection.rollback()
+
+
+@pytest.mark.parametrize(
+    ("column_name", "invalid_value"),
+    [
+        ("參考值輸入模式", "unknown"),
+        ("判定基礎", "unknown"),
+        ("重複性規則", "unknown"),
+    ],
+)
+def test_database_rejects_unknown_template_point_rule(
+    migrated_postgresql,
+    column_name,
+    invalid_value,
+):
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(connection)
+        connection.commit()
+        statements = {
+            "參考值輸入模式": (
+                'UPDATE "校正模板校正點" '
+                'SET "參考值輸入模式" = :value WHERE "識別碼" = :point_id'
+            ),
+            "判定基礎": (
+                'UPDATE "校正模板校正點" '
+                'SET "判定基礎" = :value WHERE "識別碼" = :point_id'
+            ),
+            "重複性規則": (
+                'UPDATE "校正模板校正點" '
+                'SET "重複性規則" = :value WHERE "識別碼" = :point_id'
+            ),
+        }
+
+        with pytest.raises(IntegrityError):
+            connection.execute(text(statements[column_name]), {
+                "value": invalid_value,
+                "point_id": evidence["template_point_id"],
+            })
+        connection.rollback()
+
+
+@pytest.mark.parametrize("status", ["in_progress", "ready_for_submission"])
+def test_database_accepts_calibration_execution_status(
+    migrated_postgresql,
+    status,
+):
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(connection)
+        connection.execute(text(
+            """
+            UPDATE "設備校驗紀錄"
+            SET "狀態" = :status
+            WHERE "識別碼" = :record_id
+            """
+        ), {"record_id": evidence["record_id"], "status": status})
+        connection.commit()
+
+        actual_status = connection.execute(text(
+            """
+            SELECT "狀態"
+            FROM "設備校驗紀錄"
+            WHERE "識別碼" = :record_id
+            """
+        ), {"record_id": evidence["record_id"]}).scalar_one()
+        assert actual_status == status
+
+
+@pytest.mark.parametrize(
+    ("column_name", "invalid_value"),
+    [
+        ("必要重複次數", 0),
+        ("完整讀值數", -1),
+        ("完整讀值數", 4),
+    ],
+)
+def test_database_rejects_invalid_actual_point_count(
+    migrated_postgresql,
+    column_name,
+    invalid_value,
+):
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(connection)
+        connection.commit()
+        statements = {
+            "必要重複次數": (
+                'UPDATE "設備校正點" SET "必要重複次數" = :value '
+                'WHERE "識別碼" = :point_id'
+            ),
+            "完整讀值數": (
+                'UPDATE "設備校正點" SET "完整讀值數" = :value '
+                'WHERE "識別碼" = :point_id'
+            ),
+        }
+
+        with pytest.raises(IntegrityError):
+            connection.execute(text(statements[column_name]), {
+                "value": invalid_value,
+                "point_id": evidence["point_id"],
+            })
+        connection.rollback()
+
+
+def test_database_rejects_reversed_actual_qualification_range(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(connection)
+        connection.commit()
+
+        with pytest.raises(IntegrityError):
+            connection.execute(text(
+                """
+                UPDATE "設備校正點"
+                SET "資格範圍起點" = 150,
+                    "資格範圍終點" = 0
+                WHERE "識別碼" = :point_id
+                """
+            ), {"point_id": evidence["point_id"]})
+        connection.rollback()
+
+
+@pytest.mark.parametrize(
+    ("column_name", "invalid_value"),
+    [
+        ("參考值輸入模式", "unknown"),
+        ("判定基礎", "unknown"),
+        ("重複性規則", "unknown"),
+        ("結果", "unknown"),
+    ],
+)
+def test_database_rejects_unknown_actual_point_rule(
+    migrated_postgresql,
+    column_name,
+    invalid_value,
+):
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(connection)
+        connection.commit()
+        statements = {
+            "參考值輸入模式": (
+                'UPDATE "設備校正點" SET "參考值輸入模式" = :value '
+                'WHERE "識別碼" = :point_id'
+            ),
+            "判定基礎": (
+                'UPDATE "設備校正點" SET "判定基礎" = :value '
+                'WHERE "識別碼" = :point_id'
+            ),
+            "重複性規則": (
+                'UPDATE "設備校正點" SET "重複性規則" = :value '
+                'WHERE "識別碼" = :point_id'
+            ),
+            "結果": (
+                'UPDATE "設備校正點" SET "結果" = :value '
+                'WHERE "識別碼" = :point_id'
+            ),
+        }
+
+        with pytest.raises(IntegrityError):
+            connection.execute(text(statements[column_name]), {
+                "value": invalid_value,
+                "point_id": evidence["point_id"],
+            })
+        connection.rollback()
+
+
+def test_database_allows_paired_point_without_fixed_reference(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(connection)
+        connection.execute(text(
+            """
+            UPDATE "設備校正點"
+            SET "參考值輸入模式" = 'paired_reading',
+                "參考值" = NULL
+            WHERE "識別碼" = :point_id
+            """
+        ), {"point_id": evidence["point_id"]})
+        connection.commit()
+
+
+def test_database_requires_fixed_reference_for_certified_value(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(connection)
+        connection.commit()
+
+        with pytest.raises(IntegrityError):
+            connection.execute(text(
+                """
+                UPDATE "設備校正點"
+                SET "參考值" = NULL
+                WHERE "識別碼" = :point_id
+                """
+            ), {"point_id": evidence["point_id"]})
+        connection.rollback()
+
+
+def test_database_allows_empty_draft_reading_placeholder(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(connection)
+        reading_id = connection.execute(text(
+            """
+            INSERT INTO "設備校正原始讀值" (
+                "設備校正點ID", "試驗序號"
+            ) VALUES (:point_id, 2)
+            RETURNING "識別碼"
+            """
+        ), {"point_id": evidence["point_id"]}).scalar_one()
+        connection.commit()
+
+        reading = connection.execute(text(
+            """
+            SELECT "器示值", "結果"
+            FROM "設備校正原始讀值"
+            WHERE "識別碼" = :reading_id
+            """
+        ), {"reading_id": reading_id}).one()
+        assert reading == (None, "pending")
+
+
+def test_database_rejects_unknown_reading_result(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(connection)
+        connection.commit()
+
+        with pytest.raises(IntegrityError):
+            connection.execute(text(
+                """
+                INSERT INTO "設備校正原始讀值" (
+                    "設備校正點ID", "試驗序號", "結果"
+                ) VALUES (:point_id, 2, 'unknown')
+                """
+            ), {"point_id": evidence["point_id"]})
+        connection.rollback()
+
+
+def test_reference_snapshot_persists_complete_jsonb_and_normalized_evidence(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(connection)
+        snapshot_data = {
+            "schema_version": 1,
+            "source": "calibration_submission",
+            "qualification": {"usable": True, "blockers": []},
+        }
+        snapshot_id = connection.execute(text(
+            """
+            INSERT INTO "校正參考標準器快照" (
+                "校驗紀錄ID", "參考標準設備ID", "核准校驗紀錄ID",
+                "設備編號", "名稱", "型號", "序號",
+                "量程下限", "量程上限", "解析度", "單位",
+                "校驗日期", "校驗有效期", "結果", "證書編號",
+                "資料雜湊", "快照資料"
+            ) VALUES (
+                :record_id, 1, 1, 'LEGACY-EQ', '參考標準器',
+                'REF-100', 'SN-001', 0, 150, 0.01, 'mm',
+                DATE '2026-01-02', DATE '2027-01-02', 'pass',
+                'CERT-001', :data_hash, CAST(:snapshot_data AS JSONB)
+            )
+            RETURNING "識別碼"
+            """
+        ), {
+            "record_id": evidence["record_id"],
+            "data_hash": "a" * 64,
+            "snapshot_data": json.dumps(snapshot_data),
+        }).scalar_one()
+        connection.commit()
+
+        snapshot = connection.execute(text(
+            """
+            SELECT "核准校驗紀錄ID", "型號", "序號", "量程下限",
+                   "量程上限", "解析度", "單位", "校驗日期",
+                   "校驗有效期", "結果", "資料雜湊", "快照資料"
+            FROM "校正參考標準器快照"
+            WHERE "識別碼" = :snapshot_id
+            """
+        ), {"snapshot_id": snapshot_id}).one()
+        assert snapshot[0] == 1
+        assert snapshot[1:7] == (
+            "REF-100",
+            "SN-001",
+            Decimal("0"),
+            Decimal("150"),
+            Decimal("0.01"),
+            "mm",
+        )
+        assert snapshot[9] == "pass"
+        assert snapshot[10] == "a" * 64
+        assert snapshot[11] == snapshot_data
+
+
+def test_reference_snapshot_rejects_unknown_approved_record(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(connection)
+        connection.commit()
+
+        with pytest.raises(IntegrityError):
+            connection.execute(text(
+                """
+                INSERT INTO "校正參考標準器快照" (
+                    "校驗紀錄ID", "參考標準設備ID",
+                    "核准校驗紀錄ID", "設備編號", "名稱",
+                    "校驗日期", "結果", "快照資料"
+                ) VALUES (
+                    :record_id, 1, 999999, 'LEGACY-EQ',
+                    '參考標準器', DATE '2026-01-02', 'pass', '{}'::JSONB
+                )
+                """
+            ), {"record_id": evidence["record_id"]})
+        connection.rollback()
+
+
+@pytest.mark.parametrize("status", ["approved", "superseded"])
+@pytest.mark.parametrize("operation", ["update", "delete"])
+def test_database_blocks_frozen_template_version_changes(
+    migrated_postgresql,
+    status,
+    operation,
+):
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(connection)
+        connection.execute(text(
+            """
+            UPDATE "校正模板版本"
+            SET "狀態" = :status
+            WHERE "識別碼" = :version_id
+            """
+        ), {"status": status, "version_id": evidence["version_id"]})
+        connection.commit()
+        statements = {
+            "update": (
+                'UPDATE "校正模板版本" '
+                'SET "程序名稱" = \'嘗試改寫受控版本\' '
+                'WHERE "識別碼" = :version_id'
+            ),
+            "delete": (
+                'DELETE FROM "校正模板版本" '
+                'WHERE "識別碼" = :version_id'
+            ),
+        }
+
+        with pytest.raises(DBAPIError, match="校正模板版本"):
+            connection.execute(
+                text(statements[operation]),
+                {"version_id": evidence["version_id"]},
+            )
+        connection.rollback()
+
+
+def test_database_allows_controlled_template_version_supersession(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(connection)
+        successor_id = connection.execute(text(
+            """
+            INSERT INTO "校正模板版本" (
+                "模板ID", "版本號", "程序代碼", "程序名稱",
+                "預設重複次數", "環境要求", "狀態"
+            )
+            SELECT "模板ID", 2, 'WI-CAL-002', '游標卡尺校正第二版',
+                   3, '{}'::JSONB, 'approved'
+            FROM "校正模板版本"
+            WHERE "識別碼" = :version_id
+            RETURNING "識別碼"
+            """
+        ), {"version_id": evidence["version_id"]}).scalar_one()
+        connection.execute(text(
+            """
+            UPDATE "校正模板版本"
+            SET "狀態" = 'approved'
+            WHERE "識別碼" = :version_id
+            """
+        ), {"version_id": evidence["version_id"]})
+        connection.commit()
+
+        connection.execute(text(
+            """
+            UPDATE "校正模板版本"
+            SET "狀態" = 'superseded',
+                "後繼版本ID" = :successor_id,
+                "資料版本" = "資料版本" + 1
+            WHERE "識別碼" = :version_id
+            """
+        ), {
+            "version_id": evidence["version_id"],
+            "successor_id": successor_id,
+        })
+        connection.commit()
+
+        version = connection.execute(text(
+            """
+            SELECT "狀態", "後繼版本ID", "資料版本"
+            FROM "校正模板版本"
+            WHERE "識別碼" = :version_id
+            """
+        ), {"version_id": evidence["version_id"]}).one()
+        assert version == ("superseded", successor_id, 2)
+
+
+@pytest.mark.parametrize(
+    "status",
+    ["submitted", "approved", "rejected", "superseded"],
+)
+@pytest.mark.parametrize("operation", ["update", "reparent", "delete"])
+def test_database_blocks_controlled_template_point_changes(
+    migrated_postgresql,
+    status,
+    operation,
+):
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(connection)
+        target_template_id = connection.execute(text(
+            """
+            INSERT INTO "校正模板" ("模板代碼", "名稱", "適用設備類型")
+            VALUES (:template_code, '重掛目標模板', '游標卡尺')
+            RETURNING "識別碼"
+            """
+        ), {"template_code": f"TARGET-{uuid4().hex}"}).scalar_one()
+        target_version_id = connection.execute(text(
+            """
+            INSERT INTO "校正模板版本" (
+                "模板ID", "版本號", "程序代碼", "程序名稱",
+                "預設重複次數", "環境要求", "狀態"
+            ) VALUES (
+                :template_id, 1, 'WI-TARGET', '重掛目標程序',
+                3, '{}'::JSONB, 'draft'
+            )
+            RETURNING "識別碼"
+            """
+        ), {"template_id": target_template_id}).scalar_one()
+        connection.execute(text(
+            """
+            UPDATE "校正模板版本"
+            SET "狀態" = :status
+            WHERE "識別碼" = :version_id
+            """
+        ), {"status": status, "version_id": evidence["version_id"]})
+        connection.commit()
+        statements = {
+            "update": (
+                'UPDATE "校正模板校正點" '
+                'SET "操作提示" = \'嘗試改寫受控校正點\' '
+                'WHERE "識別碼" = :point_id'
+            ),
+            "reparent": (
+                'UPDATE "校正模板校正點" '
+                'SET "模板版本ID" = :target_version_id '
+                'WHERE "識別碼" = :point_id'
+            ),
+            "delete": (
+                'DELETE FROM "校正模板校正點" '
+                'WHERE "識別碼" = :point_id'
+            ),
+        }
+
+        with pytest.raises(DBAPIError, match="模板校正點"):
+            connection.execute(text(statements[operation]), {
+                "point_id": evidence["template_point_id"],
+                "target_version_id": target_version_id,
+            })
         connection.rollback()
 
 

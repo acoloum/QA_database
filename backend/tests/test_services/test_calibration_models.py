@@ -1,6 +1,7 @@
 from datetime import date
 
 import pytest
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import IntegrityError
 
 from backend.models import (
@@ -13,6 +14,118 @@ from backend.models import (
     EquipmentCalibrationRecord,
     MeasurementEquipment,
 )
+
+
+@pytest.mark.parametrize(
+    ("model", "expected_attributes"),
+    [
+        (
+            CalibrationTemplateVersion,
+            {
+                "revision_reason",
+                "submitted_by",
+                "submitted_at",
+                "approval_reason",
+                "rejection_reason",
+                "successor_version_id",
+            },
+        ),
+        (
+            CalibrationTemplatePoint,
+            {
+                "qualification_range_start",
+                "qualification_range_end",
+                "uncertainty_required",
+                "instruction",
+            },
+        ),
+        (
+            EquipmentCalibrationRecord,
+            {
+                "procedure_code",
+                "procedure_name",
+                "calibration_location",
+                "started_at",
+                "completed_at",
+            },
+        ),
+        (
+            EquipmentCalibrationPoint,
+            {
+                "reference_input_mode",
+                "required_repetitions",
+                "qualification_range_start",
+                "qualification_range_end",
+                "uncertainty_required",
+                "required",
+                "mean_error",
+                "mean_correction",
+                "minimum_error",
+                "maximum_error",
+                "error_range",
+                "sample_stddev",
+                "expanded_uncertainty",
+                "coverage_factor",
+                "completed_reading_count",
+            },
+        ),
+        (
+            EquipmentCalibrationReading,
+            {
+                "standard_reading",
+                "effective_reference",
+                "correction_value",
+                "last_modified_by",
+                "last_modified_at",
+                "revision_reason",
+            },
+        ),
+        (
+            CalibrationReferenceSnapshot,
+            {
+                "model",
+                "serial_no",
+                "range_min",
+                "range_max",
+                "resolution",
+                "unit",
+                "approved_calibration_record_id",
+                "calibration_date",
+                "result",
+                "data_hash",
+            },
+        ),
+    ],
+)
+def test_calibration_models_expose_approved_design_fields(
+    model,
+    expected_attributes,
+):
+    actual_attributes = {
+        attribute.key
+        for attribute in sa_inspect(model).column_attrs
+    }
+    assert expected_attributes <= actual_attributes
+
+
+def test_calibration_models_expose_approved_design_relationships():
+    version_relationships = {
+        relationship.key
+        for relationship in sa_inspect(
+            CalibrationTemplateVersion
+        ).relationships
+    }
+    snapshot_relationships = {
+        relationship.key
+        for relationship in sa_inspect(
+            CalibrationReferenceSnapshot
+        ).relationships
+    }
+
+    assert {"successor_version", "predecessor_versions"} <= (
+        version_relationships
+    )
+    assert "approved_calibration_record" in snapshot_relationships
 
 
 def _template_version(db_session):
@@ -126,6 +239,10 @@ def _actual_point(db_session, status):
         evaluation_basis="all_readings",
         repeatability_rule="range",
         repeatability_limit="0.01",
+        reference_input_mode="certified_value",
+        required_repetitions=3,
+        uncertainty_required=False,
+        required=True,
         result="pass",
     )
     db_session.add(point)
@@ -209,6 +326,248 @@ def test_repeatability_rule_requires_non_negative_limit(db_session, rule):
     db_session.rollback()
 
 
+def test_template_version_rejects_unknown_status(db_session):
+    version = _template_version(db_session)
+    version.status = "unknown"
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_template_point_rejects_reversed_qualification_range(db_session):
+    _template_point(
+        db_session,
+        qualification_range_start="150",
+        qualification_range_end="0",
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+@pytest.mark.parametrize(
+    ("field_name", "invalid_value"),
+    [
+        ("reference_input_mode", "unknown"),
+        ("evaluation_basis", "unknown"),
+        ("repeatability_rule", "unknown"),
+    ],
+)
+def test_template_point_rejects_unknown_rule_value(
+    db_session,
+    field_name,
+    invalid_value,
+):
+    point = _template_point(db_session)
+    setattr(point, field_name, invalid_value)
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+@pytest.mark.parametrize("status", ["in_progress", "ready_for_submission"])
+def test_detailed_record_accepts_execution_status(db_session, status):
+    record = _calibration_record(
+        db_session,
+        data_level="detailed",
+        status=status,
+    )
+
+    db_session.commit()
+
+    assert record.status == status
+
+
+@pytest.mark.parametrize(
+    ("field_name", "invalid_value"),
+    [
+        ("required_repetitions", 0),
+        ("completed_reading_count", -1),
+        ("completed_reading_count", 4),
+    ],
+)
+def test_actual_point_rejects_invalid_count(
+    db_session,
+    field_name,
+    invalid_value,
+):
+    point = _actual_point(db_session, "draft")
+    setattr(point, field_name, invalid_value)
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_actual_point_rejects_reversed_qualification_range(db_session):
+    point = _actual_point(db_session, "draft")
+    point.qualification_range_start = "150"
+    point.qualification_range_end = "0"
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+@pytest.mark.parametrize(
+    ("field_name", "invalid_value"),
+    [
+        ("reference_input_mode", "unknown"),
+        ("evaluation_basis", "unknown"),
+        ("repeatability_rule", "unknown"),
+        ("result", "unknown"),
+    ],
+)
+def test_actual_point_rejects_unknown_rule_value(
+    db_session,
+    field_name,
+    invalid_value,
+):
+    point = _actual_point(db_session, "draft")
+    setattr(point, field_name, invalid_value)
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_paired_reading_point_allows_empty_fixed_reference(db_session):
+    point = _actual_point(db_session, "draft")
+    point.reference_input_mode = "paired_reading"
+    point.reference_value = None
+
+    db_session.commit()
+
+    assert point.reference_value is None
+
+
+def test_certified_value_point_requires_fixed_reference(db_session):
+    point = _actual_point(db_session, "draft")
+    point.reference_value = None
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_draft_reading_placeholder_allows_empty_measurement(db_session):
+    point = _actual_point(db_session, "draft")
+    reading = EquipmentCalibrationReading(
+        calibration_point_id=point.id,
+        trial_no=1,
+    )
+    db_session.add(reading)
+
+    db_session.commit()
+
+    assert reading.indicated_value is None
+    assert reading.result == "pending"
+
+
+def test_reading_rejects_unknown_result(db_session):
+    reading = _reading(db_session, "draft")
+    reading.result = "unknown"
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+@pytest.mark.parametrize("status", ["approved", "superseded"])
+@pytest.mark.parametrize("operation", ["update", "delete"])
+def test_approved_or_superseded_template_version_is_immutable(
+    db_session,
+    status,
+    operation,
+):
+    version = _template_version(db_session)
+    version.status = status
+    db_session.commit()
+
+    if operation == "update":
+        version.procedure_name = "嘗試改寫受控版本"
+    else:
+        db_session.delete(version)
+
+    with pytest.raises(ValueError, match="模板版本"):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_approved_template_version_allows_controlled_supersession(db_session):
+    version = _template_version(db_session)
+    version.status = "approved"
+    db_session.commit()
+    successor = CalibrationTemplateVersion(
+        template_id=version.template_id,
+        version_no=2,
+        procedure_code="WI-CAL-002",
+        procedure_name="游標卡尺校正第二版",
+        default_repetitions=3,
+        environment_requirements={},
+        status="approved",
+    )
+    db_session.add(successor)
+    db_session.flush()
+
+    version.status = "superseded"
+    version.successor_version_id = successor.id
+    version.row_version += 1
+    db_session.commit()
+
+    assert version.status == "superseded"
+    assert version.successor_version is successor
+
+
+@pytest.mark.parametrize(
+    "status",
+    ["submitted", "approved", "rejected", "superseded"],
+)
+@pytest.mark.parametrize("operation", ["update", "reparent", "delete"])
+def test_controlled_template_point_is_immutable(
+    db_session,
+    status,
+    operation,
+):
+    point = _template_point(db_session)
+    version = db_session.get(
+        CalibrationTemplateVersion,
+        point.template_version_id,
+    )
+    version.status = status
+    db_session.commit()
+
+    if operation == "update":
+        point.instruction = "嘗試改寫受控校正點"
+    elif operation == "reparent":
+        target_template = CalibrationTemplate(
+            template_code=f"CAL-TARGET-{status}",
+            name="重掛目標模板",
+            equipment_type="游標卡尺",
+        )
+        target_version = CalibrationTemplateVersion(
+            template=target_template,
+            version_no=1,
+            procedure_code="WI-CAL-TARGET",
+            procedure_name="重掛目標程序",
+            default_repetitions=3,
+            environment_requirements={},
+            status="draft",
+        )
+        db_session.add(target_version)
+        db_session.flush()
+        point.template_version_id = target_version.id
+    else:
+        db_session.delete(point)
+
+    with pytest.raises(ValueError, match="模板校正點"):
+        db_session.commit()
+    db_session.rollback()
+
+
 def test_summary_legacy_record_may_omit_template_version(db_session):
     record = _calibration_record(db_session, data_level="summary_legacy")
 
@@ -239,8 +598,15 @@ def test_calibration_relationships_are_bidirectional(db_session):
     snapshot = CalibrationReferenceSnapshot(
         calibration_record=record,
         reference_standard_equipment=reference_equipment,
+        approved_calibration_record=_calibration_record(
+            db_session,
+            data_level="summary_legacy",
+            status="approved",
+        ),
         equipment_no=reference_equipment.equipment_no,
         name=reference_equipment.name,
+        calibration_date=date(2026, 7, 1),
+        result="pass",
         snapshot_data={"certificate_no": "REF-001"},
     )
     db_session.add(snapshot)

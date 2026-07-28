@@ -23,16 +23,28 @@ CREATE TABLE "校正模板版本" (
     "允許限制使用" BOOLEAN NOT NULL DEFAULT FALSE,
     "狀態" VARCHAR(20) NOT NULL DEFAULT 'draft',
     "資料版本" INTEGER NOT NULL DEFAULT 1,
+    "修訂原因" TEXT,
     "建立者ID" INTEGER REFERENCES "使用者"("識別碼"),
     "建立時間" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "送審者ID" INTEGER REFERENCES "使用者"("識別碼"),
+    "送審時間" TIMESTAMPTZ,
     "核准者ID" INTEGER REFERENCES "使用者"("識別碼"),
     "核准時間" TIMESTAMPTZ,
+    "核准理由" TEXT,
+    "退回理由" TEXT,
+    "後繼版本ID" INTEGER REFERENCES "校正模板版本"("識別碼"),
     CONSTRAINT uq_calibration_template_version
         UNIQUE ("模板ID", "版本號"),
     CONSTRAINT ck_calibration_template_default_repetitions
         CHECK ("預設重複次數" > 0),
     CONSTRAINT ck_calibration_template_version_row_version
-        CHECK ("資料版本" > 0)
+        CHECK ("資料版本" > 0),
+    CONSTRAINT ck_calibration_template_version_status
+        CHECK (
+            "狀態" IN (
+                'draft', 'submitted', 'approved', 'rejected', 'superseded'
+            )
+        )
 );
 
 ALTER TABLE "校正模板"
@@ -42,6 +54,9 @@ ALTER TABLE "校正模板"
 
 CREATE INDEX idx_calibration_template_version_status
     ON "校正模板版本" ("模板ID", "狀態");
+
+CREATE INDEX idx_calibration_template_version_successor
+    ON "校正模板版本" ("後繼版本ID");
 
 CREATE TABLE "校正模板校正點" (
     "識別碼" SERIAL PRIMARY KEY,
@@ -57,10 +72,14 @@ CREATE TABLE "校正模板校正點" (
     "誤差下限" NUMERIC,
     "誤差上限" NUMERIC,
     "判定基礎" VARCHAR(40) NOT NULL,
-    "重複性規則" VARCHAR(40),
+    "重複性規則" VARCHAR(40) NOT NULL,
     "重複性上限" NUMERIC,
     "資格範圍代碼" VARCHAR(80),
+    "資格範圍起點" NUMERIC,
+    "資格範圍終點" NUMERIC,
+    "要求不確定度" BOOLEAN NOT NULL DEFAULT FALSE,
     "必填" BOOLEAN NOT NULL DEFAULT TRUE,
+    "操作提示" TEXT,
     CONSTRAINT uq_calibration_template_point_order
         UNIQUE ("模板版本ID", "點位順序"),
     CONSTRAINT uq_calibration_template_point_code
@@ -80,7 +99,21 @@ CREATE TABLE "校正模板校正點" (
                 "重複性上限" IS NOT NULL
                 AND "重複性上限" >= 0
             )
-        )
+        ),
+    CONSTRAINT ck_calibration_template_point_qualification_range
+        CHECK (
+            "資格範圍起點" IS NULL
+            OR "資格範圍終點" IS NULL
+            OR "資格範圍起點" <= "資格範圍終點"
+        ),
+    CONSTRAINT ck_calibration_template_point_reference_mode
+        CHECK (
+            "參考值輸入模式" IN ('certified_value', 'paired_reading')
+        ),
+    CONSTRAINT ck_calibration_template_point_evaluation_basis
+        CHECK ("判定基礎" IN ('all_readings', 'mean_error')),
+    CONSTRAINT ck_calibration_template_point_repeatability_rule
+        CHECK ("重複性規則" IN ('none', 'range', 'stddev'))
 );
 
 CREATE INDEX idx_calibration_template_point_version
@@ -96,6 +129,11 @@ ALTER TABLE "設備校驗紀錄"
     ADD COLUMN "計算摘要" JSONB NOT NULL DEFAULT '{}'::JSONB,
     ADD COLUMN "計算版本" VARCHAR(40),
     ADD COLUMN "資料雜湊" VARCHAR(64),
+    ADD COLUMN "程序代碼" VARCHAR(80),
+    ADD COLUMN "程序名稱" VARCHAR(160),
+    ADD COLUMN "校正地點" VARCHAR(200),
+    ADD COLUMN "開始時間" TIMESTAMPTZ,
+    ADD COLUMN "完成時間" TIMESTAMPTZ,
     ADD COLUMN "參考標準設備ID" INTEGER
         REFERENCES "量測設備"("識別碼"),
     ADD COLUMN "送審者ID" INTEGER REFERENCES "使用者"("識別碼"),
@@ -131,8 +169,9 @@ ALTER TABLE "設備校驗紀錄"
     ADD CONSTRAINT ck_equipment_calibration_status
         CHECK (
             "狀態" IN (
-                'draft', 'submitted', 'approved',
-                'rejected', 'voided', 'superseded'
+                'draft', 'in_progress', 'ready_for_submission',
+                'submitted', 'approved', 'rejected',
+                'voided', 'superseded'
             )
         ),
     ADD CONSTRAINT ck_equipment_calibration_row_version
@@ -155,16 +194,31 @@ CREATE TABLE "設備校正點" (
     "量測模式" VARCHAR(80) NOT NULL,
     "名目值" NUMERIC NOT NULL,
     "單位" VARCHAR(40) NOT NULL,
-    "參考值" NUMERIC NOT NULL,
+    "參考值" NUMERIC,
     "誤差下限" NUMERIC,
     "誤差上限" NUMERIC,
     "判定基礎" VARCHAR(40) NOT NULL,
-    "重複性規則" VARCHAR(40),
+    "重複性規則" VARCHAR(40) NOT NULL,
     "重複性上限" NUMERIC,
     "資格範圍代碼" VARCHAR(80),
+    "參考值輸入模式" VARCHAR(40) NOT NULL,
+    "必要重複次數" INTEGER NOT NULL,
+    "資格範圍起點" NUMERIC,
+    "資格範圍終點" NUMERIC,
+    "要求不確定度" BOOLEAN NOT NULL DEFAULT FALSE,
+    "必填" BOOLEAN NOT NULL DEFAULT TRUE,
     "平均值" NUMERIC,
     "誤差值" NUMERIC,
     "重複性值" NUMERIC,
+    "平均器差" NUMERIC,
+    "平均補正值" NUMERIC,
+    "最小器差" NUMERIC,
+    "最大器差" NUMERIC,
+    "器差極差" NUMERIC,
+    "樣本標準差" NUMERIC,
+    "擴充不確定度" NUMERIC,
+    "涵蓋因子" NUMERIC,
+    "完整讀值數" INTEGER NOT NULL DEFAULT 0,
     "結果" VARCHAR(30) NOT NULL,
     "備註" TEXT,
     CONSTRAINT uq_equipment_calibration_point_order
@@ -184,6 +238,34 @@ CREATE TABLE "設備校正點" (
                 "重複性上限" IS NOT NULL
                 AND "重複性上限" >= 0
             )
+        ),
+    CONSTRAINT ck_equipment_calibration_point_repetitions
+        CHECK ("必要重複次數" > 0),
+    CONSTRAINT ck_equipment_calibration_point_completed_count
+        CHECK (
+            "完整讀值數" >= 0
+            AND "完整讀值數" <= "必要重複次數"
+        ),
+    CONSTRAINT ck_equipment_calibration_point_qualification_range
+        CHECK (
+            "資格範圍起點" IS NULL
+            OR "資格範圍終點" IS NULL
+            OR "資格範圍起點" <= "資格範圍終點"
+        ),
+    CONSTRAINT ck_equipment_calibration_point_reference_mode
+        CHECK (
+            "參考值輸入模式" IN ('certified_value', 'paired_reading')
+        ),
+    CONSTRAINT ck_equipment_calibration_point_evaluation_basis
+        CHECK ("判定基礎" IN ('all_readings', 'mean_error')),
+    CONSTRAINT ck_equipment_calibration_point_repeatability_rule
+        CHECK ("重複性規則" IN ('none', 'range', 'stddev')),
+    CONSTRAINT ck_equipment_calibration_point_result
+        CHECK ("結果" IN ('pending', 'pass', 'fail')),
+    CONSTRAINT ck_equipment_calibration_point_reference_required
+        CHECK (
+            "參考值輸入模式" <> 'certified_value'
+            OR "參考值" IS NOT NULL
         )
 );
 
@@ -195,15 +277,27 @@ CREATE TABLE "設備校正原始讀值" (
     "設備校正點ID" INTEGER NOT NULL
         REFERENCES "設備校正點"("識別碼"),
     "試驗序號" INTEGER NOT NULL,
-    "器示值" NUMERIC NOT NULL,
+    "標準器讀值" NUMERIC,
+    "器示值" NUMERIC,
+    "有效參考值" NUMERIC,
     "誤差值" NUMERIC,
-    "結果" VARCHAR(30) NOT NULL,
+    "補正值" NUMERIC,
+    "結果" VARCHAR(30) NOT NULL DEFAULT 'pending',
     "輸入者ID" INTEGER REFERENCES "使用者"("識別碼"),
     "輸入時間" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "最後修訂者ID" INTEGER REFERENCES "使用者"("識別碼"),
+    "最後修訂時間" TIMESTAMPTZ,
+    "修訂原因" TEXT,
     CONSTRAINT uq_equipment_calibration_reading_trial
         UNIQUE ("設備校正點ID", "試驗序號"),
     CONSTRAINT ck_equipment_calibration_reading_trial
-        CHECK ("試驗序號" > 0)
+        CHECK ("試驗序號" > 0),
+    CONSTRAINT ck_equipment_calibration_reading_result
+        CHECK (
+            "結果" IN (
+                'pending', 'pass', 'fail', 'not_individually_evaluated'
+            )
+        )
 );
 
 CREATE INDEX idx_equipment_calibration_reading_point
@@ -215,10 +309,21 @@ CREATE TABLE "校正參考標準器快照" (
         REFERENCES "設備校驗紀錄"("識別碼"),
     "參考標準設備ID" INTEGER NOT NULL
         REFERENCES "量測設備"("識別碼"),
+    "核准校驗紀錄ID" INTEGER NOT NULL
+        REFERENCES "設備校驗紀錄"("識別碼"),
     "設備編號" VARCHAR(80) NOT NULL,
     "名稱" VARCHAR(160) NOT NULL,
+    "型號" VARCHAR(120),
+    "序號" VARCHAR(160),
+    "量程下限" NUMERIC,
+    "量程上限" NUMERIC,
+    "解析度" NUMERIC,
+    "單位" VARCHAR(40),
+    "校驗日期" DATE NOT NULL,
     "證書編號" VARCHAR(160),
     "校驗有效期" DATE,
+    "結果" VARCHAR(30) NOT NULL,
+    "資料雜湊" VARCHAR(64),
     "追溯標準" TEXT,
     "快照資料" JSONB NOT NULL DEFAULT '{}'::JSONB,
     "建立時間" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -228,6 +333,84 @@ CREATE TABLE "校正參考標準器快照" (
 
 CREATE INDEX idx_calibration_reference_snapshot_record
     ON "校正參考標準器快照" ("校驗紀錄ID");
+
+CREATE INDEX idx_calibration_reference_snapshot_approved_record
+    ON "校正參考標準器快照" ("核准校驗紀錄ID");
+
+CREATE OR REPLACE FUNCTION calibration_block_frozen_template_version_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        IF OLD."狀態" IN ('approved', 'superseded') THEN
+            RAISE EXCEPTION '核准或已取代的校正模板版本不可刪除';
+        END IF;
+        RETURN OLD;
+    END IF;
+
+    IF OLD."狀態" = 'superseded' THEN
+        RAISE EXCEPTION '已取代的校正模板版本不可修改';
+    END IF;
+
+    IF OLD."狀態" = 'approved' THEN
+        IF NEW."狀態" = 'superseded'
+            AND NEW."後繼版本ID" IS NOT NULL
+            AND (
+                to_jsonb(NEW)
+                - ARRAY['狀態', '後繼版本ID', '資料版本']
+            ) = (
+                to_jsonb(OLD)
+                - ARRAY['狀態', '後繼版本ID', '資料版本']
+            ) THEN
+            RETURN NEW;
+        END IF;
+        RAISE EXCEPTION '核准的校正模板版本只允許連結後繼版本後取代';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_calibration_template_version_frozen_immutable
+    BEFORE UPDATE OR DELETE ON "校正模板版本"
+    FOR EACH ROW
+    EXECUTE FUNCTION calibration_block_frozen_template_version_change();
+
+CREATE OR REPLACE FUNCTION calibration_block_controlled_template_point_change()
+RETURNS TRIGGER AS $$
+DECLARE
+    original_status VARCHAR(20);
+    destination_status VARCHAR(20);
+BEGIN
+    SELECT version."狀態"
+    INTO original_status
+    FROM "校正模板版本" AS version
+    WHERE version."識別碼" = OLD."模板版本ID";
+
+    IF TG_OP = 'UPDATE' THEN
+        SELECT version."狀態"
+        INTO destination_status
+        FROM "校正模板版本" AS version
+        WHERE version."識別碼" = NEW."模板版本ID";
+    END IF;
+
+    IF original_status IN ('submitted', 'approved', 'rejected', 'superseded')
+        OR destination_status IN (
+            'submitted', 'approved', 'rejected', 'superseded'
+        ) THEN
+        RAISE EXCEPTION '送審後的模板校正點不可修改、重掛或刪除';
+    END IF;
+
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_calibration_template_point_controlled_immutable
+    BEFORE UPDATE OR DELETE ON "校正模板校正點"
+    FOR EACH ROW
+    EXECUTE FUNCTION calibration_block_controlled_template_point_change();
 
 CREATE OR REPLACE FUNCTION calibration_block_frozen_point_change()
 RETURNS TRIGGER AS $$

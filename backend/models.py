@@ -648,9 +648,19 @@ class CalibrationTemplateVersion(db.Model):
             '"資料版本" > 0',
             name='ck_calibration_template_version_row_version',
         ),
+        db.CheckConstraint(
+            '"狀態" IN ('
+            '\'draft\', \'submitted\', \'approved\', \'rejected\', '
+            '\'superseded\')',
+            name='ck_calibration_template_version_status',
+        ),
         db.Index(
             'idx_calibration_template_version_status',
             '模板ID', '狀態',
+        ),
+        db.Index(
+            'idx_calibration_template_version_successor',
+            '後繼版本ID',
         ),
     )
 
@@ -680,17 +690,32 @@ class CalibrationTemplateVersion(db.Model):
     row_version = db.Column(
         '資料版本', db.Integer, nullable=False, default=1
     )
+    revision_reason = db.Column('修訂原因', db.Text, nullable=True)
     created_by = db.Column(
         '建立者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
     )
     created_at = db.Column(
         '建立時間', db.DateTime(timezone=True), nullable=False, default=utc_now
     )
+    submitted_by = db.Column(
+        '送審者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
+    )
+    submitted_at = db.Column(
+        '送審時間', db.DateTime(timezone=True), nullable=True
+    )
     approved_by = db.Column(
         '核准者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
     )
     approved_at = db.Column(
         '核准時間', db.DateTime(timezone=True), nullable=True
+    )
+    approval_reason = db.Column('核准理由', db.Text, nullable=True)
+    rejection_reason = db.Column('退回理由', db.Text, nullable=True)
+    successor_version_id = db.Column(
+        '後繼版本ID',
+        db.Integer,
+        db.ForeignKey('校正模板版本.識別碼'),
+        nullable=True,
     )
 
     template = db.relationship(
@@ -711,6 +736,18 @@ class CalibrationTemplateVersion(db.Model):
         'CalibrationTemplate',
         back_populates='current_approved_version',
         foreign_keys='CalibrationTemplate.current_approved_version_id',
+    )
+    successor_version = db.relationship(
+        'CalibrationTemplateVersion',
+        back_populates='predecessor_versions',
+        remote_side=[id],
+        foreign_keys=[successor_version_id],
+        post_update=True,
+    )
+    predecessor_versions = db.relationship(
+        'CalibrationTemplateVersion',
+        back_populates='successor_version',
+        foreign_keys=[successor_version_id],
     )
 
 
@@ -741,6 +778,23 @@ class CalibrationTemplatePoint(db.Model):
             'OR ("重複性上限" IS NOT NULL AND "重複性上限" >= 0)',
             name='ck_calibration_template_point_repeatability',
         ),
+        db.CheckConstraint(
+            '"資格範圍起點" IS NULL OR "資格範圍終點" IS NULL '
+            'OR "資格範圍起點" <= "資格範圍終點"',
+            name='ck_calibration_template_point_qualification_range',
+        ),
+        db.CheckConstraint(
+            '"參考值輸入模式" IN (\'certified_value\', \'paired_reading\')',
+            name='ck_calibration_template_point_reference_mode',
+        ),
+        db.CheckConstraint(
+            '"判定基礎" IN (\'all_readings\', \'mean_error\')',
+            name='ck_calibration_template_point_evaluation_basis',
+        ),
+        db.CheckConstraint(
+            '"重複性規則" IN (\'none\', \'range\', \'stddev\')',
+            name='ck_calibration_template_point_repeatability_rule',
+        ),
         db.Index(
             'idx_calibration_template_point_version',
             '模板版本ID', '點位順序',
@@ -769,7 +823,7 @@ class CalibrationTemplatePoint(db.Model):
     error_upper_limit = db.Column('誤差上限', db.Numeric, nullable=True)
     evaluation_basis = db.Column('判定基礎', db.String(40), nullable=False)
     repeatability_rule = db.Column(
-        '重複性規則', db.String(40), nullable=True
+        '重複性規則', db.String(40), nullable=False
     )
     repeatability_limit = db.Column(
         '重複性上限', db.Numeric, nullable=True
@@ -777,7 +831,17 @@ class CalibrationTemplatePoint(db.Model):
     qualification_scope_code = db.Column(
         '資格範圍代碼', db.String(80), nullable=True
     )
+    qualification_range_start = db.Column(
+        '資格範圍起點', db.Numeric, nullable=True
+    )
+    qualification_range_end = db.Column(
+        '資格範圍終點', db.Numeric, nullable=True
+    )
+    uncertainty_required = db.Column(
+        '要求不確定度', db.Boolean, nullable=False, default=False
+    )
     required = db.Column('必填', db.Boolean, nullable=False, default=True)
+    instruction = db.Column('操作提示', db.Text, nullable=True)
 
     template_version = db.relationship(
         'CalibrationTemplateVersion', back_populates='points'
@@ -946,8 +1010,9 @@ class EquipmentCalibrationRecord(db.Model):
         ),
         db.CheckConstraint(
             '"狀態" IN ('
-            '\'draft\', \'submitted\', \'approved\', \'rejected\', '
-            '\'voided\', \'superseded\')',
+            '\'draft\', \'in_progress\', \'ready_for_submission\', '
+            '\'submitted\', \'approved\', \'rejected\', \'voided\', '
+            '\'superseded\')',
             name='ck_equipment_calibration_status',
         ),
         db.CheckConstraint(
@@ -1041,6 +1106,17 @@ class EquipmentCalibrationRecord(db.Model):
         '計算版本', db.String(40), nullable=True
     )
     data_hash = db.Column('資料雜湊', db.String(64), nullable=True)
+    procedure_code = db.Column('程序代碼', db.String(80), nullable=True)
+    procedure_name = db.Column('程序名稱', db.String(160), nullable=True)
+    calibration_location = db.Column(
+        '校正地點', db.String(200), nullable=True
+    )
+    started_at = db.Column(
+        '開始時間', db.DateTime(timezone=True), nullable=True
+    )
+    completed_at = db.Column(
+        '完成時間', db.DateTime(timezone=True), nullable=True
+    )
     reference_standard_equipment_id = db.Column(
         '參考標準設備ID',
         db.Integer,
@@ -1103,6 +1179,14 @@ class EquipmentCalibrationRecord(db.Model):
     reference_snapshots = db.relationship(
         'CalibrationReferenceSnapshot',
         back_populates='calibration_record',
+        foreign_keys='CalibrationReferenceSnapshot.calibration_record_id',
+    )
+    approved_reference_snapshots = db.relationship(
+        'CalibrationReferenceSnapshot',
+        back_populates='approved_calibration_record',
+        foreign_keys=(
+            'CalibrationReferenceSnapshot.approved_calibration_record_id'
+        ),
     )
     successor = db.relationship(
         'EquipmentCalibrationRecord',
@@ -1144,6 +1228,40 @@ class EquipmentCalibrationPoint(db.Model):
             'OR ("重複性上限" IS NOT NULL AND "重複性上限" >= 0)',
             name='ck_equipment_calibration_point_repeatability',
         ),
+        db.CheckConstraint(
+            '"必要重複次數" > 0',
+            name='ck_equipment_calibration_point_repetitions',
+        ),
+        db.CheckConstraint(
+            '"完整讀值數" >= 0 AND "完整讀值數" <= "必要重複次數"',
+            name='ck_equipment_calibration_point_completed_count',
+        ),
+        db.CheckConstraint(
+            '"資格範圍起點" IS NULL OR "資格範圍終點" IS NULL '
+            'OR "資格範圍起點" <= "資格範圍終點"',
+            name='ck_equipment_calibration_point_qualification_range',
+        ),
+        db.CheckConstraint(
+            '"參考值輸入模式" IN (\'certified_value\', \'paired_reading\')',
+            name='ck_equipment_calibration_point_reference_mode',
+        ),
+        db.CheckConstraint(
+            '"判定基礎" IN (\'all_readings\', \'mean_error\')',
+            name='ck_equipment_calibration_point_evaluation_basis',
+        ),
+        db.CheckConstraint(
+            '"重複性規則" IN (\'none\', \'range\', \'stddev\')',
+            name='ck_equipment_calibration_point_repeatability_rule',
+        ),
+        db.CheckConstraint(
+            '"結果" IN (\'pending\', \'pass\', \'fail\')',
+            name='ck_equipment_calibration_point_result',
+        ),
+        db.CheckConstraint(
+            '"參考值輸入模式" <> \'certified_value\' '
+            'OR "參考值" IS NOT NULL',
+            name='ck_equipment_calibration_point_reference_required',
+        ),
         db.Index(
             'idx_equipment_calibration_point_record',
             '校驗紀錄ID', '點位順序',
@@ -1168,12 +1286,12 @@ class EquipmentCalibrationPoint(db.Model):
     measurement_mode = db.Column('量測模式', db.String(80), nullable=False)
     nominal_value = db.Column('名目值', db.Numeric, nullable=False)
     unit = db.Column('單位', db.String(40), nullable=False)
-    reference_value = db.Column('參考值', db.Numeric, nullable=False)
+    reference_value = db.Column('參考值', db.Numeric, nullable=True)
     error_lower_limit = db.Column('誤差下限', db.Numeric, nullable=True)
     error_upper_limit = db.Column('誤差上限', db.Numeric, nullable=True)
     evaluation_basis = db.Column('判定基礎', db.String(40), nullable=False)
     repeatability_rule = db.Column(
-        '重複性規則', db.String(40), nullable=True
+        '重複性規則', db.String(40), nullable=False
     )
     repeatability_limit = db.Column(
         '重複性上限', db.Numeric, nullable=True
@@ -1181,9 +1299,38 @@ class EquipmentCalibrationPoint(db.Model):
     qualification_scope_code = db.Column(
         '資格範圍代碼', db.String(80), nullable=True
     )
+    reference_input_mode = db.Column(
+        '參考值輸入模式', db.String(40), nullable=False
+    )
+    required_repetitions = db.Column(
+        '必要重複次數', db.Integer, nullable=False
+    )
+    qualification_range_start = db.Column(
+        '資格範圍起點', db.Numeric, nullable=True
+    )
+    qualification_range_end = db.Column(
+        '資格範圍終點', db.Numeric, nullable=True
+    )
+    uncertainty_required = db.Column(
+        '要求不確定度', db.Boolean, nullable=False, default=False
+    )
+    required = db.Column('必填', db.Boolean, nullable=False, default=True)
     average_value = db.Column('平均值', db.Numeric, nullable=True)
     error_value = db.Column('誤差值', db.Numeric, nullable=True)
     repeatability_value = db.Column('重複性值', db.Numeric, nullable=True)
+    mean_error = db.Column('平均器差', db.Numeric, nullable=True)
+    mean_correction = db.Column('平均補正值', db.Numeric, nullable=True)
+    minimum_error = db.Column('最小器差', db.Numeric, nullable=True)
+    maximum_error = db.Column('最大器差', db.Numeric, nullable=True)
+    error_range = db.Column('器差極差', db.Numeric, nullable=True)
+    sample_stddev = db.Column('樣本標準差', db.Numeric, nullable=True)
+    expanded_uncertainty = db.Column(
+        '擴充不確定度', db.Numeric, nullable=True
+    )
+    coverage_factor = db.Column('涵蓋因子', db.Numeric, nullable=True)
+    completed_reading_count = db.Column(
+        '完整讀值數', db.Integer, nullable=False, default=0
+    )
     result = db.Column('結果', db.String(30), nullable=False)
     remarks = db.Column('備註', db.Text, nullable=True)
 
@@ -1214,6 +1361,12 @@ class EquipmentCalibrationReading(db.Model):
             '"試驗序號" > 0',
             name='ck_equipment_calibration_reading_trial',
         ),
+        db.CheckConstraint(
+            '"結果" IN ('
+            '\'pending\', \'pass\', \'fail\', '
+            '\'not_individually_evaluated\')',
+            name='ck_equipment_calibration_reading_result',
+        ),
         db.Index(
             'idx_equipment_calibration_reading_point',
             '設備校正點ID', '試驗序號',
@@ -1228,15 +1381,34 @@ class EquipmentCalibrationReading(db.Model):
         nullable=False,
     )
     trial_no = db.Column('試驗序號', db.Integer, nullable=False)
-    indicated_value = db.Column('器示值', db.Numeric, nullable=False)
+    standard_reading = db.Column('標準器讀值', db.Numeric, nullable=True)
+    indicated_value = db.Column('器示值', db.Numeric, nullable=True)
+    effective_reference = db.Column('有效參考值', db.Numeric, nullable=True)
     error_value = db.Column('誤差值', db.Numeric, nullable=True)
-    result = db.Column('結果', db.String(30), nullable=False)
+    correction_value = db.Column('補正值', db.Numeric, nullable=True)
+    result = db.Column(
+        '結果',
+        db.String(30),
+        nullable=False,
+        default='pending',
+        server_default='pending',
+    )
     entered_by = db.Column(
         '輸入者ID', db.Integer, db.ForeignKey('使用者.識別碼'), nullable=True
     )
     entered_at = db.Column(
         '輸入時間', db.DateTime(timezone=True), nullable=False, default=utc_now
     )
+    last_modified_by = db.Column(
+        '最後修訂者ID',
+        db.Integer,
+        db.ForeignKey('使用者.識別碼'),
+        nullable=True,
+    )
+    last_modified_at = db.Column(
+        '最後修訂時間', db.DateTime(timezone=True), nullable=True
+    )
+    revision_reason = db.Column('修訂原因', db.Text, nullable=True)
 
     calibration_point = db.relationship(
         'EquipmentCalibrationPoint', back_populates='readings'
@@ -1256,6 +1428,10 @@ class CalibrationReferenceSnapshot(db.Model):
             'idx_calibration_reference_snapshot_record',
             '校驗紀錄ID',
         ),
+        db.Index(
+            'idx_calibration_reference_snapshot_approved_record',
+            '核准校驗紀錄ID',
+        ),
     )
 
     id = db.Column('識別碼', db.Integer, primary_key=True)
@@ -1271,10 +1447,25 @@ class CalibrationReferenceSnapshot(db.Model):
         db.ForeignKey('量測設備.識別碼'),
         nullable=False,
     )
+    approved_calibration_record_id = db.Column(
+        '核准校驗紀錄ID',
+        db.Integer,
+        db.ForeignKey('設備校驗紀錄.識別碼'),
+        nullable=False,
+    )
     equipment_no = db.Column('設備編號', db.String(80), nullable=False)
     name = db.Column('名稱', db.String(160), nullable=False)
+    model = db.Column('型號', db.String(120), nullable=True)
+    serial_no = db.Column('序號', db.String(160), nullable=True)
+    range_min = db.Column('量程下限', db.Numeric, nullable=True)
+    range_max = db.Column('量程上限', db.Numeric, nullable=True)
+    resolution = db.Column('解析度', db.Numeric, nullable=True)
+    unit = db.Column('單位', db.String(40), nullable=True)
+    calibration_date = db.Column('校驗日期', db.Date, nullable=False)
     certificate_no = db.Column('證書編號', db.String(160), nullable=True)
     calibration_due_date = db.Column('校驗有效期', db.Date, nullable=True)
+    result = db.Column('結果', db.String(30), nullable=False)
+    data_hash = db.Column('資料雜湊', db.String(64), nullable=True)
     traceability_standard = db.Column('追溯標準', db.Text, nullable=True)
     snapshot_data = db.Column(
         '快照資料', JsonType, nullable=False, default=dict
@@ -1284,7 +1475,14 @@ class CalibrationReferenceSnapshot(db.Model):
     )
 
     calibration_record = db.relationship(
-        'EquipmentCalibrationRecord', back_populates='reference_snapshots'
+        'EquipmentCalibrationRecord',
+        back_populates='reference_snapshots',
+        foreign_keys=[calibration_record_id],
+    )
+    approved_calibration_record = db.relationship(
+        'EquipmentCalibrationRecord',
+        back_populates='approved_reference_snapshots',
+        foreign_keys=[approved_calibration_record_id],
     )
     reference_standard_equipment = db.relationship(
         'MeasurementEquipment',
@@ -1537,6 +1735,124 @@ _MSA_APPROVED_EVIDENCE = (
     MsaCriteriaVersion,
 )
 
+_CONTROLLED_TEMPLATE_STATUSES = {
+    'submitted',
+    'approved',
+    'rejected',
+    'superseded',
+}
+
+
+def _persisted_template_version_status(connection, version):
+    state = inspect(version)
+    history = state.attrs.status.history
+    if history.deleted:
+        return history.deleted[0]
+    if not state.persistent or version.id is None:
+        return None
+    return connection.execute(
+        db.select(CalibrationTemplateVersion.status).where(
+            CalibrationTemplateVersion.id == version.id
+        )
+    ).scalar_one_or_none()
+
+
+def _block_frozen_template_version_update(_mapper, connection, target):
+    state = inspect(target)
+    changed_columns = {
+        column.key
+        for column in state.mapper.column_attrs
+        if state.attrs[column.key].history.has_changes()
+    }
+    if not changed_columns:
+        return
+
+    original_status = _persisted_template_version_status(connection, target)
+    if original_status not in {'approved', 'superseded'}:
+        return
+    allowed_supersession_columns = {
+        'status',
+        'successor_version_id',
+        'row_version',
+    }
+    is_controlled_supersession = (
+        original_status == 'approved'
+        and target.status == 'superseded'
+        and target.successor_version_id is not None
+        and changed_columns <= allowed_supersession_columns
+    )
+    if not is_controlled_supersession:
+        raise ValueError('核准或已取代的校正模板版本不可修改')
+
+
+def _block_frozen_template_version_delete(_mapper, connection, target):
+    original_status = _persisted_template_version_status(connection, target)
+    if original_status in {'approved', 'superseded'}:
+        raise ValueError('核准或已取代的校正模板版本不可刪除')
+
+
+def _template_version_status_by_id(connection, version_id):
+    if version_id is None:
+        return None
+    return connection.execute(
+        db.select(CalibrationTemplateVersion.status).where(
+            CalibrationTemplateVersion.id == version_id
+        )
+    ).scalar_one_or_none()
+
+
+def _block_controlled_template_point_change(
+    _mapper,
+    connection,
+    target,
+):
+    state = inspect(target)
+    if state.persistent and target.id is not None:
+        original_version_id = connection.execute(
+            db.select(CalibrationTemplatePoint.template_version_id).where(
+                CalibrationTemplatePoint.id == target.id
+            )
+        ).scalar_one_or_none()
+    else:
+        original_version_id = target.template_version_id
+    original_status = _template_version_status_by_id(
+        connection,
+        original_version_id,
+    )
+    destination_status = None
+    if state.attrs.template_version_id.history.has_changes():
+        destination_status = _template_version_status_by_id(
+            connection,
+            target.template_version_id,
+        )
+    if (
+        original_status in _CONTROLLED_TEMPLATE_STATUSES
+        or destination_status in _CONTROLLED_TEMPLATE_STATUSES
+    ):
+        raise ValueError('送審後的模板校正點不可修改、重掛或刪除')
+
+
+event.listen(
+    CalibrationTemplateVersion,
+    'before_update',
+    _block_frozen_template_version_update,
+)
+event.listen(
+    CalibrationTemplateVersion,
+    'before_delete',
+    _block_frozen_template_version_delete,
+)
+event.listen(
+    CalibrationTemplatePoint,
+    'before_update',
+    _block_controlled_template_point_change,
+)
+event.listen(
+    CalibrationTemplatePoint,
+    'before_delete',
+    _block_controlled_template_point_change,
+)
+
 
 def _msa_evidence_label(target):
     if isinstance(target, EquipmentCalibrationRecord):
@@ -1560,6 +1876,13 @@ def _persisted_msa_status(connection, target):
 
 
 def _block_approved_msa_evidence_update(_mapper, connection, target):
+    state = inspect(target)
+    if not any(
+        state.attrs[column.key].history.has_changes()
+        for column in state.mapper.column_attrs
+    ):
+        # 新增子證據只會改變 ORM collection，不會改寫父紀錄欄位。
+        return
     original_status = _persisted_msa_status(connection, target)
     if original_status == 'approved':
         raise ValueError(
