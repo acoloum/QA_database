@@ -1616,6 +1616,66 @@ event.listen(
 )
 
 
+def _calibration_point_record_status(connection, target):
+    """以點位的資料庫原始父紀錄判斷是否已凍結，阻擋 re-parent 繞過。"""
+
+    point_table = EquipmentCalibrationPoint.__table__
+    record_table = EquipmentCalibrationRecord.__table__
+    return connection.execute(
+        db.select(record_table.c['狀態'])
+        .select_from(
+            point_table.join(
+                record_table,
+                point_table.c['校驗紀錄ID']
+                == record_table.c['識別碼'],
+            )
+        )
+        .where(point_table.c['識別碼'] == target.id)
+    ).scalar_one_or_none()
+
+
+def _calibration_record_status(connection, record_id):
+    if record_id is None:
+        return None
+    record_table = EquipmentCalibrationRecord.__table__
+    return connection.execute(
+        db.select(record_table.c['狀態'])
+        .where(record_table.c['識別碼'] == record_id)
+    ).scalar_one_or_none()
+
+
+def _block_frozen_calibration_point_update(_mapper, connection, target):
+    statuses = {
+        _calibration_point_record_status(connection, target),
+        _calibration_record_status(
+            connection,
+            target.calibration_record_id,
+        ),
+    }
+    if statuses & {'submitted', 'approved'}:
+        raise ValueError('送審或核准後的校正點不可修改')
+
+
+def _block_frozen_calibration_point_delete(_mapper, connection, target):
+    if _calibration_point_record_status(connection, target) in {
+        'submitted',
+        'approved',
+    }:
+        raise ValueError('送審或核准後的校正點不可刪除')
+
+
+event.listen(
+    EquipmentCalibrationPoint,
+    'before_update',
+    _block_frozen_calibration_point_update,
+)
+event.listen(
+    EquipmentCalibrationPoint,
+    'before_delete',
+    _block_frozen_calibration_point_delete,
+)
+
+
 def _calibration_reading_record_status(connection, target):
     """以資料庫原值判斷原始讀值所屬校驗是否已凍結。"""
 

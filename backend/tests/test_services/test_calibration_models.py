@@ -101,7 +101,7 @@ def _calibration_record(db_session, *, data_level, status="draft"):
     return record
 
 
-def _reading(db_session, status):
+def _actual_point(db_session, status):
     record = _calibration_record(
         db_session,
         data_level="detailed",
@@ -130,6 +130,12 @@ def _reading(db_session, status):
     )
     db_session.add(point)
     db_session.flush()
+    db_session.commit()
+    return point
+
+
+def _reading(db_session, status):
+    point = _actual_point(db_session, status)
     reading = EquipmentCalibrationReading(
         calibration_point_id=point.id,
         trial_no=1,
@@ -293,6 +299,49 @@ def test_trial_number_is_unique_within_actual_calibration_point(db_session):
     )
 
     with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+@pytest.mark.parametrize("status", ["submitted", "approved"])
+@pytest.mark.parametrize("operation", ["update", "reparent", "delete"])
+def test_submitted_or_approved_point_is_immutable(
+    db_session,
+    status,
+    operation,
+):
+    point = _actual_point(db_session, status)
+    if operation == "update":
+        point.remarks = "嘗試改寫已凍結點位"
+    elif operation == "reparent":
+        draft_record = _calibration_record(
+            db_session,
+            data_level="summary_legacy",
+        )
+        point.calibration_record_id = draft_record.id
+    else:
+        db_session.delete(point)
+
+    action = "刪除" if operation == "delete" else "修改"
+    with pytest.raises(ValueError, match=f"校正點不可{action}"):
+        db_session.commit()
+    db_session.rollback()
+
+
+@pytest.mark.parametrize("status", ["submitted", "approved"])
+def test_draft_point_cannot_be_reparented_into_frozen_record(
+    db_session,
+    status,
+):
+    point = _actual_point(db_session, "draft")
+    frozen_record = _calibration_record(
+        db_session,
+        data_level="summary_legacy",
+        status=status,
+    )
+    point.calibration_record_id = frozen_record.id
+
+    with pytest.raises(ValueError, match="校正點不可修改"):
         db_session.commit()
     db_session.rollback()
 

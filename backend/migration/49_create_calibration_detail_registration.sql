@@ -229,6 +229,41 @@ CREATE TABLE "校正參考標準器快照" (
 CREATE INDEX idx_calibration_reference_snapshot_record
     ON "校正參考標準器快照" ("校驗紀錄ID");
 
+CREATE OR REPLACE FUNCTION calibration_block_frozen_point_change()
+RETURNS TRIGGER AS $$
+DECLARE
+    original_status VARCHAR(30);
+    destination_status VARCHAR(30);
+BEGIN
+    SELECT record."狀態"
+    INTO original_status
+    FROM "設備校驗紀錄" AS record
+    WHERE record."識別碼" = OLD."校驗紀錄ID";
+
+    IF TG_OP = 'UPDATE' THEN
+        SELECT record."狀態"
+        INTO destination_status
+        FROM "設備校驗紀錄" AS record
+        WHERE record."識別碼" = NEW."校驗紀錄ID";
+    END IF;
+
+    IF original_status IN ('submitted', 'approved')
+        OR destination_status IN ('submitted', 'approved') THEN
+        RAISE EXCEPTION '送審或核准後的校正點不可修改或刪除';
+    END IF;
+
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_calibration_point_frozen_immutable
+    BEFORE UPDATE OR DELETE ON "設備校正點"
+    FOR EACH ROW
+    EXECUTE FUNCTION calibration_block_frozen_point_change();
+
 CREATE OR REPLACE FUNCTION calibration_block_frozen_reading_change()
 RETURNS TRIGGER AS $$
 DECLARE
