@@ -541,6 +541,63 @@ def test_update_version_replaces_points_atomically_and_increments_once(
     assert CalibrationTemplatePoint.query.count() == 1
 
 
+def test_update_version_without_replacement_keeps_audit_and_point_queries_stable(
+    db_session,
+):
+    actor = _user(db_session, "scalar_update_audit")
+    _template, version = _create_version(db_session, actor)
+    db_session.expire_all()
+    point_selects = []
+
+    def track_point_select(
+        _connection,
+        _cursor,
+        statement,
+        _parameters,
+        _context,
+        _executemany,
+    ):
+        normalized = statement.lstrip().upper()
+        if (
+            normalized.startswith("SELECT")
+            and 'FROM "校正模板校正點"' in statement
+        ):
+            point_selects.append(statement)
+
+    event.listen(db.engine, "before_cursor_execute", track_point_select)
+    try:
+        updated = CalibrationTemplateService.update_version(
+            version["id"],
+            {
+                "expected_version": version["row_version"],
+                "procedure_name": "純量更新後程序",
+            },
+            actor.id,
+        )
+    finally:
+        event.remove(
+            db.engine,
+            "before_cursor_execute",
+            track_point_select,
+        )
+
+    audit = AuditLog.query.filter_by(
+        action="update_version",
+        module="calibration_template",
+        record_id=version["id"],
+    ).one()
+    assert updated["procedure_name"] == "純量更新後程序"
+    assert audit.old_value["procedure_name"] == "游標卡尺內校"
+    assert audit.new_value["procedure_name"] == "純量更新後程序"
+    assert [
+        point["point_code"] for point in audit.old_value["points"]
+    ] == ["P01"]
+    assert [
+        point["point_code"] for point in audit.new_value["points"]
+    ] == ["P01"]
+    assert len(point_selects) == 2
+
+
 def test_update_version_rejects_environment_key_collision_without_writes(
     db_session,
 ):

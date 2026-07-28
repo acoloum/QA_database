@@ -446,6 +446,8 @@ class CalibrationTemplateService:
                     )
                 db.session.flush()
             db.session.flush()
+            if replacement_points is not None:
+                db.session.expire(version, ["points"])
             snapshot = CalibrationTemplateService.serialize_version(version)
             log_audit(
                 actor_id,

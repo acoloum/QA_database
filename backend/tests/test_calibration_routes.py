@@ -399,6 +399,86 @@ def test_patch_version_returns_200_and_conflict_returns_409(
     assert persisted.procedure_name == "更新後程序"
 
 
+def test_patch_replacement_points_persists_new_response_database_and_audit(
+    client,
+    calibration_users,
+    db_session,
+):
+    token = calibration_users["manager"]["token"]
+    template = _create_template(client, token, code="CAL-ROUTE-AUDIT-REPLACE")
+    version = _create_version(client, token, template["id"])
+    replacement = _point()
+    replacement.update(
+        {
+            "point_order": 2,
+            "point_code": "P02",
+            "nominal_value": "20",
+        }
+    )
+
+    response = client.patch(
+        f"/api/calibration-template-versions/{version['id']}",
+        headers=_authorization(token),
+        json={
+            "expected_version": version["row_version"],
+            "points": [replacement],
+        },
+    )
+
+    assert response.status_code == 200
+    assert [
+        point["point_code"] for point in response.get_json()["data"]["points"]
+    ] == ["P02"]
+    db_session.expire_all()
+    persisted = db_session.get(CalibrationTemplateVersion, version["id"])
+    assert [point.point_code for point in persisted.points] == ["P02"]
+    audit = AuditLog.query.filter_by(
+        action="update_version",
+        module="calibration_template",
+        record_id=version["id"],
+    ).one()
+    assert [
+        point["point_code"] for point in audit.old_value["points"]
+    ] == ["P01"]
+    assert [
+        point["point_code"] for point in audit.new_value["points"]
+    ] == ["P02"]
+
+
+def test_patch_empty_points_persists_empty_response_database_and_audit(
+    client,
+    calibration_users,
+    db_session,
+):
+    token = calibration_users["manager"]["token"]
+    template = _create_template(client, token, code="CAL-ROUTE-AUDIT-EMPTY")
+    version = _create_version(client, token, template["id"])
+
+    response = client.patch(
+        f"/api/calibration-template-versions/{version['id']}",
+        headers=_authorization(token),
+        json={
+            "expected_version": version["row_version"],
+            "points": [],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["data"]["points"] == []
+    assert CalibrationTemplatePoint.query.filter_by(
+        template_version_id=version["id"]
+    ).count() == 0
+    audit = AuditLog.query.filter_by(
+        action="update_version",
+        module="calibration_template",
+        record_id=version["id"],
+    ).one()
+    assert [
+        point["point_code"] for point in audit.old_value["points"]
+    ] == ["P01"]
+    assert audit.new_value["points"] == []
+
+
 def test_submit_self_approve_and_other_approve_enforce_zero_write_boundaries(
     client,
     calibration_users,
