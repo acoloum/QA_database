@@ -1847,11 +1847,27 @@ def _reject_self_template_successor(target, value, _old_value, _initiator):
 
 
 def _block_template_version_insert(_mapper, _connection, target):
+    if target.status != 'draft':
+        raise ValueError('新建校正模板版本只能使用草稿狀態')
+    if target.row_version not in {None, 1}:
+        raise ValueError('新建校正模板版本的資料版本必須為 1')
     if (
         target.successor_version_id is not None
         or target.successor_version is not None
     ):
         raise ValueError('新建校正模板版本不可預設後繼版本')
+    if any(
+        value is not None
+        for value in (
+            target.submitted_by,
+            target.submitted_at,
+            target.approved_by,
+            target.approved_at,
+            target.approval_reason,
+            target.rejection_reason,
+        )
+    ):
+        raise ValueError('新建校正模板版本不可預設工作流稽核資料')
 
 
 def _block_frozen_template_version_update(_mapper, connection, target):
@@ -1937,19 +1953,57 @@ def _block_frozen_template_version_update(_mapper, connection, target):
         raise ValueError('狀態轉態時資料版本必須精確增加 1')
 
     if transition == ('submitted', 'approved'):
+        if target.approved_by is None:
+            raise ValueError('核准轉態必須記錄核准者')
+        if target.approved_at is None:
+            raise ValueError('核准轉態必須記錄核准時間')
+        if not (target.approval_reason or '').strip():
+            raise ValueError('核准理由不可為空白')
         if target.rejection_reason is not None:
             raise ValueError('核准時必須清除退回理由')
+        if (
+            (
+                target.created_by is not None
+                and target.approved_by == target.created_by
+            )
+            or (
+                target.submitted_by is not None
+                and target.approved_by == target.submitted_by
+            )
+        ):
+            raise ValueError('核准者必須符合職責分離，不得自行核准')
     elif transition == ('submitted', 'rejected'):
+        if target.approved_by is None:
+            raise ValueError('退回轉態必須記錄決策者')
+        if target.approved_at is None:
+            raise ValueError('退回轉態必須記錄決策時間')
+        if not (target.rejection_reason or '').strip():
+            raise ValueError('退回理由不可為空白')
         if target.approval_reason is not None:
             raise ValueError('退回時必須清除核准理由')
     elif transition == ('approved', 'superseded'):
         _validate_template_successor(connection, target, original)
+    elif transition == ('draft', 'submitted'):
+        if target.submitted_by is None:
+            raise ValueError('送審轉態必須記錄送審者')
+        if target.submitted_at is None:
+            raise ValueError('送審轉態必須記錄送審時間')
+        if any(
+            value is not None
+            for value in (
+                target.approved_by,
+                target.approved_at,
+                target.approval_reason,
+                target.rejection_reason,
+            )
+        ):
+            raise ValueError('送審時不可預設核准或退回稽核資料')
 
 
 def _block_frozen_template_version_delete(_mapper, connection, target):
     original_status = _persisted_template_version_status(connection, target)
-    if original_status in {'approved', 'superseded'}:
-        raise ValueError('核准或已取代的校正模板版本不可刪除')
+    if original_status != 'draft':
+        raise ValueError('非草稿的校正模板版本不可刪除')
 
 
 def _template_version_status_by_id(connection, version_id):

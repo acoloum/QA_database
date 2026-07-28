@@ -349,15 +349,29 @@ DECLARE
     creates_cycle BOOLEAN;
 BEGIN
     IF TG_OP = 'INSERT' THEN
+        IF NEW."狀態" <> 'draft' THEN
+            RAISE EXCEPTION '新建校正模板版本只能使用草稿狀態';
+        END IF;
+        IF NEW."資料版本" <> 1 THEN
+            RAISE EXCEPTION '新建校正模板版本的資料版本必須為 1';
+        END IF;
         IF NEW."後繼版本ID" IS NOT NULL THEN
-            RAISE EXCEPTION '後繼版本只能在核准版本受控取代時設定';
+            RAISE EXCEPTION '新建校正模板版本不可預設後繼版本';
+        END IF;
+        IF NEW."送審者ID" IS NOT NULL
+            OR NEW."送審時間" IS NOT NULL
+            OR NEW."核准者ID" IS NOT NULL
+            OR NEW."核准時間" IS NOT NULL
+            OR NEW."核准理由" IS NOT NULL
+            OR NEW."退回理由" IS NOT NULL THEN
+            RAISE EXCEPTION '新建校正模板版本不可預設工作流稽核資料';
         END IF;
         RETURN NEW;
     END IF;
 
     IF TG_OP = 'DELETE' THEN
-        IF OLD."狀態" IN ('approved', 'superseded') THEN
-            RAISE EXCEPTION '核准或已取代的校正模板版本不可刪除';
+        IF OLD."狀態" <> 'draft' THEN
+            RAISE EXCEPTION '非草稿的校正模板版本不可刪除';
         END IF;
         RETURN OLD;
     END IF;
@@ -398,6 +412,18 @@ BEGIN
         IF NEW."資料版本" <> OLD."資料版本" + 1 THEN
             RAISE EXCEPTION '狀態轉態時資料版本必須精確增加 1';
         END IF;
+        IF NEW."送審者ID" IS NULL THEN
+            RAISE EXCEPTION '送審轉態必須記錄送審者';
+        END IF;
+        IF NEW."送審時間" IS NULL THEN
+            RAISE EXCEPTION '送審轉態必須記錄送審時間';
+        END IF;
+        IF NEW."核准者ID" IS NOT NULL
+            OR NEW."核准時間" IS NOT NULL
+            OR NEW."核准理由" IS NOT NULL
+            OR NEW."退回理由" IS NOT NULL THEN
+            RAISE EXCEPTION '送審時不可預設核准或退回稽核資料';
+        END IF;
         RETURN NEW;
     END IF;
 
@@ -423,13 +449,47 @@ BEGIN
         IF NEW."資料版本" <> OLD."資料版本" + 1 THEN
             RAISE EXCEPTION '狀態轉態時資料版本必須精確增加 1';
         END IF;
-        IF NEW."狀態" = 'approved'
-            AND NEW."退回理由" IS NOT NULL THEN
-            RAISE EXCEPTION '核准時必須清除退回理由';
-        END IF;
-        IF NEW."狀態" = 'rejected'
-            AND NEW."核准理由" IS NOT NULL THEN
-            RAISE EXCEPTION '退回時必須清除核准理由';
+
+        IF NEW."狀態" = 'approved' THEN
+            IF NEW."核准者ID" IS NULL THEN
+                RAISE EXCEPTION '核准轉態必須記錄核准者';
+            END IF;
+            IF NEW."核准時間" IS NULL THEN
+                RAISE EXCEPTION '核准轉態必須記錄核准時間';
+            END IF;
+            IF NEW."核准理由" IS NULL
+                OR BTRIM(NEW."核准理由", E' \t\n\r') = '' THEN
+                RAISE EXCEPTION '核准理由不可為空白';
+            END IF;
+            IF NEW."退回理由" IS NOT NULL THEN
+                RAISE EXCEPTION '核准時必須清除退回理由';
+            END IF;
+            IF (
+                OLD."建立者ID" IS NOT NULL
+                AND NEW."核准者ID"
+                    IS NOT DISTINCT FROM OLD."建立者ID"
+            ) OR (
+                OLD."送審者ID" IS NOT NULL
+                AND NEW."核准者ID"
+                    IS NOT DISTINCT FROM OLD."送審者ID"
+            ) THEN
+                RAISE EXCEPTION
+                    '核准者必須符合職責分離，不得自行核准';
+            END IF;
+        ELSE
+            IF NEW."核准者ID" IS NULL THEN
+                RAISE EXCEPTION '退回轉態必須記錄決策者';
+            END IF;
+            IF NEW."核准時間" IS NULL THEN
+                RAISE EXCEPTION '退回轉態必須記錄決策時間';
+            END IF;
+            IF NEW."退回理由" IS NULL
+                OR BTRIM(NEW."退回理由", E' \t\n\r') = '' THEN
+                RAISE EXCEPTION '退回理由不可為空白';
+            END IF;
+            IF NEW."核准理由" IS NOT NULL THEN
+                RAISE EXCEPTION '退回時必須清除核准理由';
+            END IF;
         END IF;
         RETURN NEW;
     END IF;

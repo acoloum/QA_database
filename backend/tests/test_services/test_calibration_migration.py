@@ -221,15 +221,16 @@ def _insert_template_version(
     version_no,
     *,
     status="draft",
+    created_by=None,
 ):
     return connection.execute(text(
         """
         INSERT INTO "校正模板版本" (
             "模板ID", "版本號", "程序代碼", "程序名稱",
-            "預設重複次數", "環境要求", "狀態"
+            "預設重複次數", "環境要求", "狀態", "建立者ID"
         ) VALUES (
             :template_id, :version_no, :procedure_code, :procedure_name,
-            3, '{}'::JSONB, :status
+            3, '{}'::JSONB, :status, :created_by
         )
         RETURNING "識別碼"
         """
@@ -239,6 +240,7 @@ def _insert_template_version(
         "procedure_code": f"WI-CAL-{version_no:03d}",
         "procedure_name": f"游標卡尺校正第 {version_no} 版",
         "status": status,
+        "created_by": created_by,
     }).scalar_one()
 
 
@@ -253,6 +255,8 @@ def _database_transition_statement(
     tampering=None,
     *,
     row_version_delta=1,
+    missing_field=None,
+    blank_reason=False,
 ):
     assignments = {
         "draft_to_submitted": [
@@ -291,6 +295,34 @@ def _database_transition_statement(
         )
         for assignment in assignments
     ]
+    field_prefixes = {
+        "submitted_by": '"送審者ID" =',
+        "submitted_at": '"送審時間" =',
+        "approved_by": '"核准者ID" =',
+        "approved_at": '"核准時間" =',
+        "approval_reason": '"核准理由" =',
+        "rejection_reason": '"退回理由" =',
+    }
+    if missing_field is not None:
+        assignments = [
+            assignment
+            for assignment in assignments
+            if not assignment.startswith(field_prefixes[missing_field])
+        ]
+    if blank_reason:
+        reason_prefix = (
+            field_prefixes["approval_reason"]
+            if transition == "submitted_to_approved"
+            else field_prefixes["rejection_reason"]
+        )
+        assignments = [
+            (
+                f"{reason_prefix} '   '"
+                if assignment.startswith(reason_prefix)
+                else assignment
+            )
+            for assignment in assignments
+        ]
     tampering_assignments = {
         "procedure_name": '"程序名稱" = \'夾帶竄改程序\'',
         "environment_requirements": (
@@ -315,10 +347,16 @@ def _database_transition_statement(
 
 def _prepare_database_transition(connection, transition):
     template_id = _insert_template(connection)
-    actor_id = _insert_workflow_user(connection)
-    version_id = _insert_template_version(connection, template_id, 1)
+    creator_id = _insert_workflow_user(connection)
+    submitter_id = _insert_workflow_user(connection)
+    version_id = _insert_template_version(
+        connection,
+        template_id,
+        1,
+        created_by=creator_id,
+    )
     params = {
-        "actor_id": actor_id,
+        "actor_id": submitter_id,
         "version_id": version_id,
         "successor_id": None,
     }
@@ -328,6 +366,7 @@ def _prepare_database_transition(connection, transition):
             params,
         )
         connection.commit()
+        params["actor_id"] = _insert_workflow_user(connection)
     if transition == "approved_to_superseded":
         connection.execute(
             _database_transition_statement("submitted_to_approved"),
@@ -338,7 +377,15 @@ def _prepare_database_transition(connection, transition):
             connection,
             template_id,
             2,
-            status="submitted",
+        )
+        successor_params = {
+            "actor_id": _insert_workflow_user(connection),
+            "version_id": params["successor_id"],
+            "successor_id": None,
+        }
+        connection.execute(
+            _database_transition_statement("draft_to_submitted"),
+            successor_params,
         )
         connection.commit()
     return params
@@ -349,9 +396,9 @@ def _transition_database_version_to_status(
     evidence,
     status,
 ):
-    actor_id = _insert_workflow_user(connection)
+    submitter_id = _insert_workflow_user(connection)
     params = {
-        "actor_id": actor_id,
+        "actor_id": submitter_id,
         "version_id": evidence["version_id"],
         "successor_id": None,
     }
@@ -361,6 +408,7 @@ def _transition_database_version_to_status(
     )
     if status == "submitted":
         return
+    params["actor_id"] = _insert_workflow_user(connection)
     if status == "rejected":
         connection.execute(
             _database_transition_statement("submitted_to_rejected"),
@@ -379,7 +427,15 @@ def _transition_database_version_to_status(
         connection,
         evidence["template_id"],
         2,
-        status="submitted",
+    )
+    successor_params = {
+        "actor_id": _insert_workflow_user(connection),
+        "version_id": params["successor_id"],
+        "successor_id": None,
+    }
+    connection.execute(
+        _database_transition_statement("draft_to_submitted"),
+        successor_params,
     )
     connection.execute(
         _database_transition_statement("approved_to_superseded"),
@@ -1373,7 +1429,14 @@ def test_database_blocks_new_point_in_controlled_template_version(
             connection,
             template_id,
             1,
-            status=status,
+        )
+        _transition_database_version_to_status(
+            connection,
+            {
+                "template_id": template_id,
+                "version_id": version_id,
+            },
+            status,
         )
         connection.commit()
 
@@ -1423,24 +1486,37 @@ def test_database_rejects_two_approved_versions_in_same_transaction(
 ):
     with _connect(migrated_postgresql) as connection:
         template_id = _insert_template(connection)
+        first_id = _insert_template_version(
+            connection,
+            template_id,
+            1,
+        )
+        second_id = _insert_template_version(
+            connection,
+            template_id,
+            2,
+        )
+        _transition_database_version_to_status(
+            connection,
+            {"template_id": template_id, "version_id": first_id},
+            "approved",
+        )
+        _transition_database_version_to_status(
+            connection,
+            {"template_id": template_id, "version_id": second_id},
+            "submitted",
+        )
+        second_params = {
+            "actor_id": _insert_workflow_user(connection),
+            "version_id": second_id,
+            "successor_id": None,
+        }
 
         with pytest.raises(IntegrityError):
-            connection.execute(text(
-                """
-                INSERT INTO "校正模板版本" (
-                    "模板ID", "版本號", "程序代碼", "程序名稱",
-                    "預設重複次數", "環境要求", "狀態"
-                ) VALUES
-                    (
-                        :template_id, 1, 'WI-CAL-001', '第一版',
-                        3, '{}'::JSONB, 'approved'
-                    ),
-                    (
-                        :template_id, 2, 'WI-CAL-002', '第二版',
-                        3, '{}'::JSONB, 'approved'
-                    )
-                """
-            ), {"template_id": template_id})
+            connection.execute(
+                _database_transition_statement("submitted_to_approved"),
+                second_params,
+            )
         connection.rollback()
 
 
@@ -1449,21 +1525,38 @@ def test_database_rejects_two_approved_versions_across_transactions(
 ):
     with _connect(migrated_postgresql) as first_connection:
         template_id = _insert_template(first_connection)
-        _insert_template_version(
+        first_id = _insert_template_version(
             first_connection,
             template_id,
             1,
-            status="approved",
+        )
+        _transition_database_version_to_status(
+            first_connection,
+            {"template_id": template_id, "version_id": first_id},
+            "approved",
         )
         first_connection.commit()
 
     with _connect(migrated_postgresql) as second_connection:
+        second_id = _insert_template_version(
+            second_connection,
+            template_id,
+            2,
+        )
+        _transition_database_version_to_status(
+            second_connection,
+            {"template_id": template_id, "version_id": second_id},
+            "submitted",
+        )
+        second_params = {
+            "actor_id": _insert_workflow_user(second_connection),
+            "version_id": second_id,
+            "successor_id": None,
+        }
         with pytest.raises(IntegrityError):
-            _insert_template_version(
-                second_connection,
-                template_id,
-                2,
-                status="approved",
+            second_connection.execute(
+                _database_transition_statement("submitted_to_approved"),
+                second_params,
             )
         second_connection.rollback()
 
@@ -1511,6 +1604,88 @@ def test_database_rejects_new_template_version_with_successor(
                 "successor_id": successor_id,
             })
         connection.rollback()
+
+
+@pytest.mark.parametrize(
+    ("field_name", "field_value"),
+    [
+        ("status", "submitted"),
+        ("status", "approved"),
+        ("status", "rejected"),
+        ("status", "superseded"),
+        ("row_version", 2),
+        ("submitted_by", "actor"),
+        ("submitted_at", "now"),
+        ("approved_by", "actor"),
+        ("approved_at", "now"),
+        ("approval_reason", "預設核准"),
+        ("rejection_reason", "預設退回"),
+    ],
+)
+def test_database_rejects_new_template_version_non_draft_or_control_audit(
+    migrated_postgresql,
+    field_name,
+    field_value,
+):
+    with _connect(migrated_postgresql) as connection:
+        template_id = _insert_template(connection)
+        actor_id = _insert_workflow_user(connection)
+        values = {
+            "status": "draft",
+            "row_version": 1,
+            "submitted_by": None,
+            "submitted_at": None,
+            "approved_by": None,
+            "approved_at": None,
+            "approval_reason": None,
+            "rejection_reason": None,
+        }
+        values[field_name] = {
+            "actor": actor_id,
+            "now": "2026-07-29 12:00:00+08",
+        }.get(field_value, field_value)
+
+        with pytest.raises(DBAPIError, match="新建校正模板版本"):
+            connection.execute(text(
+                """
+                INSERT INTO "校正模板版本" (
+                    "模板ID", "版本號", "程序代碼", "程序名稱",
+                    "預設重複次數", "環境要求", "狀態", "資料版本",
+                    "送審者ID", "送審時間", "核准者ID", "核准時間",
+                    "核准理由", "退回理由"
+                ) VALUES (
+                    :template_id, 1, 'WI-CAL-001', '第一版',
+                    3, '{}'::JSONB, :status, :row_version,
+                    :submitted_by, :submitted_at, :approved_by, :approved_at,
+                    :approval_reason, :rejection_reason
+                )
+                """
+            ), {"template_id": template_id, **values})
+        connection.rollback()
+
+
+def test_database_allows_new_draft_version_created_audit(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        template_id = _insert_template(connection)
+        actor_id = _insert_workflow_user(connection)
+        version_id = _insert_template_version(
+            connection,
+            template_id,
+            1,
+            created_by=actor_id,
+        )
+        connection.commit()
+
+        status, row_version, created_by = connection.execute(text(
+            """
+            SELECT "狀態", "資料版本", "建立者ID"
+            FROM "校正模板版本"
+            WHERE "識別碼" = :version_id
+            """
+        ), {"version_id": version_id}).one()
+        assert (status, row_version, created_by) == ("draft", 1, actor_id)
 
 
 @pytest.mark.parametrize(
@@ -1583,6 +1758,100 @@ def test_database_template_transition_requires_exact_row_version_increment(
 
 
 @pytest.mark.parametrize(
+    ("transition", "missing_field", "expected_message"),
+    [
+        ("draft_to_submitted", "submitted_by", "送審者"),
+        ("draft_to_submitted", "submitted_at", "送審時間"),
+        ("submitted_to_approved", "approved_by", "核准者"),
+        ("submitted_to_approved", "approved_at", "核准時間"),
+        ("submitted_to_approved", "approval_reason", "核准理由"),
+        ("submitted_to_rejected", "approved_by", "決策者"),
+        ("submitted_to_rejected", "approved_at", "決策時間"),
+        ("submitted_to_rejected", "rejection_reason", "退回理由"),
+    ],
+)
+def test_database_template_transition_requires_audit_fields(
+    migrated_postgresql,
+    transition,
+    missing_field,
+    expected_message,
+):
+    with _connect(migrated_postgresql) as connection:
+        params = _prepare_database_transition(connection, transition)
+
+        with pytest.raises(DBAPIError, match=expected_message):
+            connection.execute(
+                _database_transition_statement(
+                    transition,
+                    missing_field=missing_field,
+                ),
+                params,
+            )
+        connection.rollback()
+
+
+@pytest.mark.parametrize(
+    "transition",
+    ["submitted_to_approved", "submitted_to_rejected"],
+)
+def test_database_template_decision_rejects_blank_reason(
+    migrated_postgresql,
+    transition,
+):
+    with _connect(migrated_postgresql) as connection:
+        params = _prepare_database_transition(connection, transition)
+
+        with pytest.raises(DBAPIError, match="理由"):
+            connection.execute(
+                _database_transition_statement(
+                    transition,
+                    blank_reason=True,
+                ),
+                params,
+            )
+        connection.rollback()
+
+
+@pytest.mark.parametrize("self_approval_source", ["created", "submitted"])
+def test_database_template_approval_enforces_separation_of_duties(
+    migrated_postgresql,
+    self_approval_source,
+):
+    with _connect(migrated_postgresql) as connection:
+        template_id = _insert_template(connection)
+        creator_id = _insert_workflow_user(connection)
+        submitter_id = _insert_workflow_user(connection)
+        version_id = _insert_template_version(
+            connection,
+            template_id,
+            1,
+            created_by=creator_id,
+        )
+        params = {
+            "actor_id": submitter_id,
+            "version_id": version_id,
+            "successor_id": None,
+        }
+        connection.execute(
+            _database_transition_statement("draft_to_submitted"),
+            params,
+        )
+        connection.commit()
+        params["actor_id"] = (
+            creator_id
+            if self_approval_source == "created"
+            else submitter_id
+        )
+
+        with pytest.raises(DBAPIError, match="職責分離"):
+            connection.execute(
+                _database_transition_statement("submitted_to_approved"),
+                params,
+            )
+        connection.rollback()
+
+
+@pytest.mark.parametrize(
     "transition",
     [
         "draft_to_submitted",
@@ -1616,7 +1885,10 @@ def test_database_rejects_template_transition_content_or_audit_tampering(
         connection.rollback()
 
 
-@pytest.mark.parametrize("status", ["approved", "superseded"])
+@pytest.mark.parametrize(
+    "status",
+    ["submitted", "rejected", "approved", "superseded"],
+)
 @pytest.mark.parametrize("operation", ["update", "delete"])
 def test_database_blocks_frozen_template_version_changes(
     migrated_postgresql,
@@ -1629,7 +1901,11 @@ def test_database_blocks_frozen_template_version_changes(
             connection,
             template_id,
             1,
-            status=status,
+        )
+        _transition_database_version_to_status(
+            connection,
+            {"template_id": template_id, "version_id": version_id},
+            status,
         )
         connection.commit()
         statements = {
@@ -1652,6 +1928,31 @@ def test_database_blocks_frozen_template_version_changes(
         connection.rollback()
 
 
+def test_database_allows_draft_template_version_delete(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        template_id = _insert_template(connection)
+        version_id = _insert_template_version(connection, template_id, 1)
+        connection.commit()
+
+        connection.execute(text(
+            """
+            DELETE FROM "校正模板版本"
+            WHERE "識別碼" = :version_id
+            """
+        ), {"version_id": version_id})
+        connection.commit()
+
+        assert connection.execute(text(
+            """
+            SELECT COUNT(*)
+            FROM "校正模板版本"
+            WHERE "識別碼" = :version_id
+            """
+        ), {"version_id": version_id}).scalar_one() == 0
+
+
 def test_database_allows_controlled_template_version_supersession(
     migrated_postgresql,
 ):
@@ -1661,15 +1962,30 @@ def test_database_allows_controlled_template_version_supersession(
             connection,
             template_id,
             1,
-            status="approved",
+        )
+        _transition_database_version_to_status(
+            connection,
+            {"template_id": template_id, "version_id": version_id},
+            "approved",
         )
         successor_id = _insert_template_version(
             connection,
             template_id,
             2,
-            status="submitted",
+        )
+        _transition_database_version_to_status(
+            connection,
+            {"template_id": template_id, "version_id": successor_id},
+            "submitted",
         )
         connection.commit()
+        old_row_version = connection.execute(text(
+            """
+            SELECT "資料版本"
+            FROM "校正模板版本"
+            WHERE "識別碼" = :version_id
+            """
+        ), {"version_id": version_id}).scalar_one()
 
         # 受控核准使用單一交易：先讓舊版離開 approved，再核准新版。
         connection.execute(text(
@@ -1684,14 +2000,14 @@ def test_database_allows_controlled_template_version_supersession(
             "version_id": version_id,
             "successor_id": successor_id,
         })
-        connection.execute(text(
-            """
-            UPDATE "校正模板版本"
-            SET "狀態" = 'approved',
-                "資料版本" = "資料版本" + 1
-            WHERE "識別碼" = :successor_id
-            """
-        ), {"successor_id": successor_id})
+        connection.execute(
+            _database_transition_statement("submitted_to_approved"),
+            {
+                "actor_id": _insert_workflow_user(connection),
+                "version_id": successor_id,
+                "successor_id": None,
+            },
+        )
         connection.execute(text(
             """
             UPDATE "校正模板"
@@ -1711,7 +2027,11 @@ def test_database_allows_controlled_template_version_supersession(
             WHERE "識別碼" = :version_id
             """
         ), {"version_id": version_id}).one()
-        assert version == ("superseded", successor_id, 2)
+        assert version == (
+            "superseded",
+            successor_id,
+            old_row_version + 1,
+        )
         assert connection.execute(text(
             """
             SELECT "狀態"
@@ -1751,20 +2071,17 @@ def test_database_rejects_invalid_template_successor(
                 connection,
                 template_id,
                 1,
-                status="submitted",
             )
             old_id = _insert_template_version(
                 connection,
                 template_id,
                 2,
-                status="approved",
             )
         else:
             old_id = _insert_template_version(
                 connection,
                 template_id,
                 1,
-                status="approved",
             )
             if case_name == "self":
                 successor_id = old_id
@@ -1774,15 +2091,32 @@ def test_database_rejects_invalid_template_successor(
                     connection,
                     other_template_id,
                     2,
-                    status="submitted",
                 )
             else:
                 successor_id = _insert_template_version(
                     connection,
                     template_id,
                     2,
-                    status="submitted",
                 )
+        if successor_id != old_id:
+            successor_template_id = (
+                other_template_id
+                if case_name == "cross_template"
+                else template_id
+            )
+            _transition_database_version_to_status(
+                connection,
+                {
+                    "template_id": successor_template_id,
+                    "version_id": successor_id,
+                },
+                "submitted",
+            )
+        _transition_database_version_to_status(
+            connection,
+            {"template_id": template_id, "version_id": old_id},
+            "approved",
+        )
         connection.commit()
 
         with pytest.raises(DBAPIError, match=expected_message):
@@ -1810,13 +2144,21 @@ def test_database_rejects_two_version_successor_cycle(
             connection,
             template_id,
             1,
-            status="approved",
         )
         successor_id = _insert_template_version(
             connection,
             template_id,
             2,
-            status="submitted",
+        )
+        _transition_database_version_to_status(
+            connection,
+            {"template_id": template_id, "version_id": successor_id},
+            "submitted",
+        )
+        _transition_database_version_to_status(
+            connection,
+            {"template_id": template_id, "version_id": old_id},
+            "approved",
         )
         connection.commit()
 
@@ -1829,14 +2171,14 @@ def test_database_rejects_two_version_successor_cycle(
             WHERE "識別碼" = :old_id
             """
         ), {"successor_id": successor_id, "old_id": old_id})
-        connection.execute(text(
-            """
-            UPDATE "校正模板版本"
-            SET "狀態" = 'approved',
-                "資料版本" = "資料版本" + 1
-            WHERE "識別碼" = :successor_id
-            """
-        ), {"successor_id": successor_id})
+        connection.execute(
+            _database_transition_statement("submitted_to_approved"),
+            {
+                "actor_id": _insert_workflow_user(connection),
+                "version_id": successor_id,
+                "successor_id": None,
+            },
+        )
         connection.commit()
 
         with pytest.raises(DBAPIError, match="後繼版本"):

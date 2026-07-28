@@ -168,7 +168,7 @@ def test_calibration_boolean_and_count_defaults_match_migration(
     assert str(column.server_default.arg).lower() == expected_default
 
 
-def _template_version(db_session):
+def _template_version(db_session, *, created_by=None):
     template = CalibrationTemplate(
         template_code="CAL-CALIPER",
         name="游標卡尺",
@@ -185,6 +185,7 @@ def _template_version(db_session):
         environment_requirements={"temperature": {"required": True}},
         allow_limited_use=True,
         status="draft",
+        created_by=created_by,
     )
     db_session.add(version)
     db_session.flush()
@@ -223,19 +224,6 @@ def _workflow_user(db_session, suffix):
     return user
 
 
-def _force_template_status(db_session, version, status):
-    """只供測試造境，直接建立既有生命週期狀態。"""
-
-    table = CalibrationTemplateVersion.__table__
-    db_session.execute(
-        table.update()
-        .where(table.c["識別碼"] == version.id)
-        .values({"狀態": status})
-    )
-    db_session.commit()
-    db_session.refresh(version)
-
-
 def _apply_template_transition(
     version,
     transition,
@@ -266,16 +254,86 @@ def _apply_template_transition(
         version.successor_version = successor
 
 
+def _transition_template_to_status(db_session, version, status):
+    """只供測試造境，依正式生命週期建立受控狀態。"""
+
+    if status == "draft":
+        db_session.commit()
+        return None
+    submitter = _workflow_user(
+        db_session,
+        f"fixture_{version.id}_{status}_submitter",
+    )
+    _apply_template_transition(
+        version,
+        "draft_to_submitted",
+        submitter,
+    )
+    db_session.commit()
+    if status == "submitted":
+        return None
+
+    decision_maker = _workflow_user(
+        db_session,
+        f"fixture_{version.id}_{status}_decision",
+    )
+    if status == "rejected":
+        _apply_template_transition(
+            version,
+            "submitted_to_rejected",
+            decision_maker,
+        )
+        db_session.commit()
+        return None
+
+    _apply_template_transition(
+        version,
+        "submitted_to_approved",
+        decision_maker,
+    )
+    db_session.commit()
+    if status == "approved":
+        return None
+
+    successor = _sibling_template_version(
+        db_session,
+        version.template,
+        version.version_no + 1,
+    )
+    successor_submitter = _workflow_user(
+        db_session,
+        f"fixture_{version.id}_{status}_successor_submitter",
+    )
+    _apply_template_transition(
+        successor,
+        "draft_to_submitted",
+        successor_submitter,
+    )
+    db_session.commit()
+    _apply_template_transition(
+        version,
+        "approved_to_superseded",
+        decision_maker,
+        successor=successor,
+    )
+    db_session.commit()
+    return successor
+
+
 def _prepare_template_transition(db_session, transition):
-    version = _template_version(db_session)
-    actor = _workflow_user(db_session, transition)
+    creator = _workflow_user(db_session, f"{transition}_creator")
+    version = _template_version(db_session, created_by=creator.id)
+    submitter = _workflow_user(db_session, f"{transition}_submitter")
     if transition != "draft_to_submitted":
         _apply_template_transition(
             version,
             "draft_to_submitted",
-            actor,
+            submitter,
         )
         db_session.commit()
+        actor = _workflow_user(db_session, f"{transition}_decision")
+    else:
+        actor = submitter
     if transition == "approved_to_superseded":
         _apply_template_transition(
             version,
@@ -287,8 +345,17 @@ def _prepare_template_transition(db_session, transition):
             db_session,
             version.template,
             2,
-            status="submitted",
         )
+        successor_submitter = _workflow_user(
+            db_session,
+            f"{transition}_successor_submitter",
+        )
+        _apply_template_transition(
+            successor,
+            "draft_to_submitted",
+            successor_submitter,
+        )
+        db_session.commit()
     else:
         successor = None
     return version, actor, successor
@@ -520,7 +587,7 @@ def test_controlled_template_version_rejects_new_point(
     status,
 ):
     version = _template_version(db_session)
-    _force_template_status(db_session, version, status)
+    _transition_template_to_status(db_session, version, status)
     _template_point(
         db_session,
         template_version_id=version.id,
@@ -549,15 +616,22 @@ def test_draft_template_version_allows_new_point(db_session):
 
 def test_template_rejects_two_approved_versions(db_session):
     first = _template_version(db_session)
-    _force_template_status(db_session, first, "approved")
+    _transition_template_to_status(db_session, first, "approved")
+    second = _sibling_template_version(
+        db_session,
+        first.template,
+        2,
+    )
+    _transition_template_to_status(db_session, second, "submitted")
+    approver = _workflow_user(db_session, "second_approved_conflict")
+    _apply_template_transition(
+        second,
+        "submitted_to_approved",
+        approver,
+    )
 
     with pytest.raises(IntegrityError):
-        _sibling_template_version(
-            db_session,
-            first.template,
-            2,
-            status="approved",
-        )
+        db_session.commit()
     db_session.rollback()
 
 
@@ -595,6 +669,69 @@ def test_new_template_version_rejects_preassigned_successor(
     with pytest.raises(ValueError, match="後繼版本"):
         db_session.commit()
     db_session.rollback()
+
+
+@pytest.mark.parametrize(
+    ("field_name", "field_value"),
+    [
+        ("status", "submitted"),
+        ("status", "approved"),
+        ("status", "rejected"),
+        ("status", "superseded"),
+        ("row_version", 2),
+        ("submitted_by", "actor"),
+        ("submitted_at", "now"),
+        ("approved_by", "actor"),
+        ("approved_at", "now"),
+        ("approval_reason", "預設核准"),
+        ("rejection_reason", "預設退回"),
+    ],
+)
+def test_new_template_version_rejects_non_draft_or_control_audit(
+    db_session,
+    field_name,
+    field_value,
+):
+    actor = _workflow_user(db_session, f"insert_{field_name}_{field_value}")
+    template = CalibrationTemplate(
+        template_code=f"CAL-INSERT-GUARD-{field_name}-{field_value}",
+        name="新增版本初始狀態防線",
+        equipment_type="游標卡尺",
+    )
+    db_session.add(template)
+    version = CalibrationTemplateVersion(
+        template=template,
+        version_no=1,
+        procedure_code="WI-CAL-001",
+        procedure_name="第一版",
+        default_repetitions=3,
+        environment_requirements={},
+        status="draft",
+    )
+    resolved_value = {
+        "actor": actor.id,
+        "now": datetime.now(timezone.utc),
+    }.get(field_value, field_value)
+    setattr(version, field_name, resolved_value)
+    db_session.add(version)
+
+    with pytest.raises(ValueError, match="新建校正模板版本"):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_new_draft_template_version_allows_created_audit(db_session):
+    actor = _workflow_user(db_session, "insert_created_audit")
+    created_at = datetime.now(timezone.utc)
+    version = _template_version(db_session, created_by=actor.id)
+    version.created_at = created_at
+
+    db_session.commit()
+
+    assert version.status == "draft"
+    assert version.row_version == 1
+    assert version.created_by == actor.id
+    assert version.created_at is not None
 
 
 @pytest.mark.parametrize(
@@ -657,6 +794,100 @@ def test_template_transition_requires_exact_row_version_increment(
     version.row_version = previous_row_version + row_version_delta
 
     with pytest.raises(ValueError, match="資料版本"):
+        db_session.commit()
+    db_session.rollback()
+
+
+@pytest.mark.parametrize(
+    ("transition", "missing_field", "expected_message"),
+    [
+        ("draft_to_submitted", "submitted_by", "送審者"),
+        ("draft_to_submitted", "submitted_at", "送審時間"),
+        ("submitted_to_approved", "approved_by", "核准者"),
+        ("submitted_to_approved", "approved_at", "核准時間"),
+        ("submitted_to_approved", "approval_reason", "核准理由"),
+        ("submitted_to_rejected", "approved_by", "決策者"),
+        ("submitted_to_rejected", "approved_at", "決策時間"),
+        ("submitted_to_rejected", "rejection_reason", "退回理由"),
+    ],
+)
+def test_template_transition_requires_audit_fields(
+    db_session,
+    transition,
+    missing_field,
+    expected_message,
+):
+    version, actor, successor = _prepare_template_transition(
+        db_session,
+        transition,
+    )
+    _apply_template_transition(
+        version,
+        transition,
+        actor,
+        successor=successor,
+    )
+    setattr(version, missing_field, None)
+
+    with pytest.raises(ValueError, match=expected_message):
+        db_session.commit()
+    db_session.rollback()
+
+
+@pytest.mark.parametrize(
+    ("transition", "reason_field"),
+    [
+        ("submitted_to_approved", "approval_reason"),
+        ("submitted_to_rejected", "rejection_reason"),
+    ],
+)
+def test_template_decision_rejects_blank_reason(
+    db_session,
+    transition,
+    reason_field,
+):
+    version, actor, successor = _prepare_template_transition(
+        db_session,
+        transition,
+    )
+    _apply_template_transition(
+        version,
+        transition,
+        actor,
+        successor=successor,
+    )
+    setattr(version, reason_field, " \t ")
+
+    with pytest.raises(ValueError, match="理由"):
+        db_session.commit()
+    db_session.rollback()
+
+
+@pytest.mark.parametrize("self_approval_source", ["created", "submitted"])
+def test_template_approval_enforces_separation_of_duties(
+    db_session,
+    self_approval_source,
+):
+    creator = _workflow_user(db_session, f"sod_creator_{self_approval_source}")
+    submitter = _workflow_user(
+        db_session,
+        f"sod_submitter_{self_approval_source}",
+    )
+    version = _template_version(db_session, created_by=creator.id)
+    _apply_template_transition(
+        version,
+        "draft_to_submitted",
+        submitter,
+    )
+    db_session.commit()
+    approver = creator if self_approval_source == "created" else submitter
+    _apply_template_transition(
+        version,
+        "submitted_to_approved",
+        approver,
+    )
+
+    with pytest.raises(ValueError, match="職責分離"):
         db_session.commit()
     db_session.rollback()
 
@@ -823,7 +1054,10 @@ def test_reading_rejects_unknown_result(db_session):
     db_session.rollback()
 
 
-@pytest.mark.parametrize("status", ["approved", "superseded"])
+@pytest.mark.parametrize(
+    "status",
+    ["submitted", "rejected", "approved", "superseded"],
+)
 @pytest.mark.parametrize("operation", ["update", "delete"])
 def test_approved_or_superseded_template_version_is_immutable(
     db_session,
@@ -831,7 +1065,7 @@ def test_approved_or_superseded_template_version_is_immutable(
     operation,
 ):
     version = _template_version(db_session)
-    _force_template_status(db_session, version, status)
+    _transition_template_to_status(db_session, version, status)
 
     if operation == "update":
         version.procedure_name = "嘗試改寫受控版本"
@@ -843,22 +1077,40 @@ def test_approved_or_superseded_template_version_is_immutable(
     db_session.rollback()
 
 
+def test_draft_template_version_can_be_deleted(db_session):
+    version = _template_version(db_session)
+    version_id = version.id
+    db_session.delete(version)
+
+    db_session.commit()
+
+    assert db_session.get(CalibrationTemplateVersion, version_id) is None
+
+
 def test_approved_template_version_allows_controlled_supersession(db_session):
     version = _template_version(db_session)
-    _force_template_status(db_session, version, "approved")
+    _transition_template_to_status(db_session, version, "approved")
     successor = _sibling_template_version(
         db_session,
         version.template,
         2,
-        status="submitted",
     )
+    _transition_template_to_status(db_session, successor, "submitted")
 
+    old_row_version = version.row_version
     version.status = "superseded"
     version.successor_version = successor
-    version.row_version += 1
+    version.row_version = old_row_version + 1
     db_session.flush()
-    successor.status = "approved"
-    successor.row_version += 1
+    successor_approver = _workflow_user(
+        db_session,
+        "controlled_supersession_approver",
+    )
+    _apply_template_transition(
+        successor,
+        "submitted_to_approved",
+        successor_approver,
+    )
     version.template.current_approved_version = successor
     db_session.commit()
 
@@ -899,7 +1151,6 @@ def test_controlled_supersession_rejects_invalid_successor(
             db_session,
             other_template,
             2,
-            status="submitted",
         )
     elif case_name == "backward":
         successor = first
@@ -907,7 +1158,6 @@ def test_controlled_supersession_rejects_invalid_successor(
             db_session,
             first.template,
             2,
-            status="approved",
         )
     else:
         old = first
@@ -915,9 +1165,10 @@ def test_controlled_supersession_rejects_invalid_successor(
             db_session,
             first.template,
             2,
-            status="submitted",
         )
-    _force_template_status(db_session, old, "approved")
+    if successor is not old and successor.status == "draft":
+        _transition_template_to_status(db_session, successor, "submitted")
+    _transition_template_to_status(db_session, old, "approved")
 
     next_row_version = old.row_version + row_version_delta
     old.status = "superseded"
@@ -943,9 +1194,9 @@ def test_controlled_supersession_rejects_two_version_cycle(db_session):
         db_session,
         old.template,
         2,
-        status="submitted",
     )
-    _force_template_status(db_session, old, "approved")
+    _transition_template_to_status(db_session, successor, "submitted")
+    _transition_template_to_status(db_session, old, "approved")
 
     successor_id = successor.id
     old_row_version = old.row_version
@@ -953,9 +1204,15 @@ def test_controlled_supersession_rejects_two_version_cycle(db_session):
     old.successor_version_id = successor_id
     old.row_version = old_row_version + 1
     db_session.commit()
-    successor_row_version = successor.row_version
-    successor.status = "approved"
-    successor.row_version = successor_row_version + 1
+    successor_approver = _workflow_user(
+        db_session,
+        "cycle_successor_approver",
+    )
+    _apply_template_transition(
+        successor,
+        "submitted_to_approved",
+        successor_approver,
+    )
     db_session.commit()
 
     successor_row_version = successor.row_version
@@ -983,7 +1240,7 @@ def test_controlled_template_point_is_immutable(
         CalibrationTemplateVersion,
         point.template_version_id,
     )
-    _force_template_status(db_session, version, status)
+    _transition_template_to_status(db_session, version, status)
 
     if operation == "update":
         point.instruction = "嘗試改寫受控校正點"
