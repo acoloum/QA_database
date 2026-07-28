@@ -15,6 +15,22 @@ MIGRATION_PATH = (
     / "49_create_calibration_detail_registration.sql"
 )
 
+BLANK_TEMPLATE_REASON_CASES = (
+    " ",
+    "\t",
+    "\n",
+    "\r",
+    "\v",
+    "\f",
+    "\u00a0",
+    "\u1680",
+    "\u2000",
+    "\u2007",
+    "\u202f",
+    "\u205f",
+    "\u3000",
+)
+
 
 @pytest.fixture
 def migrated_postgresql():
@@ -256,7 +272,7 @@ def _database_transition_statement(
     *,
     row_version_delta=1,
     missing_field=None,
-    blank_reason=False,
+    reason_override=None,
 ):
     assignments = {
         "draft_to_submitted": [
@@ -309,7 +325,7 @@ def _database_transition_statement(
             for assignment in assignments
             if not assignment.startswith(field_prefixes[missing_field])
         ]
-    if blank_reason:
+    if reason_override is not None:
         reason_prefix = (
             field_prefixes["approval_reason"]
             if transition == "submitted_to_approved"
@@ -317,7 +333,7 @@ def _database_transition_statement(
         )
         assignments = [
             (
-                f"{reason_prefix} '   '"
+                f"{reason_prefix} :reason_override"
                 if assignment.startswith(reason_prefix)
                 else assignment
             )
@@ -338,11 +354,14 @@ def _database_transition_statement(
     }
     if tampering is not None:
         assignments.append(tampering_assignments[tampering])
-    return text(
+    statement = text(
         'UPDATE "校正模板版本" SET '
         + ", ".join(assignments)
         + ' WHERE "識別碼" = :version_id'
     )
+    if reason_override is not None:
+        statement = statement.bindparams(reason_override=reason_override)
+    return statement
 
 
 def _prepare_database_transition(connection, transition):
@@ -1688,6 +1707,206 @@ def test_database_allows_new_draft_version_created_audit(
         assert (status, row_version, created_by) == ("draft", 1, actor_id)
 
 
+def test_database_applies_omitted_template_version_defaults(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        template_id = _insert_template(connection)
+        version_id = connection.execute(text(
+            """
+            INSERT INTO "校正模板版本" (
+                "模板ID", "版本號", "程序代碼", "程序名稱",
+                "預設重複次數", "環境要求"
+            ) VALUES (
+                :template_id, 1, 'WI-CAL-DEFAULTS', '預設值測試',
+                3, '{}'::JSONB
+            )
+            RETURNING "識別碼"
+            """
+        ), {"template_id": template_id}).scalar_one()
+        connection.commit()
+
+        status, row_version = connection.execute(text(
+            """
+            SELECT "狀態", "資料版本"
+            FROM "校正模板版本"
+            WHERE "識別碼" = :version_id
+            """
+        ), {"version_id": version_id}).one()
+        assert (status, row_version) == ("draft", 1)
+
+
+def test_database_allows_draft_content_update_with_row_increment(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        template_id = _insert_template(connection)
+        version_id = _insert_template_version(connection, template_id, 1)
+        connection.commit()
+
+        connection.execute(text(
+            """
+            UPDATE "校正模板版本"
+            SET "程序名稱" = '游標卡尺內校修訂',
+                "環境要求" =
+                    '{"temperature": {"required": true}}'::JSONB,
+                "修訂原因" = '更新校正環境要求',
+                "資料版本" = "資料版本" + 1
+            WHERE "識別碼" = :version_id
+            """
+        ), {"version_id": version_id})
+        connection.commit()
+
+        version = connection.execute(text(
+            """
+            SELECT
+                "程序名稱", "修訂原因", "資料版本",
+                "送審者ID", "核准者ID", "後繼版本ID"
+            FROM "校正模板版本"
+            WHERE "識別碼" = :version_id
+            """
+        ), {"version_id": version_id}).one()
+        assert version == (
+            "游標卡尺內校修訂",
+            "更新校正環境要求",
+            2,
+            None,
+            None,
+            None,
+        )
+
+
+@pytest.mark.parametrize(
+    "protected_field",
+    [
+        "created_by",
+        "created_at",
+        "submitted_by",
+        "submitted_at",
+        "approved_by",
+        "approved_at",
+        "approval_reason",
+        "rejection_reason",
+        "successor",
+    ],
+)
+def test_database_rejects_draft_template_audit_prewrite(
+    migrated_postgresql,
+    protected_field,
+):
+    with _connect(migrated_postgresql) as connection:
+        template_id = _insert_template(connection)
+        creator_id = _insert_workflow_user(connection)
+        actor_id = _insert_workflow_user(connection)
+        version_id = _insert_template_version(
+            connection,
+            template_id,
+            1,
+            created_by=creator_id,
+        )
+        successor_id = _insert_template_version(connection, template_id, 2)
+        connection.commit()
+        assignments = {
+            "created_by": '"建立者ID" = :actor_id',
+            "created_at": (
+                '"建立時間" = "建立時間" + INTERVAL \'1 second\''
+            ),
+            "submitted_by": '"送審者ID" = :actor_id',
+            "submitted_at": '"送審時間" = CURRENT_TIMESTAMP',
+            "approved_by": '"核准者ID" = :actor_id',
+            "approved_at": '"核准時間" = CURRENT_TIMESTAMP',
+            "approval_reason": '"核准理由" = \'預寫核准\'',
+            "rejection_reason": '"退回理由" = \'預寫退回\'',
+            "successor": '"後繼版本ID" = :successor_id',
+        }
+
+        with pytest.raises(DBAPIError, match="草稿|後繼版本"):
+            connection.execute(text(
+                'UPDATE "校正模板版本" SET '
+                + assignments[protected_field]
+                + ', "資料版本" = "資料版本" + 1 '
+                + 'WHERE "識別碼" = :version_id'
+            ), {
+                "actor_id": actor_id,
+                "successor_id": successor_id,
+                "version_id": version_id,
+            })
+        connection.rollback()
+
+
+@pytest.mark.parametrize("row_version_delta", [0, 2])
+def test_database_draft_update_requires_exact_row_increment(
+    migrated_postgresql,
+    row_version_delta,
+):
+    with _connect(migrated_postgresql) as connection:
+        template_id = _insert_template(connection)
+        version_id = _insert_template_version(connection, template_id, 1)
+        connection.commit()
+
+        with pytest.raises(DBAPIError, match="資料版本"):
+            connection.execute(text(
+                """
+                UPDATE "校正模板版本"
+                SET "程序名稱" = '草稿內容修訂',
+                    "資料版本" = "資料版本" + :row_version_delta
+                WHERE "識別碼" = :version_id
+                """
+            ), {
+                "row_version_delta": row_version_delta,
+                "version_id": version_id,
+            })
+        connection.rollback()
+
+
+def test_database_draft_submission_cannot_reuse_prewritten_audit(
+    migrated_postgresql,
+):
+    with _connect(migrated_postgresql) as connection:
+        template_id = _insert_template(connection)
+        submitter_id = _insert_workflow_user(connection)
+        version_id = _insert_template_version(connection, template_id, 1)
+        connection.commit()
+        connection.execute(text(
+            """
+            ALTER TABLE "校正模板版本"
+            DISABLE TRIGGER trg_calibration_template_version_frozen_immutable
+            """
+        ))
+        try:
+            connection.execute(text(
+                """
+                UPDATE "校正模板版本"
+                SET "送審者ID" = :submitter_id,
+                    "送審時間" = CURRENT_TIMESTAMP,
+                    "資料版本" = "資料版本" + 1
+                WHERE "識別碼" = :version_id
+                """
+            ), {
+                "submitter_id": submitter_id,
+                "version_id": version_id,
+            })
+        finally:
+            connection.execute(text(
+                """
+                ALTER TABLE "校正模板版本"
+                ENABLE TRIGGER trg_calibration_template_version_frozen_immutable
+                """
+            ))
+        connection.commit()
+
+        with pytest.raises(DBAPIError, match="預寫|送審"):
+            connection.execute(
+                _database_transition_statement("draft_to_submitted"),
+                {
+                    "actor_id": submitter_id,
+                    "version_id": version_id,
+                    "successor_id": None,
+                },
+            )
+        connection.rollback()
+
+
 @pytest.mark.parametrize(
     "transition",
     [
@@ -1794,9 +2013,11 @@ def test_database_template_transition_requires_audit_fields(
     "transition",
     ["submitted_to_approved", "submitted_to_rejected"],
 )
+@pytest.mark.parametrize("blank_reason", BLANK_TEMPLATE_REASON_CASES)
 def test_database_template_decision_rejects_blank_reason(
     migrated_postgresql,
     transition,
+    blank_reason,
 ):
     with _connect(migrated_postgresql) as connection:
         params = _prepare_database_transition(connection, transition)
@@ -1805,11 +2026,41 @@ def test_database_template_decision_rejects_blank_reason(
             connection.execute(
                 _database_transition_statement(
                     transition,
-                    blank_reason=True,
+                    reason_override=blank_reason,
                 ),
                 params,
             )
         connection.rollback()
+
+
+@pytest.mark.parametrize(
+    "transition",
+    ["submitted_to_approved", "submitted_to_rejected"],
+)
+def test_database_template_decision_allows_visible_reason(
+    migrated_postgresql,
+    transition,
+):
+    with _connect(migrated_postgresql) as connection:
+        params = _prepare_database_transition(connection, transition)
+
+        connection.execute(
+            _database_transition_statement(
+                transition,
+                reason_override="\u00a0有效理由\u3000",
+            ),
+            params,
+        )
+        connection.commit()
+
+        status = connection.execute(text(
+            """
+            SELECT "狀態"
+            FROM "校正模板版本"
+            WHERE "識別碼" = :version_id
+            """
+        ), params).scalar_one()
+        assert status == transition.rsplit("_to_", 1)[1]
 
 
 @pytest.mark.parametrize("self_approval_source", ["created", "submitted"])

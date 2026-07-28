@@ -341,6 +341,18 @@ CREATE INDEX idx_calibration_reference_snapshot_record
 CREATE INDEX idx_calibration_reference_snapshot_approved_record
     ON "校正參考標準器快照" ("核准校驗紀錄ID");
 
+CREATE OR REPLACE FUNCTION calibration_template_reason_is_blank(reason TEXT)
+RETURNS BOOLEAN AS $$
+    SELECT reason IS NULL
+        OR translate(
+            reason,
+            U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020'
+            || U&'\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006'
+            || U&'\2007\2008\2009\200A\2028\2029\202F\205F\3000',
+            ''
+        ) = '';
+$$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
 CREATE OR REPLACE FUNCTION calibration_block_frozen_template_version_change()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -394,11 +406,38 @@ BEGIN
                 RAISE EXCEPTION
                     '後繼版本只能在核准版本受控取代時設定';
             END IF;
+            IF NEW."建立者ID" IS DISTINCT FROM OLD."建立者ID"
+                OR NEW."建立時間" IS DISTINCT FROM OLD."建立時間" THEN
+                RAISE EXCEPTION
+                    '草稿校正模板版本的建立稽核不可修改';
+            END IF;
+            IF NEW."送審者ID" IS NOT NULL
+                OR NEW."送審時間" IS NOT NULL
+                OR NEW."核准者ID" IS NOT NULL
+                OR NEW."核准時間" IS NOT NULL
+                OR NEW."核准理由" IS NOT NULL
+                OR NEW."退回理由" IS NOT NULL THEN
+                RAISE EXCEPTION
+                    '草稿校正模板版本的工作流稽核必須維持空值';
+            END IF;
+            IF NEW."資料版本" <> OLD."資料版本" + 1 THEN
+                RAISE EXCEPTION
+                    '草稿內容更新時資料版本必須精確增加 1';
+            END IF;
             RETURN NEW;
         END IF;
 
         IF NEW."狀態" <> 'submitted' THEN
             RAISE EXCEPTION '不允許的校正模板版本狀態轉態';
+        END IF;
+        IF OLD."送審者ID" IS NOT NULL
+            OR OLD."送審時間" IS NOT NULL
+            OR OLD."核准者ID" IS NOT NULL
+            OR OLD."核准時間" IS NOT NULL
+            OR OLD."核准理由" IS NOT NULL
+            OR OLD."退回理由" IS NOT NULL
+            OR OLD."後繼版本ID" IS NOT NULL THEN
+            RAISE EXCEPTION '草稿版本不可借用預寫工作流稽核送審';
         END IF;
         IF (
             to_jsonb(NEW)
@@ -457,8 +496,9 @@ BEGIN
             IF NEW."核准時間" IS NULL THEN
                 RAISE EXCEPTION '核准轉態必須記錄核准時間';
             END IF;
-            IF NEW."核准理由" IS NULL
-                OR BTRIM(NEW."核准理由", E' \t\n\r') = '' THEN
+            IF calibration_template_reason_is_blank(
+                NEW."核准理由"
+            ) THEN
                 RAISE EXCEPTION '核准理由不可為空白';
             END IF;
             IF NEW."退回理由" IS NOT NULL THEN
@@ -483,8 +523,9 @@ BEGIN
             IF NEW."核准時間" IS NULL THEN
                 RAISE EXCEPTION '退回轉態必須記錄決策時間';
             END IF;
-            IF NEW."退回理由" IS NULL
-                OR BTRIM(NEW."退回理由", E' \t\n\r') = '' THEN
+            IF calibration_template_reason_is_blank(
+                NEW."退回理由"
+            ) THEN
                 RAISE EXCEPTION '退回理由不可為空白';
             END IF;
             IF NEW."核准理由" IS NOT NULL THEN

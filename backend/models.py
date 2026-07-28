@@ -1772,6 +1772,20 @@ _CONTROLLED_TEMPLATE_STATUSES = {
     'superseded',
 }
 
+# 與 Migration 49 的理由空白判定維持同一組明確字元。
+_TEMPLATE_REASON_WHITESPACE = (
+    ' \t\n\r\v\f'
+    '\x1c\x1d\x1e\x1f'
+    '\x85\xa0\u1680'
+    '\u2000\u2001\u2002\u2003\u2004\u2005'
+    '\u2006\u2007\u2008\u2009\u200a'
+    '\u2028\u2029\u202f\u205f\u3000'
+)
+
+
+def _template_reason_is_blank(value):
+    return value is None or not value.strip(_TEMPLATE_REASON_WHITESPACE)
+
 
 def _persisted_template_version_status(connection, version):
     state = inspect(version)
@@ -1799,6 +1813,14 @@ def _persisted_template_version(connection, version_id):
             table.c['狀態'],
             table.c['資料版本'],
             table.c['後繼版本ID'],
+            table.c['建立者ID'],
+            table.c['建立時間'],
+            table.c['送審者ID'],
+            table.c['送審時間'],
+            table.c['核准者ID'],
+            table.c['核准時間'],
+            table.c['核准理由'],
+            table.c['退回理由'],
         ).where(table.c['識別碼'] == version_id)
     ).mappings().one_or_none()
 
@@ -1847,10 +1869,26 @@ def _reject_self_template_successor(target, value, _old_value, _initiator):
 
 
 def _block_template_version_insert(_mapper, _connection, target):
-    if target.status != 'draft':
+    status_column = CalibrationTemplateVersion.status.property.columns[0]
+    row_version_column = (
+        CalibrationTemplateVersion.row_version.property.columns[0]
+    )
+    effective_status = (
+        target.status
+        if target.status is not None
+        else status_column.default.arg
+    )
+    effective_row_version = (
+        target.row_version
+        if target.row_version is not None
+        else row_version_column.default.arg
+    )
+    if effective_status != 'draft':
         raise ValueError('新建校正模板版本只能使用草稿狀態')
-    if target.row_version not in {None, 1}:
+    if effective_row_version != 1:
         raise ValueError('新建校正模板版本的資料版本必須為 1')
+    target.status = effective_status
+    target.row_version = effective_row_version
     if (
         target.successor_version_id is not None
         or target.successor_version is not None
@@ -1912,6 +1950,22 @@ def _block_frozen_template_version_update(_mapper, connection, target):
     if original_status == 'draft' and target.status == 'draft':
         if 'successor_version_id' in changed_columns:
             raise ValueError('後繼版本只能在核准版本受控取代時設定')
+        if changed_columns & {'created_by', 'created_at'}:
+            raise ValueError('草稿校正模板版本的建立稽核不可修改')
+        if any(
+            value is not None
+            for value in (
+                target.submitted_by,
+                target.submitted_at,
+                target.approved_by,
+                target.approved_at,
+                target.approval_reason,
+                target.rejection_reason,
+            )
+        ):
+            raise ValueError('草稿校正模板版本的工作流稽核必須維持空值')
+        if target.row_version != original_row_version + 1:
+            raise ValueError('草稿內容更新時資料版本必須精確增加 1')
         return
 
     allowed_transition_columns = {
@@ -1957,7 +2011,7 @@ def _block_frozen_template_version_update(_mapper, connection, target):
             raise ValueError('核准轉態必須記錄核准者')
         if target.approved_at is None:
             raise ValueError('核准轉態必須記錄核准時間')
-        if not (target.approval_reason or '').strip():
+        if _template_reason_is_blank(target.approval_reason):
             raise ValueError('核准理由不可為空白')
         if target.rejection_reason is not None:
             raise ValueError('核准時必須清除退回理由')
@@ -1977,13 +2031,26 @@ def _block_frozen_template_version_update(_mapper, connection, target):
             raise ValueError('退回轉態必須記錄決策者')
         if target.approved_at is None:
             raise ValueError('退回轉態必須記錄決策時間')
-        if not (target.rejection_reason or '').strip():
+        if _template_reason_is_blank(target.rejection_reason):
             raise ValueError('退回理由不可為空白')
         if target.approval_reason is not None:
             raise ValueError('退回時必須清除核准理由')
     elif transition == ('approved', 'superseded'):
         _validate_template_successor(connection, target, original)
     elif transition == ('draft', 'submitted'):
+        if any(
+            original[field] is not None
+            for field in (
+                '送審者ID',
+                '送審時間',
+                '核准者ID',
+                '核准時間',
+                '核准理由',
+                '退回理由',
+                '後繼版本ID',
+            )
+        ):
+            raise ValueError('草稿版本不可借用預寫工作流稽核送審')
         if target.submitted_by is None:
             raise ValueError('送審轉態必須記錄送審者')
         if target.submitted_at is None:

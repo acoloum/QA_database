@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import inspect as sa_inspect
@@ -14,6 +14,23 @@ from backend.models import (
     EquipmentCalibrationRecord,
     MeasurementEquipment,
     User,
+)
+
+
+BLANK_TEMPLATE_REASON_CASES = (
+    " ",
+    "\t",
+    "\n",
+    "\r",
+    "\v",
+    "\f",
+    "\u00a0",
+    "\u1680",
+    "\u2000",
+    "\u2007",
+    "\u202f",
+    "\u205f",
+    "\u3000",
 )
 
 
@@ -168,7 +185,7 @@ def test_calibration_boolean_and_count_defaults_match_migration(
     assert str(column.server_default.arg).lower() == expected_default
 
 
-def _template_version(db_session, *, created_by=None):
+def _template_version(db_session, *, created_by=None, created_at=None):
     template = CalibrationTemplate(
         template_code="CAL-CALIPER",
         name="游標卡尺",
@@ -186,6 +203,7 @@ def _template_version(db_session, *, created_by=None):
         allow_limited_use=True,
         status="draft",
         created_by=created_by,
+        created_at=created_at,
     )
     db_session.add(version)
     db_session.flush()
@@ -723,8 +741,11 @@ def test_new_template_version_rejects_non_draft_or_control_audit(
 def test_new_draft_template_version_allows_created_audit(db_session):
     actor = _workflow_user(db_session, "insert_created_audit")
     created_at = datetime.now(timezone.utc)
-    version = _template_version(db_session, created_by=actor.id)
-    version.created_at = created_at
+    version = _template_version(
+        db_session,
+        created_by=actor.id,
+        created_at=created_at,
+    )
 
     db_session.commit()
 
@@ -732,6 +753,141 @@ def test_new_draft_template_version_allows_created_audit(db_session):
     assert version.row_version == 1
     assert version.created_by == actor.id
     assert version.created_at is not None
+
+
+def test_new_template_version_applies_omitted_orm_defaults(db_session):
+    template = CalibrationTemplate(
+        template_code="CAL-INSERT-ORM-DEFAULTS",
+        name="新增版本預設值",
+        equipment_type="游標卡尺",
+    )
+    version = CalibrationTemplateVersion(
+        template=template,
+        version_no=1,
+        procedure_code="WI-CAL-DEFAULTS",
+        procedure_name="預設值測試",
+        default_repetitions=3,
+        environment_requirements={},
+    )
+    db_session.add(version)
+
+    db_session.commit()
+
+    assert version.status == "draft"
+    assert version.row_version == 1
+
+
+def test_draft_template_version_allows_content_update_with_row_increment(
+    db_session,
+):
+    version = _template_version(db_session)
+    db_session.commit()
+    previous_row_version = version.row_version
+
+    version.procedure_name = "游標卡尺內校修訂"
+    version.environment_requirements = {
+        "temperature": {"required": True, "min": 20, "max": 24},
+    }
+    version.revision_reason = "更新校正環境要求"
+    version.row_version = previous_row_version + 1
+    db_session.commit()
+
+    assert version.procedure_name == "游標卡尺內校修訂"
+    assert version.revision_reason == "更新校正環境要求"
+    assert version.row_version == previous_row_version + 1
+    assert version.submitted_by is None
+    assert version.approved_by is None
+    assert version.successor_version_id is None
+
+
+@pytest.mark.parametrize(
+    "protected_field",
+    [
+        "created_by",
+        "created_at",
+        "submitted_by",
+        "submitted_at",
+        "approved_by",
+        "approved_at",
+        "approval_reason",
+        "rejection_reason",
+        "successor_version",
+    ],
+)
+def test_draft_template_version_rejects_audit_prewrite(
+    db_session,
+    protected_field,
+):
+    creator = _workflow_user(
+        db_session,
+        f"draft_guard_creator_{protected_field}",
+    )
+    version = _template_version(db_session, created_by=creator.id)
+    db_session.commit()
+    actor = _workflow_user(db_session, f"draft_guard_actor_{protected_field}")
+    successor = _sibling_template_version(
+        db_session,
+        version.template,
+        2,
+    )
+    values = {
+        "created_by": actor.id,
+        "created_at": version.created_at + timedelta(seconds=1),
+        "submitted_by": actor.id,
+        "submitted_at": datetime.now(timezone.utc),
+        "approved_by": actor.id,
+        "approved_at": datetime.now(timezone.utc),
+        "approval_reason": "預寫核准",
+        "rejection_reason": "預寫退回",
+        "successor_version": successor,
+    }
+    setattr(version, protected_field, values[protected_field])
+    version.row_version += 1
+
+    with pytest.raises(ValueError, match="草稿|後繼版本"):
+        db_session.commit()
+    db_session.rollback()
+
+
+@pytest.mark.parametrize("row_version_delta", [0, 2])
+def test_draft_template_version_requires_exact_row_increment(
+    db_session,
+    row_version_delta,
+):
+    version = _template_version(db_session)
+    db_session.commit()
+    previous_row_version = version.row_version
+    version.procedure_name = "草稿內容修訂"
+    version.row_version = previous_row_version + row_version_delta
+
+    with pytest.raises(ValueError, match="資料版本"):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_draft_submission_cannot_reuse_prewritten_audit(db_session):
+    version = _template_version(db_session)
+    submitter = _workflow_user(db_session, "borrowed_submit_audit")
+    db_session.commit()
+    table = CalibrationTemplateVersion.__table__
+    db_session.execute(
+        table.update()
+        .where(table.c["識別碼"] == version.id)
+        .values({
+            "送審者ID": submitter.id,
+            "送審時間": datetime.now(timezone.utc),
+            "資料版本": version.row_version + 1,
+        })
+    )
+    db_session.commit()
+    db_session.refresh(version)
+
+    version.status = "submitted"
+    version.row_version += 1
+
+    with pytest.raises(ValueError, match="預寫|送審"):
+        db_session.commit()
+    db_session.rollback()
 
 
 @pytest.mark.parametrize(
@@ -841,7 +997,38 @@ def test_template_transition_requires_audit_fields(
         ("submitted_to_rejected", "rejection_reason"),
     ],
 )
+@pytest.mark.parametrize("blank_reason", BLANK_TEMPLATE_REASON_CASES)
 def test_template_decision_rejects_blank_reason(
+    db_session,
+    transition,
+    reason_field,
+    blank_reason,
+):
+    version, actor, successor = _prepare_template_transition(
+        db_session,
+        transition,
+    )
+    _apply_template_transition(
+        version,
+        transition,
+        actor,
+        successor=successor,
+    )
+    setattr(version, reason_field, blank_reason)
+
+    with pytest.raises(ValueError, match="理由"):
+        db_session.commit()
+    db_session.rollback()
+
+
+@pytest.mark.parametrize(
+    ("transition", "reason_field"),
+    [
+        ("submitted_to_approved", "approval_reason"),
+        ("submitted_to_rejected", "rejection_reason"),
+    ],
+)
+def test_template_decision_allows_visible_reason(
     db_session,
     transition,
     reason_field,
@@ -856,11 +1043,11 @@ def test_template_decision_rejects_blank_reason(
         actor,
         successor=successor,
     )
-    setattr(version, reason_field, " \t ")
+    setattr(version, reason_field, "\u00a0有效理由\u3000")
 
-    with pytest.raises(ValueError, match="理由"):
-        db_session.commit()
-    db_session.rollback()
+    db_session.commit()
+
+    assert version.status == transition.rsplit("_to_", 1)[1]
 
 
 @pytest.mark.parametrize("self_approval_source", ["created", "submitted"])
