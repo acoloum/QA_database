@@ -69,5 +69,6 @@ describe('校正工作佇列', () => {
       sort: 'risk',
       order: 'asc',
     });
+    expect(screen.getByPlaceholderText('設備編號、名稱')).toBeInTheDocument();
   });
 });

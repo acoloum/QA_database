@@ -204,6 +204,8 @@ describe('校正分層證據詳情', () => {
     expect(text.indexOf('證書附件')).toBeLessThan(text.indexOf('簽核紀錄'));
     expect(text.indexOf('簽核紀錄')).toBeLessThan(text.indexOf('模板版本快照'));
     expect(screen.getByTestId('mobile-reading-P01-1')).toHaveTextContent('10.001');
+    expect(screen.getByRole('region', { name: '原始讀值' }))
+      .toHaveAttribute('data-responsive-layout', 'single-column-cards');
   });
 
   it('legacy 紀錄只顯示摘要層與資料限制', () => {
@@ -214,15 +216,25 @@ describe('校正分層證據詳情', () => {
     renderPage();
 
     expect(screen.getByRole('alert')).toHaveTextContent('舊版摘要資料未保存逐點原始讀值');
-    expect(screen.queryByRole('heading', { name: '原始讀值' })).not.toBeInTheDocument();
+    for (const heading of [
+      '校正點摘要', '原始讀值', '標準器快照', '證書附件',
+      '簽核紀錄', '模板版本快照',
+    ]) {
+      expect(screen.queryByRole('heading', { name: heading })).not.toBeInTheDocument();
+    }
   });
 
-  it('保留 409、422、403 的中文訊息與 details', async () => {
+  it.each([
+    [403, 'CALIBRATION_SELF_APPROVAL_FORBIDDEN', '建立、輸入或送審人員不得核准自己的校正紀錄'],
+    [409, 'CALIBRATION_VERSION_CONFLICT', '校正紀錄已被其他人更新，請重新載入'],
+    [422, 'CALIBRATION_FIELD_INVALID', '核准確認項目必須完整勾選'],
+  ])('保留 %i 的結構化錯誤、中文訊息與 details', async (status, code, message) => {
     const user = userEvent.setup();
     approveMock.mockRejectedValue(new ApiError({
-      message: '版本已被其他人更新，請重新載入。',
-      status: 409,
-      details: { current_version: 8, blocker: 'ROW_VERSION_CONFLICT' },
+      message,
+      status,
+      code,
+      details: { field: 'confirmations', calibration_id: 41 },
     }));
     renderPage();
     await user.type(screen.getByLabelText('核准理由'), '已完成核對');
@@ -231,8 +243,13 @@ describe('校正分層證據詳情', () => {
     }
     await user.click(screen.getByRole('button', { name: '核准校正' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('版本已被其他人更新，請重新載入。');
-    expect(screen.getByRole('alert')).toHaveTextContent('ROW_VERSION_CONFLICT');
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveAttribute('data-error-status', String(status));
+    expect(alert).toHaveAttribute('data-error-code', code);
+    expect(alert).toHaveTextContent(code);
+    expect(alert).toHaveTextContent(message);
+    expect(alert).toHaveTextContent('field: confirmations');
+    expect(alert).toHaveTextContent('calibration_id: 41');
   });
 
   it('依權限與狀態顯示核准、退回與作廢操作', () => {
@@ -255,5 +272,35 @@ describe('校正分層證據詳情', () => {
     expect(screen.getByRole('button', { name: '作廢校正' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '核准校正' })).not.toBeInTheDocument();
     expect(within(screen.getByRole('main')).getByText('進行中')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['無權限', 'submitted', () => false, false, false, false],
+    ['核准者送審', 'submitted', (permission: string) => permission === 'calibration.approve', true, true, false],
+    ['管理者草稿', 'draft', (permission: string) => permission === 'calibration.manage', false, false, true],
+    ['管理者登錄中', 'in_progress', (permission: string) => permission === 'calibration.manage', false, false, true],
+    ['管理者待送審', 'ready_for_submission', (permission: string) => permission === 'calibration.manage', false, false, true],
+    ['管理者已核准', 'approved', (permission: string) => permission === 'calibration.manage', false, false, false],
+    ['管理者已退回', 'rejected', (permission: string) => permission === 'calibration.manage', false, false, false],
+    ['管理者已作廢', 'voided', (permission: string) => permission === 'calibration.manage', false, false, false],
+    ['管理者已取代', 'superseded', (permission: string) => permission === 'calibration.manage', false, false, false],
+  ])('%s 的狀態與權限操作矩陣正確', (
+    _caseName,
+    status,
+    hasPermission,
+    canApprove,
+    canReject,
+    canVoid,
+  ) => {
+    authMock.mockReturnValue({ hasPermission });
+    detailMock.mockReturnValue({
+      data: { ...calibration, status },
+      isLoading: false, isError: false, refetch: vi.fn(),
+    });
+    renderPage();
+
+    expect(Boolean(screen.queryByRole('button', { name: '核准校正' }))).toBe(canApprove);
+    expect(Boolean(screen.queryByRole('button', { name: '退回校正' }))).toBe(canReject);
+    expect(Boolean(screen.queryByRole('button', { name: '作廢校正' }))).toBe(canVoid);
   });
 });

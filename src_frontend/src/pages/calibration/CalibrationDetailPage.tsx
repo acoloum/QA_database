@@ -33,6 +33,13 @@ const calibrationCode = (record: CalibrationRecord) => {
 const detailEntries = (details?: Record<string, unknown>) => Object.entries(details ?? {})
   .map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`);
 
+interface ActionError {
+  status?: number;
+  code?: string;
+  message: string;
+  details: string[];
+}
+
 export default function CalibrationDetailPage() {
   const { calibrationId } = useParams();
   const numericId = Number(calibrationId);
@@ -48,7 +55,7 @@ export default function CalibrationDetailPage() {
     raw_readings: false, calculations: false, reference_standard: false,
     attachments: false, template_version: false,
   });
-  const [actionError, setActionError] = useState<{ message: string; details: string[] } | null>(null);
+  const [actionError, setActionError] = useState<ActionError | null>(null);
 
   if (query.isLoading) return <main className="cal-page"><p className="cal-state" role="status">正在讀取校正證據卷宗…</p></main>;
   if (query.isError || !query.data) return (
@@ -68,9 +75,12 @@ export default function CalibrationDetailPage() {
     const mutation = operation === 'approve' ? approve : operation === 'reject' ? reject : voidRecord;
     setActionError(null);
     void mutation.mutateAsync(input).catch((error: unknown) => {
+      const apiError = error instanceof ApiError ? error : null;
       setActionError({
         message: apiErrorMessage(error, '校正工作流操作失敗。'),
-        details: error instanceof ApiError ? detailEntries(error.details) : [],
+        status: apiError?.status,
+        code: apiError?.code,
+        details: detailEntries(apiError?.details),
       });
     });
   };
@@ -87,7 +97,7 @@ export default function CalibrationDetailPage() {
         <div className="cal-detail-status"><strong>{statusLabel(calibration.status)}</strong><span>{resultLabel(calibration.result)}</span></div>
       </header>
       <CalibrationWorkflowBar status={calibration.status} />
-      {actionError && <section className="cal-inline-error" role="alert"><p>{actionError.message}</p>{actionError.details.map((detail) => <code key={detail}>{detail}</code>)}</section>}
+      {actionError && <section className="cal-inline-error" role="alert" data-error-status={actionError.status} data-error-code={actionError.code}><p>{actionError.message}</p>{actionError.code && <code>{actionError.code}</code>}{actionError.status != null && <small>HTTP {actionError.status}</small>}{actionError.details.map((detail) => <code key={detail}>{detail}</code>)}</section>}
       {!isDetailed && <section className="cal-state cal-state--error" role="alert"><p>舊版摘要資料未保存逐點原始讀值、標準器快照與計算明細；本頁僅可檢視摘要層。</p></section>}
       <section className="cal-evidence-envelope" aria-labelledby="result-summary-title">
         <h2 id="result-summary-title">判定摘要</h2>
@@ -95,12 +105,11 @@ export default function CalibrationDetailPage() {
       </section>
       {isDetailed && <>
         <section className="cal-evidence-envelope" aria-labelledby="point-summary-title"><h2 id="point-summary-title">校正點摘要</h2><div className="cal-point-summary-grid">{(calibration.points ?? []).map((point) => <CalibrationPointSummary key={point.id} point={point} />)}</div></section>
-        <section className="cal-evidence-envelope" aria-labelledby="raw-readings-title"><h2 id="raw-readings-title">原始讀值</h2><div className="cal-detail-readings">{(calibration.points ?? []).flatMap((point) => point.readings.map((reading) => <article className="cal-detail-reading-card" data-testid={`mobile-reading-${point.point_code}-${reading.trial_no}`} key={reading.id}><h3>{point.point_code} · 試驗 {reading.trial_no}</h3><dl><div><dt>標準器讀值</dt><dd>{reading.standard_reading ?? '—'}</dd></div><div><dt>受校件示值</dt><dd>{reading.indicated_value ?? '—'}</dd></div><div><dt>器差</dt><dd>{reading.error_value ?? '—'} {point.unit}</dd></div><div><dt>補正值</dt><dd>{reading.correction_value ?? '—'} {point.unit}</dd></div></dl></article>))}</div></section>
+        <section className="cal-evidence-envelope" aria-labelledby="raw-readings-title" data-responsive-layout="single-column-cards"><h2 id="raw-readings-title">原始讀值</h2><div className="cal-detail-readings">{(calibration.points ?? []).flatMap((point) => point.readings.map((reading) => <article className="cal-detail-reading-card" data-testid={`mobile-reading-${point.point_code}-${reading.trial_no}`} key={reading.id}><h3>{point.point_code} · 試驗 {reading.trial_no}</h3><dl><div><dt>標準器讀值</dt><dd>{reading.standard_reading ?? '—'}</dd></div><div><dt>受校件示值</dt><dd>{reading.indicated_value ?? '—'}</dd></div><div><dt>器差</dt><dd>{reading.error_value ?? '—'} {point.unit}</dd></div><div><dt>補正值</dt><dd>{reading.correction_value ?? '—'} {point.unit}</dd></div></dl></article>))}</div></section>
         <section className="cal-evidence-envelope" aria-labelledby="reference-snapshots-title"><h2 id="reference-snapshots-title">標準器快照</h2><div className="cal-snapshot-grid">{(calibration.reference_snapshots ?? []).map((snapshot) => <article key={snapshot.id}><code>{snapshot.equipment_no}</code><h3>{snapshot.name}</h3><p>證書：{snapshot.certificate_no || '未提供'} · 到期日：{snapshot.calibration_due_date || '未提供'}</p><p>追溯標準：{snapshot.traceability_standard || '未提供'}</p></article>)}</div></section>
         <section className="cal-evidence-envelope" aria-labelledby="certificate-title"><h2 id="certificate-title">證書附件</h2>{calibration.certificate_attachment_id ? <button type="button" className="cal-button cal-button--secondary" onClick={() => void downloadCertificate.mutateAsync({ attachmentId: calibration.certificate_attachment_id as number, filename: `${calibrationCode(calibration)}-certificate.pdf` })}>下載證書附件</button> : <p>尚未綁定證書附件。</p>}</section>
       </>}
-      <section className="cal-evidence-envelope" aria-labelledby="signoff-title"><h2 id="signoff-title">簽核紀錄</h2><dl className="cal-detail-facts"><div><dt>建立人</dt><dd>#{calibration.created_by}</dd></div><div><dt>送審人</dt><dd>{calibration.submitted_by ? `#${calibration.submitted_by}` : '尚未送審'}</dd></div><div><dt>核准人</dt><dd>{calibration.approved_by ? `#${calibration.approved_by}` : '尚未核准'}</dd></div><div><dt>核准理由</dt><dd>{calibration.approval_reason || '尚未填寫'}</dd></div></dl></section>
-      <section className="cal-evidence-envelope" aria-labelledby="template-snapshot-title"><h2 id="template-snapshot-title">模板版本快照</h2><pre>{JSON.stringify(calibration.template_snapshot, null, 2)}</pre></section>
+      {isDetailed && <><section className="cal-evidence-envelope" aria-labelledby="signoff-title"><h2 id="signoff-title">簽核紀錄</h2><dl className="cal-detail-facts"><div><dt>建立人</dt><dd>#{calibration.created_by}</dd></div><div><dt>送審人</dt><dd>{calibration.submitted_by ? `#${calibration.submitted_by}` : '尚未送審'}</dd></div><div><dt>核准人</dt><dd>{calibration.approved_by ? `#${calibration.approved_by}` : '尚未核准'}</dd></div><div><dt>核准理由</dt><dd>{calibration.approval_reason || '尚未填寫'}</dd></div></dl></section><section className="cal-evidence-envelope" aria-labelledby="template-snapshot-title"><h2 id="template-snapshot-title">模板版本快照</h2><pre>{JSON.stringify(calibration.template_snapshot, null, 2)}</pre></section></>}
       {(canApprove || canVoid) && <section className="cal-decision-panel" aria-labelledby="decision-title"><h2 id="decision-title">工作流操作</h2>{canApprove && <><label>核准理由<textarea value={approvalReason} onChange={(event) => setApprovalReason(event.target.value)} /></label><fieldset><legend>五層證據確認</legend>{([['raw_readings', '已核對原始讀值'], ['calculations', '已核對計算結果'], ['reference_standard', '已核對標準器資格'], ['attachments', '已核對證書附件'], ['template_version', '已核對模板版本']] as const).map(([key, label]) => <label className="cal-check" key={key}><input type="checkbox" checked={confirmations[key]} onChange={(event) => setConfirmations((current) => ({ ...current, [key]: event.target.checked }))} />{label}</label>)}</fieldset><div className="cal-action-row"><button type="button" className="cal-button cal-button--primary" disabled={!approvalReason.trim() || !allConfirmed || approve.isPending} onClick={() => handleDecision('approve', { calibrationId: calibration.id, expected_version: calibration.row_version, reason: approvalReason.trim(), confirmations })}>核准校正</button><button type="button" className="cal-button cal-button--danger" disabled={!actionReason.trim() || reject.isPending} onClick={() => handleDecision('reject', { calibrationId: calibration.id, expected_version: calibration.row_version, reason: actionReason.trim() })}>退回校正</button></div><label>退回／作廢理由<textarea value={actionReason} onChange={(event) => setActionReason(event.target.value)} /></label></>}{canVoid && <><label>退回／作廢理由<textarea value={actionReason} onChange={(event) => setActionReason(event.target.value)} /></label><button type="button" className="cal-button cal-button--danger" disabled={!actionReason.trim() || voidRecord.isPending} onClick={() => handleDecision('void', { calibrationId: calibration.id, expected_version: calibration.row_version, reason: actionReason.trim() })}>作廢校正</button></>}</section>}
     </main>
   );

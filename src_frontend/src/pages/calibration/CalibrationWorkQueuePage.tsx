@@ -47,7 +47,7 @@ export default function CalibrationWorkQueuePage() {
           <input
             type="search"
             value={searchText}
-            placeholder="設備編號、名稱或程序代碼"
+            placeholder="設備編號、名稱"
             onChange={(event) => {
               setSearchText(event.target.value);
               setParams((current) => ({ ...current, page: 1 }));
