@@ -3,9 +3,10 @@
 from datetime import date
 
 from sqlalchemy import or_
+from sqlalchemy.orm import selectinload
 
 from ..extensions import db
-from ..models import EquipmentCalibrationRecord, EquipmentCorrectionPoint
+from ..models import EquipmentCalibrationPoint, EquipmentCalibrationRecord
 
 from .calibration_eligibility import (
     CalibrationEligibilityService,
@@ -194,7 +195,10 @@ class MsaEquipmentService(MeasurementEquipmentService):
     ) -> EquipmentCalibrationRecord | None:
         """只取得研究日期當日有效的已核准校正紀錄。"""
         return db.session.execute(
-            db.select(EquipmentCalibrationRecord).where(
+            db.select(EquipmentCalibrationRecord).options(
+                selectinload(EquipmentCalibrationRecord.calibration_points)
+                .selectinload(EquipmentCalibrationPoint.readings),
+            ).where(
                 EquipmentCalibrationRecord.id == calibration_record_id,
                 EquipmentCalibrationRecord.equipment_id == equipment_id,
                 EquipmentCalibrationRecord.status == "approved",
@@ -229,36 +233,15 @@ class MsaEquipmentService(MeasurementEquipmentService):
                 "correction_points": [],
             }
 
-        points = []
-        if record.data_level == "detailed":
-            points = [
-                {
-                    "id": point.id,
-                    "measurement_mode": point.measurement_mode,
-                    "nominal_value": MeasurementEquipmentService._canonical_value(
-                        point.nominal_value,
-                    ),
-                    "indicated_value": MeasurementEquipmentService._canonical_value(
-                        point.indicated_value,
-                    ),
-                    "error_value": MeasurementEquipmentService._canonical_value(
-                        point.error_value,
-                    ),
-                    "correction_value": MeasurementEquipmentService._canonical_value(
-                        point.correction_value,
-                    ),
-                    "unit": point.unit,
-                    "range_start": MeasurementEquipmentService._canonical_value(
-                        point.range_start,
-                    ),
-                    "range_end": MeasurementEquipmentService._canonical_value(
-                        point.range_end,
-                    ),
-                }
-                for point in EquipmentCorrectionPoint.query.filter_by(
-                    calibration_record_id=record.id,
-                ).order_by(EquipmentCorrectionPoint.id.asc()).all()
-            ]
+        points = (
+            [MsaEquipmentService._detailed_point_to_snapshot(point)
+             for point in sorted(
+                 record.calibration_points,
+                 key=lambda item: item.point_order,
+             )]
+            if record.data_level == "detailed"
+            else []
+        )
         return {
             "record_id": record.id,
             "calibration_type": record.calibration_type,
@@ -280,4 +263,53 @@ class MsaEquipmentService(MeasurementEquipmentService):
             "restriction_conditions": record.restriction_conditions,
             "exemption_reason": None,
             "correction_points": points,
+        }
+
+    @staticmethod
+    def _detailed_point_to_snapshot(point: EquipmentCalibrationPoint) -> dict:
+        """序列化已保存的詳細點位摘要與原始讀值，不重新計算。"""
+        canonical = MeasurementEquipmentService._canonical_value
+        return {
+            "id": point.id,
+            "point_order": point.point_order,
+            "point_code": point.point_code,
+            "measurement_mode": point.measurement_mode,
+            "nominal_value": canonical(point.nominal_value),
+            "unit": point.unit,
+            "reference_value": canonical(point.reference_value),
+            "evaluation_basis": point.evaluation_basis,
+            "repeatability_rule": point.repeatability_rule,
+            "required_repetitions": point.required_repetitions,
+            "completed_reading_count": point.completed_reading_count,
+            "average_value": canonical(point.average_value),
+            "error_value": canonical(point.error_value),
+            "mean_error": canonical(point.mean_error),
+            "mean_correction": canonical(point.mean_correction),
+            "result": point.result,
+            "summary": {
+                "minimum_error": canonical(point.minimum_error),
+                "maximum_error": canonical(point.maximum_error),
+                "error_range": canonical(point.error_range),
+                "sample_stddev": canonical(point.sample_stddev),
+                "repeatability_value": canonical(point.repeatability_value),
+                "expanded_uncertainty": canonical(point.expanded_uncertainty),
+                "coverage_factor": canonical(point.coverage_factor),
+                "remarks": point.remarks,
+            },
+            "readings": [
+                {
+                    "id": reading.id,
+                    "trial_no": reading.trial_no,
+                    "standard_reading": canonical(reading.standard_reading),
+                    "indicated_value": canonical(reading.indicated_value),
+                    "effective_reference": canonical(reading.effective_reference),
+                    "error_value": canonical(reading.error_value),
+                    "correction_value": canonical(reading.correction_value),
+                    "result": reading.result,
+                }
+                for reading in sorted(
+                    point.readings,
+                    key=lambda item: item.trial_no,
+                )
+            ],
         }

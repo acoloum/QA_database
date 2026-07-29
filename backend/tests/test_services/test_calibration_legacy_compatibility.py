@@ -292,7 +292,11 @@ def test_detailed_snapshot_keeps_evidence_while_legacy_snapshot_fails_closed(
     """防止移除重複快照後詳細證據遺失或舊摘要洩漏原始補正。"""
     from decimal import Decimal
 
-    from backend.models import EquipmentCorrectionPoint
+    from backend.models import (
+        EquipmentCalibrationPoint,
+        EquipmentCalibrationReading,
+        EquipmentCorrectionPoint,
+    )
 
     detailed_equipment = _equipment(db_session, "EQ-DETAILED-SNAPSHOT")
     detailed = _record(
@@ -303,11 +307,38 @@ def test_detailed_snapshot_keeps_evidence_while_legacy_snapshot_fails_closed(
         template_snapshot={"version": "CAL-1"},
         data_hash="g" * 64,
     )
-    db_session.add(EquipmentCorrectionPoint(
-        calibration_record_id=detailed.id,
+    detailed.calibration_points.append(EquipmentCalibrationPoint(
+        point_order=1,
+        point_code="PT-OD",
         measurement_mode="外徑量測",
         nominal_value=Decimal("10.000"),
-        indicated_value=Decimal("10.001"),
+        unit="mm",
+        reference_value=Decimal("10.000"),
+        evaluation_basis="all_readings",
+        repeatability_rule="none",
+        reference_input_mode="certified_value",
+        required_repetitions=1,
+        completed_reading_count=1,
+        average_value=Decimal("10.001"),
+        error_value=Decimal("0.001"),
+        mean_error=Decimal("0.001"),
+        mean_correction=Decimal("-0.001"),
+        result="pass",
+        readings=[EquipmentCalibrationReading(
+            trial_no=1,
+            standard_reading=Decimal("10.000"),
+            indicated_value=Decimal("10.001"),
+            effective_reference=Decimal("10.000"),
+            error_value=Decimal("0.001"),
+            correction_value=Decimal("-0.001"),
+            result="pass",
+        )],
+    ))
+    db_session.add(EquipmentCorrectionPoint(
+        calibration_record_id=detailed.id,
+        measurement_mode="不得讀取的舊補正點",
+        nominal_value=Decimal("99.000"),
+        indicated_value=Decimal("99.001"),
         unit="mm",
     ))
     legacy_equipment = _equipment(db_session, "EQ-LEGACY-SNAPSHOT")
@@ -329,7 +360,44 @@ def test_detailed_snapshot_keeps_evidence_while_legacy_snapshot_fails_closed(
     )
 
     assert detailed_snapshot.calibration["data_level"] == "detailed"
-    assert len(detailed_snapshot.calibration["correction_points"]) == 1
+    assert detailed_snapshot.calibration["correction_points"] == [{
+        "id": detailed.calibration_points[0].id,
+        "point_order": 1,
+        "point_code": "PT-OD",
+        "measurement_mode": "外徑量測",
+        "nominal_value": "10.0000000000",
+        "unit": "mm",
+        "reference_value": "10.0000000000",
+        "evaluation_basis": "all_readings",
+        "repeatability_rule": "none",
+        "required_repetitions": 1,
+        "completed_reading_count": 1,
+        "average_value": "10.0010000000",
+        "error_value": "0.0010000000",
+        "mean_error": "0.0010000000",
+        "mean_correction": "-0.0010000000",
+        "result": "pass",
+        "summary": {
+            "minimum_error": None,
+            "maximum_error": None,
+            "error_range": None,
+            "sample_stddev": None,
+            "repeatability_value": None,
+            "expanded_uncertainty": None,
+            "coverage_factor": None,
+            "remarks": None,
+        },
+        "readings": [{
+            "id": detailed.calibration_points[0].readings[0].id,
+            "trial_no": 1,
+            "standard_reading": "10.0000000000",
+            "indicated_value": "10.0010000000",
+            "effective_reference": "10.0000000000",
+            "error_value": "0.0010000000",
+            "correction_value": "-0.0010000000",
+            "result": "pass",
+        }],
+    }]
     assert legacy_snapshot.calibration["data_level"] == "summary_legacy"
     assert legacy_snapshot.calibration["correction_points"] == []
 
