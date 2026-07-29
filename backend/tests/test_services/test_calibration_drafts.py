@@ -1179,6 +1179,48 @@ def test_list_risk_sort_is_applied_before_pagination(
     assert second["items"][0]["result"] == "limited_use"
 
 
+def test_list_search_filters_equipment_number_and_name(
+    db_session, calibration_users
+):
+    """工作佇列搜尋應由後端在分頁前套用設備編號或名稱。"""
+    matched = _create_equipment(
+        db_session,
+        "EQ-QUEUE-MATCH",
+        "工作佇列專用卡尺",
+    )
+    other = _create_equipment(
+        db_session,
+        "EQ-QUEUE-OTHER",
+        "一般量具",
+    )
+    for equipment in (matched, other):
+        db_session.add(
+            EquipmentCalibrationRecord(
+                equipment_id=equipment.id,
+                calibration_type="external",
+                calibration_date=date.today(),
+                result="pass",
+                status="approved",
+                data_level="summary_legacy",
+            )
+        )
+    db_session.commit()
+
+    result = CalibrationService.list(
+        {
+            "page": 1,
+            "page_size": 25,
+            "search": "專用卡尺",
+            "sort": "risk",
+            "order": "asc",
+        },
+        actor_id=calibration_users["viewer"]["user"].id,
+    )
+
+    assert result["total"] == 1
+    assert result["items"][0]["equipment_no"] == "EQ-QUEUE-MATCH"
+
+
 def test_template_snapshot_preserves_zero_decimal_values(
     db_session, calibration_users
 ):

@@ -9,7 +9,7 @@ from decimal import Decimal, InvalidOperation
 from functools import wraps
 from typing import Any, Optional
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from ..extensions import db
@@ -58,6 +58,7 @@ _LIST_FIELDS = {
     "status",
     "calibration_type",
     "data_level",
+    "search",
 }
 _CALIBRATION_STATUSES = {
     "draft",
@@ -197,6 +198,18 @@ class CalibrationService:
                 )
             statement = statement.where(
                 EquipmentCalibrationRecord.data_level == values["data_level"]
+            )
+        search = str(values.get("search") or "").strip()
+        if search:
+            escaped_search = (
+                search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            )
+            pattern = f"%{escaped_search}%"
+            statement = statement.where(
+                or_(
+                    MeasurementEquipment.equipment_no.ilike(pattern, escape="\\"),
+                    MeasurementEquipment.name.ilike(pattern, escape="\\"),
+                )
             )
 
         total = db.session.execute(
