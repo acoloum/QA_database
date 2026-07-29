@@ -622,7 +622,9 @@ def test_equipment_qualification_limited_use_incomplete_data_not_qualified(
         monkeypatch.setattr(
             CalibrationEligibilityService,
             "_latest_approved_calibration",
-            staticmethod(lambda equipment_id: incomplete_record),
+            staticmethod(
+                lambda equipment_id, *, on_date=None: incomplete_record
+            ),
         )
 
         result = CalibrationEligibilityService.equipment_qualification(

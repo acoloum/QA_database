@@ -11,6 +11,8 @@ from backend.models import (
     AuditLog,
     EquipmentCalibrationRecord,
     EquipmentCorrectionPoint,
+    EquipmentCalibrationPoint,
+    EquipmentCalibrationReading,
     EquipmentStatusEvent,
     EquipmentImportBatch,
     EquipmentImportRow,
@@ -458,7 +460,7 @@ def test_inactive_approver_with_old_jwt_cannot_approve_criteria(
     ).count() == 0
 
 
-def test_inactive_approver_receives_retired_legacy_calibration_contract(
+def test_inactive_approver_is_rejected_before_retired_legacy_contract(
     client,
     db_session,
     msa_user_headers,
@@ -493,11 +495,11 @@ def test_inactive_approver_receives_retired_legacy_calibration_contract(
         headers=old_headers,
     )
 
-    assert response.status_code == 410
+    assert response.status_code == 401
     assert response.get_json() == {
         "error": {
-            "code": "CALIBRATION_LEGACY_ENDPOINT_RETIRED",
-            "message": "舊版簡易校正介面已退役，請使用校正登錄流程",
+            "code": "CALIBRATION_USER_INACTIVE",
+            "message": "使用者帳號已停用",
             "details": {},
         }
     }
@@ -516,7 +518,7 @@ def test_inactive_approver_receives_retired_legacy_calibration_contract(
     ).count() == 0
 
 
-def test_legacy_calibration_endpoints_are_retired_without_writing_records(
+def test_legacy_calibration_endpoints_require_calibration_permissions_and_never_write(
     client,
     db_session,
     msa_user_headers,
@@ -539,6 +541,27 @@ def test_legacy_calibration_endpoints_are_retired_without_writing_records(
     db_session.add_all([equipment, existing])
     db_session.commit()
 
+    unauthenticated = client.post(
+        f"/api/measurement-equipment/{equipment.id}/calibrations",
+        json=_calibration_payload(),
+    )
+    create_forbidden = client.post(
+        f"/api/measurement-equipment/{equipment.id}/calibrations",
+        json=_calibration_payload(),
+        headers=msa_user_headers("calibration_view_only"),
+    )
+    approve_forbidden = client.post(
+        f"/api/measurement-equipment/calibrations/{existing.id}/approve",
+        json={"expected_status": "approved", "reason": "不得再寫入"},
+        headers=msa_user_headers("calibration_view_only"),
+    )
+    before = {
+        "records": EquipmentCalibrationRecord.query.count(),
+        "correction_points": EquipmentCorrectionPoint.query.count(),
+        "calibration_points": EquipmentCalibrationPoint.query.count(),
+        "readings": EquipmentCalibrationReading.query.count(),
+        "audit_logs": AuditLog.query.count(),
+    }
     created = client.post(
         f"/api/measurement-equipment/{equipment.id}/calibrations",
         json=_calibration_payload(),
@@ -557,12 +580,26 @@ def test_legacy_calibration_endpoints_are_retired_without_writing_records(
             "details": {},
         }
     }
+    assert unauthenticated.status_code == 401
+    assert unauthenticated.get_json()["error"]["code"] == "CALIBRATION_AUTH_REQUIRED"
+    assert create_forbidden.status_code == 403
+    assert create_forbidden.get_json()["error"]["details"] == {
+        "permission": "calibration.manage"
+    }
+    assert approve_forbidden.status_code == 403
+    assert approve_forbidden.get_json()["error"]["details"] == {
+        "permission": "calibration.approve"
+    }
     assert created.status_code == 410
     assert created.get_json() == expected
     assert approved.status_code == 410
     assert approved.get_json() == expected
     db_session.expire_all()
-    assert EquipmentCalibrationRecord.query.count() == 1
+    assert EquipmentCalibrationRecord.query.count() == before["records"]
+    assert EquipmentCorrectionPoint.query.count() == before["correction_points"]
+    assert EquipmentCalibrationPoint.query.count() == before["calibration_points"]
+    assert EquipmentCalibrationReading.query.count() == before["readings"]
+    assert AuditLog.query.count() == before["audit_logs"]
     assert db.session.get(EquipmentCalibrationRecord, existing.id).status == "approved"
 
 
@@ -1159,255 +1196,6 @@ def test_equipment_api_does_not_offer_hard_delete(client, msa_user_headers):
 
     assert response.status_code == 405
     assert MeasurementEquipment.query.filter_by(id=equipment["id"]).count() == 1
-
-
-def _retired_legacy_calibration_create_contract(
-    client,
-    msa_user_headers,
-):
-    """若校驗與補正點分開提交，或管理者不能建立 draft，此測試應失敗。"""
-    equipment = _create_equipment(client, msa_user_headers)
-
-    response = client.post(
-        f"/api/measurement-equipment/{equipment['id']}/calibrations",
-        json=_calibration_payload(),
-        headers=msa_user_headers("msa_manage"),
-    )
-
-    assert response.status_code == 201
-    data = response.get_json()["data"]
-    assert data["status"] == "draft"
-    assert data["correction_points"] == [
-        {
-            "id": data["correction_points"][0]["id"],
-            "measurement_mode": "高度",
-            "nominal_value": "10.0000000000",
-            "indicated_value": "10.0010000000",
-            "error_value": "0.0010000000",
-            "correction_value": "-0.0010000000",
-            "unit": "mm",
-            "range_start": None,
-            "range_end": None,
-        }
-    ]
-    assert EquipmentCalibrationRecord.query.count() == 1
-    assert EquipmentCorrectionPoint.query.count() == 1
-
-
-def _retired_legacy_correction_point_contract(
-    client,
-    msa_user_headers,
-):
-    """若第二個補正點驗證失敗後仍留下校驗主檔，此測試應失敗。"""
-    equipment = _create_equipment(client, msa_user_headers)
-    payload = _calibration_payload()
-    payload["correction_points"].append(
-        {"measurement_mode": "高度", "indicated_value": "20.002"}
-    )
-
-    response = client.post(
-        f"/api/measurement-equipment/{equipment['id']}/calibrations",
-        json=payload,
-        headers=msa_user_headers("msa_manage"),
-    )
-
-    assert response.status_code == 422
-    assert response.get_json()["error"]["code"] == "MSA_CORRECTION_POINT_INVALID"
-    assert EquipmentCalibrationRecord.query.count() == 0
-    assert EquipmentCorrectionPoint.query.count() == 0
-
-
-def _retired_legacy_certificate_ownership_contract(
-    client,
-    db_session,
-    msa_user_headers,
-):
-    """若 draft 可引用 CAPA 附件，證書證據歸屬無法稽核。"""
-    equipment = _create_equipment(client, msa_user_headers)
-    attachment = Attachment(
-        entity_type="capa",
-        entity_id=equipment["id"],
-        file_name="wrong.pdf",
-        file_path="uploads/capa/1/wrong.pdf",
-        mime_type="application/pdf",
-        file_size=1,
-    )
-    db_session.add(attachment)
-    db_session.commit()
-
-    response = client.post(
-        f"/api/measurement-equipment/{equipment['id']}/calibrations",
-        json=_calibration_payload(certificate_attachment_id=attachment.id),
-        headers=msa_user_headers("msa_manage"),
-    )
-
-    assert response.status_code == 422
-    assert response.get_json()["error"]["code"] == (
-        "MSA_CERTIFICATE_ATTACHMENT_OWNERSHIP_INVALID"
-    )
-    assert EquipmentCalibrationRecord.query.count() == 0
-
-
-def _retired_legacy_certificate_rebind_contract(
-    client,
-    db_session,
-    msa_user_headers,
-):
-    """若設備暫存附件未在建立 draft 時原子轉綁，附件與校驗會斷鏈。"""
-    equipment = _create_equipment(client, msa_user_headers)
-    attachment = Attachment(
-        entity_type="measurement_equipment",
-        entity_id=equipment["id"],
-        file_name="certificate.pdf",
-        file_path=f"uploads/measurement_equipment/{equipment['id']}/certificate.pdf",
-        mime_type="application/pdf",
-        file_size=10,
-    )
-    db_session.add(attachment)
-    db_session.commit()
-
-    response = client.post(
-        f"/api/measurement-equipment/{equipment['id']}/calibrations",
-        json=_calibration_payload(certificate_attachment_id=attachment.id),
-        headers=msa_user_headers("msa_manage"),
-    )
-
-    assert response.status_code == 201
-    calibration = response.get_json()["data"]
-    db_session.refresh(attachment)
-    assert calibration["certificate_attachment_id"] == attachment.id
-    assert attachment.entity_type == "equipment_calibration"
-    assert attachment.entity_id == calibration["id"]
-    bind_audit = AuditLog.query.filter_by(
-        module="msa_attachment",
-        action="bind_certificate",
-        record_id=attachment.id,
-    ).one()
-    assert bind_audit.new_value["entity_id"] == calibration["id"]
-
-
-def _retired_legacy_calibration_approval_contract(
-    client,
-    msa_user_headers,
-):
-    """若 manage 可越權核准，或 stale expected_status 未被拒絕，此測試應失敗。"""
-    equipment = _create_equipment(client, msa_user_headers)
-    calibration = client.post(
-        f"/api/measurement-equipment/{equipment['id']}/calibrations",
-        json=_calibration_payload(),
-        headers=msa_user_headers("msa_manage"),
-    ).get_json()["data"]
-    payload = {
-        "expected_status": "draft",
-        "reason": "證書與補正資料查核完成",
-    }
-
-    forbidden = client.post(
-        f"/api/measurement-equipment/calibrations/{calibration['id']}/approve",
-        json=payload,
-        headers=msa_user_headers("msa_manage"),
-    )
-    approved = client.post(
-        f"/api/measurement-equipment/calibrations/{calibration['id']}/approve",
-        json=payload,
-        headers=msa_user_headers("msa_approve"),
-    )
-    stale = client.post(
-        f"/api/measurement-equipment/calibrations/{calibration['id']}/approve",
-        json=payload,
-        headers=msa_user_headers("msa_approve"),
-    )
-
-    assert forbidden.status_code == 403
-    assert approved.status_code == 200
-    assert approved.get_json()["data"]["status"] == "approved"
-    assert stale.status_code == 409
-    assert stale.get_json()["error"]["code"] == "MSA_CALIBRATION_STATUS_CONFLICT"
-
-
-def _retired_legacy_approval_payload_contract(
-    client,
-    msa_user_headers,
-):
-    """若 approve 靜默忽略未知欄位，呼叫端拼字錯誤可能留下錯誤證據。"""
-    equipment = _create_equipment(client, msa_user_headers)
-    calibration = client.post(
-        f"/api/measurement-equipment/{equipment['id']}/calibrations",
-        json=_calibration_payload(),
-        headers=msa_user_headers("msa_manage"),
-    ).get_json()["data"]
-
-    response = client.post(
-        f"/api/measurement-equipment/calibrations/{calibration['id']}/approve",
-        json={
-            "expected_status": "draft",
-            "reason": "查核完成",
-            "unexpected": True,
-        },
-        headers=msa_user_headers("msa_approve"),
-    )
-
-    assert response.status_code == 422
-    assert response.get_json()["error"]["code"] == "MSA_UNKNOWN_FIELDS"
-
-
-def _retired_legacy_approval_attachment_contract(
-    client,
-    db_session,
-    msa_user_headers,
-):
-    """核准不得引用另一筆 calibration 的證書附件。"""
-    first_equipment = _create_equipment(client, msa_user_headers, "EQ-CERT-1")
-    second_equipment = _create_equipment(client, msa_user_headers, "EQ-CERT-2")
-    first_calibration = client.post(
-        f"/api/measurement-equipment/{first_equipment['id']}/calibrations",
-        json=_calibration_payload(certificate_no="CERT-FIRST"),
-        headers=msa_user_headers("msa_manage"),
-    ).get_json()["data"]
-    second_calibration = client.post(
-        f"/api/measurement-equipment/{second_equipment['id']}/calibrations",
-        json=_calibration_payload(certificate_no="CERT-SECOND"),
-        headers=msa_user_headers("msa_manage"),
-    ).get_json()["data"]
-    attachment = Attachment(
-        entity_type="equipment_calibration",
-        entity_id=second_calibration["id"],
-        file_name="other.pdf",
-        file_path="uploads/equipment_calibration/2/other.pdf",
-        mime_type="application/pdf",
-        file_size=10,
-    )
-    db_session.add(attachment)
-    db_session.commit()
-
-    rejected = client.post(
-        f"/api/measurement-equipment/calibrations/{first_calibration['id']}/approve",
-        json={
-            "expected_status": "draft",
-            "reason": "不得引用他筆證書",
-            "certificate_attachment_id": attachment.id,
-        },
-        headers=msa_user_headers("msa_approve"),
-    )
-    assert rejected.status_code == 422
-    assert rejected.get_json()["error"]["code"] == (
-        "MSA_CERTIFICATE_ATTACHMENT_OWNERSHIP_INVALID"
-    )
-
-    attachment.entity_id = first_calibration["id"]
-    db_session.commit()
-    approved = client.post(
-        f"/api/measurement-equipment/calibrations/{first_calibration['id']}/approve",
-        json={
-            "expected_status": "draft",
-            "reason": "證書歸屬查核完成",
-            "certificate_attachment_id": attachment.id,
-        },
-        headers=msa_user_headers("msa_approve"),
-    )
-
-    assert approved.status_code == 200
-    assert approved.get_json()["data"]["certificate_attachment_id"] == attachment.id
 
 
 def test_status_event_requires_manage_and_persists_event(

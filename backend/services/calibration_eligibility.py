@@ -302,9 +302,11 @@ class CalibrationEligibilityService:
         elif latest_approved.next_due_date < on_date:
             blockers.append("CALIBRATION_OVERDUE")
 
-        if measurement_mode and latest_approved.result == "limited_use":
+        if latest_approved.result == "limited_use":
             modes = latest_approved.applicable_modes or []
-            if measurement_mode not in modes:
+            if not isinstance(measurement_mode, str) or not measurement_mode or (
+                measurement_mode not in modes
+            ):
                 blockers.append("CALIBRATION_MODE_NOT_COVERED")
 
         applicable_modes = latest_approved.applicable_modes or []

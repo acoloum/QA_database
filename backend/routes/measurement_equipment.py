@@ -157,7 +157,8 @@ def update_equipment(current_user, equipment_id: int):
 @measurement_equipment_bp.post(
     "/api/measurement-equipment/<int:equipment_id>/calibrations"
 )
-@_msa_auth_required
+@_calibration_auth_required
+@_require_calibration_permission("calibration.manage")
 def create_calibration(current_user, equipment_id: int):
     """拒絕已退役的簡易校正建立介面。"""
     return _legacy_calibration_retired()
@@ -167,7 +168,8 @@ def create_calibration(current_user, equipment_id: int):
     "/api/measurement-equipment/calibrations/"
     "<int:calibration_id>/approve"
 )
-@_msa_auth_required
+@_calibration_auth_required
+@_require_calibration_permission("calibration.approve")
 def approve_calibration(current_user, calibration_id: int):
     """拒絕已退役的簡易校正核准介面。"""
     return _legacy_calibration_retired()

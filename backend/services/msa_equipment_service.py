@@ -2,6 +2,11 @@
 
 from datetime import date
 
+from sqlalchemy import or_
+
+from ..extensions import db
+from ..models import EquipmentCalibrationRecord, EquipmentCorrectionPoint
+
 from .calibration_eligibility import (
     CalibrationEligibilityService,
     EquipmentQualification,
@@ -106,10 +111,17 @@ class MsaEquipmentService(MeasurementEquipmentService):
                 "設備校驗已於研究日前到期",
                 details=details,
             )
-        if {
-            "CALIBRATION_MODE_NOT_COVERED",
-            "CALIBRATION_LIMITED_USE_INCOMPLETE",
-        } & blockers:
+        if "CALIBRATION_LIMITED_USE_INCOMPLETE" in blockers:
+            details.update({
+                "applicable_modes": qualification.applicable_modes,
+                "restriction_conditions": qualification.restriction_conditions,
+            })
+            raise MsaValidationError(
+                "MSA_EQUIPMENT_CALIBRATION_LIMITED_USE_RESTRICTED",
+                "受限校驗限制資訊不完整",
+                details=details,
+            )
+        if "CALIBRATION_MODE_NOT_COVERED" in blockers:
             details["applicable_modes"] = qualification.applicable_modes
             details["measurement_mode"] = measurement_mode
             raise MsaValidationError(
@@ -139,7 +151,7 @@ class MsaEquipmentService(MeasurementEquipmentService):
         equipment = MeasurementEquipmentService._get_equipment(equipment_id)
         record = None
         if qualification.calibration_record_id is not None:
-            record = MeasurementEquipmentService._approved_calibration_by_id(
+            record = MsaEquipmentService._approved_calibration_by_id(
                 equipment.id,
                 qualification.calibration_record_id,
                 on_date,
@@ -152,7 +164,7 @@ class MsaEquipmentService(MeasurementEquipmentService):
                         "calibration_record_id": qualification.calibration_record_id,
                     },
                 )
-        calibration = MeasurementEquipmentService._calibration_snapshot(
+        calibration = MsaEquipmentService._calibration_snapshot(
             equipment,
             record,
         )
@@ -173,3 +185,99 @@ class MsaEquipmentService(MeasurementEquipmentService):
             unit=equipment.unit,
             calibration=calibration,
         )
+
+    @staticmethod
+    def _approved_calibration_by_id(
+        equipment_id: int,
+        calibration_record_id: int,
+        on_date: date,
+    ) -> EquipmentCalibrationRecord | None:
+        """只取得研究日期當日有效的已核准校正紀錄。"""
+        return db.session.execute(
+            db.select(EquipmentCalibrationRecord).where(
+                EquipmentCalibrationRecord.id == calibration_record_id,
+                EquipmentCalibrationRecord.equipment_id == equipment_id,
+                EquipmentCalibrationRecord.status == "approved",
+                EquipmentCalibrationRecord.calibration_date <= on_date,
+                or_(
+                    EquipmentCalibrationRecord.effective_date.is_(None),
+                    EquipmentCalibrationRecord.effective_date <= on_date,
+                ),
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    def _calibration_snapshot(equipment, record) -> dict:
+        """封裝 MSA 快照；唯有 detailed 紀錄可附帶逐點校正證據。"""
+        if record is None:
+            return {
+                "record_id": None,
+                "calibration_type": equipment.calibration_type,
+                "calibration_date": None,
+                "effective_date": None,
+                "next_due_date": None,
+                "result": None,
+                "status": None,
+                "certificate_no": None,
+                "traceability_standard": None,
+                "uncertainty_statement": None,
+                "applicable_modes": [],
+                "restriction_conditions": None,
+                "exemption_reason": (
+                    equipment.calibration_exemption_reason or ""
+                ).strip(),
+                "correction_points": [],
+            }
+
+        points = []
+        if record.data_level == "detailed":
+            points = [
+                {
+                    "id": point.id,
+                    "measurement_mode": point.measurement_mode,
+                    "nominal_value": MeasurementEquipmentService._canonical_value(
+                        point.nominal_value,
+                    ),
+                    "indicated_value": MeasurementEquipmentService._canonical_value(
+                        point.indicated_value,
+                    ),
+                    "error_value": MeasurementEquipmentService._canonical_value(
+                        point.error_value,
+                    ),
+                    "correction_value": MeasurementEquipmentService._canonical_value(
+                        point.correction_value,
+                    ),
+                    "unit": point.unit,
+                    "range_start": MeasurementEquipmentService._canonical_value(
+                        point.range_start,
+                    ),
+                    "range_end": MeasurementEquipmentService._canonical_value(
+                        point.range_end,
+                    ),
+                }
+                for point in EquipmentCorrectionPoint.query.filter_by(
+                    calibration_record_id=record.id,
+                ).order_by(EquipmentCorrectionPoint.id.asc()).all()
+            ]
+        return {
+            "record_id": record.id,
+            "calibration_type": record.calibration_type,
+            "calibration_date": MeasurementEquipmentService._canonical_value(
+                record.calibration_date,
+            ),
+            "effective_date": MeasurementEquipmentService._canonical_value(
+                record.effective_date,
+            ),
+            "next_due_date": MeasurementEquipmentService._canonical_value(
+                record.next_due_date,
+            ),
+            "result": record.result,
+            "status": record.status,
+            "certificate_no": record.certificate_no,
+            "traceability_standard": record.traceability_standard,
+            "uncertainty_statement": record.uncertainty_statement,
+            "applicable_modes": list(record.applicable_modes or []),
+            "restriction_conditions": record.restriction_conditions,
+            "exemption_reason": None,
+            "correction_points": points,
+        }
