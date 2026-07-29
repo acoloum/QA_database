@@ -115,7 +115,7 @@ export const useValidateCalibration = () => {
   return useMutation<
     CalibrationValidationResult,
     unknown,
-    { calibrationId: number; expected_version?: number }
+    { calibrationId: number; expected_version: number }
   >({
     mutationFn: async ({ calibrationId, ...payload }) => unwrap(
       await api.post<ApiEnvelope<CalibrationValidationResult>>(

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import json
+from datetime import date, datetime, timezone
+from io import BytesIO
+from urllib import error as urllib_error
 
 import pytest
 
@@ -10,9 +13,20 @@ from backend.scripts.smoke_calibration import (
     ActorCredentials,
     SmokeConfig,
     SmokeError,
+    UrllibHttpClient,
+    _assert_backend_calculation,
+    _cleanup_nonformal,
+    _expect,
+    _request_validation,
     build_parser,
     run_smoke,
     validate_args,
+)
+from backend.tests.test_calibration_routes import (
+    _authorization,
+    _create_approved_calibration,
+    _create_approved_template_and_version,
+    _create_equipment,
 )
 
 
@@ -108,6 +122,7 @@ class FakeHttpClient:
             }}
 
         if method == "POST" and path == "/api/calibrations":
+            assert actor == "executor", "建立校正必須由 executor 執行"
             self._calibration_id += 1
             calibration_id = self._calibration_id
             record = {
@@ -136,12 +151,22 @@ class FakeHttpClient:
         if method == "PUT" and path.endswith("/readings"):
             calibration_id = int(path.split("/")[3])
             record = self._calibrations[calibration_id]
+            assert actor == "executor", "readings 必須由 executor 執行"
+            assert (
+                json_body["expected_version"] == record["row_version"]
+            ), "readings expected_version 必須等於目前版本"
+            assert record["status"] in {
+                "draft", "in_progress"
+            }, "readings 只允許可編輯狀態"
             point = json_body["points"][0]
             if "result" in point:
                 return 422, {"error": {
                     "code": "CALIBRATION_UNKNOWN_FIELDS",
                     "message": "包含不允許欄位",
-                    "details": {"unknown_fields": ["result"]},
+                    "details": {
+                        "step": "readings",
+                        "unknown_fields": ["result"],
+                    },
                 }}
             values = [
                 item["indicated_value"]
@@ -151,19 +176,50 @@ class FakeHttpClient:
             result = "fail" if failed else "pass"
             if failed and self.corrupt_fail_result:
                 result = "pass"
+            if failed:
+                errors = ("0.100", "0.110", "0.120")
+                corrections = ("-0.100", "-0.110", "-0.120")
+                mean_error = "0.110"
+                error_range = "0.020"
+                sample_stddev = "0.010"
+            else:
+                errors = ("0.001", "0.002", "0.003")
+                corrections = ("-0.001", "-0.002", "-0.003")
+                mean_error = "0.002"
+                error_range = "0.002"
+                sample_stddev = "0.001"
             record.update({
                 "status": "in_progress",
                 "result": result,
                 "row_version": record["row_version"] + 1,
                 "points": [{
                     **record["points"][0],
-                    "average_value": "10.11" if failed else "10.002",
-                    "error_value": "0.11" if failed else "0.002",
-                    "repeatability_value": "0.02" if failed else "0.002",
-                    "mean_error": "0.11" if failed else "0.002",
-                    "mean_correction": "-0.11" if failed else "-0.002",
-                    "error_range": "0.02" if failed else "0.002",
+                    "average_value": None,
+                    "error_value": None,
+                    "repeatability_value": None,
+                    "mean_error": mean_error,
+                    "mean_correction": f"-{mean_error}",
+                    "minimum_error": errors[0],
+                    "maximum_error": errors[2],
+                    "error_range": error_range,
+                    "sample_stddev": sample_stddev,
+                    "completed_reading_count": 3,
                     "result": result,
+                    "readings": [{
+                        "id": calibration_id * 100 + trial,
+                        "trial_no": trial,
+                        "standard_reading": None,
+                        "indicated_value": value,
+                        "effective_reference": "10",
+                        "error_value": error_value,
+                        "correction_value": correction,
+                        "result": result,
+                    } for trial, value, error_value, correction in zip(
+                        (1, 2, 3),
+                        values,
+                        errors,
+                        corrections,
+                    )],
                 }],
             })
             return 200, {"data": record.copy()}
@@ -181,21 +237,38 @@ class FakeHttpClient:
         if method == "PATCH" and path.startswith("/api/calibrations/"):
             calibration_id = int(path.split("/")[3])
             record = self._calibrations[calibration_id]
+            assert actor == "manager", "更新校正必須由 manager 執行"
+            assert (
+                json_body["expected_version"] == record["row_version"]
+            ), "更新 expected_version 必須等於目前版本"
             if record["status"] == "approved":
                 return 409, {"error": {
-                    "code": "CALIBRATION_IMMUTABLE",
+                    "code": "CALIBRATION_STATUS_CONFLICT",
                     "message": "核准後校正證據不可修改",
-                    "details": {"calibration_id": calibration_id},
+                    "details": {
+                        "calibration_id": calibration_id,
+                        "status": "approved",
+                    },
                 }}
+            assert record["status"] in {
+                "draft", "in_progress"
+            }, "更新只允許可編輯狀態"
             record["row_version"] += 1
             record["certificate_attachment_id"] = json_body[
                 "certificate_attachment_id"
             ]
             return 200, {"data": record.copy()}
 
-        if path.endswith("/validate"):
+        if method == "POST" and path.endswith("/validate"):
             calibration_id = int(path.split("/")[3])
             record = self._calibrations[calibration_id]
+            assert actor == "manager", "validate 必須由 manager 執行"
+            assert (
+                json_body["expected_version"] == record["row_version"]
+            ), "validate expected_version 必須等於目前版本"
+            assert record["status"] in {
+                "draft", "in_progress", "ready_for_submission"
+            }, "validate 狀態不合法"
             if record["result"] == "pass":
                 record["status"] = "ready_for_submission"
                 record["row_version"] += 1
@@ -211,9 +284,16 @@ class FakeHttpClient:
                 "row_version": record["row_version"],
             }}
 
-        if path.endswith("/submit"):
+        if method == "POST" and path.endswith("/submit"):
             calibration_id = int(path.split("/")[3])
             record = self._calibrations[calibration_id]
+            assert actor == "manager", "submit 必須由 manager 執行"
+            assert (
+                json_body["expected_version"] == record["row_version"]
+            ), "submit expected_version 必須等於目前版本"
+            assert (
+                record["status"] == "ready_for_submission"
+            ), "submit 必須由待送審狀態執行"
             if (
                 record["calibration_type"] == "external"
                 and not record.get("certificate_attachment_id")
@@ -228,16 +308,32 @@ class FakeHttpClient:
             record["data_hash"] = f"hash-{calibration_id}"
             return 200, {"data": record.copy()}
 
-        if path.endswith("/approve") and path.startswith("/api/calibrations/"):
+        if (
+            method == "POST"
+            and path.endswith("/approve")
+            and path.startswith("/api/calibrations/")
+        ):
             calibration_id = int(path.split("/")[3])
             record = self._calibrations[calibration_id]
+            assert actor == "approver", "approve 必須由 approver 執行"
+            assert (
+                json_body["expected_version"] == record["row_version"]
+            ), "approve expected_version 必須等於目前版本"
+            assert record["status"] == "submitted", "approve 必須由送審狀態執行"
             record["status"] = "approved"
             record["row_version"] += 1
             return 200, {"data": record.copy()}
 
-        if path.endswith("/void"):
+        if method == "POST" and path.endswith("/void"):
             calibration_id = int(path.split("/")[3])
             record = self._calibrations[calibration_id]
+            assert actor == "manager", "void 必須由 manager 執行"
+            assert (
+                json_body["expected_version"] == record["row_version"]
+            ), "void expected_version 必須等於目前版本"
+            assert record["status"] in {
+                "draft", "in_progress", "ready_for_submission"
+            }, "void 不得處理正式狀態"
             record["status"] = "voided"
             record["row_version"] += 1
             return 200, {"data": record.copy()}
@@ -411,6 +507,15 @@ def test_smoke_propagates_versions_and_never_sends_client_side_result(config):
     assert by_path[
         "/api/calibrations/302/approve"
     ]["json"]["expected_version"] == 4
+    assert by_path[
+        "/api/calibrations/301/validate"
+    ]["json"]["expected_version"] == 3
+    assert by_path[
+        "/api/calibrations/302/validate"
+    ]["json"]["expected_version"] == 2
+    assert by_path[
+        "/api/calibrations/304/validate"
+    ]["json"]["expected_version"] == 2
     valid_readings = [
         call for call in client.calls
         if call["path"].endswith("/readings")
@@ -501,3 +606,405 @@ def test_keep_data_skips_cleanup(config):
         call["method"] == "DELETE" or call["path"].endswith("/void")
         for call in client.calls
     )
+
+
+def _detailed_saved_record():
+    """真實 detailed serializer 的代表性回應，不沿用 legacy 統計欄位。"""
+    return {
+        "result": "pass",
+        "points": [{
+            "average_value": None,
+            "error_value": None,
+            "repeatability_value": None,
+            "mean_error": "0.0020",
+            "mean_correction": "-0.002",
+            "minimum_error": "0.001",
+            "maximum_error": "0.003",
+            "error_range": "0.00200",
+            "sample_stddev": "0.001",
+            "completed_reading_count": 3,
+            "result": "pass",
+            "readings": [
+                {
+                    "trial_no": 1,
+                    "standard_reading": None,
+                    "indicated_value": "10.001",
+                    "effective_reference": "10.000",
+                    "error_value": "0.001",
+                    "correction_value": "-0.001",
+                    "result": "pass",
+                },
+                {
+                    "trial_no": 2,
+                    "standard_reading": None,
+                    "indicated_value": "10.002",
+                    "effective_reference": "10.000",
+                    "error_value": "0.002",
+                    "correction_value": "-0.002",
+                    "result": "pass",
+                },
+                {
+                    "trial_no": 3,
+                    "standard_reading": None,
+                    "indicated_value": "10.003",
+                    "effective_reference": "10.000",
+                    "error_value": "0.003",
+                    "correction_value": "-0.003",
+                    "result": "pass",
+                },
+            ],
+        }],
+    }
+
+
+def test_backend_calculation_uses_real_detailed_saved_fields_and_decimal_literals():
+    _assert_backend_calculation(_detailed_saved_record())
+
+
+def test_backend_calculation_detects_detailed_serializer_contract_drift():
+    record = _detailed_saved_record()
+    record["points"][0]["readings"][1]["error_value"] = "0.0021"
+
+    with pytest.raises(SmokeError, match="後端精確結果不符"):
+        _assert_backend_calculation(record)
+
+
+class FlaskTestClientAdapter:
+    """讓 smoke request helper 真正穿過 Flask route 與權限 adapter。"""
+
+    def __init__(self, client):
+        self.client = client
+
+    def request(
+        self,
+        method,
+        path,
+        *,
+        token=None,
+        json_body=None,
+        form=None,
+        files=None,
+    ):
+        assert form is None and files is None
+        response = self.client.open(
+            path,
+            method=method,
+            headers=_authorization(token) if token else {},
+            json=json_body,
+        )
+        return response.status_code, response.get_json()
+
+
+def test_script_validation_request_obeys_real_route_actor_and_version_contract(
+    client,
+    db_session,
+    calibration_users,
+):
+    manager = calibration_users["manager"]
+    template, version = _create_approved_template_and_version(
+        db_session, calibration_users
+    )
+    equipment = _create_equipment(db_session, "EQ-SMOKE-ROUTE", "smoke route 卡尺")
+    reference = _create_equipment(
+        db_session, "REF-SMOKE-ROUTE", "smoke route 環規", is_ref=True
+    )
+    _create_approved_calibration(
+        db_session, reference.id, date.today(), "pass"
+    )
+    db_session.commit()
+    adapter = FlaskTestClientAdapter(client)
+    create_status, create_body = adapter.request(
+        "POST",
+        "/api/calibrations",
+        token=manager["token"],
+        json_body={
+            "equipment_id": equipment.id,
+            "template_version_id": version.id,
+            "calibration_type": "internal",
+            "calibration_date": date.today().isoformat(),
+            "reference_standard_equipment_id": reference.id,
+            "environment_conditions": {
+                "temperature": {"value": "23", "unit": "°C"},
+            },
+        },
+    )
+    assert create_status == 201
+    created = create_body["data"]
+    save_status, save_body = adapter.request(
+        "PUT",
+        f"/api/calibrations/{created['id']}/readings",
+        token=manager["token"],
+        json_body={
+            "expected_version": created["row_version"],
+            "points": [{
+                "point_id": created["points"][0]["id"],
+                "reference_value": "10.000",
+                "readings": [
+                    {"trial_no": 1, "indicated_value": "10.001"},
+                    {"trial_no": 2, "indicated_value": "10.002"},
+                    {"trial_no": 3, "indicated_value": "10.003"},
+                ],
+            }],
+        },
+    )
+    assert save_status == 200
+    saved = save_body["data"]
+    _assert_backend_calculation(saved)
+
+    denied = _request_validation(
+        adapter,
+        calibration_users["no_permission"]["token"],
+        created["id"],
+        saved["row_version"],
+    )
+    stale = _request_validation(
+        adapter,
+        manager["token"],
+        created["id"],
+        saved["row_version"] - 1,
+    )
+    current = _request_validation(
+        adapter,
+        manager["token"],
+        created["id"],
+        saved["row_version"],
+    )
+
+    assert denied[0] == 403
+    assert denied[1]["error"]["code"] == "CALIBRATION_PERMISSION_DENIED"
+    assert stale[0] == 409
+    assert stale[1]["error"]["code"] == "CALIBRATION_VERSION_CONFLICT"
+    assert current[0] == 200
+    assert current[1]["data"]["row_version"] == saved["row_version"] + 1
+
+
+def test_fake_rejects_wrong_actor_and_stale_version():
+    fake = FakeHttpClient()
+    fake._calibrations[901] = {
+        "id": 901,
+        "status": "draft",
+        "result": "pending",
+        "row_version": 2,
+        "points": [{"id": 9010, "nominal_value": "10"}],
+    }
+
+    with pytest.raises(AssertionError, match="executor"):
+        fake.request(
+            "PUT",
+            "/api/calibrations/901/readings",
+            token="token-manager",
+            json_body={"expected_version": 2, "points": []},
+        )
+    with pytest.raises(AssertionError, match="expected_version"):
+        fake.request(
+            "POST",
+            "/api/calibrations/901/validate",
+            token="token-manager",
+            json_body={"expected_version": 1},
+        )
+
+
+def test_parser_reads_environment_and_keeps_localhost_default(monkeypatch):
+    monkeypatch.setenv("CALIBRATION_SMOKE_MANAGER_USER", "manager-env")
+    monkeypatch.setenv("CALIBRATION_SMOKE_MANAGER_PASSWORD", "manager-pw")
+    monkeypatch.setenv("CALIBRATION_SMOKE_EXECUTOR_USER", "executor-env")
+    monkeypatch.setenv("CALIBRATION_SMOKE_EXECUTOR_PASSWORD", "executor-pw")
+    monkeypatch.setenv("CALIBRATION_SMOKE_APPROVER_USER", "approver-env")
+    monkeypatch.setenv("CALIBRATION_SMOKE_APPROVER_PASSWORD", "approver-pw")
+    monkeypatch.delenv("CALIBRATION_SMOKE_BASE_URL", raising=False)
+
+    args = validate_args(build_parser().parse_args([]))
+
+    assert args.base_url == "http://localhost"
+    assert args.manager_user == "manager-env"
+    assert args.executor_user == "executor-env"
+    assert args.approver_user == "approver-env"
+
+
+def test_smoke_rejects_duplicate_login_user_id(config):
+    class DuplicateUserFake(FakeHttpClient):
+        def request(self, method, path, **kwargs):
+            status, body = super().request(method, path, **kwargs)
+            if path == "/api/login":
+                body["user_id"] = 99
+            return status, body
+
+    with pytest.raises(SmokeError, match="user_id 未保持三方職責分離"):
+        run_smoke(config, http_client=DuplicateUserFake(), output=lambda _: None)
+
+
+def test_multipart_body_has_matching_boundary_and_utf8_content():
+    body, content_type = UrllibHttpClient._multipart(
+        {"purpose": "校正證書"},
+        {"file": ("證書.pdf", b"%PDF-test", "application/pdf")},
+    )
+    boundary = content_type.split("boundary=", 1)[1].encode()
+
+    assert body.startswith(b"--" + boundary + b"\r\n")
+    assert body.endswith(b"--" + boundary + b"--\r\n")
+    assert "校正證書".encode() in body
+    assert "證書.pdf".encode() in body
+    assert b"%PDF-test" in body
+
+
+def test_http_error_preserves_exact_json_error_envelope(monkeypatch):
+    envelope = {
+        "error": {
+            "code": "CALIBRATION_VERSION_CONFLICT",
+            "message": "校正紀錄已被其他人更新，請重新載入",
+            "details": {"current_version": 3, "expected_version": 2},
+        }
+    }
+
+    def raise_http_error(*_args, **_kwargs):
+        raise urllib_error.HTTPError(
+            "http://localhost/api/calibrations/1/validate",
+            409,
+            "Conflict",
+            {},
+            BytesIO(json.dumps(envelope, ensure_ascii=False).encode()),
+        )
+
+    monkeypatch.setattr(
+        "backend.scripts.smoke_calibration.request.urlopen",
+        raise_http_error,
+    )
+    status, body = UrllibHttpClient("http://localhost").request(
+        "POST",
+        "/api/calibrations/1/validate",
+        json_body={"expected_version": 2},
+    )
+
+    assert status == 409
+    assert body == envelope
+
+
+def test_success_output_and_evidence_never_include_credentials_or_tokens(config):
+    messages = []
+    evidence = run_smoke(config, http_client=FakeHttpClient(), output=messages.append)
+    serialized = "\n".join(messages) + json.dumps(evidence, ensure_ascii=False)
+
+    for sensitive in (
+        "manager-secret",
+        "executor-secret",
+        "approver-secret",
+        "token-manager",
+        "token-executor",
+        "token-approver",
+    ):
+        assert sensitive not in serialized
+
+    with pytest.raises(SmokeError) as exc:
+        _expect(
+            (
+                500,
+                {
+                    "error": {
+                        "code": "SERVER_ERROR",
+                        "message": "token-manager manager-secret",
+                    },
+                },
+            ),
+            200,
+            "敏感錯誤",
+        )
+    assert "token-manager" not in str(exc.value)
+    assert "manager-secret" not in str(exc.value)
+
+
+def test_manual_override_requires_exact_error(config):
+    class WrongManualEnvelopeFake(FakeHttpClient):
+        def request(self, method, path, **kwargs):
+            status, body = super().request(method, path, **kwargs)
+            payload = kwargs.get("json_body") or {}
+            if path.endswith("/readings") and any(
+                "result" in point for point in payload.get("points", [])
+            ):
+                body["error"]["code"] = "WRONG_MANUAL_CODE"
+            return status, body
+
+    with pytest.raises(SmokeError, match="CALIBRATION_UNKNOWN_FIELDS"):
+        run_smoke(
+            config,
+            http_client=WrongManualEnvelopeFake(),
+            output=lambda _message: None,
+        )
+
+
+def test_approved_immutability_requires_exact_error(config):
+    class WrongImmutableEnvelopeFake(FakeHttpClient):
+        def request(self, method, path, **kwargs):
+            status, body = super().request(method, path, **kwargs)
+            if method == "PATCH" and status == 409:
+                body["error"]["code"] = "WRONG_IMMUTABLE_CODE"
+            return status, body
+
+    with pytest.raises(SmokeError, match="CALIBRATION_STATUS_CONFLICT"):
+        run_smoke(
+            config,
+            http_client=WrongImmutableEnvelopeFake(),
+            output=lambda _message: None,
+        )
+
+
+def test_cleanup_attempts_every_record_then_raises_safe_failure():
+    calls = []
+    messages = []
+
+    def failing_call(actor, method, path, *, json_body):
+        calls.append((actor, method, path, json_body))
+        if path.endswith("/303/void"):
+            raise SmokeError("secret-in-client-exception")
+        return 500, {
+            "error": {
+                "code": "CLEANUP_FAILED",
+                "message": "secret-in-server-message",
+                "details": {"token": "must-not-print"},
+            }
+        }
+
+    with pytest.raises(SmokeError, match="清理非正式資料失敗"):
+        _cleanup_nonformal(
+            failing_call,
+            {303: 2, 304: 3},
+            messages.append,
+        )
+
+    assert [call[2] for call in calls] == [
+        "/api/calibrations/303/void",
+        "/api/calibrations/304/void",
+    ]
+    assert "secret-in-server-message" not in "\n".join(messages)
+    assert "must-not-print" not in "\n".join(messages)
+    assert "secret-in-client-exception" not in "\n".join(messages)
+
+
+def test_primary_failure_survives_cleanup_failure_and_cleanup_continues(config):
+    class PrimaryAndCleanupFailureFake(FakeHttpClient):
+        def request(self, method, path, **kwargs):
+            if path == "/api/calibrations/303/void":
+                self.calls.append({
+                    "actor": "manager",
+                    "method": method,
+                    "path": path,
+                    "json": kwargs.get("json_body"),
+                    "form": None,
+                    "files": None,
+                })
+                return 500, {"error": {"code": "CLEANUP_FAILED"}}
+            status, body = super().request(method, path, **kwargs)
+            if path == "/api/msa/plans/504/freeze":
+                body["data"]["equipment_snapshot"]["items"] = []
+            return status, body
+
+    fake = PrimaryAndCleanupFailureFake()
+    with pytest.raises(
+        SmokeError,
+        match="MSA 凍結快照缺少 smoke 設備資格",
+    ):
+        run_smoke(config, http_client=fake, output=lambda _message: None)
+
+    assert [call["path"] for call in fake.calls if call["path"].endswith("/void")] == [
+        "/api/calibrations/303/void",
+        "/api/calibrations/304/void",
+    ]

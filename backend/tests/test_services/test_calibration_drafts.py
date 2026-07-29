@@ -1044,7 +1044,9 @@ class TestValidateCalibration:
 
         # 尚未保存讀值，驗證
         validation = CalibrationService.validate(
-            record_id, {}, actor_id=manager_user.id
+            record_id,
+            {"expected_version": result["row_version"]},
+            actor_id=manager_user.id,
         )
 
         assert validation["result"] == "pending"
@@ -1089,7 +1091,7 @@ class TestValidateCalibration:
         point_id = result["points"][0]["id"]
 
         # 保存合格讀值
-        CalibrationService.save_readings(
+        saved = CalibrationService.save_readings(
             record_id,
             {
                 "expected_version": result["row_version"],
@@ -1109,7 +1111,11 @@ class TestValidateCalibration:
         )
 
         # 驗證
-        validation = CalibrationService.validate(record_id, {}, actor_id=manager_user.id)
+        validation = CalibrationService.validate(
+            record_id,
+            {"expected_version": saved["row_version"]},
+            actor_id=manager_user.id,
+        )
 
         assert validation["result"] == "pass"
         assert validation["blockers"] == []
@@ -1302,7 +1308,9 @@ def test_required_environment_value_can_remain_empty_in_draft(
 
     with pytest.raises(CalibrationValidationError) as exc:
         CalibrationService.validate(
-            result["id"], {}, actor_id=manager.id
+            result["id"],
+            {"expected_version": result["row_version"]},
+            actor_id=manager.id,
         )
 
     assert exc.value.code == "CALIBRATION_DATA_INCOMPLETE"

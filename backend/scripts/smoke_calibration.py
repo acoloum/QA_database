@@ -8,6 +8,7 @@ import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from urllib import error, request
 from uuid import uuid4
 
@@ -183,9 +184,10 @@ def _expect(
     status, body = response
     wanted_statuses = (wanted,) if isinstance(wanted, int) else wanted
     if status not in wanted_statuses:
+        code = _error_code(body) or "UNKNOWN"
         raise SmokeError(
             f"{step}：預期 HTTP {wanted_statuses}，實得 {status}；"
-            f"回應={json.dumps(body, ensure_ascii=False)[:800]}"
+            f"error_code={code}"
         )
     return body
 
@@ -200,6 +202,21 @@ def _data(body: dict, step: str) -> dict:
 def _error_code(body: dict) -> str | None:
     error_value = body.get("error")
     return error_value.get("code") if isinstance(error_value, dict) else None
+
+
+def _request_validation(
+    client,
+    token: str,
+    calibration_id: int,
+    expected_version: int,
+) -> tuple[int, dict]:
+    """依正式 route 契約送出帶版本的驗證請求。"""
+    return client.request(
+        "POST",
+        f"/api/calibrations/{calibration_id}/validate",
+        token=token,
+        json_body={"expected_version": expected_version},
+    )
 
 
 def _record_readings(
@@ -228,21 +245,73 @@ def _record_readings(
 
 def _assert_backend_calculation(record: dict) -> None:
     """以手工推導 literal 核對後端結果，不在 client 重跑正式演算法。"""
-    point = record["points"][0]
-    expected = {
-        "average_value": "10.002",
-        "error_value": "0.002",
-        "repeatability_value": "0.002",
-        "mean_error": "0.002",
-        "mean_correction": "-0.002",
-        "error_range": "0.002",
-        "result": "pass",
-    }
-    actual = {name: point.get(name) for name in expected}
-    if record.get("result") != "pass" or actual != expected:
+    try:
+        point = record["points"][0]
+        decimal_expected = {
+            "mean_error": Decimal("0.002"),
+            "mean_correction": Decimal("-0.002"),
+            "minimum_error": Decimal("0.001"),
+            "maximum_error": Decimal("0.003"),
+            "error_range": Decimal("0.002"),
+            "sample_stddev": Decimal("0.001"),
+        }
+        decimal_actual = {
+            name: Decimal(str(point[name]))
+            for name in decimal_expected
+        }
+        readings = point["readings"]
+        expected_readings = [
+            {
+                "trial_no": trial_no,
+                "standard_reading": None,
+                "indicated_value": Decimal(indicated),
+                "effective_reference": Decimal("10"),
+                "error_value": Decimal(error_value),
+                "correction_value": Decimal(correction),
+                "result": "pass",
+            }
+            for trial_no, indicated, error_value, correction in (
+                (1, "10.001", "0.001", "-0.001"),
+                (2, "10.002", "0.002", "-0.002"),
+                (3, "10.003", "0.003", "-0.003"),
+            )
+        ]
+        actual_readings = [{
+            "trial_no": item["trial_no"],
+            "standard_reading": item.get("standard_reading"),
+            "indicated_value": Decimal(str(item["indicated_value"])),
+            "effective_reference": Decimal(str(item["effective_reference"])),
+            "error_value": Decimal(str(item["error_value"])),
+            "correction_value": Decimal(str(item["correction_value"])),
+            "result": item["result"],
+        } for item in readings]
+        legacy_empty = all(
+            point.get(name) is None
+            for name in (
+                "average_value",
+                "error_value",
+                "repeatability_value",
+            )
+        )
+        matches = (
+            record.get("result") == "pass"
+            and point.get("result") == "pass"
+            and point.get("completed_reading_count") == 3
+            and decimal_actual == decimal_expected
+            and actual_readings == expected_readings
+            and legacy_empty
+        )
+    except (
+        IndexError,
+        KeyError,
+        TypeError,
+        InvalidOperation,
+    ):
+        matches = False
+    if not matches:
         raise SmokeError(
             "三次讀值的後端精確結果不符；"
-            f"record_result={record.get('result')} point={actual}"
+            f"record_result={record.get('result')}"
         )
 
 
@@ -565,11 +634,11 @@ def run_smoke(
         nonformal[reference_record["id"]] = bound_reference["row_version"]
         validated_reference = _data(
             _expect(
-                call(
-                    "manager",
-                    "POST",
-                    f"/api/calibrations/{reference_record['id']}/validate",
-                    json_body={},
+                _request_validation(
+                    client,
+                    tokens["manager"],
+                    reference_record["id"],
+                    bound_reference["row_version"],
                 ),
                 200,
                 "驗證標準器校正",
@@ -642,11 +711,11 @@ def run_smoke(
         _assert_backend_calculation(saved_internal)
         validated_internal = _data(
             _expect(
-                call(
-                    "manager",
-                    "POST",
-                    f"/api/calibrations/{internal['id']}/validate",
-                    json_body={},
+                _request_validation(
+                    client,
+                    tokens["manager"],
+                    internal["id"],
+                    saved_internal["row_version"],
                 ),
                 200,
                 "驗證內校",
@@ -712,9 +781,21 @@ def run_smoke(
         )
         _expect(
             (immutable_status, immutable_body),
-            (409, 422),
+            409,
             "核准後不可變",
         )
+        immutable_error = immutable_body.get("error")
+        if (
+            _error_code(immutable_body) != "CALIBRATION_STATUS_CONFLICT"
+            or not isinstance(immutable_error, dict)
+            or immutable_error.get("details") != {
+                "calibration_id": internal["id"],
+                "status": "approved",
+            }
+        ):
+            raise SmokeError(
+                "核准後不可變未回 CALIBRATION_STATUS_CONFLICT 與精確 details"
+            )
         evidence["approved_immutability_status"] = immutable_status
 
         legacy_status, legacy_body = call(
@@ -745,6 +826,18 @@ def run_smoke(
             ),
         )
         _expect((manual_status, manual_body), 422, "禁止手改 pass")
+        manual_error = manual_body.get("error")
+        if (
+            _error_code(manual_body) != "CALIBRATION_UNKNOWN_FIELDS"
+            or not isinstance(manual_error, dict)
+            or manual_error.get("details") != {
+                "step": "readings",
+                "unknown_fields": ["result"],
+            }
+        ):
+            raise SmokeError(
+                "禁止手改 pass 未回 CALIBRATION_UNKNOWN_FIELDS 與精確 details"
+            )
         evidence["manual_result_override_status"] = manual_status
         failed = _data(
             _expect(
@@ -791,11 +884,11 @@ def run_smoke(
         nonformal[external["id"]] = saved_external["row_version"]
         validated_external = _data(
             _expect(
-                call(
-                    "manager",
-                    "POST",
-                    f"/api/calibrations/{external['id']}/validate",
-                    json_body={},
+                _request_validation(
+                    client,
+                    tokens["manager"],
+                    external["id"],
+                    saved_external["row_version"],
                 ),
                 200,
                 "驗證外校草稿",
@@ -961,7 +1054,10 @@ def run_smoke(
         )
     except Exception:
         if not config.keep_data:
-            _cleanup_nonformal(call, nonformal, output)
+            try:
+                _cleanup_nonformal(call, nonformal, output)
+            except SmokeError as cleanup_error:
+                output(f"  ! {cleanup_error}")
         raise
 
     if config.keep_data:
@@ -977,9 +1073,10 @@ def run_smoke(
 
 def _cleanup_nonformal(call, records: dict[int, int], output) -> None:
     """只作廢仍可變的 smoke 草稿；核准或已送審證據永不刪除。"""
+    failures: list[str] = []
     for calibration_id, row_version in list(records.items()):
-        _expect(
-            call(
+        try:
+            status, body = call(
                 "manager",
                 "POST",
                 f"/api/calibrations/{calibration_id}/void",
@@ -987,12 +1084,31 @@ def _cleanup_nonformal(call, records: dict[int, int], output) -> None:
                     "expected_version": row_version,
                     "reason": "smoke cleanup：作廢非正式測試資料",
                 },
-            ),
-            200,
-            f"作廢非正式 smoke 校正 {calibration_id}",
-        )
+            )
+        except Exception as cleanup_error:
+            error_type = type(cleanup_error).__name__
+            failures.append(
+                f"calibration={calibration_id} exception={error_type}"
+            )
+            output(
+                "  ! 清理失敗："
+                f"calibration={calibration_id} exception={error_type}"
+            )
+            continue
+        if status != 200:
+            code = _error_code(body) or "UNKNOWN"
+            failures.append(
+                f"calibration={calibration_id} HTTP {status} code={code}"
+            )
+            output(
+                "  ! 清理失敗："
+                f"calibration={calibration_id} HTTP {status} code={code}"
+            )
+            continue
         output(f"  ✓ 清理非正式資料：calibration={calibration_id}")
         records.pop(calibration_id, None)
+    if failures:
+        raise SmokeError(f"清理非正式資料失敗：{'；'.join(failures)}")
 
 
 def _config_from_args(args: argparse.Namespace) -> SmokeConfig:

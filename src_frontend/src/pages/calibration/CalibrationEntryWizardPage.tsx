@@ -480,6 +480,7 @@ export default function CalibrationEntryWizardPage() {
     try {
       const result = await validateCalibration.mutateAsync({
         calibrationId: record.id,
+        expected_version: record.row_version,
       });
       setValidation(result);
       setRecord((current) => current ? {

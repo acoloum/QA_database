@@ -1039,9 +1039,13 @@ class CalibrationService:
     def validate(calibration_id: int, payload: dict, actor_id: int) -> dict:
         """驗證校正紀錄是否可送審，回傳 blockers。"""
         data = CalibrationService._object(payload)
-        CalibrationService._reject_unknown(data, set())
+        CalibrationService._reject_unknown(data, {"expected_version"})
+        expected_version = CalibrationService._required_int(
+            data, "expected_version", "CALIBRATION_FIELD_INVALID"
+        )
         record = CalibrationService._lock_record(calibration_id)
         try:
+            CalibrationService._require_version(record, expected_version)
             if record.status not in {
                 "draft",
                 "in_progress",

@@ -471,6 +471,10 @@ describe('四步校正詳細數據登錄精靈', () => {
     await user.click(screen.getByRole('button', { name: '儲存原始讀值' }));
     await user.click(await screen.findByRole('button', { name: '執行送審前驗證' }));
 
+    expect(validateMock).toHaveBeenCalledWith({
+      calibrationId: 41,
+      expected_version: 3,
+    });
     expect(await screen.findByText(/CALIBRATION_READING_MISSING/))
       .toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '返回 P01 讀值' }));

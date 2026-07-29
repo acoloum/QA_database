@@ -6,6 +6,7 @@ import pytest
 
 from backend.models import Attachment, EquipmentCalibrationRecord
 from backend.services.calibration_errors import (
+    CalibrationConflict,
     CalibrationForbidden,
     CalibrationValidationError,
 )
@@ -37,7 +38,11 @@ def _ready_external(db_session, calibration_users) -> dict:
         },
         actor_id=manager.id,
     )
-    CalibrationService.validate(saved["id"], {}, actor_id=manager.id)
+    CalibrationService.validate(
+        saved["id"],
+        {"expected_version": saved["row_version"]},
+        actor_id=manager.id,
+    )
     return CalibrationService.get(saved["id"])
 
 
@@ -62,6 +67,90 @@ def _certificate(
     db_session.add(attachment)
     db_session.commit()
     return attachment
+
+
+def test_validate_uses_current_expected_version_and_increments_once(
+    db_session,
+    calibration_users,
+):
+    """validate 必須鎖定畫面版本，狀態轉移只能將 row_version 加一。"""
+    manager = calibration_users["manager"]["user"]
+    approver = calibration_users["approver"]["user"]
+    draft = _create_two_point_draft(db_session, manager.id, approver.id)
+    saved = CalibrationService.save_readings(
+        draft["id"],
+        {
+            "expected_version": draft["row_version"],
+            "points": [
+                _point_payload(
+                    draft["points"][0],
+                    ("10.001", "10.002", "10.003"),
+                ),
+                _point_payload(
+                    draft["points"][1],
+                    ("20.001", "20.002", "20.003"),
+                ),
+            ],
+        },
+        actor_id=manager.id,
+    )
+
+    validated = CalibrationService.validate(
+        saved["id"],
+        {"expected_version": saved["row_version"]},
+        actor_id=manager.id,
+    )
+
+    assert validated["result"] == "pass"
+    assert validated["row_version"] == saved["row_version"] + 1
+    persisted = db_session.get(EquipmentCalibrationRecord, saved["id"])
+    assert persisted.status == "ready_for_submission"
+    assert persisted.row_version == validated["row_version"]
+
+
+def test_validate_rejects_stale_expected_version_without_writes(
+    db_session,
+    calibration_users,
+):
+    """stale validate 不得改狀態、版本或 audit evidence。"""
+    manager = calibration_users["manager"]["user"]
+    approver = calibration_users["approver"]["user"]
+    draft = _create_two_point_draft(db_session, manager.id, approver.id)
+    saved = CalibrationService.save_readings(
+        draft["id"],
+        {
+            "expected_version": draft["row_version"],
+            "points": [
+                _point_payload(
+                    draft["points"][0],
+                    ("10.001", "10.002", "10.003"),
+                ),
+                _point_payload(
+                    draft["points"][1],
+                    ("20.001", "20.002", "20.003"),
+                ),
+            ],
+        },
+        actor_id=manager.id,
+    )
+
+    with pytest.raises(CalibrationConflict) as exc:
+        CalibrationService.validate(
+            saved["id"],
+            {"expected_version": saved["row_version"] - 1},
+            actor_id=manager.id,
+        )
+
+    assert exc.value.code == "CALIBRATION_VERSION_CONFLICT"
+    assert exc.value.details == {
+        "calibration_id": saved["id"],
+        "current_version": saved["row_version"],
+        "expected_version": saved["row_version"] - 1,
+    }
+    db_session.expire_all()
+    persisted = db_session.get(EquipmentCalibrationRecord, saved["id"])
+    assert persisted.status == "in_progress"
+    assert persisted.row_version == saved["row_version"]
 
 
 def test_external_submit_without_certificate_is_zero_write(
@@ -136,7 +225,9 @@ def test_submit_and_approve_enforces_separation_and_preserves_hash(
         actor_id=manager.id,
     )
     validated = CalibrationService.validate(
-        bound["id"], {}, actor_id=manager.id
+        bound["id"],
+        {"expected_version": bound["row_version"]},
+        actor_id=manager.id,
     )
     submitted = CalibrationService.submit(
         bound["id"],
@@ -204,7 +295,9 @@ def test_submit_rejects_tampered_hash_and_rolls_back(db_session, calibration_use
         actor_id=manager.id,
     )
     validated = CalibrationService.validate(
-        bound["id"], {}, actor_id=manager.id
+        bound["id"],
+        {"expected_version": bound["row_version"]},
+        actor_id=manager.id,
     )
     record = db_session.get(EquipmentCalibrationRecord, bound["id"])
     record.data_hash = "0" * 64

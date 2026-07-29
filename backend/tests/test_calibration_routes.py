@@ -1529,19 +1529,100 @@ def test_validate_calibration_returns_blockers_when_incomplete(
             },
         },
     )
-    record_id = create_resp.get_json()["data"]["id"]
+    created = create_resp.get_json()["data"]
+    record_id = created["id"]
 
     # 尚未保存讀值，驗證
     response = client.post(
         f"/api/calibrations/{record_id}/validate",
         headers=_authorization(manager_token),
-        json={},
+        json={"expected_version": created["row_version"]},
     )
 
     assert response.status_code == 200
     data = response.get_json()["data"]
     assert data["result"] == "pending"
     assert "CALIBRATION_READING_MISSING" in data["blockers"]
+
+
+def test_validate_route_rejects_stale_version_then_accepts_current_version(
+    client,
+    calibration_record_setup,
+    db_session,
+):
+    """route 必須把 expected_version 傳入 service 並保留穩定 conflict。"""
+    setup = calibration_record_setup
+    manager_token = setup["manager"]["token"]
+    created = client.post(
+        "/api/calibrations",
+        headers=_authorization(manager_token),
+        json={
+            "equipment_id": setup["equipment"].id,
+            "template_version_id": setup["version"].id,
+            "calibration_type": "internal",
+            "calibration_date": date.today().isoformat(),
+            "reference_standard_equipment_id": setup["ref_equipment"].id,
+            "environment_conditions": {
+                "temperature": {"value": "23", "unit": "°C"}
+            },
+        },
+    ).get_json()["data"]
+    saved_response = client.put(
+        f"/api/calibrations/{created['id']}/readings",
+        headers=_authorization(manager_token),
+        json={
+            "expected_version": created["row_version"],
+            "points": [{
+                "point_id": created["points"][0]["id"],
+                "reference_value": "10.000",
+                "readings": [
+                    {"trial_no": 1, "indicated_value": "10.001"},
+                    {"trial_no": 2, "indicated_value": "10.002"},
+                    {"trial_no": 3, "indicated_value": "10.003"},
+                ],
+            }],
+        },
+    )
+    assert saved_response.status_code == 200
+    saved = saved_response.get_json()["data"]
+
+    missing = client.post(
+        f"/api/calibrations/{created['id']}/validate",
+        headers=_authorization(manager_token),
+        json={},
+    )
+    stale = client.post(
+        f"/api/calibrations/{created['id']}/validate",
+        headers=_authorization(manager_token),
+        json={"expected_version": saved["row_version"] - 1},
+    )
+    current = client.post(
+        f"/api/calibrations/{created['id']}/validate",
+        headers=_authorization(manager_token),
+        json={"expected_version": saved["row_version"]},
+    )
+
+    assert missing.status_code == 422
+    assert missing.get_json()["error"] == {
+        "code": "CALIBRATION_FIELD_INVALID",
+        "message": "expected_version 必須是整數",
+        "details": {"field": "expected_version"},
+    }
+    assert stale.status_code == 409
+    assert stale.get_json()["error"] == {
+        "code": "CALIBRATION_VERSION_CONFLICT",
+        "message": "校正紀錄已被其他人更新，請重新載入",
+        "details": {
+            "calibration_id": created["id"],
+            "current_version": saved["row_version"],
+            "expected_version": saved["row_version"] - 1,
+        },
+    }
+    assert current.status_code == 200
+    assert current.get_json()["data"]["row_version"] == saved["row_version"] + 1
+    persisted = db_session.get(EquipmentCalibrationRecord, created["id"])
+    assert persisted.status == "ready_for_submission"
+    assert persisted.row_version == saved["row_version"] + 1
 
 
 def test_validate_calibration_pass_sets_ready_for_submission(
@@ -1570,7 +1651,7 @@ def test_validate_calibration_pass_sets_ready_for_submission(
     point_id = record["points"][0]["id"]
 
     # 保存合格讀值
-    client.put(
+    save_resp = client.put(
         f"/api/calibrations/{record_id}/readings",
         headers=_authorization(manager_token),
         json={
@@ -1593,7 +1674,9 @@ def test_validate_calibration_pass_sets_ready_for_submission(
     response = client.post(
         f"/api/calibrations/{record_id}/validate",
         headers=_authorization(manager_token),
-        json={},
+        json={
+            "expected_version": save_resp.get_json()["data"]["row_version"],
+        },
     )
 
     assert response.status_code == 200
@@ -1656,7 +1739,7 @@ def test_submit_calibration_internal_revalidates_reference_standard(
     validate_resp = client.post(
         f"/api/calibrations/{record_id}/validate",
         headers=_authorization(manager_token),
-        json={},
+        json={"expected_version": saved_record["row_version"]},
     )
     validated_record = validate_resp.get_json()["data"]
 
@@ -1709,7 +1792,7 @@ def test_submit_calibration_external_requires_certificate(client, calibration_re
     point_id = record["points"][0]["id"]
 
     # 保存讀值（外校也需要讀值以產生計算摘要）
-    client.put(
+    save_resp = client.put(
         f"/api/calibrations/{record_id}/readings",
         headers=_authorization(manager_token),
         json={
@@ -1732,7 +1815,9 @@ def test_submit_calibration_external_requires_certificate(client, calibration_re
     validate_resp = client.post(
         f"/api/calibrations/{record_id}/validate",
         headers=_authorization(manager_token),
-        json={},
+        json={
+            "expected_version": save_resp.get_json()["data"]["row_version"],
+        },
     )
     validated_record = validate_resp.get_json()["data"]
 
@@ -1775,7 +1860,7 @@ def test_approve_calibration_self_approval_forbidden(client, calibration_record_
     point_id = record["points"][0]["id"]
 
     # 保存合格讀值
-    client.put(
+    save_resp = client.put(
         f"/api/calibrations/{record_id}/readings",
         headers=_authorization(manager_token),
         json={
@@ -1798,7 +1883,9 @@ def test_approve_calibration_self_approval_forbidden(client, calibration_record_
     validate_resp = client.post(
         f"/api/calibrations/{record_id}/validate",
         headers=_authorization(manager_token),
-        json={},
+        json={
+            "expected_version": save_resp.get_json()["data"]["row_version"],
+        },
     )
     validated_record = validate_resp.get_json()["data"]
 
@@ -1866,7 +1953,7 @@ def test_reject_calibration_creates_successor_draft(client, calibration_record_s
     point_id = record["points"][0]["id"]
 
     # 保存合格讀值
-    client.put(
+    save_resp = client.put(
         f"/api/calibrations/{record_id}/readings",
         headers=_authorization(manager_token),
         json={
@@ -1889,7 +1976,9 @@ def test_reject_calibration_creates_successor_draft(client, calibration_record_s
     validate_resp = client.post(
         f"/api/calibrations/{record_id}/validate",
         headers=_authorization(manager_token),
-        json={},
+        json={
+            "expected_version": save_resp.get_json()["data"]["row_version"],
+        },
     )
     validated_record = validate_resp.get_json()["data"]
 
