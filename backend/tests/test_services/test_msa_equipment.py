@@ -630,6 +630,25 @@ def test_detail_uses_the_same_calibration_summary_contract_as_list(
     assert "到期" in detail["calibration_block_reason"]
 
 
+def test_detail_marks_legacy_calibration_without_inventing_detailed_readings(
+    db_session,
+):
+    """防止設備抽屜把舊摘要紀錄誤呈現為詳細原始讀值。"""
+    equipment = _equipment(
+        db_session, "EQ-DETAIL-LEGACY", status="active"
+    )
+    _calibration(
+        db_session,
+        equipment,
+        data_level="summary_legacy",
+    )
+    db_session.commit()
+
+    detail = MsaEquipmentService.get(equipment.id)
+
+    assert detail["calibrations"][0]["data_level"] == "summary_legacy"
+
+
 @pytest.mark.parametrize(
     ("args", "code"),
     [

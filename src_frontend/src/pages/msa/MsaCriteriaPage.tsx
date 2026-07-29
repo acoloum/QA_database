@@ -12,7 +12,7 @@ import type {
   MsaCriteriaProfile,
   MsaCriteriaVersion,
 } from '../../types/msa';
-import './msaEquipment.css';
+import '../equipment/measurementEquipment.css';
 
 /** 研究類型代碼對應的中文名稱；未列出的代碼直接顯示代碼本身。 */
 const STUDY_TYPE_LABELS: Record<string, string> = {

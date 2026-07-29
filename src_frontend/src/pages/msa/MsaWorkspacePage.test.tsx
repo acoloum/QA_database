@@ -124,6 +124,23 @@ describe('MSA 工作台', () => {
     expect(links[0]).toHaveAttribute('href', '/msa/studies/new');
   });
 
+  it('沒有 calibration.view 時只顯示設備阻擋摘要，不提供不可達連結', async () => {
+    authMock.mockReturnValue({
+      hasPermission: (permission: string) => permission === 'msa.view',
+    });
+    renderPage();
+
+    const [equipmentItem] = await screen.findAllByTestId('msa-work-item');
+    expect(within(equipmentItem).getByText('EQ-001｜分厘卡'))
+      .toBeInTheDocument();
+    expect(within(equipmentItem).queryByRole('link', { name: '前往處理' }))
+      .not.toBeInTheDocument();
+
+    const shortcuts = screen.getByRole('navigation', { name: 'MSA 捷徑' });
+    expect(within(shortcuts).queryByRole('link', { name: /設備清單/ }))
+      .not.toBeInTheDocument();
+  });
+
   it('所有捷徑都可用鍵盤逐一到達', async () => {
     const user = userEvent.setup();
     renderPage();

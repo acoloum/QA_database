@@ -23,7 +23,7 @@ export interface MsaWorkItem {
   owner: string | null;
   dueDate: string | null;
   nextStep: string;
-  href: string;
+  href: string | null;
 }
 
 // 先看類別，同類別再看期限先後；沒有期限的排在有期限之後
@@ -78,7 +78,9 @@ export default function MsaWorkQueue({
               </span>
               <span className="msa-queue__next">下一步：{item.nextStep}</span>
             </div>
-            <Link to={item.href}>前往處理</Link>
+            {item.href
+              ? <Link to={item.href}>前往處理</Link>
+              : <span>需校正檢視權限</span>}
           </li>
         );
       })}

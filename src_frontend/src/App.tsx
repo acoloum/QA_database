@@ -8,6 +8,7 @@ import AuthLayout from './layouts/AuthLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import SpcViewRoute from './components/SpcViewRoute';
+import CalibrationViewRoute from './components/CalibrationViewRoute';
 
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
@@ -33,7 +34,9 @@ const ThermocoupleCalibrationPage = lazy(() => import('./pages/pyrometry/Thermoc
 const AdvancedSpcPage = lazy(() => import('./pages/spc/AdvancedSpcPage'));
 const MechanicalTestListPage = lazy(() => import('./pages/mechanical/MechanicalTestListPage'));
 const MsaWorkspacePage = lazy(() => import('./pages/msa/MsaWorkspacePage'));
-const MeasurementEquipmentPage = lazy(() => import('./pages/msa/MeasurementEquipmentPage'));
+const MeasurementEquipmentPage = lazy(
+  () => import('./pages/equipment/MeasurementEquipmentPage'),
+);
 const MsaImportHistoryPage = lazy(() => import('./pages/msa/MsaImportHistoryPage'));
 const MsaCriteriaPage = lazy(() => import('./pages/msa/MsaCriteriaPage'));
 const MsaStudyListPage = lazy(() => import('./pages/msa/MsaStudyListPage'));
@@ -93,13 +96,19 @@ function App() {
                 <Route path="/pyrometry/thermocouples" element={<ThermocoupleCalibrationPage />} />
                 <Route path="/mechanical" element={<MechanicalTestListPage />} />
                 <Route path="/msa" element={<MsaViewRoute><MsaWorkspacePage /></MsaViewRoute>} />
-                <Route path="/msa/equipment" element={<MsaViewRoute><MeasurementEquipmentPage /></MsaViewRoute>} />
+                <Route path="/msa/equipment" element={<Navigate to="/measurement-equipment" replace />} />
                 <Route path="/msa/imports" element={<MsaViewRoute><MsaImportHistoryPage /></MsaViewRoute>} />
                 <Route path="/msa/criteria" element={<MsaViewRoute><MsaCriteriaPage /></MsaViewRoute>} />
                 <Route path="/msa/studies" element={<MsaViewRoute><MsaStudyListPage /></MsaViewRoute>} />
                 <Route path="/msa/studies/new" element={<MsaViewRoute><MsaStudyWizardPage /></MsaViewRoute>} />
                 <Route path="/msa/studies/:studyId/edit" element={<MsaViewRoute><MsaStudyWizardPage /></MsaViewRoute>} />
                 <Route path="/msa/studies/:studyId/collect" element={<MsaViewRoute><MsaDataCollectionPage /></MsaViewRoute>} />
+              </Route>
+            </Route>
+
+            <Route element={<CalibrationViewRoute />}>
+              <Route element={<MainLayout />}>
+                <Route path="/measurement-equipment" element={<MeasurementEquipmentPage />} />
               </Route>
             </Route>
 

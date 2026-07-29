@@ -14,7 +14,7 @@ import type {
   EquipmentStatus,
   MeasurementEquipment,
 } from '../../types/msa';
-import './msaEquipment.css';
+import './measurementEquipment.css';
 
 const EQUIPMENT_STATUS_OPTIONS: Array<{ value: EquipmentStatus; label: string }> = [
   { value: 'active', label: '使用中' },
@@ -80,7 +80,8 @@ function EquipmentCard({
 
 export default function MeasurementEquipmentPage() {
   const { hasPermission } = useAuth();
-  const canManage = hasPermission('msa.manage');
+  const canManage = hasPermission('calibration.manage');
+  const canImport = hasPermission('msa.manage');
   const [params, setParams] = useState<EquipmentListParams>({
     page: 1,
     page_size: 25,
@@ -139,20 +140,26 @@ export default function MeasurementEquipmentPage() {
     <main className="msa-page" aria-labelledby="equipment-title">
       <header className="msa-page__header">
         <div>
-          <p className="msa-eyebrow">MSA / 量測資源治理</p>
+          <p className="msa-eyebrow">量測設備 / 校正證據治理</p>
           <h1 id="equipment-title">設備清單</h1>
           <p>先辨識會阻擋正式研究的設備，再沿證據軌完成處置。</p>
         </div>
-        {canManage && (
+        {(canManage || canImport) && (
           <div className="msa-page__actions">
-            <a className="msa-button msa-button--outline" href="/msa/imports">匯入設備</a>
-            <button
-              type="button"
-              className="msa-button msa-button--primary"
-              onClick={() => setShowCreate(true)}
-            >
-              新增設備
-            </button>
+            {canImport && (
+              <a className="msa-button msa-button--outline" href="/msa/imports">
+                匯入設備
+              </a>
+            )}
+            {canManage && (
+              <button
+                type="button"
+                className="msa-button msa-button--primary"
+                onClick={() => setShowCreate(true)}
+              >
+                新增設備
+              </button>
+            )}
           </div>
         )}
       </header>
@@ -241,7 +248,7 @@ export default function MeasurementEquipmentPage() {
       {!query.isLoading && !query.isError && items.length === 0 && (
         <div className="msa-state">
           <strong>尚無符合條件的量測設備</strong>
-          <p>調整篩選條件，或由具 msa.manage 權限的人員建立設備。</p>
+          <p>調整篩選條件，或由具 calibration.manage 權限的人員建立設備。</p>
         </div>
       )}
 

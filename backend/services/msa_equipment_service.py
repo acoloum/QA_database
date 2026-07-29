@@ -1407,6 +1407,7 @@ class MsaEquipmentService:
             "restriction_conditions": record.restriction_conditions,
             "approval_reason": record.approval_reason,
             "certificate_attachment_id": record.certificate_attachment_id,
+            "data_level": record.data_level,
             "status": record.status,
             "created_by": record.created_by,
             "created_at": MsaEquipmentService._canonical_value(

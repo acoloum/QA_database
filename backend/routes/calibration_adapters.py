@@ -5,6 +5,7 @@ from functools import wraps
 from flask import current_app, jsonify
 from werkzeug.exceptions import HTTPException
 
+from ..models import Role
 from ..services.calibration_errors import CalibrationServiceError
 from ..utils import auth_required, require_permission
 
@@ -120,6 +121,70 @@ def require_calibration_permission(permission: str):
                         403,
                     )
             return result
+
+        return wrapped
+
+    return decorator
+
+
+def require_calibration_any_permission(*permissions: str):
+    """允許任一指定權限，供跨模組唯讀摘要等受控相容介面使用。"""
+    if not permissions:
+        raise ValueError("至少必須指定一項權限")
+
+    def decorator(function):
+        @wraps(function)
+        def wrapped(current_user, *args, **kwargs):
+            if current_user is None:
+                return (
+                    jsonify(
+                        {
+                            "error": {
+                                "code": "CALIBRATION_USER_NOT_FOUND",
+                                "message": "使用者不存在",
+                                "details": {},
+                            }
+                        }
+                    ),
+                    401,
+                )
+            if not bool(current_user.is_active):
+                return (
+                    jsonify(
+                        {
+                            "error": {
+                                "code": "CALIBRATION_USER_INACTIVE",
+                                "message": "使用者帳號已停用",
+                                "details": {},
+                            }
+                        }
+                    ),
+                    401,
+                )
+            if current_user.role == "admin":
+                return function(current_user, *args, **kwargs)
+
+            role = Role.query.filter_by(code=current_user.role).first()
+            if role and any(
+                role.has_permission(permission)
+                for permission in permissions
+            ):
+                return function(current_user, *args, **kwargs)
+
+            return (
+                jsonify(
+                    {
+                        "error": {
+                            "code": "CALIBRATION_PERMISSION_DENIED",
+                            "message": "權限不足",
+                            "details": {
+                                "permission": " 或 ".join(permissions),
+                            },
+                        }
+                    }
+                ),
+                403,
+            )
 
         return wrapped
 

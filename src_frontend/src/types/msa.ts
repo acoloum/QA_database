@@ -1,10 +1,12 @@
+import type { CalibrationWorkflowStatus } from './calibration';
+
 /** MSA API 共用的 JSON 物件邊界；未經解析的來源欄位不得假設其結構。 */
 export type MsaJsonObject = Record<string, unknown>;
 
 export type EquipmentStatus = 'pending_review' | 'active' | 'maintenance' | 'inactive' | 'scrapped';
 export type CalibrationType = 'internal' | 'external' | 'exempt';
 export type CalibrationResult = 'pending' | 'pass' | 'fail' | 'limited_use';
-export type CalibrationRecordStatus = 'draft' | 'approved';
+export type CalibrationRecordStatus = CalibrationWorkflowStatus;
 export type CalibrationStatus = 'valid' | 'due_soon' | 'expired' | 'failed' | 'missing' | 'exempt';
 export type EquipmentStatusEventType =
   | 'calibration_overdue'
@@ -79,6 +81,7 @@ export interface EquipmentCalibration {
   restriction_conditions: string | null;
   approval_reason: string | null;
   certificate_attachment_id: number | null;
+  data_level: 'summary_legacy' | 'detailed';
   status: CalibrationRecordStatus;
   created_by: number | null;
   created_at: string;

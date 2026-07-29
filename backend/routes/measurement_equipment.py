@@ -9,6 +9,11 @@ from ..services.msa_errors import MsaValidationError
 from ..services.msa_import_service import (
     MsaImportService,
 )
+from .calibration_adapters import (
+    calibration_auth_required as _calibration_auth_required,
+    require_calibration_any_permission as _require_calibration_any_permission,
+    require_calibration_permission as _require_calibration_permission,
+)
 from .msa_adapters import (
     handle_msa_errors as _handle_msa_errors,
     msa_auth_required as _msa_auth_required,
@@ -103,8 +108,8 @@ def confirm_import(current_user, batch_id: int):
 
 
 @measurement_equipment_bp.get("/api/measurement-equipment")
-@_msa_auth_required
-@_require_msa_permission("msa.view")
+@_calibration_auth_required
+@_require_calibration_any_permission("calibration.view", "msa.view")
 @_handle_msa_errors
 def list_equipment(current_user):
     """列出目前身分可檢視的量測設備。"""
@@ -112,8 +117,8 @@ def list_equipment(current_user):
 
 
 @measurement_equipment_bp.post("/api/measurement-equipment")
-@_msa_auth_required
-@_require_msa_permission("msa.manage")
+@_calibration_auth_required
+@_require_calibration_permission("calibration.manage")
 @_handle_msa_errors
 def create_equipment(current_user):
     """建立量測設備主檔。"""
@@ -125,8 +130,8 @@ def create_equipment(current_user):
 
 
 @measurement_equipment_bp.get("/api/measurement-equipment/<int:equipment_id>")
-@_msa_auth_required
-@_require_msa_permission("msa.view")
+@_calibration_auth_required
+@_require_calibration_permission("calibration.view")
 @_handle_msa_errors
 def get_equipment(current_user, equipment_id: int):
     """取得設備主檔與受控證據明細。"""
@@ -136,8 +141,8 @@ def get_equipment(current_user, equipment_id: int):
 @measurement_equipment_bp.patch(
     "/api/measurement-equipment/<int:equipment_id>"
 )
-@_msa_auth_required
-@_require_msa_permission("msa.manage")
+@_calibration_auth_required
+@_require_calibration_permission("calibration.manage")
 @_handle_msa_errors
 def update_equipment(current_user, equipment_id: int):
     """修改設備可變欄位。"""
@@ -185,8 +190,8 @@ def approve_calibration(current_user, calibration_id: int):
 @measurement_equipment_bp.post(
     "/api/measurement-equipment/<int:equipment_id>/status-events"
 )
-@_msa_auth_required
-@_require_msa_permission("msa.manage")
+@_calibration_auth_required
+@_require_calibration_permission("calibration.manage")
 @_handle_msa_errors
 def create_status_event(current_user, equipment_id: int):
     """建立設備狀態事件。"""
@@ -201,8 +206,8 @@ def create_status_event(current_user, equipment_id: int):
 @measurement_equipment_bp.post(
     "/api/measurement-equipment/<int:equipment_id>/links"
 )
-@_msa_auth_required
-@_require_msa_permission("msa.manage")
+@_calibration_auth_required
+@_require_calibration_permission("calibration.manage")
 @_handle_msa_errors
 def create_equipment_link(current_user, equipment_id: int):
     """建立或切換 CQI-9 專用設備的正式連結。"""
@@ -218,8 +223,8 @@ def create_equipment_link(current_user, equipment_id: int):
     "/api/measurement-equipment/<int:equipment_id>/links/"
     "<int:link_id>/retire"
 )
-@_msa_auth_required
-@_require_msa_permission("msa.manage")
+@_calibration_auth_required
+@_require_calibration_permission("calibration.manage")
 @_handle_msa_errors
 def retire_equipment_link(current_user, equipment_id: int, link_id: int):
     """退役畫面已確認仍為目前正式狀態的來源連結。"""

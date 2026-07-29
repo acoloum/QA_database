@@ -52,3 +52,35 @@ describe('Sidebar 的 MSA 選單', () => {
     expect(screen.getByRole('link', { name: /MSA 工作台/ })).toHaveAttribute('href', '/msa');
   });
 });
+
+describe('Sidebar 的獨立校正選單', () => {
+  it('具有 calibration.view 時顯示量測設備與校正管理', () => {
+    authMock.mockReturnValue({
+      user: { role: 'user' },
+      hasPermission: (permission: string) => (
+        permission === 'calibration.view'
+      ),
+    });
+    render(<MemoryRouter><Sidebar /></MemoryRouter>);
+
+    expect(screen.getByRole('link', { name: /量測設備/ }))
+      .toHaveAttribute('href', '/measurement-equipment');
+    expect(screen.getByRole('link', { name: /校正管理/ }))
+      .toHaveAttribute('href', '/calibrations');
+  });
+
+  it('只有 msa.view 時不顯示量測設備與校正管理', () => {
+    authMock.mockReturnValue({
+      user: { role: 'user' },
+      hasPermission: (permission: string) => permission === 'msa.view',
+    });
+    render(<MemoryRouter><Sidebar /></MemoryRouter>);
+
+    expect(screen.queryByRole('link', { name: /量測設備/ }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /校正管理/ }))
+      .not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /MSA 工作台/ }))
+      .toBeInTheDocument();
+  });
+});

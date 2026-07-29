@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Offcanvas } from 'react-bootstrap';
+import { Link } from 'react-router-dom';
 
 import { useAuth } from '../../context/useAuth';
 import {
@@ -9,6 +10,7 @@ import {
   useUpdateMsaEquipment,
 } from '../../hooks/useMsaEquipment';
 import type {
+  CalibrationRecordStatus,
   CalibrationType,
   EquipmentCalibration,
   EquipmentCorrectionPoint,
@@ -16,7 +18,6 @@ import type {
   EquipmentStatus,
   EquipmentStatusEvent,
 } from '../../types/msa';
-import EquipmentCalibrationForm from './EquipmentCalibrationForm';
 import EquipmentStatusBadge from './EquipmentStatusBadge';
 
 interface EquipmentDetailDrawerProps {
@@ -61,6 +62,17 @@ const EVENT_LABELS: Record<EquipmentStatusEvent['event_type'], string> = {
   review_completed: '審查完成',
 };
 
+const CALIBRATION_STATUS_LABELS: Record<CalibrationRecordStatus, string> = {
+  draft: '草稿',
+  in_progress: '輸入中',
+  ready_for_submission: '待送審',
+  submitted: '已送審',
+  rejected: '已退回',
+  approved: '已核准',
+  superseded: '已被取代',
+  voided: '已作廢',
+};
+
 const tabs: Array<{ id: Tab; label: string }> = [
   { id: 'master', label: '主檔與能力' },
   { id: 'calibration', label: '校驗與補正點' },
@@ -86,6 +98,8 @@ export default function EquipmentDetailDrawer({
   const [statusReason, setStatusReason] = useState('');
   const [statusError, setStatusError] = useState<string | null>(null);
   const equipment = detail.data;
+  const canManageEquipment = hasPermission('calibration.manage');
+  const canExecuteCalibration = hasPermission('calibration.execute');
   const availableStatuses = STATUS_OPTIONS.filter(
     (option) => option.value !== equipment?.status,
   );
@@ -180,7 +194,7 @@ export default function EquipmentDetailDrawer({
                   <div><dt>位置</dt><dd>{equipment.location || '未填寫'}</dd></div>
                   <div><dt>保管人</dt><dd>{equipment.custodian || '未填寫'}</dd></div>
                 </dl>
-                {hasPermission('msa.manage') && !isEditing && (
+                {canManageEquipment && !isEditing && (
                   <button
                     type="button"
                     className="msa-button msa-button--quiet"
@@ -189,7 +203,7 @@ export default function EquipmentDetailDrawer({
                     編輯主檔
                   </button>
                 )}
-                {hasPermission('msa.manage') && isEditing && (
+                {canManageEquipment && isEditing && (
                   <form
                     className="msa-edit-form"
                     onSubmit={(event) => {
@@ -309,7 +323,7 @@ export default function EquipmentDetailDrawer({
                     </div>
                   </form>
                 )}
-                {hasPermission('msa.manage') && (
+                {canManageEquipment && (
                   <form
                     className="msa-status-form"
                     onSubmit={(event) => {
@@ -378,7 +392,12 @@ export default function EquipmentDetailDrawer({
                   <article className="msa-calibration-version" key={record.id}>
                     <header>
                       <strong>{record.certificate_no || `校驗 #${record.id}`}</strong>
-                      <span>{record.status === 'approved' ? '已核准' : '草稿'}</span>
+                      <span>
+                        {record.data_level === 'summary_legacy'
+                          ? '舊版摘要資料'
+                          : '詳細校正資料'}
+                      </span>
+                      <span>{CALIBRATION_STATUS_LABELS[record.status]}</span>
                     </header>
                     <p className="msa-mono">
                       {record.calibration_date} → {record.next_due_date || '未設定到期日'}
@@ -429,12 +448,24 @@ export default function EquipmentDetailDrawer({
                         </tbody>
                       </table>
                     )}
+                    {record.data_level === 'detailed' && (
+                      <Link
+                        className="msa-button msa-button--quiet"
+                        to={`/calibrations/${record.id}`}
+                      >
+                        查看詳細證據
+                      </Link>
+                    )}
                   </article>
                 ))}
-                <EquipmentCalibrationForm
-                  equipmentId={equipment.id}
-                  calibrations={equipment.calibrations}
-                />
+                {canExecuteCalibration && (
+                  <Link
+                    className="msa-button msa-button--primary"
+                    to={`/measurement-equipment/${equipment.id}/calibrations/new`}
+                  >
+                    建立詳細校正
+                  </Link>
+                )}
               </section>
             )}
 

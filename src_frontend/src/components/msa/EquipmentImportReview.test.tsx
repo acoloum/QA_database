@@ -355,6 +355,19 @@ describe('設備匯入紀錄頁', () => {
     expect(screen.getByRole('heading', { name: '匯入稽核歷程' })).toBeInTheDocument();
   });
 
+  it('沒有 calibration.view 時返回 MSA 工作台而不是不可達設備頁', () => {
+    authMock.mockReturnValue({
+      hasPermission: (permission: string) => permission === 'msa.view',
+    });
+
+    render(<MsaImportHistoryPage />);
+
+    expect(screen.getByRole('link', { name: '返回 MSA 工作台' }))
+      .toHaveAttribute('href', '/msa');
+    expect(screen.queryByRole('link', { name: '返回設備清單' }))
+      .not.toBeInTheDocument();
+  });
+
   it('大型批次從歷程載入時以 row_page 分頁查詢', async () => {
     const user = userEvent.setup();
     historyMock.mockReturnValue({

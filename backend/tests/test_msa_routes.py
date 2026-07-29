@@ -30,10 +30,33 @@ def msa_user_headers(db_session):
     """建立 MSA 四層權限與無權限使用者，回傳可供 Flask client 使用的 JWT。"""
     permissions_by_role = {
         "no_msa": {},
-        "msa_view": {"msa.view": True},
-        "msa_execute": {"msa.view": True, "msa.execute": True},
-        "msa_manage": {"msa.view": True, "msa.execute": True, "msa.manage": True},
-        "msa_approve": {"msa.view": True, "msa.approve": True},
+        "msa_view": {"msa.view": True, "calibration.view": True},
+        "msa_execute": {
+            "msa.view": True,
+            "msa.execute": True,
+            "calibration.view": True,
+            "calibration.execute": True,
+        },
+        "msa_manage": {
+            "msa.view": True,
+            "msa.execute": True,
+            "msa.manage": True,
+            "calibration.view": True,
+            "calibration.execute": True,
+            "calibration.manage": True,
+        },
+        "msa_approve": {
+            "msa.view": True,
+            "msa.approve": True,
+            "calibration.view": True,
+            "calibration.approve": True,
+        },
+        "msa_only": {"msa.view": True, "msa.manage": True},
+        "calibration_view_only": {"calibration.view": True},
+        "calibration_manage_only": {
+            "calibration.view": True,
+            "calibration.manage": True,
+        },
     }
     users = {}
     for role_code, permissions in permissions_by_role.items():
@@ -735,14 +758,14 @@ def test_msa_import_auth_adapter_preserves_missing_user_envelope(client):
     }
 
 
-def test_all_msa_routes_share_the_stable_auth_envelope(client):
-    """MSA 共用 adapter 必須涵蓋設備與匯入 route。"""
+def test_equipment_routes_use_stable_calibration_auth_envelope(client):
+    """獨立設備路由必須使用校正模組的穩定認證 envelope。"""
     response = client.get("/api/measurement-equipment")
 
     assert response.status_code == 401
     assert response.get_json() == {
         "error": {
-            "code": "MSA_AUTH_REQUIRED",
+            "code": "CALIBRATION_AUTH_REQUIRED",
             "message": "缺少認證 Token",
             "details": {},
         }
@@ -770,8 +793,11 @@ def test_equipment_import_rejects_control_character_with_stable_envelope(
     }
 
 
-def test_equipment_list_requires_msa_view(client, msa_user_headers):
-    """移除 msa.view 權限時，清單路由必須拒絕存取。"""
+def test_equipment_list_requires_calibration_or_msa_view(
+    client,
+    msa_user_headers,
+):
+    """摘要清單沒有 calibration.view 或 msa.view 時必須拒絕存取。"""
     response = client.get(
         "/api/measurement-equipment",
         headers=msa_user_headers("no_msa"),
@@ -780,15 +806,84 @@ def test_equipment_list_requires_msa_view(client, msa_user_headers):
     assert response.status_code == 403
     assert response.get_json() == {
         "error": {
-            "code": "MSA_PERMISSION_DENIED",
+            "code": "CALIBRATION_PERMISSION_DENIED",
             "message": "權限不足",
-            "details": {"permission": "msa.view"},
+            "details": {"permission": "calibration.view 或 msa.view"},
         }
     }
 
 
-def test_equipment_create_requires_msa_manage(client, msa_user_headers):
-    """誤把 msa.execute 當成管理權限時，此測試應失敗。"""
+def test_equipment_list_supports_calibration_and_msa_summary_view(
+    client,
+    msa_user_headers,
+):
+    """獨立設備頁與 MSA 資格摘要必須共用安全的清單資料。"""
+    calibration_allowed = client.get(
+        "/api/measurement-equipment",
+        headers=msa_user_headers("calibration_view_only"),
+    )
+    msa_allowed = client.get(
+        "/api/measurement-equipment",
+        headers=msa_user_headers("msa_only"),
+    )
+
+    assert calibration_allowed.status_code == 200
+    assert msa_allowed.status_code == 200
+
+
+def test_equipment_detail_still_requires_calibration_view(
+    client,
+    msa_user_headers,
+):
+    """MSA 摘要權限不得開啟含校正紀錄與附件的設備完整證據。"""
+    equipment = _create_equipment(client, msa_user_headers)
+
+    denied = client.get(
+        f"/api/measurement-equipment/{equipment['id']}",
+        headers=msa_user_headers("msa_only"),
+    )
+    allowed = client.get(
+        f"/api/measurement-equipment/{equipment['id']}",
+        headers=msa_user_headers("calibration_view_only"),
+    )
+
+    assert denied.status_code == 403
+    assert denied.get_json()["error"] == {
+        "code": "CALIBRATION_PERMISSION_DENIED",
+        "message": "權限不足",
+        "details": {"permission": "calibration.view"},
+    }
+    assert allowed.status_code == 200
+
+
+def test_equipment_create_uses_calibration_manage(
+    client,
+    msa_user_headers,
+):
+    """防止設備管理按鈕與建立 API 使用不同權限命名空間。"""
+    allowed = client.post(
+        "/api/measurement-equipment",
+        json=_equipment_payload("EQ-CAL-MANAGE"),
+        headers=msa_user_headers("calibration_manage_only"),
+    )
+    denied = client.post(
+        "/api/measurement-equipment",
+        json=_equipment_payload("EQ-MSA-ONLY"),
+        headers=msa_user_headers("msa_only"),
+    )
+
+    assert allowed.status_code == 201
+    assert denied.status_code == 403
+    assert denied.get_json()["error"]["details"] == {
+        "permission": "calibration.manage"
+    }
+
+
+def test_equipment_execute_permission_is_not_equipment_manage(
+    client,
+    msa_user_headers,
+):
+    """誤把 calibration.execute 當成管理權限時，此測試應失敗。"""
     response = client.post(
         "/api/measurement-equipment",
         json={"equipment_no": "EQ-API-1", "name": "高度規"},
@@ -798,9 +893,9 @@ def test_equipment_create_requires_msa_manage(client, msa_user_headers):
     assert response.status_code == 403
     assert response.get_json() == {
         "error": {
-            "code": "MSA_PERMISSION_DENIED",
+            "code": "CALIBRATION_PERMISSION_DENIED",
             "message": "權限不足",
-            "details": {"permission": "msa.manage"},
+            "details": {"permission": "calibration.manage"},
         }
     }
 
@@ -851,7 +946,7 @@ def test_equipment_detail_and_patch_use_view_and_manage_permissions(
     client,
     msa_user_headers,
 ):
-    """detail 若未受 msa.view 保護，或 patch 錯放給 execute，此測試應失敗。"""
+    """detail 若未受校正 view 保護，或 patch 錯放給 execute，此測試應失敗。"""
     equipment = _create_equipment(client, msa_user_headers)
 
     forbidden_detail = client.get(

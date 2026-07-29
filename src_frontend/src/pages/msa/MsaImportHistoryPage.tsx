@@ -14,11 +14,12 @@ import type {
   EquipmentImportBatchSummary,
   EquipmentImportResolution,
 } from '../../types/msa';
-import './msaEquipment.css';
+import '../equipment/measurementEquipment.css';
 
 export default function MsaImportHistoryPage() {
   const { hasPermission } = useAuth();
   const canManage = hasPermission('msa.manage');
+  const canViewCalibration = hasPermission('calibration.view');
   const [page, setPage] = useState(1);
   const [file, setFile] = useState<File | null>(null);
   const [currentBatch, setCurrentBatch] = useState<EquipmentImportBatch | null>(null);
@@ -67,7 +68,12 @@ export default function MsaImportHistoryPage() {
           <h1 id="import-title">設備匯入與稽核紀錄</h1>
           <p>先保存預覽與逐列差異；所有 blocking issue 解除後才建立正式設備。</p>
         </div>
-        <a className="msa-button msa-button--outline" href="/msa/equipment">返回設備清單</a>
+        <a
+          className="msa-button msa-button--outline"
+          href={canViewCalibration ? '/measurement-equipment' : '/msa'}
+        >
+          {canViewCalibration ? '返回設備清單' : '返回 MSA 工作台'}
+        </a>
       </header>
 
       {canManage && (

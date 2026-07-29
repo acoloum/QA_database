@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
@@ -109,6 +110,7 @@ const calibration: EquipmentCalibration = {
   created_at: '2026-07-20T08:00:00+00:00',
   approved_by: null,
   approved_at: null,
+  data_level: 'summary_legacy',
   correction_points: [{
     id: 30,
     measurement_mode: '外徑量測',
@@ -152,6 +154,12 @@ const queryResult = (items: MeasurementEquipment[]) => ({
   refetch: vi.fn(),
 });
 
+const renderEquipmentPage = () => render(
+  <MemoryRouter>
+    <MeasurementEquipmentPage />
+  </MemoryRouter>,
+);
+
 describe('量測設備頁', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -185,7 +193,7 @@ describe('量測設備頁', () => {
     ];
     equipmentQueryMock.mockReturnValue(queryResult(items));
 
-    render(<MeasurementEquipmentPage />);
+    renderEquipmentPage();
 
     const queue = screen.getByLabelText('設備風險佇列');
     expect(within(queue).getAllByRole('button').map((button) => button.textContent)).toEqual([
@@ -216,13 +224,13 @@ describe('量測設備頁', () => {
     }));
   });
 
-  it('沒有 msa.manage 時不顯示新增、匯入與狀態變更動作', async () => {
+  it('沒有 calibration.manage 時不顯示新增、匯入與狀態變更動作', async () => {
     const user = userEvent.setup();
     authMock.mockReturnValue({
-      hasPermission: (permission: string) => permission === 'msa.view',
+      hasPermission: (permission: string) => permission === 'calibration.view',
     });
 
-    render(<MeasurementEquipmentPage />);
+    renderEquipmentPage();
 
     expect(screen.queryByRole('button', { name: '新增設備' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: '匯入設備' })).not.toBeInTheDocument();
@@ -233,7 +241,19 @@ describe('量測設備頁', () => {
     expect(screen.queryByRole('button', { name: '變更設備狀態' })).not.toBeInTheDocument();
   });
 
-  it('具 msa.manage 權限時可編輯主檔並保留未修改欄位的目前值', async () => {
+  it('設備管理者沒有 msa.manage 時可新增設備但不顯示舊匯入入口', () => {
+    authMock.mockReturnValue({
+      hasPermission: (permission: string) => permission === 'calibration.manage',
+    });
+
+    renderEquipmentPage();
+
+    expect(screen.getByRole('button', { name: '新增設備' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '匯入設備' }))
+      .not.toBeInTheDocument();
+  });
+
+  it('具 calibration.manage 權限時可編輯主檔並保留未修改欄位的目前值', async () => {
     const user = userEvent.setup();
     const refetch = vi.fn();
     const equipmentWithEmptyRangeMin = { ...detail, range_min: null };
@@ -243,8 +263,11 @@ describe('量測設備頁', () => {
       isError: false,
       refetch,
     }));
+    authMock.mockReturnValue({
+      hasPermission: (permission: string) => permission === 'calibration.manage',
+    });
 
-    render(<MeasurementEquipmentPage />);
+    renderEquipmentPage();
 
     await user.click(screen.getAllByRole('button', { name: /查看 EQ-001/ })[0]);
     await user.click(screen.getByRole('button', { name: '編輯主檔' }));
@@ -282,7 +305,7 @@ describe('量測設備頁', () => {
       calibration_block_reason: '校驗已於 2026-07-01 到期',
     }]));
 
-    render(<MeasurementEquipmentPage />);
+    renderEquipmentPage();
 
     expect(screen.getAllByText('校驗已於 2026-07-01 到期')).toHaveLength(2);
     expect(screen.getByRole('table', { name: '量測設備與校驗風險' })).toBeInTheDocument();
@@ -292,13 +315,15 @@ describe('量測設備頁', () => {
 
   it('設備明細可追到校驗補正點、狀態事件與 CQI-9 來源連結', async () => {
     const user = userEvent.setup();
-    render(<MeasurementEquipmentPage />);
+    renderEquipmentPage();
 
     await user.click(screen.getAllByRole('button', { name: /查看 EQ-001/ })[0]);
     expect(await screen.findByRole('dialog', { name: /EQ-001/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '主檔與量測能力' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', { name: '校驗與補正點' }));
+    expect(screen.getByText('舊版摘要資料')).toBeInTheDocument();
+    expect(screen.queryByText('原始讀值')).not.toBeInTheDocument();
     expect(screen.getByText('CERT-20')).toBeInTheDocument();
     expect(screen.getByText('-0.0020000000')).toBeInTheDocument();
 
@@ -312,6 +337,67 @@ describe('量測設備頁', () => {
     expect(screen.getByText('研究引用將於研究模組啟用後呈現')).toBeInTheDocument();
   });
 
+  it('校正執行者由設備明細建立詳細校正，不再使用舊摘要草稿表單', async () => {
+    const user = userEvent.setup();
+    authMock.mockReturnValue({
+      hasPermission: (permission: string) => permission === 'calibration.execute',
+    });
+    renderEquipmentPage();
+
+    await user.click(screen.getAllByRole('button', { name: /查看 EQ-001/ })[0]);
+    await user.click(screen.getByRole('tab', { name: '校驗與補正點' }));
+
+    expect(screen.getByRole('link', { name: '建立詳細校正' }))
+      .toHaveAttribute(
+        'href',
+        '/measurement-equipment/1/calibrations/new',
+      );
+    expect(screen.queryByRole('button', { name: '儲存校驗草稿' }))
+      .not.toBeInTheDocument();
+  });
+
+  it('只有 calibration.manage 而沒有 execute 時不顯示建立詳細校正', async () => {
+    const user = userEvent.setup();
+    authMock.mockReturnValue({
+      hasPermission: (permission: string) => permission === 'calibration.manage',
+    });
+    renderEquipmentPage();
+
+    await user.click(screen.getAllByRole('button', { name: /查看 EQ-001/ })[0]);
+    await user.click(screen.getByRole('tab', { name: '校驗與補正點' }));
+
+    expect(screen.queryByRole('link', { name: '建立詳細校正' }))
+      .not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['submitted', '已送審'],
+    ['rejected', '已退回'],
+    ['voided', '已作廢'],
+  ] as const)('詳細校正 %s 顯示正確工作流狀態', async (status, label) => {
+    const user = userEvent.setup();
+    equipmentDetailMock.mockReturnValue({
+      data: {
+        ...detail,
+        calibrations: [{
+          ...calibration,
+          data_level: 'detailed',
+          status,
+        }],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    renderEquipmentPage();
+
+    await user.click(screen.getAllByRole('button', { name: /查看 EQ-001/ })[0]);
+    await user.click(screen.getByRole('tab', { name: '校驗與補正點' }));
+
+    expect(screen.getByText('詳細校正資料')).toBeInTheDocument();
+    expect(screen.getByText(label)).toBeInTheDocument();
+  });
+
   it('狀態變更送出目前 expected_status 與明確事件類型', async () => {
     const user = userEvent.setup();
     equipmentDetailMock.mockReturnValue({
@@ -320,7 +406,7 @@ describe('量測設備頁', () => {
       isError: false,
       refetch: vi.fn(),
     });
-    render(<MeasurementEquipmentPage />);
+    renderEquipmentPage();
 
     await user.click(screen.getAllByRole('button', { name: /查看 EQ-001/ })[0]);
     await user.selectOptions(screen.getByLabelText('目標狀態'), 'active');
@@ -344,7 +430,7 @@ describe('量測設備頁', () => {
       isError: false,
       refetch: vi.fn(),
     });
-    render(<MeasurementEquipmentPage />);
+    renderEquipmentPage();
 
     await user.click(screen.getAllByRole('button', { name: /查看 EQ-001/ })[0]);
     const select = screen.getByLabelText('目標狀態');
@@ -368,7 +454,7 @@ describe('量測設備頁', () => {
       new Error('設備狀態已變更，請重新載入'),
       { status: 409, code: 'MSA_EQUIPMENT_STATUS_CONFLICT' },
     ));
-    render(<MeasurementEquipmentPage />);
+    renderEquipmentPage();
 
     await user.click(screen.getAllByRole('button', { name: /查看 EQ-001/ })[0]);
     await user.type(screen.getByLabelText('變更原因'), '年度保養');
@@ -380,7 +466,7 @@ describe('量測設備頁', () => {
   it('證書以認證 blob 下載，CQI-9 來源連到可查詢的專頁', async () => {
     const user = userEvent.setup();
     downloadCertificateMock.mockResolvedValue(undefined);
-    render(<MeasurementEquipmentPage />);
+    renderEquipmentPage();
 
     await user.click(screen.getAllByRole('button', { name: /查看 EQ-001/ })[0]);
     await user.click(screen.getByRole('tab', { name: '校驗與補正點' }));
@@ -400,7 +486,7 @@ describe('量測設備頁', () => {
 
   it('建立設備使用可聚焦 Modal，Escape 關閉後焦點回到觸發按鈕', async () => {
     const user = userEvent.setup();
-    render(<MeasurementEquipmentPage />);
+    renderEquipmentPage();
     const trigger = screen.getByRole('button', { name: '新增設備' });
 
     await user.click(trigger);
@@ -415,7 +501,7 @@ describe('量測設備頁', () => {
 
   it('抽屜分頁具有 tab/tabpanel 關聯並支援方向鍵切換', async () => {
     const user = userEvent.setup();
-    render(<MeasurementEquipmentPage />);
+    renderEquipmentPage();
     await user.click(screen.getAllByRole('button', { name: /查看 EQ-001/ })[0]);
 
     const masterTab = screen.getByRole('tab', { name: '主檔與能力' });
@@ -441,7 +527,7 @@ describe('量測設備頁', () => {
       isError: false,
       refetch,
     });
-    const { rerender } = render(<MeasurementEquipmentPage />);
+    const { rerender } = renderEquipmentPage();
     await user.click(screen.getAllByRole('button', { name: /查看 EQ-001/ })[0]);
     expect(screen.getByText('正在讀取設備明細…')).toBeInTheDocument();
 
@@ -451,7 +537,11 @@ describe('量測設備頁', () => {
       isError: true,
       refetch,
     });
-    rerender(<MeasurementEquipmentPage />);
+    rerender(
+      <MemoryRouter>
+        <MeasurementEquipmentPage />
+      </MemoryRouter>,
+    );
     expect(screen.getByRole('alert')).toHaveTextContent('無法載入設備明細');
     await user.click(screen.getByRole('button', { name: '重試' }));
     expect(refetch).toHaveBeenCalled();
@@ -464,7 +554,7 @@ describe('量測設備頁', () => {
   ])('提供 %s 狀態的可讀指引', (_name, result, text) => {
     equipmentQueryMock.mockReturnValue(result);
 
-    render(<MeasurementEquipmentPage />);
+    renderEquipmentPage();
 
     expect(screen.getByText(text)).toBeInTheDocument();
   });

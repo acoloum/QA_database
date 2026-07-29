@@ -23,7 +23,7 @@ vi.mock('./pages/msa/MsaWorkspacePage', () => ({
   default: () => <h2>MSA 工作台路由頁面</h2>,
 }));
 
-vi.mock('./pages/msa/MeasurementEquipmentPage', () => ({
+vi.mock('./pages/equipment/MeasurementEquipmentPage', () => ({
   default: () => <h2>量測設備路由頁面</h2>,
 }));
 
@@ -124,7 +124,6 @@ describe('App MSA 路由', () => {
   });
 
   it.each([
-    ['/msa/equipment', '量測設備路由頁面'],
     ['/msa/imports', '設備匯入路由頁面'],
   ])('具有 msa.view 才能開啟 %s 子路由', async (path, heading) => {
     window.history.replaceState({}, '', path);
@@ -150,5 +149,84 @@ describe('App MSA 路由', () => {
     render(<App />);
     expect(await screen.findByRole('heading', { name: '儀表板路由頁面' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: heading })).not.toBeInTheDocument();
+  });
+});
+
+describe('App 獨立量測設備路由', () => {
+  let originalPathname: string;
+  let originalSearch: string;
+  let originalHash: string;
+
+  beforeEach(() => {
+    originalPathname = window.location.pathname;
+    originalSearch = window.location.search;
+    originalHash = window.location.hash;
+  });
+
+  afterEach(() => {
+    window.history.replaceState(
+      {},
+      '',
+      `${originalPathname}${originalSearch}${originalHash}`,
+    );
+  });
+
+  it('具有 calibration.view 時可開啟獨立設備模組', async () => {
+    window.history.replaceState({}, '', '/measurement-equipment');
+    authMock.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+      user: { username: '校正人員', role: 'user' },
+      hasPermission: (permission: string) => permission === 'calibration.view',
+      logout: vi.fn(),
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole(
+      'heading',
+      { name: '量測設備路由頁面' },
+    )).toBeInTheDocument();
+  });
+
+  it('舊 MSA 設備入口導向獨立設備模組', async () => {
+    window.history.replaceState({}, '', '/msa/equipment');
+    authMock.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+      user: { username: '校正人員', role: 'user' },
+      hasPermission: (permission: string) => permission === 'calibration.view',
+      logout: vi.fn(),
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole(
+      'heading',
+      { name: '量測設備路由頁面' },
+    )).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/measurement-equipment');
+  });
+
+  it('只有 msa.view 時不可開啟獨立設備模組', async () => {
+    window.history.replaceState({}, '', '/measurement-equipment');
+    authMock.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+      user: { username: 'MSA 人員', role: 'user' },
+      hasPermission: (permission: string) => permission === 'msa.view',
+      logout: vi.fn(),
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole(
+      'heading',
+      { name: '儀表板路由頁面' },
+    )).toBeInTheDocument();
+    expect(screen.queryByRole(
+      'heading',
+      { name: '量測設備路由頁面' },
+    )).not.toBeInTheDocument();
   });
 });

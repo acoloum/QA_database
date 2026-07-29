@@ -85,6 +85,7 @@ const studyWorkItems = (studies: MsaStudy[]): MsaWorkItem[] => studies.flatMap(
 
 const equipmentWorkItems = (
   equipment: MeasurementEquipment[],
+  canViewCalibration: boolean,
 ): MsaWorkItem[] => equipment.filter(blockingEquipment).map((item) => ({
   id: `equipment-${item.id}`,
   category: 'equipment_block' as const,
@@ -94,7 +95,7 @@ const equipmentWorkItems = (
   owner: item.custodian,
   dueDate: item.next_calibration_date,
   nextStep: '完成校驗並核准後才可用於正式研究',
-  href: '/msa/equipment',
+  href: canViewCalibration ? '/measurement-equipment' : null,
 }));
 
 const restudyWorkItems = (
@@ -119,6 +120,7 @@ const restudyWorkItems = (
 export default function MsaWorkspacePage() {
   const { hasPermission } = useAuth();
   const canManage = hasPermission('msa.manage');
+  const canViewCalibration = hasPermission('calibration.view');
   const studies = useMsaStudies(STUDY_PARAMS);
   const equipment = useMsaEquipment(EQUIPMENT_PARAMS);
   const restudies = useMsaRestudyRequests({ page: 1, page_size: 100 });
@@ -128,10 +130,18 @@ export default function MsaWorkspacePage() {
   const isError = studies.isError || equipment.isError || restudies.isError;
 
   const items = useMemo(() => [
-    ...equipmentWorkItems(equipment.data?.items ?? []),
+    ...equipmentWorkItems(
+      equipment.data?.items ?? [],
+      canViewCalibration,
+    ),
     ...studyWorkItems(studies.data?.items ?? []),
     ...restudyWorkItems(restudies.data?.items ?? []),
-  ], [equipment.data, studies.data, restudies.data]);
+  ], [
+    equipment.data,
+    studies.data,
+    restudies.data,
+    canViewCalibration,
+  ]);
 
   const counts = useMemo(() => {
     const studyItems = studies.data?.items ?? [];
@@ -231,10 +241,12 @@ export default function MsaWorkspacePage() {
                 <strong>研究清單</strong>
                 <small>查詢所有 MSA 研究與結果版本</small>
               </Link>
-              <Link to="/msa/equipment">
-                <strong>設備清單</strong>
-                <small>檢查校驗失敗、逾期與待確認設備</small>
-              </Link>
+              {canViewCalibration && (
+                <Link to="/measurement-equipment">
+                  <strong>設備清單</strong>
+                  <small>檢查校驗失敗、逾期與待確認設備</small>
+                </Link>
+              )}
               <Link to="/msa/criteria">
                 <strong>判定準則</strong>
                 <small>檢視版本化門檻與核准歷程</small>
