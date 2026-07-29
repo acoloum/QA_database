@@ -77,6 +77,7 @@ const baseEquipment: MeasurementEquipment = {
   calibration_exemption_reason: null,
   calibration_interval_months: 12,
   calibration_status: 'valid',
+  calibration_record_id: null,
   next_calibration_date: '2027-01-20',
   calibration_block_reason: null,
   is_reference_standard: false,

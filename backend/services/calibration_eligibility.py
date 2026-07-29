@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from ..extensions import db
 from ..models import (
@@ -52,6 +52,20 @@ class EquipmentQualification:
     data_hash: Optional[str]
     is_qualified: bool
     blockers: tuple[str, ...]
+
+    @property
+    def eligible(self) -> bool:
+        """提供既有 MSA 呼叫端的相容資格別名。"""
+        return self.is_qualified
+
+    @property
+    def limitation(self) -> Optional[str]:
+        """提供既有 MSA 呼叫端的受限校正說明欄位。"""
+        return (
+            self.restriction_conditions
+            if self.result == "limited_use"
+            else None
+        )
 
 
 class CalibrationEligibilityService:
@@ -108,7 +122,8 @@ class CalibrationEligibilityService:
             )
 
         latest_approved = CalibrationEligibilityService._latest_approved_calibration(
-            equipment_id
+            equipment_id,
+            on_date=on_date,
         )
 
         if latest_approved is None:
@@ -224,8 +239,35 @@ class CalibrationEligibilityService:
                 blockers=("CALIBRATION_EQUIPMENT_NOT_FOUND",),
             )
 
+        exemption_reason = (equipment.calibration_exemption_reason or "").strip()
+        if equipment.calibration_type == "exempt":
+            blockers = () if exemption_reason else (
+                "CALIBRATION_EXEMPTION_REASON_MISSING",
+            )
+            return EquipmentQualification(
+                equipment_id=equipment.id,
+                equipment_no=equipment.equipment_no,
+                name=equipment.name,
+                calibration_type="exempt",
+                calibration_date=None,
+                next_due_date=None,
+                result="exempt",
+                data_level="summary_legacy",
+                applicable_modes=[],
+                restriction_conditions=exemption_reason or None,
+                calibration_record_id=None,
+                data_hash=None,
+                is_qualified=not blockers and equipment.status == "active",
+                blockers=(
+                    blockers
+                    if equipment.status == "active"
+                    else (*blockers, "CALIBRATION_EQUIPMENT_INACTIVE")
+                ),
+            )
+
         latest_approved = CalibrationEligibilityService._latest_approved_calibration(
-            equipment_id
+            equipment_id,
+            on_date=on_date,
         )
 
         blockers: list[str] = []
@@ -269,7 +311,9 @@ class CalibrationEligibilityService:
         restriction_conditions = latest_approved.restriction_conditions
 
         if latest_approved.result == "limited_use":
-            if not applicable_modes or not restriction_conditions:
+            if not applicable_modes or not (
+                restriction_conditions and restriction_conditions.strip()
+            ):
                 blockers.append("CALIBRATION_LIMITED_USE_INCOMPLETE")
 
         return EquipmentQualification(
@@ -292,17 +336,25 @@ class CalibrationEligibilityService:
     @staticmethod
     def _latest_approved_calibration(
         equipment_id: int,
+        *,
+        on_date: Optional[date] = None,
     ) -> Optional[EquipmentCalibrationRecord]:
         """取得設備最新核准校正紀錄（含 detailed 與 legacy）。"""
-        return db.session.execute(
-            select(EquipmentCalibrationRecord)
-            .where(
-                EquipmentCalibrationRecord.equipment_id == equipment_id,
-                EquipmentCalibrationRecord.status == "approved",
+        statement = select(EquipmentCalibrationRecord).where(
+            EquipmentCalibrationRecord.equipment_id == equipment_id,
+            EquipmentCalibrationRecord.status == "approved",
+        )
+        if on_date is not None:
+            statement = statement.where(
+                EquipmentCalibrationRecord.calibration_date <= on_date,
+                or_(
+                    EquipmentCalibrationRecord.effective_date.is_(None),
+                    EquipmentCalibrationRecord.effective_date <= on_date,
+                ),
             )
-            .order_by(
+        return db.session.execute(
+            statement.order_by(
                 EquipmentCalibrationRecord.calibration_date.desc(),
                 EquipmentCalibrationRecord.id.desc(),
-            )
-            .limit(1)
+            ).limit(1)
         ).scalar_one_or_none()

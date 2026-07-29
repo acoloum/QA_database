@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import MsaMethodSelector, {
   findMethod,
@@ -10,6 +10,7 @@ import MsaPlanReview, {
 } from '../../components/msa/MsaPlanReview';
 import { useMsaCriteria } from '../../hooks/useMsaCriteria';
 import { useMsaEquipment } from '../../hooks/useMsaEquipment';
+import { useAuth } from '../../context/useAuth';
 import {
   useCreateMsaPlan,
   useCreateMsaStudy,
@@ -177,6 +178,7 @@ const validateStep = (
 
 export default function MsaStudyWizardPage() {
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
   const [step, setStep] = useState(0);
   const [state, setState] = useState<WizardState>(initialState);
   const [errors, setErrors] = useState<StepError[]>([]);
@@ -494,6 +496,15 @@ export default function MsaStudyWizardPage() {
                 ；校驗狀態 {selectedGauge.calibration_status}
                 {selectedGauge.calibration_block_reason
                   ? `；${selectedGauge.calibration_block_reason}` : ''}
+                {hasPermission('calibration.view')
+                  && selectedGauge.calibration_record_id !== null && (
+                    <>
+                      {'；'}
+                      <Link to={`/calibrations/${selectedGauge.calibration_record_id}`}>
+                        查看校正證據
+                      </Link>
+                    </>
+                  )}
               </p>
             )}
           </div>

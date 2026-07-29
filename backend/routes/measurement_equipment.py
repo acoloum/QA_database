@@ -4,7 +4,7 @@ from datetime import date
 
 from flask import Blueprint, jsonify, request
 
-from ..services.msa_equipment_service import MsaEquipmentService
+from ..services.measurement_equipment_service import MeasurementEquipmentService
 from ..services.msa_errors import MsaValidationError
 from ..services.msa_import_service import (
     MsaImportService,
@@ -41,8 +41,8 @@ def _optional_iso_date(value, *, field: str) -> date | None:
 @measurement_equipment_bp.get(
     "/api/measurement-equipment/imports"
 )
-@_msa_auth_required
-@_require_msa_permission("msa.view")
+@_calibration_auth_required
+@_require_calibration_permission("calibration.view")
 @_handle_msa_errors
 def list_import_batches(current_user):
     """列出可追溯的設備匯入批次。"""
@@ -52,8 +52,8 @@ def list_import_batches(current_user):
 @measurement_equipment_bp.get(
     "/api/measurement-equipment/imports/<int:batch_id>"
 )
-@_msa_auth_required
-@_require_msa_permission("msa.view")
+@_calibration_auth_required
+@_require_calibration_permission("calibration.view")
 @_handle_msa_errors
 def get_import_batch(current_user, batch_id: int):
     """取得指定匯入批次的逐列檢閱證據。"""
@@ -65,8 +65,8 @@ def get_import_batch(current_user, batch_id: int):
 @measurement_equipment_bp.post(
     "/api/measurement-equipment/imports/preview"
 )
-@_msa_auth_required
-@_require_msa_permission("msa.manage")
+@_calibration_auth_required
+@_require_calibration_permission("calibration.manage")
 @_handle_msa_errors
 def preview_import(current_user):
     """只建立匯入批次與逐列預覽，不建立正式設備。"""
@@ -85,8 +85,8 @@ def preview_import(current_user):
 @measurement_equipment_bp.post(
     "/api/measurement-equipment/imports/<int:batch_id>/confirm"
 )
-@_msa_auth_required
-@_require_msa_permission("msa.manage")
+@_calibration_auth_required
+@_require_calibration_permission("calibration.manage")
 @_handle_msa_errors
 def confirm_import(current_user, batch_id: int):
     """以列鎖與整批交易確認預覽結果。"""
@@ -113,7 +113,7 @@ def confirm_import(current_user, batch_id: int):
 @_handle_msa_errors
 def list_equipment(current_user):
     """列出目前身分可檢視的量測設備。"""
-    return jsonify({"data": MsaEquipmentService.list(request.args)})
+    return jsonify({"data": MeasurementEquipmentService.list(request.args)})
 
 
 @measurement_equipment_bp.post("/api/measurement-equipment")
@@ -122,7 +122,7 @@ def list_equipment(current_user):
 @_handle_msa_errors
 def create_equipment(current_user):
     """建立量測設備主檔。"""
-    data = MsaEquipmentService.create(
+    data = MeasurementEquipmentService.create(
         request.get_json(silent=True),
         current_user.id,
     )
@@ -135,7 +135,7 @@ def create_equipment(current_user):
 @_handle_msa_errors
 def get_equipment(current_user, equipment_id: int):
     """取得設備主檔與受控證據明細。"""
-    return jsonify({"data": MsaEquipmentService.get(equipment_id)})
+    return jsonify({"data": MeasurementEquipmentService.get(equipment_id)})
 
 
 @measurement_equipment_bp.patch(
@@ -146,7 +146,7 @@ def get_equipment(current_user, equipment_id: int):
 @_handle_msa_errors
 def update_equipment(current_user, equipment_id: int):
     """修改設備可變欄位。"""
-    data = MsaEquipmentService.update(
+    data = MeasurementEquipmentService.update(
         equipment_id,
         request.get_json(silent=True),
         current_user.id,
@@ -158,16 +158,9 @@ def update_equipment(current_user, equipment_id: int):
     "/api/measurement-equipment/<int:equipment_id>/calibrations"
 )
 @_msa_auth_required
-@_require_msa_permission("msa.manage")
-@_handle_msa_errors
 def create_calibration(current_user, equipment_id: int):
-    """在單一交易建立 draft 校驗紀錄與補正點。"""
-    data = MsaEquipmentService.create_calibration(
-        equipment_id,
-        request.get_json(silent=True),
-        current_user.id,
-    )
-    return jsonify({"data": data}), 201
+    """拒絕已退役的簡易校正建立介面。"""
+    return _legacy_calibration_retired()
 
 
 @measurement_equipment_bp.post(
@@ -175,16 +168,9 @@ def create_calibration(current_user, equipment_id: int):
     "<int:calibration_id>/approve"
 )
 @_msa_auth_required
-@_require_msa_permission("msa.approve")
-@_handle_msa_errors
 def approve_calibration(current_user, calibration_id: int):
-    """核准畫面已確認仍為 draft 的校驗證據。"""
-    data = MsaEquipmentService.approve_calibration(
-        calibration_id,
-        request.get_json(silent=True),
-        current_user.id,
-    )
-    return jsonify({"data": data})
+    """拒絕已退役的簡易校正核准介面。"""
+    return _legacy_calibration_retired()
 
 
 @measurement_equipment_bp.post(
@@ -195,7 +181,7 @@ def approve_calibration(current_user, calibration_id: int):
 @_handle_msa_errors
 def create_status_event(current_user, equipment_id: int):
     """建立設備狀態事件。"""
-    data = MsaEquipmentService.create_status_event(
+    data = MeasurementEquipmentService.create_status_event(
         equipment_id,
         request.get_json(silent=True),
         current_user.id,
@@ -211,7 +197,7 @@ def create_status_event(current_user, equipment_id: int):
 @_handle_msa_errors
 def create_equipment_link(current_user, equipment_id: int):
     """建立或切換 CQI-9 專用設備的正式連結。"""
-    data = MsaEquipmentService.create_link(
+    data = MeasurementEquipmentService.create_link(
         equipment_id,
         request.get_json(silent=True),
         current_user.id,
@@ -228,10 +214,21 @@ def create_equipment_link(current_user, equipment_id: int):
 @_handle_msa_errors
 def retire_equipment_link(current_user, equipment_id: int, link_id: int):
     """退役畫面已確認仍為目前正式狀態的來源連結。"""
-    data = MsaEquipmentService.retire_link(
+    data = MeasurementEquipmentService.retire_link(
         equipment_id,
         link_id,
         request.get_json(silent=True),
         current_user.id,
     )
     return jsonify({"data": data})
+
+
+def _legacy_calibration_retired():
+    """提供舊 MSA 簡易校正端點的固定退役錯誤契約。"""
+    return jsonify({
+        "error": {
+            "code": "CALIBRATION_LEGACY_ENDPOINT_RETIRED",
+            "message": "舊版簡易校正介面已退役，請使用校正登錄流程",
+            "details": {},
+        }
+    }), 410

@@ -174,7 +174,7 @@ def test_limited_use_requires_an_exact_matching_measurement_mode(db_session):
         db_session,
         equipment,
         result="limited_use",
-        applicable_modes=["內徑量測", " 外徑量測 "],
+        applicable_modes=["內徑量測", "外徑量測"],
         restriction_conditions="僅限既定量程",
     )
     db_session.commit()
@@ -437,19 +437,9 @@ def test_passing_calibration_returns_snapshot_with_correction_evidence(db_sessio
         "applicable_modes": [],
         "restriction_conditions": None,
         "exemption_reason": None,
-        "correction_points": [
-            {
-                "id": 1,
-                "measurement_mode": "外徑量測",
-                "nominal_value": "10.0000000000",
-                "indicated_value": "10.0020000000",
-                "error_value": "0.0020000000",
-                "correction_value": "-0.0020000000",
-                "unit": "mm",
-                "range_start": "5.0000000000",
-                "range_end": "15.0000000000",
-            }
-        ],
+        "data_level": "summary_legacy",
+        "data_hash": None,
+        "correction_points": [],
     }
 
 

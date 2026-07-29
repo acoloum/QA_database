@@ -41,6 +41,7 @@ export interface MeasurementEquipment {
   calibration_exemption_reason: string | null;
   calibration_interval_months: number | null;
   calibration_status: CalibrationStatus;
+  calibration_record_id: number | null;
   next_calibration_date: string | null;
   calibration_block_reason: string | null;
   is_reference_standard: boolean;

@@ -11,6 +11,7 @@ const createStudyMock = vi.hoisted(() => vi.fn());
 const createPlanMock = vi.hoisted(() => vi.fn());
 const freezeMock = vi.hoisted(() => vi.fn());
 const navigateMock = vi.hoisted(() => vi.fn());
+const authMock = vi.hoisted(() => vi.fn());
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>(
@@ -32,6 +33,9 @@ vi.mock('../../hooks/useMsaStudies', () => ({
   useCreateMsaPlan: () => ({ mutateAsync: createPlanMock, isPending: false }),
   useFreezeMsaPlan: () => ({ mutateAsync: freezeMock, isPending: false }),
 }));
+vi.mock('../../context/useAuth', () => ({
+  useAuth: () => authMock(),
+}));
 
 const gauge = (overrides = {}) => ({
   id: 17, equipment_no: 'EQ-017', name: '分厘卡',
@@ -52,6 +56,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   equipmentMock.mockReturnValue(query([gauge()]));
   criteriaMock.mockReturnValue(query([{ id: 5, name: '一般計量型' }]));
+  authMock.mockReturnValue({ hasPermission: () => false });
 });
 
 const pickMethod = async (
@@ -249,6 +254,36 @@ describe('MSA 凍結前檢閱', () => {
     expect(
       screen.getByRole('button', { name: '凍結研究計畫' }),
     ).toBeEnabled();
+  });
+
+  it('只有校正檢視權限時才提供校正詳細證據連結', async () => {
+    equipmentMock.mockReturnValue(query([gauge({ calibration_record_id: 82 })]));
+    authMock.mockReturnValue({
+      hasPermission: (permission: string) => permission === 'calibration.view',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await pickMethod(user, '交叉型 ANOVA');
+    await fillCharacteristic(user);
+    await user.selectOptions(screen.getByLabelText('主量具'), '17');
+
+    expect(screen.getByRole('link', { name: '查看校正證據' }))
+      .toHaveAttribute('href', '/calibrations/82');
+  });
+
+  it('沒有校正檢視權限時只顯示資格摘要', async () => {
+    equipmentMock.mockReturnValue(query([gauge({ calibration_record_id: 82 })]));
+    const user = userEvent.setup();
+    renderPage();
+
+    await pickMethod(user, '交叉型 ANOVA');
+    await fillCharacteristic(user);
+    await user.selectOptions(screen.getByLabelText('主量具'), '17');
+
+    expect(screen.queryByRole('link', { name: '查看校正證據' }))
+      .not.toBeInTheDocument();
+    expect(screen.getByText(/校驗狀態 valid/)).toBeInTheDocument();
   });
 
   it('凍結會依序建立研究與計畫後再凍結', async () => {
