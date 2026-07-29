@@ -1144,6 +1144,41 @@ def test_list_total_is_not_limited_by_page_size(db_session, calibration_users):
     assert len(result["items"]) == 1
 
 
+def test_list_risk_sort_is_applied_before_pagination(
+    db_session, calibration_users
+):
+    """風險排序必須在資料庫分頁前完成，不可只重排目前頁面。"""
+    equipment = _create_equipment(db_session, "EQ-RISK-SORT", "風險排序卡尺")
+    for result in ("pass", "limited_use", "fail"):
+        db_session.add(
+            EquipmentCalibrationRecord(
+                equipment_id=equipment.id,
+                calibration_type="external",
+                calibration_date=date.today(),
+                result=result,
+                status="approved",
+                data_level="summary_legacy",
+                applicable_modes=["外徑"] if result == "limited_use" else [],
+                restriction_conditions=(
+                    "僅限外徑模式" if result == "limited_use" else None
+                ),
+            )
+        )
+    db_session.commit()
+
+    first = CalibrationService.list(
+        {"page": 1, "page_size": 1, "sort": "risk", "order": "asc"},
+        actor_id=calibration_users["viewer"]["user"].id,
+    )
+    second = CalibrationService.list(
+        {"page": 2, "page_size": 1, "sort": "risk", "order": "asc"},
+        actor_id=calibration_users["viewer"]["user"].id,
+    )
+
+    assert first["items"][0]["result"] == "fail"
+    assert second["items"][0]["result"] == "limited_use"
+
+
 def test_template_snapshot_preserves_zero_decimal_values(
     db_session, calibration_users
 ):

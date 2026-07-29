@@ -9,7 +9,7 @@ from decimal import Decimal, InvalidOperation
 from functools import wraps
 from typing import Any, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import selectinload
 
 from ..extensions import db
@@ -122,6 +122,16 @@ class CalibrationService:
             "calibration_date": EquipmentCalibrationRecord.calibration_date,
             "status": EquipmentCalibrationRecord.status,
             "result": EquipmentCalibrationRecord.result,
+            "risk": case(
+                (EquipmentCalibrationRecord.status == "submitted", 0),
+                (EquipmentCalibrationRecord.status == "rejected", 1),
+                (EquipmentCalibrationRecord.result == "fail", 2),
+                (EquipmentCalibrationRecord.result == "limited_use", 3),
+                (EquipmentCalibrationRecord.status == "ready_for_submission", 4),
+                (EquipmentCalibrationRecord.status == "in_progress", 5),
+                (EquipmentCalibrationRecord.status == "draft", 6),
+                else_=7,
+            ),
         }
         if sort_name not in sort_map:
             raise CalibrationValidationError(
@@ -1151,7 +1161,6 @@ class CalibrationService:
         reason = CalibrationService._required_text(
             data, "reason", "CALIBRATION_FIELD_INVALID", max_length=2000
         )
-
         record = CalibrationService._lock_record(calibration_id)
         CalibrationService._require_version(record, expected_version)
 
@@ -1252,7 +1261,10 @@ class CalibrationService:
     def approve(calibration_id: int, payload: dict, actor_id: int) -> dict:
         """核准：職責分離、列鎖、版本檢查、建立標準器快照。"""
         data = CalibrationService._object(payload)
-        CalibrationService._reject_unknown(data, {"expected_version", "reason"})
+        CalibrationService._reject_unknown(
+            data,
+            {"expected_version", "reason", "confirmations"},
+        )
 
         expected_version = CalibrationService._required_int(
             data, "expected_version", "CALIBRATION_FIELD_INVALID"
@@ -1260,6 +1272,25 @@ class CalibrationService:
         reason = CalibrationService._required_text(
             data, "reason", "CALIBRATION_FIELD_INVALID", max_length=2000
         )
+        confirmations = data.get("confirmations")
+        if confirmations is not None:
+            required_confirmations = {
+                "raw_readings",
+                "calculations",
+                "reference_standard",
+                "attachments",
+                "template_version",
+            }
+            if (
+                not isinstance(confirmations, dict)
+                or set(confirmations) != required_confirmations
+                or any(value is not True for value in confirmations.values())
+            ):
+                raise CalibrationValidationError(
+                    "CALIBRATION_FIELD_INVALID",
+                    "核准確認項目必須完整勾選",
+                    details={"field": "confirmations"},
+                )
 
         record = CalibrationService._lock_record(calibration_id)
         CalibrationService._require_version(record, expected_version)
@@ -1364,6 +1395,7 @@ class CalibrationService:
                 "approved_by": actor_id,
                 "approved_at": approved_at.isoformat(),
                 "approval_reason": reason,
+                "confirmations": confirmations,
                 "data_hash": record.data_hash,
                 "row_version": record.row_version,
             },

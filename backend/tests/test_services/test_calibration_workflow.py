@@ -172,6 +172,13 @@ def test_submit_and_approve_enforces_separation_and_preserves_hash(
         {
             "expected_version": submitted["row_version"],
             "reason": "證據完整，同意核准",
+            "confirmations": {
+                "raw_readings": True,
+                "calculations": True,
+                "reference_standard": True,
+                "attachments": True,
+                "template_version": True,
+            },
         },
         actor_id=approver.id,
     )

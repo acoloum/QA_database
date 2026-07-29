@@ -264,8 +264,9 @@ export interface CalibrationListParams {
   calibration_type?: CalibrationType;
   equipment_id?: number;
   search?: string;
-  sort?: 'calibration_date' | 'created_at' | 'next_due_date';
-  direction?: 'asc' | 'desc';
+  data_level?: 'detailed' | 'summary_legacy';
+  sort?: 'id' | 'equipment_no' | 'calibration_date' | 'status' | 'result' | 'risk';
+  order?: 'asc' | 'desc';
 }
 
 export interface CreateCalibrationInput {
@@ -318,6 +319,13 @@ export interface CalibrationDecisionInput {
   calibrationId: number;
   expected_version: number;
   reason: string;
+  confirmations?: {
+    raw_readings: boolean;
+    calculations: boolean;
+    reference_standard: boolean;
+    attachments: boolean;
+    template_version: boolean;
+  };
 }
 
 export interface CalibrationValidationResult {
