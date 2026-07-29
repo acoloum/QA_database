@@ -337,6 +337,45 @@
 .cal-blockers ul { display: grid; gap: .55rem; margin: 0; padding-left: 1.2rem; }
 .cal-blockers li button { margin-left: .7rem; }
 
+/* 校正工作佇列與卷宗詳情：狀態脊線是唯一高彩度視覺標記。 */
+.cal-work-queue { display: grid; gap: .8rem; margin: 0; padding: 0; list-style: none; }
+.cal-work-queue li { border: 1px solid var(--cal-line); background: var(--cal-paper); }
+.cal-work-queue a { position: relative; display: grid; grid-template-columns: 7px minmax(0, 1fr) minmax(12rem, .7fr); gap: 1rem; color: inherit; padding: 1rem; text-decoration: none; }
+.cal-work-queue__spine { display: block; min-height: 100%; background: #899aa0; }
+.cal-work-queue li[data-status="submitted"] .cal-work-queue__spine { background: var(--cal-danger); }
+.cal-work-queue li[data-status="rejected"] .cal-work-queue__spine { background: var(--cal-copper); }
+.cal-work-queue li[data-status="ready_for_submission"] .cal-work-queue__spine { background: var(--cal-blue); }
+.cal-work-queue h2 { margin: .2rem 0; }
+.cal-work-queue p { margin: 0; font-size: .84rem; }
+.cal-work-queue dl, .cal-detail-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .55rem; margin: 0; }
+.cal-work-queue dt, .cal-detail-facts dt, .cal-point-summary dt, .cal-detail-reading-card dt { color: var(--cal-muted); font-size: .7rem; font-weight: 800; }
+.cal-work-queue dd, .cal-detail-facts dd, .cal-point-summary dd, .cal-detail-reading-card dd { margin: .15rem 0 0; font-weight: 750; }
+.cal-workflow-bar { margin-bottom: 1rem; border: 1px solid var(--cal-line); background: var(--cal-surface); padding: .8rem 1rem; }
+.cal-workflow-bar ol { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; margin: .5rem 0 0; padding: 0; list-style: none; }
+.cal-workflow-bar li { display: flex; align-items: center; gap: .4rem; min-width: 0; border-top: 3px solid #b5c0c4; padding: .45rem .25rem; color: var(--cal-muted); font-size: .78rem; font-weight: 800; }
+.cal-workflow-bar li[data-state="complete"] { border-top-color: var(--cal-blue); color: var(--cal-ink); }
+.cal-workflow-bar li[aria-current="step"] { border-top-color: var(--cal-copper); background: #fff; }
+.cal-workflow-bar li > span { display: grid; flex: 0 0 auto; place-items: center; width: 1.35rem; height: 1.35rem; border: 1px solid currentColor; border-radius: 50%; font-family: "Cascadia Mono", Consolas, monospace; font-size: .67rem; }
+.cal-detail-status { display: grid; justify-items: end; gap: .25rem; border-left: 5px solid var(--cal-copper); padding-left: .75rem; }
+.cal-detail-status span { color: var(--cal-muted); font-size: .82rem; }
+.cal-evidence-envelope, .cal-decision-panel { margin-bottom: 1rem; border: 1px solid var(--cal-line); background: var(--cal-paper); padding: 1rem; }
+.cal-evidence-envelope > h2, .cal-decision-panel > h2 { margin-bottom: .85rem; }
+.cal-evidence-envelope pre { overflow-x: auto; margin: 0; border: 1px solid var(--cal-line); background: var(--cal-surface); padding: .75rem; color: var(--cal-ink); font-size: .78rem; }
+.cal-point-summary-grid, .cal-snapshot-grid, .cal-detail-readings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.cal-point-summary, .cal-snapshot-grid article, .cal-detail-reading-card { border: 1px solid var(--cal-line); background: #fff; padding: .8rem; }
+.cal-point-summary { border-top: 4px solid var(--cal-blue); }
+.cal-point-summary[data-result="fail"] { border-top-color: var(--cal-danger); }
+.cal-point-summary header { display: flex; justify-content: space-between; gap: .75rem; }
+.cal-point-summary h3, .cal-detail-reading-card h3, .cal-snapshot-grid h3 { margin: .2rem 0 .65rem; font-size: .92rem; }
+.cal-point-summary > header > span { color: var(--cal-blue); font-size: .78rem; font-weight: 800; }
+.cal-point-summary dl, .cal-detail-reading-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; margin: 0; }
+.cal-snapshot-grid p { margin: .25rem 0 0; font-size: .82rem; }
+.cal-decision-panel { border-left: 6px solid var(--cal-copper); }
+.cal-decision-panel fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; margin: .9rem 0; border: 1px solid var(--cal-line); background: var(--cal-surface); padding: .8rem; }
+.cal-decision-panel legend { width: auto; float: none; margin: 0; padding: 0 .25rem; color: var(--cal-muted); font-size: .76rem; font-weight: 800; }
+.cal-action-row { display: flex; flex-wrap: wrap; gap: .6rem; margin: .8rem 0; }
+.cal-inline-error code { display: block; margin-top: .25rem; color: var(--cal-danger); }
+
 @media (max-width: 900px) {
   .cal-template-grid { grid-template-columns: 1fr; }
   .cal-editor-layout { grid-template-columns: 1fr; }
@@ -405,6 +444,13 @@
   .cal-point-table tbody th,
   .cal-point-table td { border: 0; border-bottom: 1px solid var(--cal-line); }
   .cal-point-table td:last-child { border-bottom: 0; }
+  .cal-work-queue a { grid-template-columns: 5px 1fr; gap: .75rem; }
+  .cal-work-queue dl { grid-column: 2; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cal-workflow-bar ol { grid-template-columns: 1fr; }
+  .cal-workflow-bar li { border-top-width: 2px; }
+  .cal-detail-status { justify-items: start; }
+  .cal-detail-facts, .cal-point-summary-grid, .cal-snapshot-grid, .cal-detail-readings, .cal-point-summary dl, .cal-detail-reading-card dl, .cal-decision-panel fieldset { grid-template-columns: 1fr; }
+  .cal-detail-reading-card { border-left: 4px solid var(--cal-blue); }
 }
 
 @media (prefers-reduced-motion: reduce) {

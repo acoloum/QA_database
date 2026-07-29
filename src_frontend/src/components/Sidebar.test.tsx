@@ -67,6 +67,8 @@ describe('Sidebar 的獨立校正選單', () => {
       .toHaveAttribute('href', '/measurement-equipment');
     expect(screen.getByRole('link', { name: /校正管理/ }))
       .toHaveAttribute('href', '/calibrations');
+    expect(screen.getByRole('link', { name: /工作佇列/ }))
+      .toHaveAttribute('href', '/calibrations');
   });
 
   it('只有 msa.view 時不顯示量測設備與校正管理', () => {

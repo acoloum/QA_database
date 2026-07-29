@@ -46,6 +46,12 @@ const CalibrationTemplateEditorPage = lazy(
 const CalibrationEntryWizardPage = lazy(
   () => import('./pages/calibration/CalibrationEntryWizardPage'),
 );
+const CalibrationWorkQueuePage = lazy(
+  () => import('./pages/calibration/CalibrationWorkQueuePage'),
+);
+const CalibrationDetailPage = lazy(
+  () => import('./pages/calibration/CalibrationDetailPage'),
+);
 const MsaImportHistoryPage = lazy(() => import('./pages/msa/MsaImportHistoryPage'));
 const MsaCriteriaPage = lazy(() => import('./pages/msa/MsaCriteriaPage'));
 const MsaStudyListPage = lazy(() => import('./pages/msa/MsaStudyListPage'));
@@ -128,6 +134,11 @@ function App() {
             <Route element={<CalibrationViewRoute />}>
               <Route element={<MainLayout />}>
                 <Route path="/measurement-equipment" element={<MeasurementEquipmentPage />} />
+                <Route path="/calibrations" element={<CalibrationWorkQueuePage />} />
+                <Route
+                  path="/calibrations/:calibrationId"
+                  element={<CalibrationDetailPage />}
+                />
                 <Route path="/calibration/templates" element={<CalibrationTemplateListPage />} />
                 <Route
                   path="/calibration/templates/:templateId"

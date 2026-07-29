@@ -39,6 +39,14 @@ vi.mock('./pages/calibration/CalibrationEntryWizardPage', () => ({
   default: () => <h2>校正詳細數據登錄路由頁面</h2>,
 }));
 
+vi.mock('./pages/calibration/CalibrationWorkQueuePage', () => ({
+  default: () => <h2>校正工作佇列路由頁面</h2>,
+}));
+
+vi.mock('./pages/calibration/CalibrationDetailPage', () => ({
+  default: () => <h2>校正證據卷宗路由頁面</h2>,
+}));
+
 vi.mock('./pages/msa/MsaImportHistoryPage', () => ({
   default: () => <h2>設備匯入路由頁面</h2>,
 }));
@@ -331,5 +339,31 @@ describe('App 校正模板路由', () => {
 
     expect(await screen.findByRole('heading', { name: '儀表板路由頁面' }))
       .toBeInTheDocument();
+  });
+});
+
+describe('App 校正工作佇列路由', () => {
+  const originalPathname = window.location.pathname;
+
+  afterEach(() => {
+    window.history.replaceState({}, '', originalPathname);
+  });
+
+  it.each([
+    ['/calibrations', '校正工作佇列路由頁面'],
+    ['/calibrations/41', '校正證據卷宗路由頁面'],
+  ])('具有 calibration.view 時可開啟 %s', async (path, heading) => {
+    window.history.replaceState({}, '', path);
+    authMock.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+      user: { username: '校正檢視者', role: 'user' },
+      hasPermission: (permission: string) => permission === 'calibration.view',
+      logout: vi.fn(),
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();
   });
 });
