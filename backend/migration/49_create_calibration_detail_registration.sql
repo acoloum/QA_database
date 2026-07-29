@@ -674,9 +674,9 @@ BEGIN
         WHERE record."識別碼" = NEW."校驗紀錄ID";
     END IF;
 
-    IF original_status IN ('submitted', 'approved')
-        OR destination_status IN ('submitted', 'approved') THEN
-        RAISE EXCEPTION '送審或核准後的校正點不可修改或刪除';
+    IF original_status IN ('submitted', 'approved', 'rejected')
+        OR destination_status IN ('submitted', 'approved', 'rejected') THEN
+        RAISE EXCEPTION '送審、核准或退回後的校正點不可修改或刪除';
     END IF;
 
     IF TG_OP = 'DELETE' THEN
@@ -703,8 +703,8 @@ BEGIN
       ON record."識別碼" = point."校驗紀錄ID"
     WHERE point."識別碼" = OLD."設備校正點ID";
 
-    IF calibration_status IN ('submitted', 'approved') THEN
-        RAISE EXCEPTION '送審或核准後的原始讀值不可修改或刪除';
+    IF calibration_status IN ('submitted', 'approved', 'rejected') THEN
+        RAISE EXCEPTION '送審、核准或退回後的原始讀值不可修改或刪除';
     END IF;
 
     IF TG_OP = 'DELETE' THEN
@@ -718,5 +718,94 @@ CREATE TRIGGER trg_calibration_reading_frozen_immutable
     BEFORE UPDATE OR DELETE ON "設備校正原始讀值"
     FOR EACH ROW
     EXECUTE FUNCTION calibration_block_frozen_reading_change();
+
+DROP TRIGGER IF EXISTS trg_equipment_calibration_approved_immutable
+    ON "設備校驗紀錄";
+
+CREATE OR REPLACE FUNCTION calibration_block_frozen_record_change()
+RETURNS TRIGGER AS $$
+DECLARE
+    allowed_columns TEXT[];
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        IF OLD."狀態" IN ('submitted', 'approved', 'rejected') THEN
+            RAISE EXCEPTION '送審、核准或退回後的校正紀錄不可刪除';
+        END IF;
+        RETURN OLD;
+    END IF;
+
+    IF OLD."狀態" = 'approved' THEN
+        RAISE EXCEPTION '核准後的校正紀錄不可修改';
+    END IF;
+    IF OLD."狀態" = 'rejected' THEN
+        RAISE EXCEPTION '退回後的校正紀錄不可修改';
+    END IF;
+
+    IF OLD."狀態" = 'submitted' THEN
+        IF NEW."狀態" = 'approved' THEN
+            allowed_columns := ARRAY[
+                '狀態', '有效日期', '下次校驗日', '核准者ID',
+                '核准時間', '核准理由', '資料版本'
+            ];
+        ELSIF NEW."狀態" = 'rejected' THEN
+            allowed_columns := ARRAY[
+                '狀態', '核准者ID', '核准時間', '退回理由',
+                '後繼紀錄ID', '資料版本'
+            ];
+        ELSE
+            RAISE EXCEPTION '送審後只允許核准或退回轉態';
+        END IF;
+
+        IF (to_jsonb(NEW) - allowed_columns)
+            IS DISTINCT FROM (to_jsonb(OLD) - allowed_columns) THEN
+            RAISE EXCEPTION '送審後的正式校正證據不可修改';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_equipment_calibration_approved_immutable
+    BEFORE UPDATE OR DELETE ON "設備校驗紀錄"
+    FOR EACH ROW
+    EXECUTE FUNCTION calibration_block_frozen_record_change();
+
+CREATE OR REPLACE FUNCTION calibration_block_frozen_reference_snapshot_change()
+RETURNS TRIGGER AS $$
+DECLARE
+    original_status VARCHAR(30);
+    destination_status VARCHAR(30);
+BEGIN
+    IF TG_OP IN ('UPDATE', 'DELETE') THEN
+        SELECT record."狀態"
+        INTO original_status
+        FROM "設備校驗紀錄" AS record
+        WHERE record."識別碼" = OLD."校驗紀錄ID";
+    END IF;
+
+    IF TG_OP IN ('INSERT', 'UPDATE') THEN
+        SELECT record."狀態"
+        INTO destination_status
+        FROM "設備校驗紀錄" AS record
+        WHERE record."識別碼" = NEW."校驗紀錄ID";
+    END IF;
+
+    IF original_status IN ('submitted', 'approved', 'rejected')
+        OR destination_status IN ('submitted', 'approved', 'rejected') THEN
+        RAISE EXCEPTION '送審、核准或退回後的參考標準器快照不可變更';
+    END IF;
+
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_calibration_reference_snapshot_frozen_immutable
+    BEFORE INSERT OR UPDATE OR DELETE ON "校正參考標準器快照"
+    FOR EACH ROW
+    EXECUTE FUNCTION calibration_block_frozen_reference_snapshot_change();
 
 COMMIT;

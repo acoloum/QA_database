@@ -2213,6 +2213,80 @@ def _validate_limited_use_evidence(_mapper, _connection, target):
         )
 
 
+def _block_submitted_calibration_record_update(
+    _mapper,
+    connection,
+    target,
+):
+    """送審後只允許決策轉態；退回證據完成後保持不可變。"""
+    original_status = _persisted_msa_status(connection, target)
+    if original_status == 'rejected':
+        raise ValueError('退回後的校正紀錄不可修改')
+    if original_status != 'submitted':
+        return
+    state = inspect(target)
+    changed_columns = {
+        column.key
+        for column in state.mapper.column_attrs
+        if state.attrs[column.key].history.has_changes()
+    }
+    allowed_by_status = {
+        'approved': {
+            'status',
+            'effective_date',
+            'next_due_date',
+            'approved_by',
+            'approved_at',
+            'approval_reason',
+            'row_version',
+        },
+        'rejected': {
+            'status',
+            'approved_by',
+            'approved_at',
+            'rejection_reason',
+            'successor_id',
+            'row_version',
+        },
+    }
+    allowed = allowed_by_status.get(target.status)
+    if allowed is None or not changed_columns <= allowed:
+        raise ValueError('送審後的校正紀錄只允許核准或退回工作流轉態')
+
+
+def _reference_snapshot_record_status(connection, record_id):
+    if record_id is None:
+        return None
+    table = EquipmentCalibrationRecord.__table__
+    return connection.execute(
+        db.select(table.c['狀態']).where(table.c['識別碼'] == record_id)
+    ).scalar_one_or_none()
+
+
+def _block_frozen_reference_snapshot_insert(_mapper, connection, target):
+    if _reference_snapshot_record_status(
+        connection, target.calibration_record_id
+    ) in {'submitted', 'approved', 'rejected'}:
+        raise ValueError('送審或核准後不可新增參考標準器快照')
+
+
+def _block_frozen_reference_snapshot_change(_mapper, connection, target):
+    table = CalibrationReferenceSnapshot.__table__
+    original_record_id = connection.execute(
+        db.select(table.c['校驗紀錄ID']).where(
+            table.c['識別碼'] == target.id
+        )
+    ).scalar_one_or_none()
+    statuses = {
+        _reference_snapshot_record_status(connection, original_record_id),
+        _reference_snapshot_record_status(
+            connection, target.calibration_record_id
+        ),
+    }
+    if statuses & {'submitted', 'approved', 'rejected'}:
+        raise ValueError('送審或核准後的參考標準器快照不可修改或刪除')
+
+
 for _msa_approved_model in _MSA_APPROVED_EVIDENCE:
     event.listen(
         _msa_approved_model,
@@ -2234,6 +2308,26 @@ event.listen(
     EquipmentCalibrationRecord,
     'before_update',
     _validate_limited_use_evidence,
+)
+event.listen(
+    EquipmentCalibrationRecord,
+    'before_update',
+    _block_submitted_calibration_record_update,
+)
+event.listen(
+    CalibrationReferenceSnapshot,
+    'before_insert',
+    _block_frozen_reference_snapshot_insert,
+)
+event.listen(
+    CalibrationReferenceSnapshot,
+    'before_update',
+    _block_frozen_reference_snapshot_change,
+)
+event.listen(
+    CalibrationReferenceSnapshot,
+    'before_delete',
+    _block_frozen_reference_snapshot_change,
 )
 
 
@@ -2273,16 +2367,17 @@ def _block_frozen_calibration_point_update(_mapper, connection, target):
             target.calibration_record_id,
         ),
     }
-    if statuses & {'submitted', 'approved'}:
-        raise ValueError('送審或核准後的校正點不可修改')
+    if statuses & {'submitted', 'approved', 'rejected'}:
+        raise ValueError('送審、核准或退回後的校正點不可修改')
 
 
 def _block_frozen_calibration_point_delete(_mapper, connection, target):
     if _calibration_point_record_status(connection, target) in {
         'submitted',
         'approved',
+        'rejected',
     }:
-        raise ValueError('送審或核准後的校正點不可刪除')
+        raise ValueError('送審、核准或退回後的校正點不可刪除')
 
 
 event.listen(
@@ -2326,16 +2421,18 @@ def _block_frozen_calibration_reading_update(_mapper, connection, target):
     if _calibration_reading_record_status(connection, target) in {
         'submitted',
         'approved',
+        'rejected',
     }:
-        raise ValueError('送審或核准後的原始讀值不可修改')
+        raise ValueError('送審、核准或退回後的原始讀值不可修改')
 
 
 def _block_frozen_calibration_reading_delete(_mapper, connection, target):
     if _calibration_reading_record_status(connection, target) in {
         'submitted',
         'approved',
+        'rejected',
     }:
-        raise ValueError('送審或核准後的原始讀值不可刪除')
+        raise ValueError('送審、核准或退回後的原始讀值不可刪除')
 
 
 event.listen(

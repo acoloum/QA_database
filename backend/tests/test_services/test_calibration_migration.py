@@ -1434,6 +1434,112 @@ def test_reference_snapshot_rejects_unknown_approved_record(
         connection.rollback()
 
 
+def test_submitted_record_trigger_blocks_formal_evidence_update(
+    migrated_postgresql,
+):
+    """送審後只改模板快照也必須由 PostgreSQL 實際阻擋。"""
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(
+            connection, status="submitted"
+        )
+        connection.commit()
+
+        with pytest.raises(DBAPIError, match="送審後"):
+            connection.execute(
+                text(
+                    """
+                    UPDATE "設備校驗紀錄"
+                    SET "模板快照" = '{"tampered": true}'::jsonb
+                    WHERE "識別碼" = :record_id
+                    """
+                ),
+                {"record_id": evidence["record_id"]},
+            )
+        connection.rollback()
+
+
+def test_submitted_record_trigger_allows_explicit_approval_transition(
+    migrated_postgresql,
+):
+    """送審證據不變時，核准白名單欄位可完成正式轉態。"""
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(
+            connection, status="submitted"
+        )
+        connection.execute(
+            text(
+                """
+                UPDATE "設備校驗紀錄"
+                SET "狀態" = 'approved',
+                    "資料版本" = "資料版本" + 1
+                WHERE "識別碼" = :record_id
+                """
+            ),
+            {"record_id": evidence["record_id"]},
+        )
+        connection.commit()
+
+        status = connection.execute(
+            text(
+                """
+                SELECT "狀態"
+                FROM "設備校驗紀錄"
+                WHERE "識別碼" = :record_id
+                """
+            ),
+            {"record_id": evidence["record_id"]},
+        ).scalar_one()
+        assert status == "approved"
+
+
+def test_submitted_reference_snapshot_trigger_blocks_update(
+    migrated_postgresql,
+):
+    """送審後的標準器快照必須由 PostgreSQL trigger 凍結。"""
+    with _connect(migrated_postgresql) as connection:
+        evidence = _insert_detailed_evidence(connection)
+        snapshot_id = connection.execute(
+            text(
+                """
+                INSERT INTO "校正參考標準器快照" (
+                    "校驗紀錄ID", "參考標準設備ID",
+                    "核准校驗紀錄ID", "設備編號", "名稱",
+                    "校驗日期", "結果", "快照資料"
+                ) VALUES (
+                    :record_id, 1, 1, 'LEGACY-EQ',
+                    '參考標準器', DATE '2026-01-02', 'pass', '{}'::jsonb
+                )
+                RETURNING "識別碼"
+                """
+            ),
+            {"record_id": evidence["record_id"]},
+        ).scalar_one()
+        connection.execute(
+            text(
+                """
+                UPDATE "設備校驗紀錄"
+                SET "狀態" = 'submitted'
+                WHERE "識別碼" = :record_id
+                """
+            ),
+            {"record_id": evidence["record_id"]},
+        )
+        connection.commit()
+
+        with pytest.raises(DBAPIError, match="參考標準器快照"):
+            connection.execute(
+                text(
+                    """
+                    UPDATE "校正參考標準器快照"
+                    SET "名稱" = 'tampered'
+                    WHERE "識別碼" = :snapshot_id
+                    """
+                ),
+                {"snapshot_id": snapshot_id},
+            )
+        connection.rollback()
+
+
 @pytest.mark.parametrize(
     "status",
     ["submitted", "rejected", "approved", "superseded"],
@@ -2510,7 +2616,7 @@ def test_database_blocks_controlled_template_point_changes(
         connection.rollback()
 
 
-@pytest.mark.parametrize("status", ["submitted", "approved"])
+@pytest.mark.parametrize("status", ["submitted", "approved", "rejected"])
 @pytest.mark.parametrize("operation", ["update", "reparent", "delete"])
 def test_database_trigger_blocks_frozen_point_changes(
     migrated_postgresql,
@@ -2566,7 +2672,7 @@ def test_database_trigger_blocks_frozen_point_changes(
         connection.rollback()
 
 
-@pytest.mark.parametrize("status", ["submitted", "approved"])
+@pytest.mark.parametrize("status", ["submitted", "approved", "rejected"])
 def test_database_trigger_blocks_point_reparent_into_frozen_record(
     migrated_postgresql,
     status,
@@ -2599,7 +2705,7 @@ def test_database_trigger_blocks_point_reparent_into_frozen_record(
         connection.rollback()
 
 
-@pytest.mark.parametrize("status", ["submitted", "approved"])
+@pytest.mark.parametrize("status", ["submitted", "approved", "rejected"])
 @pytest.mark.parametrize("operation", ["update", "delete"])
 def test_database_trigger_blocks_frozen_reading_changes(
     migrated_postgresql,

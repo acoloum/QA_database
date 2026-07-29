@@ -29,6 +29,8 @@ _ENTITY_PERMISSION_PREFIX = {
 
 def _has_entity_permission(current_user, entity_type: str, action: str) -> bool:
     """依附件所屬實體檢查模組權限，避免只靠 entity_id 猜測讀取附件。"""
+    if not bool(getattr(current_user, 'is_active', False)):
+        return False
     role_code = getattr(current_user, 'role', None)
     if entity_type in MSA_ATTACHMENT_ENTITY_TYPES:
         if role_code == 'admin':
@@ -36,6 +38,17 @@ def _has_entity_permission(current_user, entity_type: str, action: str) -> bool:
         role = Role.query.filter_by(code=role_code).first() if role_code else None
         if not role:
             return False
+        if entity_type == 'equipment_calibration':
+            calibration_permissions = (
+                ('calibration.view',)
+                if action == 'view'
+                else ('calibration.execute', 'calibration.manage')
+            )
+            if any(
+                role.has_permission(permission)
+                for permission in calibration_permissions
+            ):
+                return True
         required = 'msa.view' if action == 'view' else 'msa.manage'
         return role.has_permission(required)
     if role_code in ('admin', 'manager'):
@@ -56,7 +69,17 @@ def _require_entity_permission(current_user, entity_type: str, action: str):
         return jsonify({'error': f'無效的實體類型：{entity_type}'}), 400
     if not _has_entity_permission(current_user, entity_type, action):
         if entity_type in MSA_ATTACHMENT_ENTITY_TYPES:
-            required = 'msa.view' if action == 'view' else 'msa.manage'
+            if entity_type == 'equipment_calibration':
+                required = (
+                    'calibration.view 或 msa.view'
+                    if action == 'view'
+                    else (
+                        'calibration.execute、calibration.manage '
+                        '或 msa.manage'
+                    )
+                )
+            else:
+                required = 'msa.view' if action == 'view' else 'msa.manage'
             return _msa_error(
                 'MSA_ATTACHMENT_PERMISSION_DENIED',
                 '權限不足',

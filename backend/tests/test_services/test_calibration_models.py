@@ -1558,7 +1558,7 @@ def test_trial_number_is_unique_within_actual_calibration_point(db_session):
     db_session.rollback()
 
 
-@pytest.mark.parametrize("status", ["submitted", "approved"])
+@pytest.mark.parametrize("status", ["submitted", "approved", "rejected"])
 @pytest.mark.parametrize("operation", ["update", "reparent", "delete"])
 def test_submitted_or_approved_point_is_immutable(
     db_session,
@@ -1583,7 +1583,7 @@ def test_submitted_or_approved_point_is_immutable(
     db_session.rollback()
 
 
-@pytest.mark.parametrize("status", ["submitted", "approved"])
+@pytest.mark.parametrize("status", ["submitted", "approved", "rejected"])
 def test_draft_point_cannot_be_reparented_into_frozen_record(
     db_session,
     status,
@@ -1601,7 +1601,7 @@ def test_draft_point_cannot_be_reparented_into_frozen_record(
     db_session.rollback()
 
 
-@pytest.mark.parametrize("status", ["submitted", "approved"])
+@pytest.mark.parametrize("status", ["submitted", "approved", "rejected"])
 def test_submitted_or_approved_reading_cannot_be_updated(db_session, status):
     reading = _reading(db_session, status)
     reading.indicated_value = "99"
@@ -1611,7 +1611,7 @@ def test_submitted_or_approved_reading_cannot_be_updated(db_session, status):
     db_session.rollback()
 
 
-@pytest.mark.parametrize("status", ["submitted", "approved"])
+@pytest.mark.parametrize("status", ["submitted", "approved", "rejected"])
 def test_submitted_or_approved_reading_cannot_be_deleted(db_session, status):
     reading = _reading(db_session, status)
     db_session.delete(reading)

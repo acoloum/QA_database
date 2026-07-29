@@ -13,7 +13,12 @@ backend.config.SQLALCHEMY_ENGINE_OPTIONS = {
 
 from backend.app import app as flask_app
 from backend.extensions import db
-from backend.models import User, Inspector, Vendor, Machine, Operator
+from backend.models import (
+    User, Inspector, Vendor, Machine, Operator,
+    Role,
+)
+from backend.utils import generate_token
+
 
 @pytest.fixture
 def app():
@@ -28,19 +33,23 @@ def app():
         db.session.remove()
         db.drop_all()
 
+
 @pytest.fixture
 def client(app):
     return app.test_client()
 
+
 @pytest.fixture
 def runner(app):
     return app.test_cli_runner()
+
 
 @pytest.fixture
 def db_session(app):
     with app.app_context():
         yield db.session
         db.session.rollback()
+
 
 @pytest.fixture
 def setup_data(db_session):
@@ -65,4 +74,64 @@ def setup_data(db_session):
         "inspector_id": inspector.id,
         "vendor_id": vendor.id,
         "user_id": user.id
+    }
+
+
+@pytest.fixture
+def calibration_users(db_session):
+    """建立校正測試用的使用者角色與帳號。"""
+    roles = [
+        Role(
+            code="cal_viewer",
+            name="校正檢視者",
+            permissions={"calibration.view": True},
+        ),
+        Role(
+            code="cal_manager",
+            name="校正管理者",
+            permissions={
+                "calibration.view": True,
+                "calibration.execute": True,
+                "calibration.manage": True,
+                "calibration.approve": True,
+            },
+        ),
+        Role(
+            code="cal_approver",
+            name="校正核准者",
+            permissions={
+                "calibration.view": True,
+                "calibration.approve": True,
+            },
+        ),
+        Role(
+            code="cal_no_permission",
+            name="無校正權限",
+            permissions={"msa.manage": True},
+        ),
+    ]
+    db_session.add_all(roles)
+    users = {}
+    for key, role, active in [
+        ("viewer", "cal_viewer", True),
+        ("manager", "cal_manager", True),
+        ("approver", "cal_approver", True),
+        ("no_permission", "cal_no_permission", True),
+        ("inactive_manager", "cal_manager", False),
+    ]:
+        user = User(
+            username=f"cal_{key}",
+            password="test-password",
+            role=role,
+            is_active=active,
+        )
+        db_session.add(user)
+        users[key] = user
+    db_session.commit()
+    return {
+        key: {
+            "user": user,
+            "token": generate_token(user.id, user.username, user.role),
+        }
+        for key, user in users.items()
     }

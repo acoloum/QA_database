@@ -51,6 +51,19 @@ MSA_ATTACHMENT_ENTITY_TYPES = {
     'measurement_equipment',
     'equipment_calibration',
 }
+CALIBRATION_ATTACHMENT_TYPES = {
+    'external': {
+        'application/pdf',
+        'image/jpeg',
+        'image/png',
+    },
+    'internal': {
+        'application/pdf',
+        'image/jpeg',
+        'image/png',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    },
+}
 
 
 def _get_storage():
@@ -89,8 +102,9 @@ class AttachmentService:
             raise ValueError(f'無效的實體類型：{entity_type}')
 
         is_msa = entity_type in MSA_ATTACHMENT_ENTITY_TYPES
+        target = None
         if is_msa:
-            AttachmentService._validate_msa_target(
+            target = AttachmentService._validate_msa_target(
                 entity_type,
                 entity_id,
                 for_write=True,
@@ -104,6 +118,26 @@ class AttachmentService:
                     details={'entity_type': entity_type},
                 )
             raise ValueError(msg)
+        if (
+            entity_type == 'equipment_calibration'
+            and target.data_level == 'detailed'
+        ):
+            mimetype = (file.mimetype or '').lower()
+            allowed_types = CALIBRATION_ATTACHMENT_TYPES.get(
+                target.calibration_type,
+                set(),
+            )
+            if mimetype not in allowed_types:
+                raise MsaValidationError(
+                    'MSA_ATTACHMENT_FILE_INVALID',
+                    '附件格式不符合此校正類型',
+                    details={
+                        'entity_type': entity_type,
+                        'calibration_type': target.calibration_type,
+                        'mime_type': mimetype,
+                        'allowed_mime_types': sorted(allowed_types),
+                    },
+                )
 
         original = secure_filename(file.filename or 'unnamed')
         if not original:
