@@ -33,16 +33,17 @@ export const useUploadAttachment = () => {
             entity_type: string;
             entity_id: number;
             d_step?: string;
+            purpose?: string;
         }) => {
             const form = new FormData();
             form.append('file',        payload.file);
             form.append('entity_type', payload.entity_type);
             form.append('entity_id',   String(payload.entity_id));
             if (payload.d_step) form.append('d_step', payload.d_step);
+            if (payload.purpose) form.append('purpose', payload.purpose);
 
-            const res = await api.post<Attachment>('/attachments/upload', form, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-            });
+            // 交由瀏覽器與 Axios 自動附加 multipart boundary，避免共用標頭破壞 FormData。
+            const res = await api.post<Attachment>('/attachments/upload', form);
             return res.data;
         },
         onSuccess: (_data, vars) => {

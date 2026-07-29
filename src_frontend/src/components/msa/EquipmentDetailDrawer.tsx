@@ -99,7 +99,10 @@ export default function EquipmentDetailDrawer({
   const [statusError, setStatusError] = useState<string | null>(null);
   const equipment = detail.data;
   const canManageEquipment = hasPermission('calibration.manage');
-  const canExecuteCalibration = hasPermission('calibration.execute');
+  const canCompleteCalibration = (
+    hasPermission('calibration.execute')
+    && hasPermission('calibration.manage')
+  );
   const availableStatuses = STATUS_OPTIONS.filter(
     (option) => option.value !== equipment?.status,
   );
@@ -458,7 +461,7 @@ export default function EquipmentDetailDrawer({
                     )}
                   </article>
                 ))}
-                {canExecuteCalibration && (
+                {canCompleteCalibration && (
                   <Link
                     className="msa-button msa-button--primary"
                     to={`/measurement-equipment/${equipment.id}/calibrations/new`}

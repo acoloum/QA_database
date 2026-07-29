@@ -43,6 +43,9 @@ const CalibrationTemplateListPage = lazy(
 const CalibrationTemplateEditorPage = lazy(
   () => import('./pages/calibration/CalibrationTemplateEditorPage'),
 );
+const CalibrationEntryWizardPage = lazy(
+  () => import('./pages/calibration/CalibrationEntryWizardPage'),
+);
 const MsaImportHistoryPage = lazy(() => import('./pages/msa/MsaImportHistoryPage'));
 const MsaCriteriaPage = lazy(() => import('./pages/msa/MsaCriteriaPage'));
 const MsaStudyListPage = lazy(() => import('./pages/msa/MsaStudyListPage'));
@@ -65,6 +68,16 @@ const MsaViewRoute = ({ children }: { children: ReactNode }) => {
   }
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return hasPermission('msa.view') ? children : <Navigate to="/" replace />;
+};
+
+const CalibrationEntryRoute = ({ children }: { children: ReactNode }) => {
+  const { hasPermission } = useAuth();
+  return (
+    hasPermission('calibration.execute')
+    && hasPermission('calibration.manage')
+  )
+    ? children
+    : <Navigate to="/measurement-equipment" replace />;
 };
 
 function App() {
@@ -119,6 +132,22 @@ function App() {
                 <Route
                   path="/calibration/templates/:templateId"
                   element={<CalibrationTemplateEditorPage />}
+                />
+                <Route
+                  path="/calibration/new"
+                  element={(
+                    <CalibrationEntryRoute>
+                      <CalibrationEntryWizardPage />
+                    </CalibrationEntryRoute>
+                  )}
+                />
+                <Route
+                  path="/measurement-equipment/:equipmentId/calibrations/new"
+                  element={(
+                    <CalibrationEntryRoute>
+                      <CalibrationEntryWizardPage />
+                    </CalibrationEntryRoute>
+                  )}
                 />
               </Route>
             </Route>

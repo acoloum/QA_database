@@ -337,10 +337,13 @@ describe('量測設備頁', () => {
     expect(screen.getByText('研究引用將於研究模組啟用後呈現')).toBeInTheDocument();
   });
 
-  it('校正執行者由設備明細建立詳細校正，不再使用舊摘要草稿表單', async () => {
+  it('校正主管由設備明細建立完整詳細校正，不再使用舊摘要草稿表單', async () => {
     const user = userEvent.setup();
     authMock.mockReturnValue({
-      hasPermission: (permission: string) => permission === 'calibration.execute',
+      hasPermission: (permission: string) => (
+        permission === 'calibration.execute'
+        || permission === 'calibration.manage'
+      ),
     });
     renderEquipmentPage();
 
@@ -360,6 +363,20 @@ describe('量測設備頁', () => {
     const user = userEvent.setup();
     authMock.mockReturnValue({
       hasPermission: (permission: string) => permission === 'calibration.manage',
+    });
+    renderEquipmentPage();
+
+    await user.click(screen.getAllByRole('button', { name: /查看 EQ-001/ })[0]);
+    await user.click(screen.getByRole('tab', { name: '校驗與補正點' }));
+
+    expect(screen.queryByRole('link', { name: '建立詳細校正' }))
+      .not.toBeInTheDocument();
+  });
+
+  it('只有 calibration.execute 時不顯示需要主管送審權限的完整精靈', async () => {
+    const user = userEvent.setup();
+    authMock.mockReturnValue({
+      hasPermission: (permission: string) => permission === 'calibration.execute',
     });
     renderEquipmentPage();
 

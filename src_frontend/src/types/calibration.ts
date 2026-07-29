@@ -158,6 +158,7 @@ export interface EquipmentCalibrationPoint {
   nominal_value: string | null;
   unit: string;
   reference_value: string | null;
+  reference_input_mode?: 'certified_value' | 'paired_reading';
   error_lower_limit: string | null;
   error_upper_limit: string | null;
   evaluation_basis: string;
@@ -320,9 +321,9 @@ export interface CalibrationDecisionInput {
 }
 
 export interface CalibrationValidationResult {
-  id: number;
   row_version: number;
-  status: CalibrationWorkflowStatus;
   result: CalibrationResult;
   blockers: string[];
+  passed_scope_codes: string[];
+  failed_scope_codes: string[];
 }

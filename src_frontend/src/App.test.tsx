@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const authMock = vi.hoisted(() => vi.fn());
@@ -33,6 +33,10 @@ vi.mock('./pages/calibration/CalibrationTemplateListPage', () => ({
 
 vi.mock('./pages/calibration/CalibrationTemplateEditorPage', () => ({
   default: () => <h2>校正模板版本路由頁面</h2>,
+}));
+
+vi.mock('./pages/calibration/CalibrationEntryWizardPage', () => ({
+  default: () => <h2>校正詳細數據登錄路由頁面</h2>,
 }));
 
 vi.mock('./pages/msa/MsaImportHistoryPage', () => ({
@@ -263,6 +267,54 @@ describe('App 校正模板路由', () => {
 
     expect(await screen.findByRole('heading', { name: heading }))
       .toBeInTheDocument();
+  });
+
+  it.each([
+    '/calibration/new',
+    '/measurement-equipment/1/calibrations/new',
+  ])('具有 calibration.execute 與 manage 時可開啟 %s', async (path) => {
+    window.history.replaceState({}, '', path);
+    authMock.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+      user: { username: '校正執行者', role: 'user' },
+      hasPermission: (permission: string) => (
+        permission === 'calibration.view'
+        || permission === 'calibration.execute'
+        || permission === 'calibration.manage'
+      ),
+      logout: vi.fn(),
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole(
+      'heading',
+      { name: '校正詳細數據登錄路由頁面' },
+    )).toBeInTheDocument();
+  });
+
+  it('只有 calibration.view 與 execute 時不可開啟完整送審精靈', async () => {
+    window.history.replaceState({}, '', '/calibration/new');
+    authMock.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+      user: { username: '檢視者', role: 'user' },
+      hasPermission: (permission: string) => (
+        permission === 'calibration.view'
+        || permission === 'calibration.execute'
+      ),
+      logout: vi.fn(),
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(window.location.pathname)
+      .toBe('/measurement-equipment'));
+    expect(screen.queryByRole(
+      'heading',
+      { name: '校正詳細數據登錄路由頁面' },
+    )).not.toBeInTheDocument();
   });
 
   it('沒有 calibration.view 時不可開啟模板頁', async () => {

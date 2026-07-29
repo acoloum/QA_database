@@ -27,6 +27,7 @@ const MainLayout = () => {
                                 <button
                                     className="btn btn-logout"
                                     onClick={logout}
+                                    data-navigation-action="logout"
                                     title="登出"
                                 >
                                     <i className="fa-solid fa-right-from-bracket"></i>
