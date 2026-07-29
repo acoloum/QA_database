@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 import json
 import re
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import aliased, selectinload
 
@@ -93,6 +93,7 @@ _LIST_FIELDS = {
     "order",
     "status",
     "equipment_type",
+    "search",
 }
 _SORT_FIELDS = {
     "id": CalibrationTemplate.id,
@@ -196,6 +197,31 @@ class CalibrationTemplateService:
             )
             statement = statement.where(
                 CalibrationTemplate.equipment_type == equipment_type
+            )
+        search = values.get("search")
+        if search is not None:
+            search = CalibrationTemplateService._text(
+                search,
+                field="search",
+                max_length=160,
+                required=True,
+            )
+            escaped = (
+                search.replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+            )
+            pattern = f"%{escaped}%"
+            statement = statement.where(
+                or_(
+                    CalibrationTemplate.template_code.ilike(
+                        pattern, escape="\\"
+                    ),
+                    CalibrationTemplate.name.ilike(pattern, escape="\\"),
+                    CalibrationTemplate.equipment_type.ilike(
+                        pattern, escape="\\"
+                    ),
+                )
             )
 
         total = db.session.execute(

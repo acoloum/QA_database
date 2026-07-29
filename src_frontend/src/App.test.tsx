@@ -27,6 +27,14 @@ vi.mock('./pages/equipment/MeasurementEquipmentPage', () => ({
   default: () => <h2>量測設備路由頁面</h2>,
 }));
 
+vi.mock('./pages/calibration/CalibrationTemplateListPage', () => ({
+  default: () => <h2>校正模板路由頁面</h2>,
+}));
+
+vi.mock('./pages/calibration/CalibrationTemplateEditorPage', () => ({
+  default: () => <h2>校正模板版本路由頁面</h2>,
+}));
+
 vi.mock('./pages/msa/MsaImportHistoryPage', () => ({
   default: () => <h2>設備匯入路由頁面</h2>,
 }));
@@ -228,5 +236,48 @@ describe('App 獨立量測設備路由', () => {
       'heading',
       { name: '量測設備路由頁面' },
     )).not.toBeInTheDocument();
+  });
+});
+
+describe('App 校正模板路由', () => {
+  const originalPathname = window.location.pathname;
+
+  afterEach(() => {
+    window.history.replaceState({}, '', originalPathname);
+  });
+
+  it.each([
+    ['/calibration/templates', '校正模板路由頁面'],
+    ['/calibration/templates/7', '校正模板版本路由頁面'],
+  ])('具有 calibration.view 時可開啟 %s', async (path, heading) => {
+    window.history.replaceState({}, '', path);
+    authMock.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+      user: { username: '校正人員', role: 'user' },
+      hasPermission: (permission: string) => permission === 'calibration.view',
+      logout: vi.fn(),
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: heading }))
+      .toBeInTheDocument();
+  });
+
+  it('沒有 calibration.view 時不可開啟模板頁', async () => {
+    window.history.replaceState({}, '', '/calibration/templates');
+    authMock.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+      user: { username: 'MSA 人員', role: 'user' },
+      hasPermission: (permission: string) => permission === 'msa.view',
+      logout: vi.fn(),
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: '儀表板路由頁面' }))
+      .toBeInTheDocument();
   });
 });

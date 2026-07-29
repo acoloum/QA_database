@@ -143,6 +143,48 @@ def test_list_and_get_return_stable_data_envelopes(
     )
 
 
+def test_template_list_searches_code_name_and_equipment_type(
+    client,
+    calibration_users,
+):
+    """前端搜尋不得因查詢契約漂移而回未知欄位錯誤。"""
+    manager_token = calibration_users["manager"]["token"]
+    viewer_token = calibration_users["viewer"]["token"]
+    _create_template(client, manager_token, "CAL-MICROMETER")
+    second = client.post(
+        "/api/calibration-templates",
+        headers=_authorization(manager_token),
+        json={
+            **_template_payload("CAL-CALIPER"),
+            "name": "量測室游標卡尺",
+            "equipment_type": "環規",
+        },
+    )
+    assert second.status_code == 201
+
+    by_code = client.get(
+        "/api/calibration-templates?search=MICROMETER",
+        headers=_authorization(viewer_token),
+    )
+    by_name = client.get(
+        "/api/calibration-templates?search=量測室",
+        headers=_authorization(viewer_token),
+    )
+    by_type = client.get(
+        "/api/calibration-templates?search=環規",
+        headers=_authorization(viewer_token),
+    )
+
+    assert by_code.status_code == 200
+    assert [item["template_code"] for item in by_code.get_json()["data"]["items"]] == [
+        "CAL-MICROMETER"
+    ]
+    assert by_name.status_code == 200
+    assert by_name.get_json()["data"]["total"] == 1
+    assert by_type.status_code == 200
+    assert by_type.get_json()["data"]["total"] == 1
+
+
 def test_missing_template_returns_stable_404(client, calibration_users):
     response = client.get(
         "/api/calibration-templates/999999",

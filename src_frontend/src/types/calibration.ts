@@ -45,6 +45,7 @@ export interface CalibrationTemplatePoint {
   qualification_range_end: string | null;
   uncertainty_required: boolean;
   required: boolean;
+  instruction: string | null;
 }
 
 export interface CalibrationTemplateVersion {
