@@ -208,6 +208,36 @@ describe('校正分層證據詳情', () => {
       .toHaveAttribute('data-responsive-layout', 'single-column-cards');
   });
 
+  it('在 390px 行動版 contract 下保留逐點讀值卡片語意', () => {
+    const originalInnerWidth = window.innerWidth;
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(max-width: 640px)',
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+
+    renderPage();
+
+    expect(window.matchMedia('(max-width: 640px)').matches).toBe(true);
+    expect(screen.getByRole('region', { name: '原始讀值' }))
+      .toHaveAttribute('data-responsive-layout', 'single-column-cards');
+    expect(screen.getByTestId('mobile-reading-P01-1')).toHaveTextContent('標準器讀值');
+    expect(screen.getByTestId('mobile-reading-P01-1')).toHaveTextContent('受校件示值');
+
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalInnerWidth });
+    Object.defineProperty(window, 'matchMedia', { configurable: true, value: originalMatchMedia });
+  });
+
   it('legacy 紀錄只顯示摘要層與資料限制', () => {
     detailMock.mockReturnValue({
       data: { ...calibration, data_level: 'summary_legacy', points: [], reference_snapshots: [] },

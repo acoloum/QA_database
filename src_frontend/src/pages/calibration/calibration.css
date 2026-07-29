@@ -450,7 +450,8 @@
   .cal-workflow-bar li { border-top-width: 2px; }
   .cal-detail-status { justify-items: start; }
   .cal-detail-facts, .cal-point-summary-grid, .cal-snapshot-grid, .cal-detail-readings, .cal-point-summary dl, .cal-detail-reading-card dl, .cal-decision-panel fieldset { grid-template-columns: 1fr; }
-  .cal-detail-reading-card { border-left: 4px solid var(--cal-blue); }
+  .cal-detail-readings { grid-template-columns: 1fr; min-width: 0; }
+  .cal-detail-reading-card { min-width: 0; overflow-wrap: anywhere; border-left: 4px solid var(--cal-blue); }
 }
 
 @media (prefers-reduced-motion: reduce) {
