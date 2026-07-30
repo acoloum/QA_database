@@ -37,7 +37,7 @@ ROLES = [
             'spc.view': True, 'spc.manage': True,
             'msa.view': True, 'msa.execute': True, 'msa.manage': True,
             'calibration.view': True, 'calibration.execute': True,
-            'calibration.manage': True,
+            'calibration.manage': True, 'calibration.approve': True,
             'pyrometry.edit': True, 'pyrometry.view': True,
             'task.create': True, 'task.edit': True,
         }

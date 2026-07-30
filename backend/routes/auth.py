@@ -55,11 +55,14 @@ def login():
             db.session.commit()
 
         token = generate_token(user.id, user.username, user.role)
+        role_obj = Role.query.filter_by(code=user.role).first()
+        permissions = role_obj.permissions if role_obj else {}
         return jsonify({
             'token': token,
             'username': user.username,
             'user_id': user.id,
-            'role': user.role
+            'role': user.role,
+            'permissions': permissions
         })
     except Exception as e:
         current_app.logger.exception("Login error: %s", str(e))

@@ -121,6 +121,7 @@ export default function EquipmentCalibrationForm({
               >
                 <option value="external">外校</option>
                 <option value="internal">內校</option>
+                <option value="itinerant">遊校</option>
                 <option value="exempt">免校</option>
               </select>
             </label>

@@ -48,7 +48,7 @@ export default function CalibrationConditionForm({
               id={`environment-${key}`}
               data-environment-key={key}
               aria-label={label}
-              inputMode="decimal"
+              inputMode="text"
               required={rule.required}
               min={rule.minimum == null ? undefined : String(rule.minimum)}
               max={rule.maximum == null ? undefined : String(rule.maximum)}

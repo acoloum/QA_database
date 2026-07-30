@@ -23,6 +23,7 @@ export interface LoginResponse {
     username: string;
     user_id: string;
     role: string;
+    permissions?: Record<string, boolean>;
     error?: string;
 }
 

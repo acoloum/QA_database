@@ -46,6 +46,7 @@ const Sidebar = () => {
                 { title: 'MSA 工作台', path: '/msa', icon: 'fa-ruler-combined', permission: 'msa.view' },
                 { title: '量測設備', path: '/measurement-equipment', icon: 'fa-microscope', permission: 'calibration.view' },
                 { title: '校正管理／工作佇列', path: '/calibrations', icon: 'fa-screwdriver-wrench', permission: 'calibration.view' },
+                { title: '校正模板', path: '/calibration/templates', icon: 'fa-file-pen', permission: 'calibration.view' },
             ]
         },
         {

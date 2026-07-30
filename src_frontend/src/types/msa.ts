@@ -4,7 +4,7 @@ import type { CalibrationWorkflowStatus } from './calibration';
 export type MsaJsonObject = Record<string, unknown>;
 
 export type EquipmentStatus = 'pending_review' | 'active' | 'maintenance' | 'inactive' | 'scrapped';
-export type CalibrationType = 'internal' | 'external' | 'exempt';
+export type CalibrationType = 'internal' | 'external' | 'itinerant' | 'exempt';
 export type CalibrationResult = 'pending' | 'pass' | 'fail' | 'limited_use';
 export type CalibrationRecordStatus = CalibrationWorkflowStatus;
 export type CalibrationStatus = 'valid' | 'due_soon' | 'expired' | 'failed' | 'missing' | 'exempt';

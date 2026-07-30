@@ -9,7 +9,7 @@ export type CalibrationWorkflowStatus =
   | 'voided';
 
 export type CalibrationResult = 'pending' | 'pass' | 'fail' | 'limited_use';
-export type CalibrationType = 'internal' | 'external';
+export type CalibrationType = 'internal' | 'external' | 'itinerant';
 export type CalibrationTemplateStatus = 'active' | 'inactive';
 export type CalibrationTemplateVersionStatus =
   | 'draft'

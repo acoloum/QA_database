@@ -143,6 +143,7 @@ export default function CalibrationEntryWizardPage() {
   const availableTemplates = (templates.data?.items ?? []).filter(
     (template) => (
       !selectedEquipment
+      || !selectedEquipment.equipment_type
       || template.equipment_type === selectedEquipment.equipment_type
     ),
   );

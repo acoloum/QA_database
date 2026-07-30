@@ -106,4 +106,13 @@ export const PERMISSION_GROUPS: { label: string; perms: { key: string; label: st
       { key: 'mechanical.delete', label: '刪除' },
     ],
   },
+  {
+    label: '校正管理',
+    perms: [
+      { key: 'calibration.view', label: '檢視' },
+      { key: 'calibration.execute', label: '執行校正' },
+      { key: 'calibration.manage', label: '管理模板／排程' },
+      { key: 'calibration.approve', label: '核准' },
+    ],
+  },
 ];

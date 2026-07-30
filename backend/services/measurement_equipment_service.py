@@ -76,7 +76,7 @@ _EQUIPMENT_STATUS = {
     "inactive",
     "scrapped",
 }
-_CALIBRATION_TYPES = {"internal", "external", "exempt"}
+_CALIBRATION_TYPES = {"internal", "external", "itinerant", "exempt"}
 _CALIBRATION_RESULTS = {"pending", "pass", "fail", "limited_use"}
 _CALIBRATION_SUMMARY_STATUS = {
     "valid",

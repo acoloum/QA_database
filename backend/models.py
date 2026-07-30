@@ -880,7 +880,7 @@ class MeasurementEquipment(db.Model):
         ),
         db.CheckConstraint(
             '"校驗類別" IS NULL OR "校驗類別" IN '
-            '(\'internal\', \'external\', \'exempt\')',
+            '(\'internal\', \'external\', \'itinerant\', \'exempt\')',
             name='ck_equipment_calibration_type',
         ),
         db.CheckConstraint(

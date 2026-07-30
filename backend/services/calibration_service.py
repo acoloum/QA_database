@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from functools import wraps
@@ -177,7 +178,7 @@ class CalibrationService:
                 EquipmentCalibrationRecord.status == values["status"]
             )
         if "calibration_type" in values:
-            if values["calibration_type"] not in {"internal", "external"}:
+            if values["calibration_type"] not in {"internal", "external", "itinerant"}:
                 raise CalibrationValidationError(
                     "CALIBRATION_FIELD_INVALID",
                     "calibration_type 不受支援",
@@ -295,10 +296,10 @@ class CalibrationService:
         calibration_type = CalibrationService._required_text(
             data, "calibration_type", "CALIBRATION_FIELD_INVALID"
         )
-        if calibration_type not in {"internal", "external"}:
+        if calibration_type not in {"internal", "external", "itinerant"}:
             raise CalibrationValidationError(
                 "CALIBRATION_FIELD_INVALID",
-                "calibration_type 必須是 internal 或 external",
+                "calibration_type 必須是 internal、external 或 itinerant",
                 details={"field": "calibration_type"},
             )
 
@@ -1806,28 +1807,34 @@ class CalibrationService:
                     f"環境條件 {key} 操作提示與模板不符",
                     details={"field": "environment_conditions", "key": key},
                 )
+            _is_range = False
             if value.get("value") not in (None, ""):
-                try:
-                    decimal_value = Decimal(str(value["value"]))
-                except (InvalidOperation, TypeError, ValueError):
-                    raise CalibrationValidationError(
-                        "CALIBRATION_FIELD_INVALID",
-                        f"環境條件 {key} 數值格式錯誤",
-                        details={"field": "environment_conditions", "key": key},
-                    )
-                if (
-                    not decimal_value.is_finite()
-                    or len(decimal_value.as_tuple().digits) > _MAX_SIGNIFICANT_DIGITS
-                    or abs(decimal_value.adjusted()) > _MAX_DECIMAL_EXPONENT
-                ):
-                    raise CalibrationValidationError(
-                        "CALIBRATION_FIELD_INVALID",
-                        f"環境條件 {key} 數值超出允許範圍",
-                        details={"field": "environment_conditions", "key": key},
-                    )
+                raw = str(value["value"]).strip()
+                # 支援範圍格式 (如 "40-65")，校正證書常以範圍呈現
+                if re.match(r'^\d+(?:\.\d+)?\s*[-–]\s*\d+(?:\.\d+)?$', raw):
+                    _is_range = True
+                else:
+                    try:
+                        decimal_value = Decimal(raw)
+                    except (InvalidOperation, TypeError, ValueError):
+                        raise CalibrationValidationError(
+                            "CALIBRATION_FIELD_INVALID",
+                            f"環境條件 {key} 數值格式錯誤",
+                            details={"field": "environment_conditions", "key": key},
+                        )
+                    if (
+                        not decimal_value.is_finite()
+                        or len(decimal_value.as_tuple().digits) > _MAX_SIGNIFICANT_DIGITS
+                        or abs(decimal_value.adjusted()) > _MAX_DECIMAL_EXPONENT
+                    ):
+                        raise CalibrationValidationError(
+                            "CALIBRATION_FIELD_INVALID",
+                            f"環境條件 {key} 數值超出允許範圍",
+                            details={"field": "environment_conditions", "key": key},
+                        )
             min_val = rule.get("minimum")
             max_val = rule.get("maximum")
-            if min_val is not None or max_val is not None:
+            if not _is_range and (min_val is not None or max_val is not None):
                 val = value.get("value")
                 if val not in (None, ""):
                     dec_val = Decimal(str(val))
