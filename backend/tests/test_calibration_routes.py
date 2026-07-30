@@ -860,6 +860,11 @@ def test_create_calibration_external_draft_allows_missing_certificate(
     assert data["calibration_type"] == "external"
     assert data["reference_standard_equipment_id"] is None
     assert data.get("certificate_attachment_id") is None
+    audit = AuditLog.query.filter_by(
+        module="equipment_calibration",
+        record_id=data["id"],
+    ).one()
+    assert audit.action == "create_calibration"
 
 
 def test_create_calibration_template_not_approved_rejected(

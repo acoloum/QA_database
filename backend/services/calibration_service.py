@@ -470,7 +470,7 @@ class CalibrationService:
 
             log_audit(
                 actor_id,
-                "create_calibration_draft",
+                "create_calibration",
                 "equipment_calibration",
                 record.id,
                 new_val=CalibrationService._serialize_record(record, include_points=True),
