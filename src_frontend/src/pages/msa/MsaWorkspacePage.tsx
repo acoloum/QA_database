@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import MsaRiskCard, { type MsaSeverity } from '../../components/msa/MsaRiskCard';
 import MsaWorkQueue, {

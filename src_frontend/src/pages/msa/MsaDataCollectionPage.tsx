@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 
 import MsaBlindEntry from '../../components/msa/MsaBlindEntry';
 import MsaObservationImportReview from '../../components/msa/MsaObservationImportReview';

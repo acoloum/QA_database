@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Alert, Badge, Button, Card, Col, Form, Row } from 'react-bootstrap';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { useAuth } from '../../context/useAuth';
 import {
   useAnalyzeSpcStudy, useApproveSpcResearch, useApproveSpcStudy, useRejectSpcStudy,

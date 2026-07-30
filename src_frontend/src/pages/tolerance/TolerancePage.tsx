@@ -5,7 +5,7 @@ import ToleranceModal from '../../components/tolerance/ToleranceModal';
 import ViewToleranceModal from '../../components/tolerance/ViewToleranceModal';
 import { useToleranceSearch, useToleranceOptions, useDeleteTolerance, useImportTolerance, useExportToleranceData } from '../../hooks/useTolerance';
 import type { ToleranceStandard, Vendor } from '../../types';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 const TolerancePage = () => {
     const navigate = useNavigate();

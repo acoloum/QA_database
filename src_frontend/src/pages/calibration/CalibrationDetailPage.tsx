@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router';
 
 import CalibrationPointSummary from '../../components/calibration/CalibrationPointSummary';
 import CalibrationWorkflowBar from '../../components/calibration/CalibrationWorkflowBar';

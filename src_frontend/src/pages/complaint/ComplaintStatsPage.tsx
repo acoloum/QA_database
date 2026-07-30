@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Container, Card, Row, Col, Form, Button, Spinner } from 'react-bootstrap';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import {
     Chart as ChartJS,
     CategoryScale, LinearScale, BarElement, ArcElement,

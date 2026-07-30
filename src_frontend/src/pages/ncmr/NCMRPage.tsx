@@ -7,7 +7,7 @@ import DispositionModal from '../../components/ncmr/DispositionModal';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import FilterBar from '../../components/common/FilterBar';
 import PaginationBar from '../../components/common/PaginationBar';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useNCMRList, useDeleteNCMR, useCreateCAPA, useNCMRDetail } from '../../hooks/useNCMR';
 import type { NCMRListParams } from '../../hooks/useNCMR';
 import { buildNcmrPrintHtml, buildReworkFromNcmrUrl } from './ncmrPageUtils';

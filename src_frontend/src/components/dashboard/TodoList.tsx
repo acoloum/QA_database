@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useDashboardTodos } from '../../hooks/useDashboard';
 import type { TodoItem } from '../../hooks/useDashboard';
 

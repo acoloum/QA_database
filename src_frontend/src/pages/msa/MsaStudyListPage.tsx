@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { MSA_METHODS } from '../../components/msa/MsaMethodSelector';
 import { useAuth } from '../../context/useAuth';

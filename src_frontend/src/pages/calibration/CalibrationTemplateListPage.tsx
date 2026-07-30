@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Modal } from 'react-bootstrap';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { useAuth } from '../../context/useAuth';
 import {

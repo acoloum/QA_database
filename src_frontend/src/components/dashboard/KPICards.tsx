@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useDashboardStats } from '../../hooks/useDashboard';
 import type { DatePeriod } from '../../hooks/useDashboard';
 import type { DashboardStats } from '../../types';

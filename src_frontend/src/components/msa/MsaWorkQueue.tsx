@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import { SEVERITY_META, type MsaSeverity } from './MsaRiskCard';
 

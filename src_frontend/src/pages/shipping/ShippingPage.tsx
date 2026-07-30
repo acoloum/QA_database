@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import ShippingModal from '../../components/shipping/ShippingModal';
 import ImportModal from '../../components/shipping/ImportModal';

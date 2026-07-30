@@ -5,7 +5,7 @@ import {
   useState,
   type ChangeEvent,
 } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router';
 
 import CalibrationConditionForm, {
   type EnvironmentValue,

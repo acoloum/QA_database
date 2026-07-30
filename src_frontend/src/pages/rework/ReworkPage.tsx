@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import type { ReworkExecutionDetail, ReworkInspectionDetail, ReworkCostDetail } from '../../types';
 import type { ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import ReworkStatisticsDashboard from '../../components/rework/ReworkStatisticsDashboard';

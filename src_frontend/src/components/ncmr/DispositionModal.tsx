@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Modal, Button, Form, Table, Alert } from 'react-bootstrap';
 import type { NCMR, NcmrDisposition, DispositionType } from '../../types';
 import ConfirmActionModal, { type ConfirmActionState } from '../common/ConfirmActionModal';

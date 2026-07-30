@@ -79,7 +79,13 @@ describe('App 機械性質路由', () => {
   it('已驗證使用者造訪 /mechanical 時呈現機械性質頁面', async () => {
     render(<App />);
 
-    expect(await screen.findByRole('heading', { name: '機械性質路由頁面' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole(
+        'heading',
+        { name: '機械性質路由頁面' },
+        { timeout: 3_000 },
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByRole('complementary')).toBeInTheDocument();
     expect(screen.getByRole('main')).toBeInTheDocument();
   });

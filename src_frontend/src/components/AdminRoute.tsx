@@ -1,4 +1,4 @@
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet } from 'react-router';
 import { useAuth } from '../context/useAuth';
 
 /** AdminRoute — 允許 admin 或具備 user.manage 權限的使用者存取 */

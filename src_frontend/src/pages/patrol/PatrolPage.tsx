@@ -4,7 +4,7 @@ import PatrolModal from '../../components/patrol/PatrolModal';
 import PatrolCharts from '../../components/patrol/PatrolCharts';
 import PatrolImportModal from '../../components/patrol/PatrolImportModal';
 import { Button, Form, Card, Row, Col, Table, Badge } from 'react-bootstrap';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import PaginationBar from '../../components/common/PaginationBar';
 import { usePatrolList, usePatrolOptions, useDeletePatrol, useExportPatrolRawData } from '../../hooks/usePatrol';

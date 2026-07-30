@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Container, Card, Table, Badge, Button, Form, Row, Col, ProgressBar } from 'react-bootstrap';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
     useCapaList,
     useDeleteCapa,

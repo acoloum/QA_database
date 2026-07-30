@@ -1,5 +1,5 @@
 import { Card, Badge, Row, Col } from 'react-bootstrap';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { usePyrometryDashboard } from '../../hooks/usePyrometry';
 import type { FurnaceStatus, PyrometryDashboardRow } from '../../types';
 
