@@ -33,8 +33,8 @@ export const toToleranceLimits = (result: ToleranceResult, spec: string) => {
   const standards: Record<string, { lsl: number; usl: number }> = {};
 
   result.tolerances.forEach((t: ToleranceItem) => {
-    let lsl = -Infinity;
-    let usl = Infinity;
+    let lsl: number;
+    let usl: number;
 
     if (t.尺寸下限 !== null && t.尺寸上限 !== null) {
       lsl = t.尺寸下限;

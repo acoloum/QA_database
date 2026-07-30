@@ -164,7 +164,7 @@ export default function EquipmentDetailDrawer({
                   onClick={() => setActiveTab(tab.id)}
                   onKeyDown={(event) => {
                     const index = tabs.findIndex((item) => item.id === tab.id);
-                    let nextIndex = index;
+                    let nextIndex: number;
                     if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
                     else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
                     else if (event.key === 'Home') nextIndex = 0;
