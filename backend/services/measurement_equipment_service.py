@@ -19,7 +19,6 @@ from ..models import (
     Thermocouple,
 )
 from ..utils import log_audit
-from .msa_contracts import EquipmentEligibility, EquipmentSnapshot
 from .msa_errors import (
     MsaConflict,
     MsaNotFound,

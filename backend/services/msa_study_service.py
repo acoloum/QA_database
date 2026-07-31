@@ -14,6 +14,10 @@ from .msa_errors import (
     MsaNotFound,
     MsaValidationError,
 )
+from .msa_payload import (
+    reject_unknown_fields as _reject_unknown_fields,
+    require_object as _require_object,
+)
 
 
 # 研究類型對應第四版受控方法；新增類型必須同時擴充 method registry。
@@ -436,24 +440,6 @@ class MsaStudyService:
 # ----------------------------------------------------------------------
 # 共用輸入處理
 # ----------------------------------------------------------------------
-
-
-def _require_object(payload) -> dict:
-    if not isinstance(payload, dict):
-        raise MsaValidationError(
-            "MSA_PAYLOAD_INVALID", "請求內容必須是 JSON 物件", details={},
-        )
-    return payload
-
-
-def _reject_unknown_fields(payload: dict, allowed: set) -> None:
-    unknown = sorted(set(payload) - set(allowed))
-    if unknown:
-        raise MsaValidationError(
-            "MSA_UNKNOWN_FIELDS",
-            "請求包含未允許欄位",
-            details={"unknown_fields": unknown},
-        )
 
 
 def _optional_text(value, *, field: str, max_length: int, code: str):

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 
 from ..extensions import db
 from ..models import (
@@ -21,6 +22,10 @@ from .msa_errors import (
     MsaForbidden,
     MsaNotFound,
     MsaValidationError,
+)
+from .msa_payload import (
+    reject_unknown_fields as _reject_unknown_fields,
+    require_object as _require_object,
 )
 
 
@@ -218,7 +223,14 @@ class MsaObservationService:
 
         這個視圖只給具管理權限者使用；盲測任務 DTO 仍不含這些資訊。
         """
-        plan = db.session.get(MsaPlanVersion, plan_id)
+        plan = db.session.get(
+            MsaPlanVersion,
+            plan_id,
+            options=[
+                selectinload(MsaPlanVersion.parts),
+                selectinload(MsaPlanVersion.appraisers),
+            ],
+        )
         if plan is None:
             raise MsaNotFound(
                 "MSA_PLAN_NOT_FOUND",
@@ -341,6 +353,7 @@ class MsaObservationService:
         plan = (
             MsaPlanVersion.query
             .filter_by(id=plan_id)
+            .options(selectinload(MsaPlanVersion.appraisers))
             .with_for_update()
             .one_or_none()
         )
@@ -441,6 +454,11 @@ class MsaObservationService:
 
     @staticmethod
     def _advance_study_to_collecting(study_id: int, actor_id: int) -> None:
+        # 絕大多數觀測寫入時研究早已離開 ready 狀態；先用不加鎖的讀取
+        # 判斷，避免每筆觀測都對研究列取得排他鎖造成不必要的鎖競爭。
+        study = MsaStudy.query.filter_by(id=study_id).one()
+        if study.status != "ready":
+            return
         study = (
             MsaStudy.query
             .filter_by(id=study_id)
@@ -456,24 +474,6 @@ class MsaObservationService:
 # ----------------------------------------------------------------------
 # 共用輸入處理
 # ----------------------------------------------------------------------
-
-
-def _require_object(payload) -> dict:
-    if not isinstance(payload, dict):
-        raise MsaValidationError(
-            "MSA_PAYLOAD_INVALID", "請求內容必須是 JSON 物件", details={},
-        )
-    return payload
-
-
-def _reject_unknown_fields(payload: dict, allowed: set) -> None:
-    unknown = sorted(set(payload) - set(allowed))
-    if unknown:
-        raise MsaValidationError(
-            "MSA_UNKNOWN_FIELDS",
-            "請求包含未允許欄位",
-            details={"unknown_fields": unknown},
-        )
 
 
 def _describe(value):

@@ -8,6 +8,7 @@
 from datetime import date, datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload
 
 from ..extensions import db
 from ..models import (
@@ -22,6 +23,10 @@ from .msa_errors import (
     MsaForbidden,
     MsaNotFound,
     MsaValidationError,
+)
+from .msa_payload import (
+    reject_unknown_fields as _reject_unknown_fields,
+    require_object as _require_object,
 )
 
 
@@ -214,6 +219,7 @@ class MsaWorkflowService:
             result = (
                 MsaResultVersion.query
                 .filter_by(id=result_id)
+                .options(joinedload(MsaResultVersion.study, innerjoin=True))
                 .with_for_update()
                 .one_or_none()
             )
@@ -312,24 +318,6 @@ class MsaWorkflowService:
         except Exception:
             db.session.rollback()
             raise
-
-
-def _require_object(payload) -> dict:
-    if not isinstance(payload, dict):
-        raise MsaValidationError(
-            "MSA_PAYLOAD_INVALID", "請求內容必須是 JSON 物件", details={},
-        )
-    return payload
-
-
-def _reject_unknown_fields(payload: dict, allowed: set) -> None:
-    unknown = sorted(set(payload) - set(allowed))
-    if unknown:
-        raise MsaValidationError(
-            "MSA_UNKNOWN_FIELDS",
-            "請求包含未允許欄位",
-            details={"unknown_fields": unknown},
-        )
 
 
 def _required_reason(value) -> str:

@@ -201,6 +201,17 @@ def auth_required(f: Any) -> Any:
 # ==================================================
 # 細粒度權限控制
 # ==================================================
+def role_grants_permission(current_user, perm: str) -> bool:
+    """判斷使用者角色是否具備指定權限（不含 is_active 判斷，呼叫端視情境自行檢查）。
+    保留既有 admin 超級管理員語意，避免尚未建立 Role 資料時鎖死管理功能。
+    """
+    if getattr(current_user, 'role', None) == 'admin':
+        return True
+    from .models import Role
+    role = Role.query.filter_by(code=current_user.role).first()
+    return bool(role and role.has_permission(perm))
+
+
 def require_permission(perm: str):
     """裝飾器：驗證當前使用者是否具備指定細粒度權限。
     必須搭配 auth_required 使用，且路由函式第一個參數須為 current_user。
@@ -210,12 +221,7 @@ def require_permission(perm: str):
         def wrapped(current_user, *args, **kwargs):
             if current_user is None:
                 return jsonify({'success': False, 'error': '使用者不存在'}), 401
-            # 保留既有 admin 超級管理員語意，避免尚未建立 Role 資料時鎖死管理功能。
-            if getattr(current_user, 'role', None) == 'admin':
-                return f(current_user, *args, **kwargs)
-            from .models import Role
-            role = Role.query.filter_by(code=current_user.role).first()
-            if not role or not role.has_permission(perm):
+            if not role_grants_permission(current_user, perm):
                 return jsonify({'success': False, 'error': '權限不足'}), 403
             return f(current_user, *args, **kwargs)
         return wrapped
