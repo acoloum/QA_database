@@ -71,6 +71,8 @@ _CALIBRATION_STATUSES = {
     "superseded",
     "voided",
 }
+_CALIBRATION_TYPES = {"internal", "external", "itinerant"}
+_ENV_RANGE_RE = re.compile(r'^\d+(?:\.\d+)?\s*[-–]\s*\d+(?:\.\d+)?$')
 
 
 def _rollback_on_error(function):
@@ -178,7 +180,7 @@ class CalibrationService:
                 EquipmentCalibrationRecord.status == values["status"]
             )
         if "calibration_type" in values:
-            if values["calibration_type"] not in {"internal", "external", "itinerant"}:
+            if values["calibration_type"] not in _CALIBRATION_TYPES:
                 raise CalibrationValidationError(
                     "CALIBRATION_FIELD_INVALID",
                     "calibration_type 不受支援",
@@ -296,7 +298,7 @@ class CalibrationService:
         calibration_type = CalibrationService._required_text(
             data, "calibration_type", "CALIBRATION_FIELD_INVALID"
         )
-        if calibration_type not in {"internal", "external", "itinerant"}:
+        if calibration_type not in _CALIBRATION_TYPES:
             raise CalibrationValidationError(
                 "CALIBRATION_FIELD_INVALID",
                 "calibration_type 必須是 internal、external 或 itinerant",
@@ -1233,11 +1235,11 @@ class CalibrationService:
                 record.reference_standard_equipment_id,
                 on_date=record.calibration_date,
             )
-        elif record.calibration_type == "external":
+        elif record.calibration_type in ("external", "itinerant"):
             if record.certificate_attachment_id is None:
                 raise CalibrationValidationError(
                     "CALIBRATION_CERTIFICATE_REQUIRED",
-                    "外校送審必須上傳證書附件",
+                    "外校／遊校送審必須上傳證書附件",
                     details={"field": "certificate_attachment_id"},
                 )
             CalibrationService._assert_certificate_attachment(
@@ -1357,11 +1359,11 @@ class CalibrationService:
                 record.reference_standard_equipment_id,
                 on_date=record.calibration_date,
             )
-        elif record.calibration_type == "external":
+        elif record.calibration_type in ("external", "itinerant"):
             if record.certificate_attachment_id is None:
                 raise CalibrationValidationError(
                     "CALIBRATION_CERTIFICATE_REQUIRED",
-                    "外校核准前必須保有證書附件",
+                    "外校／遊校核准前必須保有證書附件",
                     details={"field": "certificate_attachment_id"},
                 )
             CalibrationService._assert_certificate_attachment(
@@ -1621,6 +1623,7 @@ class CalibrationService:
             )
         allowed_mime_types = {
             "external": {"application/pdf", "image/jpeg", "image/png"},
+            "itinerant": {"application/pdf", "image/jpeg", "image/png"},
             "internal": {
                 "application/pdf",
                 "image/jpeg",
@@ -1807,13 +1810,11 @@ class CalibrationService:
                     f"環境條件 {key} 操作提示與模板不符",
                     details={"field": "environment_conditions", "key": key},
                 )
-            _is_range = False
+            decimal_value = None
             if value.get("value") not in (None, ""):
                 raw = str(value["value"]).strip()
-                # 支援範圍格式 (如 "40-65")，校正證書常以範圍呈現
-                if re.match(r'^\d+(?:\.\d+)?\s*[-–]\s*\d+(?:\.\d+)?$', raw):
-                    _is_range = True
-                else:
+                # 支援範圍格式 (如 "40-65")，校正證書常以範圍呈現，範圍值不比對最小/最大值
+                if not _ENV_RANGE_RE.match(raw):
                     try:
                         decimal_value = Decimal(raw)
                     except (InvalidOperation, TypeError, ValueError):
@@ -1834,22 +1835,19 @@ class CalibrationService:
                         )
             min_val = rule.get("minimum")
             max_val = rule.get("maximum")
-            if not _is_range and (min_val is not None or max_val is not None):
-                val = value.get("value")
-                if val not in (None, ""):
-                    dec_val = Decimal(str(val))
-                    if min_val is not None and dec_val < Decimal(str(min_val)):
-                        raise CalibrationValidationError(
-                            "CALIBRATION_FIELD_INVALID",
-                            f"環境條件 {key} 低於最小值",
-                            details={"field": "environment_conditions", "key": key},
-                        )
-                    if max_val is not None and dec_val > Decimal(str(max_val)):
-                        raise CalibrationValidationError(
-                            "CALIBRATION_FIELD_INVALID",
-                            f"環境條件 {key} 高於最大值",
-                            details={"field": "environment_conditions", "key": key},
-                        )
+            if decimal_value is not None and (min_val is not None or max_val is not None):
+                if min_val is not None and decimal_value < Decimal(str(min_val)):
+                    raise CalibrationValidationError(
+                        "CALIBRATION_FIELD_INVALID",
+                        f"環境條件 {key} 低於最小值",
+                        details={"field": "environment_conditions", "key": key},
+                    )
+                if max_val is not None and decimal_value > Decimal(str(max_val)):
+                    raise CalibrationValidationError(
+                        "CALIBRATION_FIELD_INVALID",
+                        f"環境條件 {key} 高於最大值",
+                        details={"field": "environment_conditions", "key": key},
+                    )
             normalized[key] = {
                 "value": value.get("value") if value.get("value") != "" else None,
                 "unit": rule.get("unit"),

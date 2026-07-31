@@ -25,6 +25,12 @@ def _role_is_valid(role_code: str) -> bool:
         return True
     return Role.query.filter_by(code=role_code).first() is not None
 
+
+def _permissions_for_role(role_code: str) -> dict:
+    """取得角色的權限清單；角色不存在時回傳空物件。"""
+    role_obj = Role.query.filter_by(code=role_code).first()
+    return role_obj.permissions if role_obj else {}
+
 @auth_bp.route('/api/login', methods=['POST'])
 @limiter.limit("5 per minute")
 def login():
@@ -55,8 +61,7 @@ def login():
             db.session.commit()
 
         token = generate_token(user.id, user.username, user.role)
-        role_obj = Role.query.filter_by(code=user.role).first()
-        permissions = role_obj.permissions if role_obj else {}
+        permissions = _permissions_for_role(user.role)
         return jsonify({
             'token': token,
             'username': user.username,
@@ -82,8 +87,7 @@ def verify_token_api():
     if payload:
         # 從 Role 資料表取得該角色的 permissions
         role_code = payload.get('role', 'user')
-        role_obj = Role.query.filter_by(code=role_code).first()
-        permissions = role_obj.permissions if role_obj else {}
+        permissions = _permissions_for_role(role_code)
         return jsonify({
             'valid': True,
             'username': payload.get('username'),
