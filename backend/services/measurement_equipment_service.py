@@ -1340,6 +1340,9 @@ class MeasurementEquipmentService:
         code: str,
     ) -> int:
         try:
+            # 長度上限避免超長數字字串觸發 CPython int() 解析的高昂成本
+            if isinstance(value, str) and len(value.strip()) > 20:
+                raise ValueError("value string too long")
             parsed = int(value)
         except (TypeError, ValueError) as error:
             raise MsaServiceError(

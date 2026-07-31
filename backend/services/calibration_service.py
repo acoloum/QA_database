@@ -2242,17 +2242,26 @@ class CalibrationService:
             )
 
     @staticmethod
-    def _required_int(data: dict, field: str, code: str) -> int:
-        value = data.get(field)
+    def _parse_strict_int(value, *, field: str, code: str) -> int:
+        """將 int 或數字字串解析為 int；型別錯誤、空白或超長字串一律拋出。"""
         if isinstance(value, bool) or not isinstance(value, (int, str)):
             raise CalibrationValidationError(code, f"{field} 必須是整數", details={"field": field})
         if isinstance(value, str):
-            if not value.strip():
+            normalized = value.strip()
+            if not normalized:
                 raise CalibrationValidationError(code, f"{field} 不可為空白", details={"field": field})
+            # 長度上限避免超長數字字串觸發 CPython int() 解析的高昂成本
+            if len(normalized) > 20:
+                raise CalibrationValidationError(code, f"{field} 不是合法整數", details={"field": field})
             try:
-                value = int(value)
+                return int(normalized)
             except ValueError:
                 raise CalibrationValidationError(code, f"{field} 不是合法整數", details={"field": field})
+        return value
+
+    @staticmethod
+    def _required_int(data: dict, field: str, code: str) -> int:
+        value = CalibrationService._parse_strict_int(data.get(field), field=field, code=code)
         if value <= 0 or value > _MAX_INTEGER:
             raise CalibrationValidationError(code, f"{field} 超出允許範圍", details={"field": field})
         return value
@@ -2348,17 +2357,7 @@ class CalibrationService:
     def _bounded_int(
         value, *, field: str, minimum: int, maximum: int, code: str
     ) -> int:
-        if isinstance(value, bool) or not isinstance(value, (int, str)):
-            raise CalibrationValidationError(
-                code, f"{field} 必須是整數", details={"field": field}
-            )
-        if isinstance(value, str):
-            if not value.strip():
-                raise CalibrationValidationError(code, f"{field} 不可為空白", details={"field": field})
-            try:
-                value = int(value)
-            except ValueError:
-                raise CalibrationValidationError(code, f"{field} 不是合法整數", details={"field": field})
+        value = CalibrationService._parse_strict_int(value, field=field, code=code)
         if value < minimum or value > maximum:
             raise CalibrationValidationError(
                 code,
