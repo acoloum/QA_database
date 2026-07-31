@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -55,10 +56,16 @@ def build_parser() -> argparse.ArgumentParser:
             f"--{actor}-password",
             default=os.getenv(f"CALIBRATION_SMOKE_{upper}_PASSWORD"),
         )
-    parser.add_argument(
+    cleanup_group = parser.add_mutually_exclusive_group()
+    cleanup_group.add_argument(
         "--keep-data",
         action="store_true",
         help="保留非正式 smoke 草稿；核准證據本來就不會刪除",
+    )
+    cleanup_group.add_argument(
+        "--pre-clean",
+        action="store_true",
+        help="重跑前先清除前次 smoke 殘留資料（呼叫 backend.scripts.cleanup_smoke_data）",
     )
     return parser
 
@@ -1123,6 +1130,23 @@ def _config_from_args(args: argparse.Namespace) -> SmokeConfig:
 
 def main(argv=None) -> int:
     args = validate_args(build_parser().parse_args(argv))
+    if args.pre_clean:
+        # 重跑前先清除前次 smoke 殘留，避免資料堆積（--keep-data 與本旗標互斥）
+        proc = subprocess.run(
+            [sys.executable, "-m", "backend.scripts.cleanup_smoke_data", "--apply"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        print(proc.stdout, end="")
+        if proc.stderr:
+            print(proc.stderr, file=sys.stderr, end="")
+        if proc.returncode != 0:
+            print(
+                f"重跑前清除失敗（rc={proc.returncode}），中止 smoke",
+                file=sys.stderr,
+            )
+            return 1
     try:
         evidence = run_smoke(_config_from_args(args))
     except SmokeError as smoke_error:

@@ -821,6 +821,18 @@ def test_parser_reads_environment_and_keeps_localhost_default(monkeypatch):
     assert args.approver_user == "approver-env"
 
 
+def test_parser_pre_clean_flag_exists_and_conflicts_with_keep_data():
+    parser = build_parser()
+
+    args = parser.parse_args(["--pre-clean"])
+    assert args.pre_clean is True
+    assert args.keep_data is False
+
+    with pytest.raises(SystemExit):
+        # --keep-data 與 --pre-clean 語意衝突（保留草稿 vs 清除全部 smoke 資料）
+        parser.parse_args(["--keep-data", "--pre-clean"])
+
+
 def test_smoke_rejects_duplicate_login_user_id(config):
     class DuplicateUserFake(FakeHttpClient):
         def request(self, method, path, **kwargs):

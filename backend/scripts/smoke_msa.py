@@ -15,6 +15,7 @@
 import argparse
 import json
 import os
+import subprocess
 import sys
 from datetime import date, datetime, timedelta
 from io import BytesIO
@@ -393,9 +394,14 @@ def _void_evidence(approver, result, evidence, record) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="MSA 正式服務 smoke")
     parser.add_argument("--base-url", required=True)
-    parser.add_argument(
+    cleanup_group = parser.add_mutually_exclusive_group()
+    cleanup_group.add_argument(
         "--keep", action="store_true",
         help="保留 smoke 資料不標記作廢（僅供除錯）",
+    )
+    cleanup_group.add_argument(
+        "--pre-clean", action="store_true",
+        help="重跑前先清除前次 smoke 殘留資料（呼叫 backend.scripts.cleanup_smoke_data）",
     )
     for role in ("manager", "executor", "approver", "participant-approver"):
         parser.add_argument(f"--{role}-token", default=None)
@@ -415,6 +421,25 @@ def main() -> int:
         tokens[role] = token
 
     print(f"MSA smoke 開始：{args.base_url}")
+
+    if args.pre_clean:
+        # 重跑前先清除前次 smoke 殘留，避免資料堆積（--keep 與本旗標互斥）
+        proc = subprocess.run(
+            [sys.executable, "-m", "backend.scripts.cleanup_smoke_data", "--apply"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        print(proc.stdout, end="")
+        if proc.stderr:
+            print(proc.stderr, file=sys.stderr, end="")
+        if proc.returncode != 0:
+            print(
+                f"重跑前清除失敗（rc={proc.returncode}），中止 smoke",
+                file=sys.stderr,
+            )
+            return 1
+
     try:
         evidence = run(args.base_url, tokens, args.keep)
     except SmokeError as failure:
