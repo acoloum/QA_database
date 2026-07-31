@@ -10,6 +10,7 @@ from scipy import stats
 
 from .msa_contracts import MsaAnalysisOutput, MsaMethodContext
 from .msa_errors import MsaMethodNotApplicable
+from .msa_numeric import require_finite_reading as _finite
 
 
 MIN_REFERENCE_LEVELS = 5
@@ -341,19 +342,3 @@ def _linearity_chart(
         ],
         "zero_line": 0.0,
     }
-
-
-def _finite(value, field: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise MsaMethodNotApplicable(
-            "non_numeric_reading",
-            f"{field} 必須是數值",
-            details={"field": field},
-        )
-    if not math.isfinite(value):
-        raise MsaMethodNotApplicable(
-            "non_finite_reading",
-            f"{field} 不得為 NaN 或 Infinity",
-            details={"field": field},
-        )
-    return float(value)

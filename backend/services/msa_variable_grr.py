@@ -11,6 +11,7 @@ import math
 from scipy import stats
 
 from .msa_contracts import MsaAnalysisOutput, MsaMethodContext
+from .msa_control_chart_constants import A2, D3, D4
 from .msa_errors import MsaMethodNotApplicable
 from .msa_numeric import MsaNumericError, require_finite_tree
 
@@ -20,14 +21,6 @@ D2 = {
     2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326,
     6: 2.534, 7: 2.704, 8: 2.847, 9: 2.970, 10: 3.078,
 }
-
-# 極差管制圖係數，與 d2 表同樣只涵蓋受控子組大小。
-D3 = {2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0, 6: 0.0, 7: 0.076, 8: 0.136,
-      9: 0.184, 10: 0.223}
-D4 = {2: 3.267, 3: 2.574, 4: 2.282, 5: 2.114, 6: 2.004, 7: 1.924,
-      8: 1.864, 9: 1.816, 10: 1.777}
-A2 = {2: 1.880, 3: 1.023, 4: 0.729, 5: 0.577, 6: 0.483, 7: 0.419,
-      8: 0.373, 9: 0.337, 10: 0.308}
 
 NDC_CONSTANT = 1.41
 

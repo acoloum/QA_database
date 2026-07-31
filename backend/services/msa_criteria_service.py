@@ -8,6 +8,7 @@ from typing import NoReturn
 
 from sqlalchemy import func
 from sqlalchemy.exc import DataError, IntegrityError
+from sqlalchemy.orm import selectinload
 
 from ..extensions import db
 from ..models import MsaCriteriaProfile, MsaCriteriaVersion
@@ -17,6 +18,10 @@ from .msa_errors import (
     MsaNotFound,
     MsaServiceError,
     MsaValidationError,
+)
+from .msa_payload import (
+    reject_unknown_fields as _reject_unknown_fields,
+    require_object as _require_object,
 )
 
 
@@ -96,8 +101,8 @@ class MsaCriteriaService:
     @staticmethod
     def create_profile(payload, actor_id: int) -> MsaCriteriaProfile:
         """建立適用範圍 profile，並在同一交易保存稽核紀錄。"""
-        data = MsaCriteriaService._require_object(payload)
-        MsaCriteriaService._reject_unknown_fields(data, _PROFILE_FIELDS)
+        data = _require_object(payload)
+        _reject_unknown_fields(data, _PROFILE_FIELDS)
         name = MsaCriteriaService._required_text(
             data,
             "name",
@@ -162,8 +167,8 @@ class MsaCriteriaService:
         actor_id: int,
     ) -> MsaCriteriaVersion:
         """鎖定 profile 後配置下一版號，建立完整 draft 快照。"""
-        data = MsaCriteriaService._require_object(payload)
-        MsaCriteriaService._reject_unknown_fields(data, _VERSION_FIELDS)
+        data = _require_object(payload)
+        _reject_unknown_fields(data, _VERSION_FIELDS)
         criteria_snapshot = MsaCriteriaService._criteria_snapshot(data)
         method_version = MsaCriteriaService._optional_text(
             data.get("method_version", "MSA4-1.0"),
@@ -256,8 +261,8 @@ class MsaCriteriaService:
         """以 version/profile 雙 row lock 原子核准完整準則快照。"""
         reason = None
         if payload is not None:
-            approval_data = MsaCriteriaService._require_object(payload)
-            MsaCriteriaService._reject_unknown_fields(
+            approval_data = _require_object(payload)
+            _reject_unknown_fields(
                 approval_data,
                 {"expected_status", "reason"},
             )
@@ -408,12 +413,7 @@ class MsaCriteriaService:
     def list(args) -> dict:
         """以有界分頁及白名單排序列出 profile 與歷史版本。"""
         values = args or {}
-        unknown = set(values.keys()) - _LIST_QUERY_FIELDS
-        if unknown:
-            MsaCriteriaService._reject_unknown_fields(
-                {field: values.get(field) for field in unknown},
-                set(),
-            )
+        _reject_unknown_fields(values, _LIST_QUERY_FIELDS)
         page = MsaCriteriaService._parse_bounded_int(
             values.get("page", 1),
             field="page",
@@ -452,7 +452,8 @@ class MsaCriteriaService:
         query = MsaCriteriaProfile.query
         total = query.count()
         profiles = (
-            query.order_by(ordering, tie_breaker)
+            query.options(selectinload(MsaCriteriaProfile.versions))
+            .order_by(ordering, tie_breaker)
             .offset((page - 1) * page_size)
             .limit(page_size)
             .all()
@@ -615,9 +616,7 @@ class MsaCriteriaService:
                 "thresholds 必須是 JSON 物件",
                 details={"field": "thresholds"},
             )
-        unknown = set(value) - _THRESHOLD_FIELDS
-        if unknown:
-            MsaCriteriaService._reject_unknown_fields(value, _THRESHOLD_FIELDS)
+        _reject_unknown_fields(value, _THRESHOLD_FIELDS)
         merged = MsaCriteriaService.default_thresholds()
         merged.update(value)
         numbers = {}
@@ -703,12 +702,7 @@ class MsaCriteriaService:
                 "stability_rules 必須是 JSON 物件",
                 details={"field": "stability_rules"},
             )
-        unknown = set(value) - _STABILITY_FIELDS
-        if unknown:
-            MsaCriteriaService._reject_unknown_fields(
-                value,
-                _STABILITY_FIELDS,
-            )
+        _reject_unknown_fields(value, _STABILITY_FIELDS)
         merged = MsaCriteriaService.default_stability_rules()
         merged.update(value)
         rule_set = merged.get("rule_set")
@@ -822,26 +816,6 @@ class MsaCriteriaService:
                 f"{field} 必須是可重現且僅含有限數值的 JSON",
                 details={"field": field},
             ) from error
-
-    @staticmethod
-    def _require_object(payload) -> dict:
-        if not isinstance(payload, dict):
-            raise MsaValidationError(
-                "MSA_PAYLOAD_INVALID",
-                "請求內容必須是 JSON 物件",
-                details={},
-            )
-        return payload
-
-    @staticmethod
-    def _reject_unknown_fields(payload: dict, allowed: set) -> None:
-        unknown = sorted(set(payload) - set(allowed))
-        if unknown:
-            raise MsaValidationError(
-                "MSA_UNKNOWN_FIELDS",
-                "請求包含未允許欄位",
-                details={"unknown_fields": unknown},
-            )
 
     @staticmethod
     def _required_text(
@@ -986,20 +960,3 @@ class MsaCriteriaService:
                 },
             )
         return parsed
-
-
-def serialize_criteria_profile(
-    profile: MsaCriteriaProfile,
-    *,
-    include_versions: bool = True,
-) -> dict:
-    """提供 route 與後續研究模組共用的 profile 序列化入口。"""
-    return MsaCriteriaService.serialize_profile(
-        profile,
-        include_versions=include_versions,
-    )
-
-
-def serialize_criteria_version(version: MsaCriteriaVersion) -> dict:
-    """提供 route 與後續研究模組共用的完整版本快照入口。"""
-    return MsaCriteriaService.serialize_version(version)

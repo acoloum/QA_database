@@ -9,6 +9,7 @@ import math
 
 from .msa_contracts import MsaAnalysisOutput, MsaMethodContext
 from .msa_errors import MsaMethodNotApplicable
+from .msa_numeric import require_finite_reading as _finite
 
 
 # 這些假設一旦不成立，配對差就不只反映量測系統，結論即無效。
@@ -376,19 +377,3 @@ def _percent_tolerance(sigmas: dict, context: MsaMethodContext, warnings):
         )
         for key, value in sigmas.items()
     }
-
-
-def _finite(value, field: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise MsaMethodNotApplicable(
-            "non_numeric_reading",
-            f"{field} 必須是數值",
-            details={"field": field},
-        )
-    if not math.isfinite(value):
-        raise MsaMethodNotApplicable(
-            "non_finite_reading",
-            f"{field} 不得為 NaN 或 Infinity",
-            details={"field": field},
-        )
-    return float(value)

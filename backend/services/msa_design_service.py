@@ -24,6 +24,10 @@ from .msa_equipment_service import MsaEquipmentService
 from .msa_errors import MsaConflict, MsaNotFound, MsaValidationError
 from .msa_method_registry import MsaMethodRegistry, _STUDY_TYPE_METHODS
 from .msa_numeric import canonical_hash
+from .msa_payload import (
+    reject_unknown_fields as _reject_unknown_fields,
+    require_object as _require_object,
+)
 
 
 _PLAN_FIELDS = {
@@ -773,24 +777,6 @@ class MsaDesignService:
 def _blind_code(prefix: str, index: int) -> str:
     """盲碼只表示序位，不含資料庫識別碼或真實零件編號。"""
     return f"{prefix}{index:02d}"
-
-
-def _require_object(payload) -> dict:
-    if not isinstance(payload, dict):
-        raise MsaValidationError(
-            "MSA_PAYLOAD_INVALID", "請求內容必須是 JSON 物件", details={},
-        )
-    return payload
-
-
-def _reject_unknown_fields(payload: dict, allowed: set) -> None:
-    unknown = sorted(set(payload) - set(allowed))
-    if unknown:
-        raise MsaValidationError(
-            "MSA_UNKNOWN_FIELDS",
-            "請求包含未允許欄位",
-            details={"unknown_fields": unknown},
-        )
 
 
 def _optional_text(value, *, field: str, max_length: int = 2000):

@@ -161,15 +161,6 @@ class MsaMethodRegistry:
     def codes() -> tuple[str, ...]:
         return tuple(sorted(METHODS))
 
-    @staticmethod
-    def for_study_type(study_type: str) -> tuple[str, ...]:
-        """列出某研究類型可用的方法代碼。"""
-        return tuple(
-            code for code in sorted(METHODS)
-            if _STUDY_TYPE_METHODS.get(study_type) == code
-            or code in _STUDY_TYPE_METHODS.get(study_type, ())
-        )
-
 
 # 研究類型與受控方法的對應；一種類型可有多個可選方法。
 _STUDY_TYPE_METHODS = {

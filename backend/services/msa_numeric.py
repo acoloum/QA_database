@@ -11,7 +11,7 @@ import math
 
 import numpy as np
 
-from .msa_errors import MsaValidationError
+from .msa_errors import MsaMethodNotApplicable, MsaValidationError
 
 
 class MsaNumericError(MsaValidationError):
@@ -85,6 +85,23 @@ def _walk(value, path: str) -> None:
         path=path,
         value=value,
     )
+
+
+def require_finite_reading(value, field: str) -> float:
+    """驗證單一輸入讀值是數值且有限，否則視為此方法不適用。"""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise MsaMethodNotApplicable(
+            "non_numeric_reading",
+            f"{field} 必須是數值",
+            details={"field": field},
+        )
+    if not math.isfinite(value):
+        raise MsaMethodNotApplicable(
+            "non_finite_reading",
+            f"{field} 不得為 NaN 或 Infinity",
+            details={"field": field},
+        )
+    return float(value)
 
 
 def to_float(value) -> float:

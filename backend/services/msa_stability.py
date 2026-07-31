@@ -8,16 +8,11 @@ from datetime import date, datetime
 import math
 
 from .msa_contracts import MsaAnalysisOutput, MsaMethodContext
+from .msa_control_chart_constants import A2, D3, D4
 from .msa_errors import MsaMethodNotApplicable
+from .msa_numeric import require_finite_reading as _finite
 
 
-# 管制圖常數，只涵蓋受控子組大小；超出範圍不得外插。
-A2 = {2: 1.880, 3: 1.023, 4: 0.729, 5: 0.577, 6: 0.483, 7: 0.419,
-      8: 0.373, 9: 0.337, 10: 0.308}
-D3 = {2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0, 6: 0.0, 7: 0.076, 8: 0.136,
-      9: 0.184, 10: 0.223}
-D4 = {2: 3.267, 3: 2.574, 4: 2.282, 5: 2.114, 6: 2.004, 7: 1.924,
-      8: 1.864, 9: 1.816, 10: 1.777}
 D2_MR = 1.128  # I-MR 圖以移動全距（n=2）估計標準差
 
 MIN_SUBGROUPS = 20
@@ -430,19 +425,3 @@ def _parse_date(value):
     except ValueError:
         return None
     return parsed.date() if isinstance(parsed, datetime) else parsed
-
-
-def _finite(value, field: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise MsaMethodNotApplicable(
-            "non_numeric_reading",
-            f"{field} 必須是數值",
-            details={"field": field},
-        )
-    if not math.isfinite(value):
-        raise MsaMethodNotApplicable(
-            "non_finite_reading",
-            f"{field} 不得為 NaN 或 Infinity",
-            details={"field": field},
-        )
-    return float(value)
