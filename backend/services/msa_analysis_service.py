@@ -20,13 +20,13 @@ from ..utils import log_audit
 from .msa_contracts import MsaMethodContext
 from .msa_errors import (
     MsaConflict,
-    MsaNotFound,
     MsaValidationError,
 )
 from .msa_evaluation import evaluate
 from .msa_method_registry import MsaMethodRegistry
 from .msa_numeric import MsaNumericError, canonical_hash, require_finite_tree
 from .msa_observation_service import MsaObservationService
+from .msa_plan_lookup import require_frozen_plan
 
 
 # 統計引擎的程式版本；引擎行為改變時必須同步調整，讓結果可追溯
@@ -46,24 +46,9 @@ class MsaAnalysisService:
         plan_id: int, *, actor_id: int, expected_plan_hash=None,
     ) -> MsaResultVersion:
         try:
-            plan = (
-                MsaPlanVersion.query
-                .filter_by(id=plan_id)
-                .with_for_update()
-                .one_or_none()
+            plan = require_frozen_plan(
+                plan_id, message="計畫尚未凍結，不可產生正式結果", for_update=True,
             )
-            if plan is None:
-                raise MsaNotFound(
-                    "MSA_PLAN_NOT_FOUND",
-                    "找不到 MSA 計畫版本",
-                    details={"plan_id": plan_id},
-                )
-            if plan.frozen_at is None:
-                raise MsaConflict(
-                    "MSA_PLAN_NOT_FROZEN",
-                    "計畫尚未凍結，不可產生正式結果",
-                    details={"plan_id": plan_id},
-                )
             if (
                 expected_plan_hash is not None
                 and expected_plan_hash != plan.plan_hash

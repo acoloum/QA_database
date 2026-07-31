@@ -20,6 +20,7 @@ from ..models import (
 from ..utils import log_audit
 from .msa_errors import MsaConflict, MsaNotFound, MsaValidationError
 from .msa_observation_service import MsaObservationService
+from .msa_plan_lookup import require_frozen_plan
 
 
 PARSER_VERSION = "msa-observation-xlsx-1"
@@ -78,7 +79,6 @@ class MsaObservationImportService:
                 "parser_version": PARSER_VERSION,
                 "total_rows": len(rows) + len(
                     {issue["row"] for issue in issues}
-                    - {row["row"] for row in rows}
                 ),
                 "clean_rows": len(rows),
                 "issue_rows": len({issue["row"] for issue in issues}),
@@ -129,8 +129,10 @@ class MsaObservationImportService:
             if batch.status == "confirmed":
                 return batch
 
+            # 鎖定計畫列，避免與逐筆盲測輸入（record）並發時搶到相同的
+            # 實際輸入順序；持有鎖期間，順序可安全地在記憶體中遞增。
             plan = MsaObservationImportService._frozen_plan(
-                batch.plan_version_id
+                batch.plan_version_id, for_update=True,
             )
             if batch.plan_hash != plan.plan_hash:
                 raise MsaConflict(
@@ -143,6 +145,7 @@ class MsaObservationImportService:
                 )
 
             written = 0
+            next_entry_order = MsaObservationService._next_entry_order(plan.id)
             for row in batch.stats.get("rows", []):
                 observation = MsaObservation(
                     plan_version_id=plan.id,
@@ -150,9 +153,7 @@ class MsaObservationImportService:
                     appraiser_id=row["appraiser_id"],
                     trial_no=row["trial_no"],
                     requested_order=row["requested_order"],
-                    actual_entry_order=(
-                        MsaObservationService._next_entry_order(plan.id)
-                    ),
+                    actual_entry_order=next_entry_order,
                     numeric_value=row.get("numeric_value"),
                     attribute_value=row.get("attribute_value"),
                     measured_at=_parse_timestamp(row.get("measured_at")),
@@ -162,8 +163,9 @@ class MsaObservationImportService:
                     import_batch_id=batch.id,
                 )
                 db.session.add(observation)
-                db.session.flush()
+                next_entry_order += 1
                 written += 1
+            db.session.flush()
 
             batch.status = "confirmed"
             batch.stats = {
@@ -335,21 +337,12 @@ class MsaObservationImportService:
         })
 
     @staticmethod
-    def _frozen_plan(plan_id: int) -> MsaPlanVersion:
-        plan = db.session.get(MsaPlanVersion, plan_id)
-        if plan is None:
-            raise MsaNotFound(
-                "MSA_PLAN_NOT_FOUND",
-                "找不到 MSA 計畫版本",
-                details={"plan_id": plan_id},
-            )
-        if plan.frozen_at is None:
-            raise MsaConflict(
-                "MSA_PLAN_NOT_FROZEN",
-                "計畫尚未凍結，不可匯入正式讀值",
-                details={"plan_id": plan_id},
-            )
-        return plan
+    def _frozen_plan(plan_id: int, *, for_update: bool = False) -> MsaPlanVersion:
+        return require_frozen_plan(
+            plan_id,
+            message="計畫尚未凍結，不可匯入正式讀值",
+            for_update=for_update,
+        )
 
 
 class _CategorylessPlan:

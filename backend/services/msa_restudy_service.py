@@ -4,7 +4,7 @@
 補跑或事後回填重複執行。
 """
 
-from datetime import date, datetime, timezone
+from datetime import date
 
 from sqlalchemy.exc import IntegrityError
 
@@ -17,6 +17,7 @@ from ..models import (
 )
 from ..utils import log_audit
 from .msa_errors import MsaConflict, MsaNotFound, MsaValidationError
+from .msa_payload import reject_unknown_fields
 
 
 TRIGGER_TYPES = {
@@ -54,6 +55,18 @@ class MsaRestudyService:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _active_study_ids(equipment_id: int) -> list[int]:
+        return db.session.execute(
+            db.select(MsaStudyEquipment.study_id)
+            .join(MsaStudy, MsaStudy.id == MsaStudyEquipment.study_id)
+            .where(
+                MsaStudyEquipment.equipment_id == equipment_id,
+                MsaStudy.status.in_(_ACTIVE_STUDY_STATUSES),
+            )
+            .distinct()
+        ).scalars().all()
+
+    @staticmethod
     def from_equipment_event(event_id: int, *, actor_id=None):
         """由設備狀態事件建立再研究要求；重放同一事件不會重複建立。"""
         event = db.session.get(EquipmentStatusEvent, event_id)
@@ -68,15 +81,7 @@ class MsaRestudyService:
         if trigger_type is None or not event.triggers_msa_restudy:
             return None
 
-        study_ids = db.session.execute(
-            db.select(MsaStudyEquipment.study_id)
-            .join(MsaStudy, MsaStudy.id == MsaStudyEquipment.study_id)
-            .where(
-                MsaStudyEquipment.equipment_id == event.equipment_id,
-                MsaStudy.status.in_(_ACTIVE_STUDY_STATUSES),
-            )
-            .distinct()
-        ).scalars().all()
+        study_ids = MsaRestudyService._active_study_ids(event.equipment_id)
 
         created = [
             MsaRestudyService._ensure_request(
@@ -117,15 +122,7 @@ class MsaRestudyService:
                 details={"outcome": outcome},
             )
 
-        study_ids = db.session.execute(
-            db.select(MsaStudyEquipment.study_id)
-            .join(MsaStudy, MsaStudy.id == MsaStudyEquipment.study_id)
-            .where(
-                MsaStudyEquipment.equipment_id == equipment_id,
-                MsaStudy.status.in_(_ACTIVE_STUDY_STATUSES),
-            )
-            .distinct()
-        ).scalars().all()
+        study_ids = MsaRestudyService._active_study_ids(equipment_id)
         created = [
             MsaRestudyService._ensure_request(
                 source_study_id=study_id,
@@ -204,13 +201,7 @@ class MsaRestudyService:
     @staticmethod
     def list(args) -> dict:
         values = dict(args or {})
-        unknown = sorted(set(values) - _LIST_QUERY_FIELDS)
-        if unknown:
-            raise MsaValidationError(
-                "MSA_UNKNOWN_FIELDS",
-                "請求包含未允許欄位",
-                details={"unknown_fields": unknown},
-            )
+        reject_unknown_fields(values, _LIST_QUERY_FIELDS)
         page = _bounded_int(values.get("page", 1), minimum=1, maximum=10_000)
         page_size = _bounded_int(
             values.get("page_size", 25), minimum=1, maximum=100,

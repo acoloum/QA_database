@@ -65,8 +65,6 @@ _MAX_DECIMAL_INPUT_LENGTH = 64
 _MAX_DECIMAL_SIGNIFICANT_DIGITS = 18
 _MIN_RESOLUTION = Decimal("1e-12")
 _MAX_RESOLUTION = Decimal("1e6")
-_MIN_RESOLUTION_ADJUSTED_EXPONENT = -12
-_MAX_RESOLUTION_ADJUSTED_EXPONENT = 6
 _MAX_HTML_SANITIZE_ITERATIONS = 12
 _MAX_HTML_INTERMEDIATE_LENGTH = 20_000
 
@@ -254,8 +252,6 @@ def _positive_decimal_text(
         not parsed.is_finite()
         or parsed <= 0
         or len(decimal_tuple.digits) > _MAX_DECIMAL_SIGNIFICANT_DIGITS
-        or parsed.adjusted() < _MIN_RESOLUTION_ADJUSTED_EXPONENT
-        or parsed.adjusted() > _MAX_RESOLUTION_ADJUSTED_EXPONENT
         or parsed < _MIN_RESOLUTION
         or parsed > _MAX_RESOLUTION
     ):
@@ -950,6 +946,7 @@ class MsaImportService:
             pending_rows = 0
             rejected_rows = 0
             confirmed_at = datetime.now(timezone.utc)
+            pending_equipment_rows = []
             for row in rows:
                 normalized = dict(row.normalized_data or {})
                 resolution = resolution_by_id.get(row.id, {})
@@ -1021,14 +1018,19 @@ class MsaImportService:
                     updated_by=actor_id,
                 )
                 db.session.add(equipment)
-                db.session.flush()
-                row.equipment_id = equipment.id
+                pending_equipment_rows.append((row, equipment))
                 row.confirmed_by = actor_id
                 row.confirmed_at = confirmed_at
                 row.normalized_data = normalized
                 success_rows += 1
                 if equipment.status == "pending_review":
                     pending_rows += 1
+
+            # 統一在迴圈結束後 flush 一次取得所有新設備的主鍵，
+            # 避免每一列各自 flush 造成的往返成本。
+            db.session.flush()
+            for pending_row, pending_equipment in pending_equipment_rows:
+                pending_row.equipment_id = pending_equipment.id
 
             batch.status = "confirmed"
             batch.success_rows = success_rows

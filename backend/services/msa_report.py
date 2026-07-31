@@ -53,6 +53,11 @@ _DISPOSITION_LABELS = {
     "indeterminate": "無法判定",
 }
 
+
+def _disposition_label(conclusion: dict):
+    disposition = conclusion.get("system_disposition")
+    return _DISPOSITION_LABELS.get(disposition, disposition)
+
 # 正式 PDF 必須能正確呈現繁體中文；找不到字型時不得以 Helvetica 輸出亂碼
 CJK_FONT_CANDIDATES = (
     "C:/Windows/Fonts/msjh.ttc",
@@ -233,10 +238,7 @@ class MsaReportService:
             ("單位", study.get("unit")),
             ("研究類型", study.get("study_type")),
             ("結果狀態", result.status),
-            ("系統處置", _DISPOSITION_LABELS.get(
-                conclusion.get("system_disposition"),
-                conclusion.get("system_disposition"),
-            )),
+            ("系統處置", _disposition_label(conclusion)),
             ("百分比口徑", conclusion.get("percent_basis")),
             ("工程判斷", conclusion.get("engineering_judgment") or "未附加"),
         ], font))
@@ -489,10 +491,7 @@ class MsaReportService:
             ("規格下限", _number(study.get("lsl"))),
             ("規格上限", _number(study.get("usl"))),
             ("結果狀態", result.status),
-            ("系統處置", _DISPOSITION_LABELS.get(
-                conclusion.get("system_disposition"),
-                conclusion.get("system_disposition"),
-            )),
+            ("系統處置", _disposition_label(conclusion)),
             ("百分比口徑", conclusion.get("percent_basis")),
             ("工程判斷", conclusion.get("engineering_judgment") or "未附加"),
         ]
