@@ -29,6 +29,8 @@ from ..utils import log_audit
 from .calibration_calculation import (
     CALIBRATION_NUMERIC_FAILURE,
     CALCULATION_VERSION,
+    _MAX_DECIMAL_EXPONENT,
+    _MAX_SIGNIFICANT_DIGITS,
     CalibrationPointRule,
     CalibrationReadingInput,
     calculate_calibration,
@@ -48,8 +50,6 @@ from .calibration_template_service import CalibrationTemplateService
 _MAX_INTEGER = 2_147_483_647
 _MAX_POINTS = 500
 _MAX_READINGS_PER_POINT = 100
-_MAX_SIGNIFICANT_DIGITS = 50
-_MAX_DECIMAL_EXPONENT = 1_000
 _LIST_FIELDS = {
     "page",
     "page_size",
@@ -249,6 +249,7 @@ class CalibrationService:
                 selectinload(EquipmentCalibrationRecord.reference_snapshots),
                 selectinload(EquipmentCalibrationRecord.equipment),
                 selectinload(EquipmentCalibrationRecord.template_version),
+                selectinload(EquipmentCalibrationRecord.predecessors),
             )
         ).scalar_one_or_none()
 
@@ -2003,7 +2004,7 @@ class CalibrationService:
         point: EquipmentCalibrationPoint,
     ) -> str | None:
         """取得用於雜湊的參考值：直接使用點位的 reference_value（已在建立/儲存讀值時設定為正確值）。"""
-        return CalibrationService._decimal_text_normalized(point.reference_value)
+        return CalibrationService._decimal_text(point.reference_value, normalize=True)
 
     @staticmethod
     def _canonical_hash_payload(
@@ -2025,14 +2026,14 @@ class CalibrationService:
                 {
                     "point_code": point.point_code,
                     "reference_value": CalibrationService._get_reference_value_for_hash(point),
-                    "expanded_uncertainty": CalibrationService._decimal_text_normalized(point.expanded_uncertainty),
-                    "coverage_factor": CalibrationService._decimal_text_normalized(point.coverage_factor),
+                    "expanded_uncertainty": CalibrationService._decimal_text(point.expanded_uncertainty, normalize=True),
+                    "coverage_factor": CalibrationService._decimal_text(point.coverage_factor, normalize=True),
                     "readings": [
                         {
                             "trial_no": r.trial_no,
-                            "indicated_value": CalibrationService._decimal_text_normalized(r.indicated_value),
-                            "standard_reading": CalibrationService._decimal_text_normalized(r.standard_reading),
-                            "error_value": CalibrationService._decimal_text_normalized(r.error_value),
+                            "indicated_value": CalibrationService._decimal_text(r.indicated_value, normalize=True),
+                            "standard_reading": CalibrationService._decimal_text(r.standard_reading, normalize=True),
+                            "error_value": CalibrationService._decimal_text(r.error_value, normalize=True),
                             "result": r.result,
                         }
                         for r in sorted(point.readings, key=lambda x: x.trial_no)
@@ -2326,24 +2327,16 @@ class CalibrationService:
         return decimal_value
 
     @staticmethod
-    def _decimal_text(value) -> str | None:
-        """將 Decimal 格式化為標準字串，保留精度。"""
+    def _decimal_text(value, *, normalize: bool = False) -> str | None:
+        """將 Decimal 格式化為字串；normalize=True 移除尾隨零，用於雜湊計算。"""
         if value is None:
             return None
         decimal_value = value if isinstance(value, Decimal) else Decimal(value)
         if decimal_value.is_zero():
             return "0"
-        # 不使用 normalize()，保留尾隨零以維持精度
-        return format(decimal_value, "f")
-
-    @staticmethod
-    def _decimal_text_normalized(value) -> str | None:
-        """將 Decimal 格式化為正規化字串（移除尾隨零），用於雜湊計算。"""
-        if value is None:
-            return None
-        decimal_value = value if isinstance(value, Decimal) else Decimal(value)
-        if decimal_value.is_zero():
-            return "0"
+        if not normalize:
+            # 保留尾隨零以維持精度
+            return format(decimal_value, "f")
         # 使用 normalize 移除尾隨零，確保雜湊一致性
         normalized = decimal_value.normalize()
         # 確保科學記號不被使用

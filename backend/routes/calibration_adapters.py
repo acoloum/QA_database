@@ -64,6 +64,37 @@ def _has_calibration_error_code(response) -> bool:
     return isinstance(code, str) and code.startswith("CALIBRATION_")
 
 
+def _reject_if_user_missing_or_inactive(current_user):
+    """使用者不存在或已停用時回傳 401 回應；否則回傳 None。"""
+    if current_user is None:
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "CALIBRATION_USER_NOT_FOUND",
+                        "message": "使用者不存在",
+                        "details": {},
+                    }
+                }
+            ),
+            401,
+        )
+    if not bool(current_user.is_active):
+        return (
+            jsonify(
+                {
+                    "error": {
+                        "code": "CALIBRATION_USER_INACTIVE",
+                        "message": "使用者帳號已停用",
+                        "details": {},
+                    }
+                }
+            ),
+            401,
+        )
+    return None
+
+
 def require_calibration_permission(permission: str):
     """先拒絕不存在或已停用帳號，再套用獨立校正權限判定。"""
 
@@ -72,32 +103,9 @@ def require_calibration_permission(permission: str):
 
         @wraps(function)
         def wrapped(current_user, *args, **kwargs):
-            if current_user is None:
-                return (
-                    jsonify(
-                        {
-                            "error": {
-                                "code": "CALIBRATION_USER_NOT_FOUND",
-                                "message": "使用者不存在",
-                                "details": {},
-                            }
-                        }
-                    ),
-                    401,
-                )
-            if not bool(current_user.is_active):
-                return (
-                    jsonify(
-                        {
-                            "error": {
-                                "code": "CALIBRATION_USER_INACTIVE",
-                                "message": "使用者帳號已停用",
-                                "details": {},
-                            }
-                        }
-                    ),
-                    401,
-                )
+            rejection = _reject_if_user_missing_or_inactive(current_user)
+            if rejection is not None:
+                return rejection
 
             result = guarded(current_user, *args, **kwargs)
             if isinstance(result, tuple) and len(result) == 2:
@@ -135,32 +143,9 @@ def require_calibration_any_permission(*permissions: str):
     def decorator(function):
         @wraps(function)
         def wrapped(current_user, *args, **kwargs):
-            if current_user is None:
-                return (
-                    jsonify(
-                        {
-                            "error": {
-                                "code": "CALIBRATION_USER_NOT_FOUND",
-                                "message": "使用者不存在",
-                                "details": {},
-                            }
-                        }
-                    ),
-                    401,
-                )
-            if not bool(current_user.is_active):
-                return (
-                    jsonify(
-                        {
-                            "error": {
-                                "code": "CALIBRATION_USER_INACTIVE",
-                                "message": "使用者帳號已停用",
-                                "details": {},
-                            }
-                        }
-                    ),
-                    401,
-                )
+            rejection = _reject_if_user_missing_or_inactive(current_user)
+            if rejection is not None:
+                return rejection
             if current_user.role == "admin":
                 return function(current_user, *args, **kwargs)
 

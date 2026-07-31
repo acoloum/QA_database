@@ -18,6 +18,7 @@ from ..models import (
     utc_now,
 )
 from ..utils import log_audit
+from .calibration_calculation import _MAX_DECIMAL_EXPONENT, _MAX_SIGNIFICANT_DIGITS
 from .calibration_errors import (
     CalibrationConflict,
     CalibrationForbidden,
@@ -45,8 +46,6 @@ _MAX_POINTS = 500
 _MAX_POINT_ORDER = 10_000
 _MAX_REPETITIONS = 100
 _MAX_INTEGER = 2_147_483_647
-_MAX_SIGNIFICANT_DIGITS = 50
-_MAX_DECIMAL_EXPONENT = 1_000
 
 _TEMPLATE_FIELDS = {
     "template_code",
@@ -1139,15 +1138,13 @@ class CalibrationTemplateService:
             )
         range_start = result["qualification_range_start"]
         range_end = result["qualification_range_end"]
-        if range_start is None and range_end is not None:
-            CalibrationTemplateService._point_error(
-                "qualification_range_start",
-                index,
-                "資格範圍起點與終點必須同時提供",
+        if (range_start is None) != (range_end is None):
+            missing_field = (
+                "qualification_range_start" if range_start is None
+                else "qualification_range_end"
             )
-        if range_start is not None and range_end is None:
             CalibrationTemplateService._point_error(
-                "qualification_range_end",
+                missing_field,
                 index,
                 "資格範圍起點與終點必須同時提供",
             )

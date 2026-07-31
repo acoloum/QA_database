@@ -5,7 +5,7 @@ from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import and_, case, func, or_
 from sqlalchemy.exc import DataError, IntegrityError
-from sqlalchemy.orm import aliased
+from sqlalchemy.orm import aliased, selectinload
 
 from ..extensions import db
 from ..models import (
@@ -346,6 +346,7 @@ class MeasurementEquipmentService:
         calibration_records = (
             EquipmentCalibrationRecord.query
             .filter_by(equipment_id=equipment.id)
+            .options(selectinload(EquipmentCalibrationRecord.correction_points))
             .order_by(
                 EquipmentCalibrationRecord.calibration_date.desc(),
                 EquipmentCalibrationRecord.id.desc(),
@@ -1013,12 +1014,7 @@ class MeasurementEquipmentService:
 
     @staticmethod
     def _calibration_to_dict(record: EquipmentCalibrationRecord) -> dict:
-        points = (
-            EquipmentCorrectionPoint.query
-            .filter_by(calibration_record_id=record.id)
-            .order_by(EquipmentCorrectionPoint.id.asc())
-            .all()
-        )
+        points = sorted(record.correction_points, key=lambda p: p.id)
         return {
             "id": record.id,
             "equipment_id": record.equipment_id,
