@@ -50,22 +50,6 @@ def tracked_files(repo_root: Path) -> list[Path]:
     ]
 
 
-def detect_utf16_without_bom(content: bytes) -> str | None:
-    """依 NUL 位元組位置辨識沒有 BOM、且以 ASCII 為主的 UTF-16 文字。"""
-    if len(content) < 4 or len(content) % 2:
-        return None
-
-    even_bytes = content[0::2]
-    odd_bytes = content[1::2]
-    even_nul_ratio = even_bytes.count(0) / len(even_bytes)
-    odd_nul_ratio = odd_bytes.count(0) / len(odd_bytes)
-    if odd_nul_ratio > 0.3 and even_nul_ratio < 0.1:
-        return "utf-16-le"
-    if even_nul_ratio > 0.3 and odd_nul_ratio < 0.1:
-        return "utf-16-be"
-    return None
-
-
 def is_probably_binary(content: bytes) -> bool:
     """以 NUL 與控制位元組比例辨識二進位內容。"""
     sample = content[:8192]
@@ -77,45 +61,48 @@ def is_probably_binary(content: bytes) -> bool:
     return control_count / len(sample) > 0.3
 
 
-def decode_tracked_text(content: bytes) -> str | None:
-    """解碼常見文字編碼；確認為二進位時回傳 None。"""
+def decode_tracked_views(content: bytes) -> list[str]:
+    """建立單位元組與多位元組文字視圖，供同一檔案完整掃描。"""
+    views: list[str] = []
+
+    def append_view(encoding: str) -> bool:
+        try:
+            decoded = content.decode(encoding)
+        except UnicodeDecodeError:
+            return False
+        if decoded not in views:
+            views.append(decoded)
+        return True
+
     for bom, encoding in BOM_ENCODINGS:
         if content.startswith(bom):
-            try:
-                return content.decode(encoding)
-            except UnicodeDecodeError:
-                return None
-
-    utf16_encoding = detect_utf16_without_bom(content)
-    if utf16_encoding:
-        try:
-            return content.decode(utf16_encoding)
-        except UnicodeDecodeError:
-            return None
-
-    if is_probably_binary(content):
-        return None
+            append_view(encoding)
+            break
 
     for encoding in ("utf-8", "cp950", "latin-1"):
-        try:
-            return content.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    return None
+        if append_view(encoding):
+            break
+
+    if len(content) % 2 == 0:
+        append_view("utf-16-le")
+        append_view("utf-16-be")
+    return views
 
 
 def scan_file(path: Path, relative_path: Path) -> tuple[list[str], bool]:
     """回傳檔案的命中結果與是否因二進位內容略過。"""
-    content = decode_tracked_text(path.read_bytes())
-    if content is None:
-        return [], True
-
-    findings = []
-    for line_number, line in enumerate(content.splitlines(), start=1):
-        for rule, pattern in PATTERNS.items():
-            if pattern.search(line):
-                findings.append(f"{relative_path.as_posix()}:{line_number}:{rule}")
-    return findings, False
+    raw_content = path.read_bytes()
+    findings: list[str] = []
+    seen_findings: set[str] = set()
+    for content in decode_tracked_views(raw_content):
+        for line_number, line in enumerate(content.splitlines(), start=1):
+            for rule, pattern in PATTERNS.items():
+                if pattern.search(line):
+                    finding = f"{relative_path.as_posix()}:{line_number}:{rule}"
+                    if finding not in seen_findings:
+                        findings.append(finding)
+                        seen_findings.add(finding)
+    return findings, is_probably_binary(raw_content)
 
 
 def main() -> int:

@@ -72,6 +72,42 @@ def test_scanner_detects_utf16_tracked_text(repo_root: Path, tmp_path: Path) -> 
     assert "utf16-secret.txt:1:固定 SECRET_KEY" in result.stdout
 
 
+@pytest.mark.parametrize("encoding", ["utf-16-le", "utf-16-be"])
+def test_scanner_detects_utf16_without_bom_after_traditional_chinese(
+    repo_root: Path, tmp_path: Path, encoding: str
+) -> None:
+    """防止無 BOM 的繁中 UTF-16 檔案略過後段秘密。"""
+    isolated_repo = tmp_path / "repository"
+    scanner_path = isolated_repo / "backend" / "scripts" / "scan_tracked_secrets.py"
+    scanner_path.parent.mkdir(parents=True)
+    shutil.copy2(repo_root / "backend" / "scripts" / "scan_tracked_secrets.py", scanner_path)
+
+    fake_secret = ("SECRET_" + "KEY") + "=" + "utf16-test-" + "secret"
+    fixture_name = f"{encoding}-secret.txt"
+    fixture_content = ("繁體中文品質檢驗追蹤紀錄" * 80) + "\n" + fake_secret
+    (isolated_repo / fixture_name).write_text(fixture_content, encoding=encoding)
+    subprocess.run(
+        ["git", "init", "--quiet"], cwd=isolated_repo, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "add", "backend/scripts/scan_tracked_secrets.py", fixture_name],
+        cwd=isolated_repo,
+        check=True,
+        capture_output=True,
+    )
+
+    result = subprocess.run(
+        [sys.executable, "backend/scripts/scan_tracked_secrets.py"],
+        cwd=isolated_repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert f"{fixture_name}:2:固定 SECRET_KEY" in result.stdout
+
+
 def test_compose_requires_secrets(repo_root: Path) -> None:
     """Compose 缺少秘密時必須拒絕展開，注入測試秘密時可以展開。"""
     if shutil.which("docker") is None:
