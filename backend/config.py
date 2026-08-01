@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from sqlalchemy import URL
 
 # Load .env file
 load_dotenv()
@@ -39,7 +40,14 @@ ALLOWED_ORIGINS = os.getenv(
 
 
 # SQLAlchemy Configuration
-SQLALCHEMY_DATABASE_URI = f"postgresql://{POSTGRESQL_CONFIG['user']}:{POSTGRESQL_CONFIG['password']}@{POSTGRESQL_CONFIG['host']}:{POSTGRESQL_CONFIG['port']}/{POSTGRESQL_CONFIG['database']}"
+SQLALCHEMY_DATABASE_URI = URL.create(
+    "postgresql+psycopg2",
+    username=DB_USER,
+    password=DB_PASSWORD,
+    host=DB_HOST,
+    port=int(DB_PORT),
+    database=DB_NAME,
+)
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 # SQLAlchemy Engine Options - Connection Pool

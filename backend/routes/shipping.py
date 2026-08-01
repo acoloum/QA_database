@@ -166,7 +166,7 @@ def save_data():
         return api_error(str(e), 400)
     except Exception as e:
         db_err = handle_db_error(e)
-        return api_error(db_err.get('message', '資料庫錯誤'), 500, detail=db_err)
+        return api_error(db_err.get('message', '資料庫錯誤'), 500, details=db_err)
 
 @shipping_bp.route('/api/delete', methods=['POST'])
 @auth_required

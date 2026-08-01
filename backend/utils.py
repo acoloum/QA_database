@@ -10,6 +10,7 @@ from functools import wraps
 from flask import request, jsonify, session
 from typing import List, Dict, Any, Optional, Union
 from .config import SECRET_KEY, TOKEN_EXPIRATION_HOURS
+from .errors import build_error_envelope
 
 # ==================================================
 # Databse Connection (for ID generation)
@@ -24,9 +25,15 @@ def api_success(data=None, message: str = '操作成功', code: int = 200):
     """統一成功回傳格式"""
     return jsonify({'success': True, 'data': data, 'message': message}), code
 
-def api_error(message: str, code: int = 400, detail=None):
+def api_error(
+    message: str,
+    status: int = 400,
+    *,
+    code: str = "VALIDATION_ERROR",
+    details=None,
+):
     """統一錯誤回傳格式"""
-    return jsonify({'success': False, 'error': message, 'detail': detail}), code
+    return jsonify(build_error_envelope(message, code, details)), status
 
 
 def bounded_int(value, default: int, min_value: int, max_value: int) -> int:
@@ -582,4 +589,4 @@ def handle_db_error(e: Exception) -> Dict[str, Any]:
     elif 'login' in error_msg.lower() or 'authentication' in error_msg.lower():
         return {"message": '資料庫認證失敗，請檢查連線設定'}
     else:
-        return {"message": f'資料庫錯誤：{error_msg}'}
+        return {"message": '資料庫操作失敗'}

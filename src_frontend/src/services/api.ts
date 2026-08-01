@@ -33,13 +33,13 @@ const readStableError = (rawError: unknown, status?: number, response?: unknown)
     }
     if (!isRecord(rawError)) return null;
 
-    const message = typeof rawError.message === 'string' ? rawError.message : '發生未知錯誤';
-    const code = typeof rawError.code === 'string' ? rawError.code : undefined;
+    if (typeof rawError.message !== 'string' || typeof rawError.code !== 'string') return null;
+    const message = rawError.message;
+    const code = rawError.code;
     const details = isRecord(rawError.details) ? rawError.details as StableErrorDetails : undefined;
-    const directField = typeof rawError.field === 'string' ? rawError.field : undefined;
     const detailField = typeof details?.field === 'string' ? details.field : undefined;
     return new ApiError({
-        message, status, code, details, field: directField ?? detailField,
+        message, status, code, details, field: detailField,
         response: cloneCompatibleResponse(apiResponse, message),
     });
 };
@@ -64,7 +64,7 @@ api.interceptors.response.use(
     (error) => {
         const { response } = error;
 
-        // 1. 處理 401 Token 失效
+        // 1. 只有 401 代表登入失效；403 仍保留 token 供 caller 顯示權限錯誤。
         if (response && response.status === 401) {
             localStorage.removeItem('authToken');
             localStorage.removeItem('username');
@@ -72,10 +72,9 @@ api.interceptors.response.use(
                 window.location.href = '/login';
                 toast.error('登入已過期，請重新登入');
             }
-            return Promise.reject(error);
         }
 
-        // 2. 處理後端回傳的標準錯誤格式
+        // 2. 正式 envelope 與 legacy 字串過渡分支
         if (response && response.data && response.data.error) {
             // 後端可能回 { error: "訊息" } 或穩定 { error: { code, message, details } }。
             const rawError = response.data.error;

@@ -51,6 +51,11 @@ describe('API 回應攔截器', () => {
 describe('API 實際 Axios 傳輸與穩定錯誤契約', () => {
   const originalAdapter = api.defaults.adapter;
 
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
   afterEach(() => {
     api.defaults.adapter = originalAdapter;
   });
@@ -77,12 +82,12 @@ describe('API 實際 Axios 傳輸與穩定錯誤契約', () => {
   });
 
   it.each([
-    [409, 'MSA_EQUIPMENT_STATUS_CONFLICT', '狀態已變更', { expected_status: 'active' }, 'status'],
-    [422, 'MSA_IMPORT_RESOLUTION_INVALID', '逐列處置無效', { row_id: 71 }, 'resolutions'],
+    [409, 'MSA_EQUIPMENT_STATUS_CONFLICT', '狀態已變更', { expected_status: 'active', field: 'status' }, 'status'],
+    [422, 'MSA_IMPORT_RESOLUTION_INVALID', '逐列處置無效', { row_id: 71, field: 'resolutions' }, 'resolutions'],
   ] as const)('將 %i 穩定錯誤轉為可判定 ApiError', async (status, code, message, details, field) => {
     const adapter: AxiosAdapter = async (config) => {
       const response: AxiosResponse = {
-        data: { error: { code, message, details, field } },
+        data: { error: { code, message, details } },
         status,
         statusText: '受控錯誤',
         headers: {},
@@ -104,11 +109,11 @@ describe('API 實際 Axios 傳輸與穩定錯誤契約', () => {
 
   it('structured 後端錯誤保留頂層欄位，並讓既有非 MSA helper 讀到字串 error', async () => {
     const sourceData = {
+      success: false,
       error: {
         code: 'MSA_IMPORT_RESOLUTION_INVALID', message: '逐列處置無效',
-        details: { row_id: 71 }, field: 'resolutions',
+        details: { row_id: 71, field: 'resolutions' },
       },
-      request_id: 'req-71',
     };
     const adapter: AxiosAdapter = async (config) => {
       const response: AxiosResponse = {
@@ -127,17 +132,86 @@ describe('API 實際 Axios 傳輸與穩定錯誤契約', () => {
 
     expect(caught).toMatchObject({
       name: ApiError.name, status: 422, code: 'MSA_IMPORT_RESOLUTION_INVALID',
-      details: { row_id: 71 }, field: 'resolutions', message: '逐列處置無效',
+      details: { row_id: 71, field: 'resolutions' }, field: 'resolutions', message: '逐列處置無效',
     });
     expect(getAdminErrorMessage(caught)).toBe('逐列處置無效');
     expect(getPyrometryErrorMessage(caught, '爐溫測試儲存失敗')).toBe('逐列處置無效');
     expect(getReworkErrorMessage(caught, '重工失敗')).toBe('逐列處置無效');
-    expect((caught as { response?: { data?: { error?: unknown; request_id?: string } } }).response?.data).toEqual({
-      error: '逐列處置無效', request_id: 'req-71',
+    expect((caught as { response?: { data?: { error?: unknown; success?: boolean } } }).response?.data).toEqual({
+      success: false, error: '逐列處置無效',
     });
     expect(sourceData.error).toEqual({
       code: 'MSA_IMPORT_RESOLUTION_INVALID', message: '逐列處置無效',
-      details: { row_id: 71 }, field: 'resolutions',
+      details: { row_id: 71, field: 'resolutions' },
+    });
+  });
+
+  it('403 穩定錯誤建立 ApiError 且保留 authToken', async () => {
+    localStorage.setItem('authToken', 'keep-on-forbidden');
+    const adapter: AxiosAdapter = async (config) => {
+      const response: AxiosResponse = {
+        data: { error: { code: 'PERMISSION_DENIED', message: '權限不足' } },
+        status: 403,
+        statusText: 'Forbidden',
+        headers: {},
+        config,
+      };
+      throw new AxiosError('權限不足', undefined, config, {}, response);
+    };
+    api.defaults.adapter = adapter;
+
+    await expect(api.get('/forbidden')).rejects.toMatchObject({
+      name: ApiError.name,
+      status: 403,
+      code: 'PERMISSION_DENIED',
+      message: '權限不足',
+    });
+    expect(localStorage.getItem('authToken')).toBe('keep-on-forbidden');
+  });
+
+  it('401 穩定錯誤清除登入狀態後仍建立可判定 ApiError', async () => {
+    window.history.replaceState({}, '', '/login');
+    localStorage.setItem('authToken', 'expired-token');
+    localStorage.setItem('username', 'expired-user');
+    const adapter: AxiosAdapter = async (config) => {
+      const response: AxiosResponse = {
+        data: { error: { code: 'AUTH_ERROR', message: '登入已過期' } },
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: {},
+        config,
+      };
+      throw new AxiosError('登入已過期', undefined, config, {}, response);
+    };
+    api.defaults.adapter = adapter;
+
+    await expect(api.get('/expired')).rejects.toMatchObject({
+      name: ApiError.name,
+      status: 401,
+      code: 'AUTH_ERROR',
+      message: '登入已過期',
+    });
+    expect(localStorage.getItem('authToken')).toBeNull();
+    expect(localStorage.getItem('username')).toBeNull();
+  });
+
+  it('legacy 字串 error 過渡分支仍建立 ApiError', async () => {
+    const adapter: AxiosAdapter = async (config) => {
+      const response: AxiosResponse = {
+        data: { error: '舊版驗證訊息' },
+        status: 400,
+        statusText: 'Bad Request',
+        headers: {},
+        config,
+      };
+      throw new AxiosError('舊版驗證訊息', undefined, config, {}, response);
+    };
+    api.defaults.adapter = adapter;
+
+    await expect(api.get('/legacy-error')).rejects.toMatchObject({
+      name: ApiError.name,
+      status: 400,
+      message: '舊版驗證訊息',
     });
   });
 });

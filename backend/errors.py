@@ -1,8 +1,13 @@
+def build_error_envelope(message: str, code: str, details=None) -> dict:
+    """建立唯一的 API 錯誤資料結構，供 helper 與例外處理器共用。"""
+    error = {"code": code, "message": message}
+    if details is not None:
+        error["details"] = details
+    return {"success": False, "error": error}
 
-from flask import jsonify
 
 class APIError(Exception):
-    """Base class for API errors"""
+    """API 錯誤基底類別。"""
     def __init__(self, message, code="INTERNAL_ERROR", status_code=500, details=None):
         super().__init__(message)
         self.message = message
@@ -11,16 +16,7 @@ class APIError(Exception):
         self.details = details
 
     def to_dict(self):
-        rv = {
-            "success": False,
-            "error": {
-                "code": self.code,
-                "message": self.message
-            }
-        }
-        if self.details:
-            rv["error"]["details"] = self.details
-        return rv
+        return build_error_envelope(self.message, self.code, self.details)
 
 class ValidationError(APIError):
     def __init__(self, message, details=None):

@@ -1,7 +1,7 @@
 import logging
 import os
 from logging.handlers import RotatingFileHandler
-from flask import Flask, jsonify, send_from_directory, abort
+from flask import Flask, send_from_directory, abort
 from flask_cors import CORS
 from flasgger import Swagger
 from datetime import datetime
@@ -29,6 +29,12 @@ from .routes.msa import msa_bp
 from .routes.calibration_templates import calibration_template_bp
 from .routes.calibrations import calibration_bp
 from .storage import create_storage_backend
+from .request_context import (
+    add_response_headers,
+    before_request_context,
+    get_correlation_id,
+)
+from .utils import api_error
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -64,6 +70,8 @@ app.config['STORAGE'] = create_storage_backend(app.config)
 
 # Configure CORS — 明確指定允許來源，避免任意來源攜帶憑證
 CORS(app, supports_credentials=True, origins=ALLOWED_ORIGINS)
+app.before_request(before_request_context)
+app.after_request(add_response_headers)
 
 # Register Blueprints
 app.register_blueprint(auth_bp)
@@ -120,74 +128,52 @@ from werkzeug.exceptions import HTTPException
 
 @app.errorhandler(APIError)
 def handle_api_error(error):
-    response = jsonify(error.to_dict())
-    response.status_code = error.status_code
-    return response
+    return api_error(
+        error.message,
+        error.status_code,
+        code=error.code,
+        details=error.details,
+    )
 
 @app.errorhandler(HTTPException)
 def handle_http_exception(error):
     """Handle standard Flask/Werkzeug HTTP exceptions (404, 405, etc.)"""
-    response = jsonify({
-        "success": False,
-        "error": {
-            "code": error.name.upper().replace(" ", "_"),
-            "message": error.description,
-        }
-    })
-    response.status_code = error.code
-    return response
+    return api_error(
+        error.description,
+        error.code,
+        code=error.name.upper().replace(" ", "_"),
+    )
 
 @app.errorhandler(ValueError)
 def handle_value_error(error):
     """Handle ValueError as 400 Bad Request"""
-    response = jsonify({
-        "success": False,
-        "error": {
-            "code": "VALIDATION_ERROR",
-            "message": str(error)
-        }
-    })
-    response.status_code = 400
-    return response
+    return api_error(str(error), 400, code="VALIDATION_ERROR")
 
 @app.errorhandler(SQLAlchemyError)
 def handle_db_error(error):
     """Handle Database errors"""
     from .utils import handle_db_error as utils_handle_db_error
 
-    app.logger.exception("DB_ERROR: %s", str(error))
+    app.logger.exception(
+        "資料庫 API 例外 correlation_id=%s",
+        get_correlation_id(),
+    )
 
     # utils_handle_db_error 回傳 {"message": str, "field"?: str}，需攤平避免
     # message 變成巢狀物件（前端會顯示成 [object Object] 且無法定位欄位）
     info = utils_handle_db_error(error)
 
-    response = jsonify({
-        "success": False,
-        "error": {
-            "code": "DB_ERROR",
-            "message": info["message"],
-            "field": info.get("field"),
-            "details": str(error) if app.debug else None
-        }
-    })
-    response.status_code = 500
-    return response
+    details = {"field": info["field"]} if info.get("field") else None
+    return api_error(info["message"], 500, code="DB_ERROR", details=details)
 
 @app.errorhandler(Exception)
 def handle_generic_error(error):
     """Handle unexpected errors"""
-    app.logger.exception("INTERNAL_ERROR: %s", str(error))
-
-    response = jsonify({
-        "success": False,
-        "error": {
-            "code": "INTERNAL_SERVER_ERROR",
-            "message": "伺服器發生未預期的錯誤",
-            "details": str(error) if app.debug else None
-        }
-    })
-    response.status_code = 500
-    return response
+    app.logger.exception(
+        "未處理 API 例外 correlation_id=%s",
+        get_correlation_id(),
+    )
+    return api_error("伺服器內部錯誤", 500, code="INTERNAL_ERROR")
 
 if __name__ == '__main__':
     # Use waitress for production-like performance if available, else Flask default
