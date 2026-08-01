@@ -1,12 +1,13 @@
 """Dashboard 聚合服務。"""
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from dateutil.relativedelta import relativedelta
-from sqlalchemy import func, or_
+from sqlalchemy import and_, case, func, or_
 
 from ..extensions import db
 from ..models import CorrectiveAction, NCMR, PatrolMain, ReworkRequest, ShippingData
+from .date_range import DateWindow
 
 REWORK_TERMINAL_STATUSES = {'已完成', '已結案', '已拒絕', '撤銷'}
 REWORK_ACTIONABLE_STATUSES = {'待審核', '已通過', '進行中'}
@@ -36,6 +37,182 @@ def _month_counts(model, date_column, since, *filters) -> dict[str, int]:
 
 
 class DashboardService:
+    @staticmethod
+    def get_stats(window: DateWindow, comparison: DateWindow | None = None) -> dict[str, Any]:
+        """取得指定日期視窗的統計數據（含前一期間比較）。
+
+        DateTime 欄位使用半開區間（含結束日整天），Date 欄位使用閉區間。
+        """
+        if comparison is None:
+            prev_period_days = (window.end_date - window.start_date).days + 1
+            comparison = DateWindow(
+                start_date=window.start_date - timedelta(days=prev_period_days),
+                end_date=window.start_date - timedelta(days=1),
+            )
+
+        # ---------- 待處理計數（點時間，無法合併，保留原本四個函式）----------
+
+        # 注意：須與各清單頁一致，使用 active_query() 排除軟刪除紀錄
+
+        def count_pending_ncmr():
+            return NCMR.active_query().filter(
+                NCMR.status.notin_(['已結案', 'CAR已完成'])
+            ).count()
+
+        def count_pending_capa():
+            return CorrectiveAction.active_query().filter(
+                CorrectiveAction.eight_d_number != None,
+                CorrectiveAction.status.in_(['待處理', '進行中'])
+            ).count()
+
+        def count_pending_rework():
+            return ReworkRequest.active_query().filter(
+                ReworkRequest.status.notin_(REWORK_TERMINAL_STATUSES)
+            ).count()
+
+        # ---------- ShippingData：一次查詢同時取得 current / previous ----------
+        shipping_row = db.session.query(
+            func.sum(case(
+                (and_(*window.date_filters(ShippingData.date)), 1),
+                else_=0
+            )).label('current'),
+            func.sum(case(
+                (and_(*comparison.date_filters(ShippingData.date)), 1),
+                else_=0
+            )).label('previous'),
+        ).first()
+        _shipping_current = int(shipping_row.current or 0)
+        _shipping_previous = int(shipping_row.previous or 0)
+
+        # ShippingData NG：只需 current 期間的 NG 數（rate 僅對當期計算）
+        _shipping_ng = db.session.query(
+            func.sum(case(
+                (and_(*window.date_filters(ShippingData.date),
+                      ShippingData.is_ng == True), 1),
+                else_=0
+            ))
+        ).scalar() or 0
+        _shipping_ng = int(_shipping_ng)
+
+        # ---------- PatrolMain：一次查詢同時取得 current / previous ----------
+        patrol_row = db.session.query(
+            func.sum(case(
+                (and_(*window.date_filters(PatrolMain.date)), 1),
+                else_=0
+            )).label('current'),
+            func.sum(case(
+                (and_(*comparison.date_filters(PatrolMain.date)), 1),
+                else_=0
+            )).label('previous'),
+        ).first()
+        _patrol_current = int(patrol_row.current or 0)
+        _patrol_previous = int(patrol_row.previous or 0)
+
+        _patrol_ng = db.session.query(
+            func.sum(case(
+                (and_(*window.date_filters(PatrolMain.date),
+                      PatrolMain.is_ng == True), 1),
+                else_=0
+            ))
+        ).scalar() or 0
+        _patrol_ng = int(_patrol_ng)
+
+        # ---------- NCMR：一次查詢同時取得 current / previous（排除軟刪除）----------
+        ncmr_row = db.session.query(
+            func.sum(case(
+                (and_(*window.date_filters(NCMR.date)), 1),
+                else_=0
+            )).label('current'),
+            func.sum(case(
+                (and_(*comparison.date_filters(NCMR.date)), 1),
+                else_=0
+            )).label('previous'),
+        ).filter(NCMR.deleted_at.is_(None)).first()
+        _ncmr_current = int(ncmr_row.current or 0)
+        _ncmr_previous = int(ncmr_row.previous or 0)
+
+        # ---------- CorrectiveAction（CAPA / CAR）：一次查詢各取兩期 ----------
+        capa_row = db.session.query(
+            func.sum(case(
+                (and_(*window.datetime_filters(CorrectiveAction.created_at),
+                      CorrectiveAction.eight_d_number != None), 1),
+                else_=0
+            )).label('current'),
+            func.sum(case(
+                (and_(*comparison.datetime_filters(CorrectiveAction.created_at),
+                      CorrectiveAction.eight_d_number != None), 1),
+                else_=0
+            )).label('previous'),
+        ).filter(CorrectiveAction.deleted_at.is_(None)).first()
+        _capa_current = int(capa_row.current or 0)
+        _capa_previous = int(capa_row.previous or 0)
+
+        # ---------- ReworkRequest：一次查詢同時取得 current / previous ----------
+        rework_row = db.session.query(
+            func.sum(case(
+                (and_(*window.datetime_filters(ReworkRequest.created_at)), 1),
+                else_=0
+            )).label('current'),
+            func.sum(case(
+                (and_(*comparison.datetime_filters(ReworkRequest.created_at)), 1),
+                else_=0
+            )).label('previous'),
+        ).filter(ReworkRequest.deleted_at.is_(None)).first()
+        _rework_current = int(rework_row.current or 0)
+        _rework_previous = int(rework_row.previous or 0)
+
+        # ---------- 組裝回應 ----------
+        stats = {
+            "shipping": {
+                "current": _shipping_current,
+                "previous": _shipping_previous,
+                "ng_count": _shipping_ng,
+                "ng_rate": round((_shipping_ng / _shipping_current * 100), 1) if _shipping_current > 0 else None,
+                "pending": 0
+            },
+            "patrol": {
+                "current": _patrol_current,
+                "previous": _patrol_previous,
+                "ng_count": _patrol_ng,
+                "ng_rate": round((_patrol_ng / _patrol_current * 100), 1) if _patrol_current > 0 else None,
+                "pending": 0
+            },
+            "ncmr": {
+                "current": _ncmr_current,
+                "previous": _ncmr_previous,
+                "pending": count_pending_ncmr()
+            },
+            "capa": {
+                "current": _capa_current,
+                "previous": _capa_previous,
+                "pending": count_pending_capa()
+            },
+            "rework": {
+                "current": _rework_current,
+                "previous": _rework_previous,
+                "pending": count_pending_rework()
+            }
+        }
+
+        # 計算趨勢
+        for key in stats:
+            curr = stats[key]['current']
+            prev = stats[key]['previous']
+            if prev == 0:
+                stats[key]['trend'] = 'up' if curr > 0 else 'stable'
+                stats[key]['change_pct'] = 0
+            else:
+                change = ((curr - prev) / prev) * 100
+                stats[key]['change_pct'] = round(change, 1)
+                if change > 10:
+                    stats[key]['trend'] = 'up'
+                elif change < -10:
+                    stats[key]['trend'] = 'down'
+                else:
+                    stats[key]['trend'] = 'stable'
+
+        return stats
+
     @staticmethod
     def get_trends(today: date | None = None) -> dict[str, list[dict[str, int | str]]]:
         """取得最近六個月 Dashboard 趨勢資料。"""

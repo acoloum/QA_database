@@ -86,3 +86,83 @@ def test_dashboard_stats_excludes_terminal_rework_statuses_from_pending(client, 
     assert resp.status_code == 200
     data = resp.get_json()
     assert data['stats']['rework']['pending'] == 1
+
+
+def test_dashboard_stats_includes_datetime_on_end_date(client, db_session):
+    """結束日當天中午的 DateTime 資料應計入（不可用 <= end_date 排除當日）。"""
+    db_session.add(CorrectiveAction(
+        eight_d_number='CAPA-ENDDATE-NOON',
+        created_at=datetime.datetime(2026, 8, 31, 12, 0),
+        status='進行中',
+    ))
+    db_session.commit()
+
+    resp = client.get(
+        '/api/dashboard/stats?start=2026-08-01&end=2026-08-31',
+        headers=_make_headers(db_session),
+    )
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['stats']['capa']['current'] == 1
+
+
+def test_dashboard_stats_includes_cross_year_datetime(client, db_session):
+    """跨年日期範圍的 DateTime 資料應計入。"""
+    db_session.add(CorrectiveAction(
+        eight_d_number='CAPA-CROSS-YEAR',
+        created_at=datetime.datetime(2025, 12, 31, 23, 30),
+        status='進行中',
+    ))
+    db_session.commit()
+
+    resp = client.get(
+        '/api/dashboard/stats?start=2025-12-01&end=2026-01-31',
+        headers=_make_headers(db_session),
+    )
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['stats']['capa']['current'] == 1
+
+
+def test_dashboard_stats_excludes_soft_deleted_ncmr(client, db_session):
+    """Dashboard 統計不應計入已軟刪除的 NCMR。"""
+    ncmr = NCMR(
+        ncmr_number='NCMR-SOFTDEL-STATS',
+        date=datetime.date(2026, 8, 15),
+        status='待處理',
+    )
+    db_session.add(ncmr)
+    db_session.flush()
+    ncmr.soft_delete()
+    db_session.commit()
+
+    resp = client.get(
+        '/api/dashboard/stats?start=2026-08-01&end=2026-08-31',
+        headers=_make_headers(db_session),
+    )
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['stats']['ncmr']['current'] == 0
+
+
+def test_dashboard_stats_includes_date_column_on_end_date(client, db_session):
+    """Date 欄位應包含 end_date 當天資料。"""
+    db_session.add(ShippingData(
+        date=datetime.date(2026, 8, 31),
+        material='6063',
+        spec='40x3',
+        is_ng=False,
+    ))
+    db_session.commit()
+
+    resp = client.get(
+        '/api/dashboard/stats?start=2026-08-01&end=2026-08-31',
+        headers=_make_headers(db_session),
+    )
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['stats']['shipping']['current'] == 1

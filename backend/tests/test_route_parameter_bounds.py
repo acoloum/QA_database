@@ -56,6 +56,42 @@ def test_pyrometry_corrections_rejects_invalid_numeric_query(client, db_session)
     assert "channels" in channel_response.get_json()["error"]["message"]
 
 
+def test_dashboard_stats_rejects_invalid_date_query(client, db_session):
+    headers = _auth_headers(db_session, "dashboard_bounds_user")
+
+    response = client.get(
+        "/api/dashboard/stats?start=2026-99-99&end=2026-08-31",
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    assert "start" in response.get_json()["error"]["message"]
+
+
+def test_dashboard_stats_rejects_start_after_end(client, db_session):
+    headers = _auth_headers(db_session, "dashboard_bounds_user2")
+
+    response = client.get(
+        "/api/dashboard/stats?start=2026-09-01&end=2026-08-31",
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    assert "start" in response.get_json()["error"]["message"]
+
+
+def test_dashboard_stats_rejects_range_over_366_days(client, db_session):
+    headers = _auth_headers(db_session, "dashboard_bounds_user3")
+
+    response = client.get(
+        "/api/dashboard/stats?start=2025-01-01&end=2026-01-02",
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    assert "366" in response.get_json()["error"]["message"]
+
+
 def test_legacy_ncmr_service_keeps_capa_methods():
     assert callable(NCMRService.create_capa)
     assert callable(NCMRService.update_capa)
