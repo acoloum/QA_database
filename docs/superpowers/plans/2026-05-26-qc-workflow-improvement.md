@@ -13,7 +13,7 @@
 ## 執行原則
 
 1. **每個 Task 必須 commit**，commit message 中文撰寫
-2. **DB migration 跑在使用者本機 PostgreSQL**（`C:\Program Files\PostgreSQL\18\bin\psql.exe`，密碼 `swordfish1`，DB 名稱 `qa_database`）
+2. **DB migration 跑在使用者本機 PostgreSQL**（`C:\Program Files\PostgreSQL\18\bin\psql.exe`，密碼 `<請由部署環境注入>`，DB 名稱 `qa_database`）
 3. **後端用 venv**：`C:\QC_Database\venv\Scripts\python.exe`
 4. **後端啟動方式**：`python -m waitress --listen=*:5001 backend.app:app`
 5. **每次後端代碼變更後，要重啟 waitress 才會生效**
@@ -60,7 +60,7 @@ New-Item -ItemType Directory -Force -Path "C:\QC_Database\backups"
 - [ ] **Step 2: 完整備份資料庫**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 & "C:\Program Files\PostgreSQL\18\bin\pg_dump.exe" -U postgres -F c -f "C:\QC_Database\backups\qa_database_2026-05-26.dump" qa_database
 ```
 Expected: 沒有輸出代表成功，檢查檔案 size > 0。
@@ -77,7 +77,7 @@ Expected: 列出多個 TABLE / INDEX entry。
 執行下列 SQL 並把輸出貼到 `migration/baseline_2026-05-26.md`：
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 @'
 SELECT '矯正措施要求' AS tbl, COUNT(*) FROM "矯正措施要求"
 UNION ALL SELECT '異常矯正單_CAR模式', COUNT(*) FROM "異常矯正單" WHERE "CAR單號" IS NOT NULL
@@ -133,7 +133,7 @@ ALTER TABLE "重工申請單"
 - [ ] **Step 2: 執行 migration**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 Get-Content "C:\QC_Database\migration\add_rework_complaint_id.sql" -Raw | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database
 ```
 Expected: `ALTER TABLE`
@@ -141,7 +141,7 @@ Expected: `ALTER TABLE`
 - [ ] **Step 3: 驗證欄位存在**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 '\d "重工申請單"' | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database | Select-String "客訴_ID"
 ```
 Expected: 看到 `客訴_ID | integer`
@@ -210,7 +210,7 @@ COMMIT;
 - [ ] **Step 2: 執行 migration**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 Get-Content "C:\QC_Database\migration\migrate_cara_to_capa.sql" -Raw | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database
 ```
 Expected: `BEGIN`, `INSERT 0 8`, `COMMIT`
@@ -218,7 +218,7 @@ Expected: `BEGIN`, `INSERT 0 8`, `COMMIT`
 - [ ] **Step 3: 驗證 8 筆都成功遷移**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 'SELECT COUNT(*) AS migrated FROM "異常矯正單" WHERE "8D單號" LIKE ''CARA-%'';' | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database
 ```
 Expected: `migrated = 8`
@@ -226,7 +226,7 @@ Expected: `migrated = 8`
 - [ ] **Step 4: 抽查一筆內容**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 'SELECT "8D單號", "狀態", "嚴格度", "來源類型", "NCMR_ID" FROM "異常矯正單" WHERE "8D單號" LIKE ''CARA-%'' LIMIT 1;' | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database
 ```
 Expected: 8D 單號開頭為 `CARA-`、嚴格度為 `簡化5D`、來源類型為 `ncmr`、`NCMR_ID` 有值。
@@ -267,7 +267,7 @@ COMMIT;
 - [ ] **Step 2: 執行 migration**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 Get-Content "C:\QC_Database\migration\migrate_car_to_capa.sql" -Raw | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database
 ```
 Expected: `BEGIN`, `UPDATE 8`, `COMMIT`
@@ -275,7 +275,7 @@ Expected: `BEGIN`, `UPDATE 8`, `COMMIT`
 - [ ] **Step 3: 驗證 8 筆都成功**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 'SELECT COUNT(*) AS migrated FROM "異常矯正單" WHERE "8D單號" LIKE ''CAR-%'';' | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database
 ```
 Expected: `migrated = 8`
@@ -283,7 +283,7 @@ Expected: `migrated = 8`
 - [ ] **Step 4: 驗證沒有任何 CAR單號 有值但 8D單號 為空的孤兒**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 'SELECT COUNT(*) AS orphans FROM "異常矯正單" WHERE "CAR單號" IS NOT NULL AND "8D單號" IS NULL;' | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database
 ```
 Expected: `orphans = 0`
@@ -387,7 +387,7 @@ Start-Sleep -Seconds 3
 - [ ] **Step 5: 端對端驗證 — 建立客訴 → 開立重工 → 確認 complaint_id 填入**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 .\venv\Scripts\python.exe -c @'
 from backend.app import app
 import json
@@ -410,7 +410,7 @@ with app.test_client() as c:
 Expected: 收到 rework_id。
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 'SELECT "識別碼", "申請單號", "客訴_ID" FROM "重工申請單" ORDER BY "識別碼" DESC LIMIT 1;' | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database
 ```
 Expected: `客訴_ID` 不為空。
@@ -418,7 +418,7 @@ Expected: `客訴_ID` 不為空。
 - [ ] **Step 6: 清理測試資料**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 'DELETE FROM "重工申請單" WHERE "申請單號" LIKE ''RW-2026%'' AND "客訴_ID" IS NOT NULL; DELETE FROM "客訴紀錄" WHERE "客戶" = ''TaskN-Test'';' | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database
 ```
 
@@ -643,7 +643,7 @@ Expected: `Status after open-capa: 處理中`
 - [ ] **Step 3: 清理測試資料**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 'DELETE FROM "異常矯正單" WHERE "來源類型" = ''complaint'' AND "來源ID" IN (SELECT "識別碼" FROM "客訴紀錄" WHERE "客戶" = ''Task7''); DELETE FROM "客訴紀錄" WHERE "客戶" = ''Task7'';' | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database
 ```
 
@@ -1423,7 +1423,7 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 - [ ] **Step 1: 確認 baseline — CARA 表資料已成功遷移**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 'SELECT (SELECT COUNT(*) FROM "矯正措施要求") AS cara_remaining, (SELECT COUNT(*) FROM "異常矯正單" WHERE "8D單號" LIKE ''CARA-%'') AS migrated;' | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database
 ```
 Expected: `cara_remaining = 8`、`migrated = 8`。**如果不一致，STOP 並 rollback。**
@@ -1448,7 +1448,7 @@ COMMIT;
 - [ ] **Step 3: 執行**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 Get-Content "C:\QC_Database\migration\drop_cara_module.sql" -Raw | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database
 ```
 Expected: `BEGIN`、`ALTER TABLE`、`DROP TABLE`、`COMMIT`
@@ -1456,7 +1456,7 @@ Expected: `BEGIN`、`ALTER TABLE`、`DROP TABLE`、`COMMIT`
 - [ ] **Step 4: 驗證表已不存在**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 '\dt "矯正措施要求"' | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database
 ```
 Expected: `Did not find any relation named "矯正措施要求".`
@@ -1464,7 +1464,7 @@ Expected: `Did not find any relation named "矯正措施要求".`
 - [ ] **Step 5: 驗證 `客訴紀錄.關聯CARA_ID` 已不存在**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 '\d "客訴紀錄"' | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database | Select-String "關聯CARA_ID"
 ```
 Expected: 0 matches.
@@ -1506,7 +1506,7 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 - [ ] **Step 1: 確認沒有任何紀錄需要 CAR單號**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 'SELECT COUNT(*) AS still_orphan FROM "異常矯正單" WHERE "CAR單號" IS NOT NULL AND "8D單號" IS NULL;' | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database
 ```
 Expected: `still_orphan = 0`。**若不為 0，STOP 並 rollback。**
@@ -1523,7 +1523,7 @@ ALTER TABLE "異常矯正單" DROP COLUMN IF EXISTS "CAR單號";
 - [ ] **Step 3: 執行**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 Get-Content "C:\QC_Database\migration\drop_car_number_column.sql" -Raw | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database
 ```
 Expected: `ALTER TABLE`
@@ -1531,7 +1531,7 @@ Expected: `ALTER TABLE`
 - [ ] **Step 4: 驗證欄位已不存在**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 '\d "異常矯正單"' | & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d qa_database | Select-String "CAR單號"
 ```
 Expected: 0 matches.
@@ -1661,7 +1661,7 @@ npm run dev
 - [ ] **Step 8: 端對端：確認資料庫狀態**
 
 ```powershell
-$env:PGPASSWORD = "swordfish1"
+Set-Item -Path Env:PGPASSWORD -Value '<請由部署環境注入>'
 @'
 \d "矯正措施要求"
 \d "異常矯正單"

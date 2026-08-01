@@ -40,7 +40,7 @@ POSTGRESQL_CONFIG = {
 # ===================================================
 # 應用程式配置
 # ===================================================
-SECRET_KEY = 'qa-inspection-system-2026-secure-key-a7b9c3d5e1f2g4h6'
+SECRET_KEY = os.getenv('SECRET_KEY')
 TOKEN_EXPIRATION_HOURS = 24
 
 # ===================================================

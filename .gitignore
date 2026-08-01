@@ -10,6 +10,8 @@ ENV/
 nul
 database_backup/
 .env
+.env.docker
+.claude/settings.local.json
 *.log
 .env
 

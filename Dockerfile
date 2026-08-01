@@ -42,9 +42,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY config.py ./
 
-# Copy .env template (will be overridden by docker-compose volume/env)
-COPY .env.docker ./.env
-
 # Copy built frontend from Stage 1
 COPY --from=frontend-build /app/frontend/dist /usr/share/nginx/html
 

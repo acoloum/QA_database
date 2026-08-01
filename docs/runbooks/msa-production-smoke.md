@@ -29,7 +29,7 @@ MSA 的觀測、結果與決策是 append-only，**寫進去就刪不掉**。因
 建議做法是複製 schema 到專用 smoke 資料庫：
 
 ```powershell
-$env:PGPASSWORD='<password>'
+Set-Item -Path Env:PGPASSWORD -Value'<password>'
 $pg = "C:\Program Files\PostgreSQL\18\bin"
 
 & "$pg\pg_dump.exe" -U postgres --schema-only --no-owner --no-privileges `

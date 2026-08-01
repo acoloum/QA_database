@@ -1681,7 +1681,7 @@ $qcDbHost = $qcDbEnv.DB_HOST
 $qcDbPort = $qcDbEnv.DB_PORT
 $qcDbName = $qcDbEnv.DB_NAME
 $qcDbUser = $qcDbEnv.DB_USER
-$env:PGPASSWORD = $qcDbEnv.DB_PASSWORD
+Set-Item -Path Env:PGPASSWORD -Value $qcDbEnv.DB_PASSWORD
 $qcBackupPath = Join-Path $env:TEMP (
     "qa_database_before_migration_42_{0}.dump" -f (Get-Date -Format "yyyyMMdd_HHmmss")
 )

@@ -868,7 +868,7 @@ The runner must execute fixed p/np, Pm/Pmk, eight time-model and four transforma
 Document exact commands in the runbook. Determine installed PostgreSQL bin path, then run without printing the password:
 
 ```powershell
-$env:PGPASSWORD = '<由本機 .env 讀取，不寫入文件或輸出>'
+Set-Item -Path Env:PGPASSWORD -Value '<由本機 .env 讀取，不寫入文件或輸出>'
 psql -v ON_ERROR_STOP=1 -U postgres -d qa_database -f tmp/migration/38_dry_run.sql
 psql -v ON_ERROR_STOP=1 -U postgres -d qa_database -f backend/migration/38_add_spc_analysis_family.sql
 psql -U postgres -d qa_database -c '\d+ "SPC研究"'

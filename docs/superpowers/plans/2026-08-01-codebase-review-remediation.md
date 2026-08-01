@@ -150,7 +150,7 @@ Run: `Remove-Item Env:DB_PASSWORD -ErrorAction SilentlyContinue; Remove-Item Env
 
 Expected: FAIL，訊息包含 `DB_PASSWORD is required` 或 `SECRET_KEY is required`。
 
-Run: `$env:DB_PASSWORD='test-only-password'; $env:SECRET_KEY='test-only-secret-key-32-bytes-minimum'; docker compose config --quiet`
+Run: `$env:DB_PASSWORD='test-only-password'; Set-Item -Path Env:SECRET_KEY -Value 'test-only-secret-key-32-bytes-minimum'; docker compose config --quiet`
 
 Expected: exit 0。
 
@@ -1477,7 +1477,7 @@ Expected: 全部 exit 0，lint 0 warnings，audit 0 vulnerabilities。
 
 - [ ] **Step 10: 執行 Docker 與 migration smoke**
 
-Run: `$env:DB_PASSWORD='test-only-password'; $env:SECRET_KEY='test-only-secret-key-32-bytes-minimum'; docker compose build --no-cache app`
+Run: `$env:DB_PASSWORD='test-only-password'; Set-Item -Path Env:SECRET_KEY -Value 'test-only-secret-key-32-bytes-minimum'; docker compose build --no-cache app`
 
 Expected: build exit 0，映像內不存在 `/app/.env`。
 

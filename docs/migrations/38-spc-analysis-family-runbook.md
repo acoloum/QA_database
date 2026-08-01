@@ -39,7 +39,7 @@ function Read-DotEnv([string]$Path) {
 }
 
 $cfg = Read-DotEnv 'C:\QC_Database\.env'
-$env:PGPASSWORD = $cfg['DB_PASSWORD']
+Set-Item -Path Env:PGPASSWORD -Value $cfg['DB_PASSWORD']
 $env:PGCLIENTENCODING = 'UTF8'
 $psql = 'C:\Program Files\PostgreSQL\18\bin\psql.exe'
 ```

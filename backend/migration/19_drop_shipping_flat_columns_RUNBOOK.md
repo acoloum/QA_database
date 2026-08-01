@@ -45,7 +45,7 @@
 
 ### 4. 執行 DROP migration（**不可逆**）
 ```
-$env:PGPASSWORD='<密碼>'
+Set-Item -Path Env:PGPASSWORD -Value'<密碼>'
 & 'C:\Program Files\PostgreSQL\18\bin\psql.exe' -U postgres -d qa_database -f backend/migration/19_drop_shipping_flat_columns.sql
 ```
 

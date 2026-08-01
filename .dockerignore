@@ -5,6 +5,13 @@ __pycache__/
 *.pyc
 *.pyo
 
+# 部署環境設定與本機工具資料
+.env*
+!.env.docker.example
+.claude/
+.git/
+.worktrees/
+
 # Git
 .git
 .gitignore

@@ -62,7 +62,7 @@ def verify_password(password: str, hashed: str) -> bool:
 
 **現有程式碼：**
 ```python
-SECRET_KEY = os.getenv('SECRET_KEY', 'qa-inspection-system-2026-secure-key-a7b9c3d5e1f2g4h6')
+SECRET_KEY = os.getenv('SECRET_KEY', '<由部署環境注入>')
 ```
 
 **修改為：**
