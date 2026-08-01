@@ -379,79 +379,160 @@ class CAPAService:
 
     # ── D8 結案 ──────────────────────────────────────────────
     @staticmethod
-    def close(capa_id: int, confirmation: str, recognition: Optional[str] = None) -> Dict[str, Any]:
-        ca = CorrectiveAction.active_query().filter_by(id=capa_id).first()
-        if not ca:
-            raise ValueError('CAPA 不存在')
-        if ca.status == '已結案':
-            raise ValueError('此 CAPA 已結案')
+    def close(
+        capa_id: int,
+        confirmation: str,
+        recognition: Optional[str] = None,
+        *,
+        actor_id: Optional[int],
+    ) -> Dict[str, Any]:
+        try:
+            ca = db.session.execute(
+                db.select(CorrectiveAction)
+                .where(CorrectiveAction.id == capa_id, CorrectiveAction.deleted_at.is_(None))
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            ).scalar_one_or_none()
+            if not ca:
+                raise NotFoundError('CAPA 不存在')
+            if ca.status == '已結案':
+                raise APIError('此 CAPA 已結案', code='INVALID_STATE', status_code=409)
+
+            old_value = CAPAService._audit_snapshot(ca)
 
         # D6 gate
-        if not ca.d6_verified:
-            raise ValueError('D6 驗證尚未通過，無法結案')
+            if not ca.d6_verified:
+                raise APIError('D6 驗證尚未通過，無法結案', code='CAPA_GATE_BLOCKED', status_code=409)
 
         # 步驟完成度 gate：所有步驟（依嚴格度）皆須完成，避免結案後進度未達 100%
-        missing = CAPAService._missing_steps(ca)
-        if missing:
-            labels = '、'.join(D_STEP_LABELS[s] for s in missing)
-            raise ValueError(f'以下步驟尚未完成，無法結案：{labels}')
+            missing = CAPAService._missing_steps(ca)
+            if missing:
+                labels = '、'.join(D_STEP_LABELS[s] for s in missing)
+                raise APIError(
+                    f'以下步驟尚未完成，無法結案：{labels}',
+                    code='CAPA_GATE_BLOCKED',
+                    status_code=409,
+                )
 
         # 任務 gate
-        gate = TaskService.check_close_gate('capa', capa_id)
-        if not gate['can_close']:
-            blocking = [t['title'] for t in gate['blocking_tasks']]
-            raise ValueError(
-                f'以下橫展任務尚未完成或豁免，無法結案：{", ".join(blocking)}'
-            )
+            gate = TaskService.check_close_gate('capa', capa_id)
+            if not gate['can_close']:
+                blocking = [t['title'] for t in gate['blocking_tasks']]
+                raise APIError(
+                    f'以下橫展任務尚未完成或豁免，無法結案：{", ".join(blocking)}',
+                    code='CAPA_GATE_BLOCKED',
+                    status_code=409,
+                )
 
-        ca.status         = '已結案'
-        ca.d8_confirmation= confirmation
-        ca.d8_recognition = recognition
-        ca.d8_close_date  = date.today()
-        ca.closed_at      = datetime.now(timezone.utc)
+            ca.status = '已結案'
+            ca.d8_confirmation = confirmation
+            ca.d8_recognition = recognition
+            ca.d8_close_date = date.today()
+            ca.closed_at = datetime.now(timezone.utc)
 
         # CAPA 結案時，若來源為 NCMR，自動更新 NCMR 狀態為「矯正完成」
-        if ca.ncmr_id:
-            ncmr = NCMR.active_query().filter_by(id=ca.ncmr_id).first()
-            if ncmr and ncmr.status == '矯正中':
-                ncmr.status = '矯正完成'
+            if ca.ncmr_id:
+                ncmr = db.session.execute(
+                    db.select(NCMR)
+                    .where(NCMR.id == ca.ncmr_id, NCMR.deleted_at.is_(None))
+                    .with_for_update()
+                ).scalar_one_or_none()
+                if ncmr and ncmr.status == '矯正中':
+                    ncmr.status = '矯正完成'
 
         # 若來源為客訴，同步將客訴狀態設為已結案
-        if ca.source_type == 'complaint' and ca.source_id:
-            complaint = CustomerComplaint.active_query().filter_by(id=ca.source_id).first()
-            if complaint:
-                complaint.status = '已結案'
+            if ca.source_type == 'complaint' and ca.source_id:
+                complaint = db.session.execute(
+                    db.select(CustomerComplaint)
+                    .where(
+                        CustomerComplaint.id == ca.source_id,
+                        CustomerComplaint.deleted_at.is_(None),
+                    )
+                    .with_for_update()
+                ).scalar_one_or_none()
+                if complaint:
+                    complaint.status = '已結案'
 
-        db.session.commit()
-        return CAPAService._to_dict(ca)
+            AuditService.record(
+                actor_id=actor_id,
+                action='close',
+                module='CAPA',
+                record_id=ca.id,
+                old_value=old_value,
+                new_value=CAPAService._audit_snapshot(ca),
+            )
+            db.session.commit()
+            return CAPAService._to_dict(ca)
+        except Exception:
+            db.session.rollback()
+            raise
 
     # ── 刪除 ─────────────────────────────────────────────────
     @staticmethod
-    def delete(capa_id: int) -> bool:
-        ca = CorrectiveAction.active_query().filter_by(id=capa_id).first()
-        if not ca:
-            raise ValueError('CAPA 不存在')
+    def delete(capa_id: int, *, actor_id: Optional[int]) -> bool:
+        try:
+            ca = db.session.execute(
+                db.select(CorrectiveAction)
+                .where(CorrectiveAction.id == capa_id, CorrectiveAction.deleted_at.is_(None))
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            ).scalar_one_or_none()
+            if not ca:
+                raise NotFoundError('CAPA 不存在')
+            old_value = CAPAService._audit_snapshot(ca)
         # 若來源為客訴，將客訴狀態回退為待處理並清空 related_capa_id
-        if ca.source_type == 'complaint' and ca.source_id:
-            complaint = CustomerComplaint.active_query().filter_by(id=ca.source_id).first()
-            if complaint:
-                complaint.status = '待處理'
-                complaint.related_capa_id = None
-        if ca.source_type == 'ncmr' and (ca.source_id or ca.ncmr_id):
-            ncmr = NCMR.active_query().filter_by(id=ca.source_id or ca.ncmr_id).first()
-            if ncmr and ncmr.related_capa_id == ca.id:
-                ncmr.related_capa_id = None
-                ncmr.related_capa_source = None
-                ncmr.status = '待處理'
+            if ca.source_type == 'complaint' and ca.source_id:
+                complaint = db.session.execute(
+                    db.select(CustomerComplaint)
+                    .where(CustomerComplaint.id == ca.source_id, CustomerComplaint.deleted_at.is_(None))
+                    .with_for_update()
+                ).scalar_one_or_none()
+                if complaint:
+                    complaint.status = '待處理'
+                    complaint.related_capa_id = None
+            if ca.source_type == 'ncmr' and (ca.source_id or ca.ncmr_id):
+                ncmr = db.session.execute(
+                    db.select(NCMR)
+                    .where(NCMR.id == (ca.source_id or ca.ncmr_id), NCMR.deleted_at.is_(None))
+                    .with_for_update()
+                ).scalar_one_or_none()
+                if ncmr and ncmr.related_capa_id == ca.id:
+                    ncmr.related_capa_id = None
+                    ncmr.related_capa_source = None
+                    ncmr.status = '待處理'
 
         # 同步刪除關聯任務（pending 狀態）
-        ActionTask.query.filter_by(
-            source_type='capa', source_id=capa_id, status='pending'
-        ).delete(synchronize_session=False)
+            ActionTask.query.filter_by(
+                source_type='capa', source_id=capa_id, status='pending'
+            ).delete(synchronize_session=False)
         # 軟刪除：設定 deleted_at 時間戳，而非真正 DELETE
-        ca.soft_delete()
-        db.session.commit()
-        return True
+            ca.soft_delete()
+            AuditService.record(
+                actor_id=actor_id,
+                action='delete',
+                module='CAPA',
+                record_id=ca.id,
+                old_value=old_value,
+                new_value=CAPAService._audit_snapshot(ca),
+            )
+            db.session.commit()
+            return True
+        except Exception:
+            db.session.rollback()
+            raise
+
+    @staticmethod
+    def _audit_snapshot(ca: CorrectiveAction) -> Dict[str, Any]:
+        """僅保留狀態與關聯等稽核所需欄位，避免寫入敏感自由文字。"""
+        return {
+            'id': ca.id,
+            'status': ca.status,
+            'source_type': ca.source_type,
+            'source_id': ca.source_id,
+            'ncmr_id': ca.ncmr_id,
+            'deleted_at': ca.deleted_at,
+            'closed_at': ca.closed_at,
+        }
 
     # ── 進度計算 ─────────────────────────────────────────────
     @staticmethod

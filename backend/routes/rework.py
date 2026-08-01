@@ -2,14 +2,16 @@
 from functools import wraps
 from flask import Blueprint, jsonify, request, current_app
 from ..services.rework_service import ReworkService
-from ..utils import auth_required, require_permission, log_audit
-from ..extensions import db
+from ..errors import APIError
+from ..utils import auth_required, require_permission
 
 rework_bp = Blueprint('rework', __name__)
 
 
 def rework_error_response(error, context):
     """集中重工 route 錯誤回應與記錄格式。"""
+    if isinstance(error, APIError):
+        return jsonify(error.to_dict()), error.status_code
     if isinstance(error, ValueError):
         return jsonify({"error": str(error)}), 400
     current_app.logger.exception("%s error: %s", context, str(error))
@@ -54,9 +56,7 @@ def apply_rework(current_user):
     """提交重工申請"""
     if not request.json:
         return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
-    result = ReworkService.create_application(request.json)
-    log_audit(current_user.id, 'create', '重工', result.get('id') if isinstance(result, dict) else None)
-    db.session.commit()
+    result = ReworkService.create_application(request.json, actor_id=current_user.id)
     return jsonify({"success": True, **result})
 
 @rework_bp.route('/api/rework/application/<int:rework_id>', methods=['PUT'])
@@ -78,10 +78,7 @@ def approve_rework(current_user):
     """審核重工申請"""
     if not request.json:
         return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
-    ReworkService.approve_application(request.json)
-    rework_id = request.json.get('rework_id')
-    log_audit(current_user.id, 'approve', '重工', rework_id)
-    db.session.commit()
+    ReworkService.approve_application(request.json, actor_id=current_user.id)
     return jsonify({"success": True})
 
 @rework_bp.route('/api/rework/executions', methods=['GET'])
@@ -97,11 +94,11 @@ def get_rework_executions():
 @auth_required
 @require_permission('rework.create')
 @rework_route_errors('Execute rework')
-def execute_rework():
+def execute_rework(current_user):
     """記錄重工執行"""
     if not request.json:
         return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
-    ReworkService.create_execution(request.json)
+    ReworkService.create_execution(request.json, actor_id=current_user.id)
     return jsonify({"success": True})
 
 @rework_bp.route('/api/rework/execution/<int:execution_id>', methods=['GET'])
@@ -119,20 +116,20 @@ def get_execution(execution_id):
 @auth_required
 @require_permission('rework.create')
 @rework_route_errors('Update execution')
-def update_execution(execution_id):
+def update_execution(current_user, execution_id):
     """更新執行記錄"""
     if not request.json:
         return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
-    ReworkService.update_execution(execution_id, request.json)
+    ReworkService.update_execution(execution_id, request.json, actor_id=current_user.id)
     return jsonify({"success": True})
 
 @rework_bp.route('/api/rework/execution/<int:execution_id>', methods=['DELETE'])
 @auth_required
 @require_permission('rework.delete')
 @rework_route_errors('Delete execution')
-def delete_execution(execution_id):
+def delete_execution(current_user, execution_id):
     """刪除執行記錄"""
-    ReworkService.delete_execution(execution_id)
+    ReworkService.delete_execution(execution_id, actor_id=current_user.id)
     return jsonify({"success": True})
 
 @rework_bp.route('/api/rework/inspections', methods=['GET'])
@@ -159,11 +156,11 @@ def get_rework_costs():
 @auth_required
 @require_permission('rework.create')
 @rework_route_errors('Add rework cost')
-def add_rework_cost():
+def add_rework_cost(current_user):
     """新增重工成本記錄"""
     if not request.json:
         return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
-    ReworkService.create_cost(request.json)
+    ReworkService.create_cost(request.json, actor_id=current_user.id)
     return jsonify({"success": True})
 
 @rework_bp.route('/api/rework/cost/<int:cost_id>', methods=['GET'])
@@ -181,31 +178,31 @@ def get_rework_cost(cost_id):
 @auth_required
 @require_permission('rework.create')
 @rework_route_errors('Update rework cost')
-def update_rework_cost(cost_id):
+def update_rework_cost(current_user, cost_id):
     """更新成本記錄"""
     if not request.json:
         return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
-    ReworkService.update_cost(cost_id, request.json)
+    ReworkService.update_cost(cost_id, request.json, actor_id=current_user.id)
     return jsonify({"success": True})
 
 @rework_bp.route('/api/rework/cost/<int:cost_id>', methods=['DELETE'])
 @auth_required
 @require_permission('rework.delete')
 @rework_route_errors('Delete rework cost')
-def delete_rework_cost(cost_id):
+def delete_rework_cost(current_user, cost_id):
     """刪除成本記錄"""
-    ReworkService.delete_cost(cost_id)
+    ReworkService.delete_cost(cost_id, actor_id=current_user.id)
     return jsonify({"success": True})
 
 @rework_bp.route('/api/rework/inspect', methods=['POST'])
 @auth_required
 @require_permission('rework.create')
 @rework_route_errors('Inspect rework')
-def inspect_rework():
+def inspect_rework(current_user):
     """記錄重工品檢"""
     if not request.json:
         return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
-    ReworkService.create_inspection(request.json)
+    ReworkService.create_inspection(request.json, actor_id=current_user.id)
     return jsonify({"success": True})
 
 @rework_bp.route('/api/rework/inspection/<int:inspection_id>', methods=['GET'])
@@ -223,31 +220,31 @@ def get_inspection(inspection_id):
 @auth_required
 @require_permission('rework.create')
 @rework_route_errors('Update inspection')
-def update_inspection(inspection_id):
+def update_inspection(current_user, inspection_id):
     """更新品檢記錄"""
     if not request.json:
         return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
-    ReworkService.update_inspection(inspection_id, request.json)
+    ReworkService.update_inspection(inspection_id, request.json, actor_id=current_user.id)
     return jsonify({"success": True})
 
 @rework_bp.route('/api/rework/inspection/<int:inspection_id>', methods=['DELETE'])
 @auth_required
 @require_permission('rework.delete')
 @rework_route_errors('Delete inspection')
-def delete_inspection(inspection_id):
+def delete_inspection(current_user, inspection_id):
     """刪除品檢記錄"""
-    ReworkService.delete_inspection(inspection_id)
+    ReworkService.delete_inspection(inspection_id, actor_id=current_user.id)
     return jsonify({"success": True})
 
 @rework_bp.route('/api/rework/close', methods=['POST'])
 @auth_required
 @require_permission('rework.approve')
 @rework_route_errors('Close rework')
-def close_rework():
+def close_rework(current_user):
     """結案重工申請"""
     if not request.json:
         return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
-    ReworkService.close_rework(request.json)
+    ReworkService.close_rework(request.json, actor_id=current_user.id)
     return jsonify({"success": True})
 
 @rework_bp.route('/api/rework/delete', methods=['POST'])
@@ -261,7 +258,5 @@ def delete_rework(current_user):
     rework_id = request.json.get('rework_id')
     if not rework_id:
         return jsonify({"error": "缺少重工ID"}), 400
-    ReworkService.delete_rework(rework_id)
-    log_audit(current_user.id, 'delete', '重工', rework_id)
-    db.session.commit()
+    ReworkService.delete_rework(rework_id, actor_id=current_user.id)
     return jsonify({"success": True})

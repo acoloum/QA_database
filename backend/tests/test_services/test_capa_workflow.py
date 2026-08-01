@@ -2,9 +2,11 @@ import datetime
 
 import pytest
 
-from backend.models import CorrectiveAction, CustomerComplaint, NCMR
+from backend.models import AuditLog, CorrectiveAction, CustomerComplaint, NCMR, User
+from backend.services.audit_service import AuditService
 from backend.services.capa_service import CAPAService
 from backend.services.complaint_service import ComplaintService
+from backend.utils import generate_token
 
 
 def test_prepare_capa_source_rejects_duplicate_complaint_capa(app, db_session):
@@ -53,9 +55,63 @@ def test_delete_ncmr_capa_clears_ncmr_link_and_status(app, db_session):
         ncmr.related_capa_source = 'capa'
         db_session.commit()
 
-        CAPAService.delete(capa.id)
+        CAPAService.delete(capa.id, actor_id=None)
 
         refreshed = db_session.get(NCMR, ncmr.id)
         assert refreshed.related_capa_id is None
         assert refreshed.related_capa_source is None
         assert refreshed.status == '待處理'
+
+
+@pytest.mark.parametrize('operation', ['close', 'delete'])
+@pytest.mark.parametrize('audit_fails', [True, False])
+def test_capa_http_mutation_has_exact_audit_or_atomic_rollback(
+    client, db_session, monkeypatch, operation, audit_fails
+):
+    """稽核寫入失敗時，CAPA 結案與刪除的業務資料必須一併回滾。"""
+    user = User(username=f'capa_atomic_{operation}', password='pw', role='admin', is_active=True)
+    capa = CorrectiveAction(
+        eight_d_number=f'CAPA-ATOMIC-{operation}',
+        status='進行中',
+        rigor='簡化5D',
+        d2_what='問題',
+        d3_action='暫時對策',
+        d4_root_cause='真因',
+        d6_verified=True,
+    )
+    db_session.add_all([user, capa])
+    db_session.commit()
+    token = generate_token(user.id, user.username, user.role, user.token_version)
+    headers = {'Authorization': f'Bearer {token}'}
+
+    def fail_audit(**_kwargs):
+        raise RuntimeError('audit unavailable')
+
+    if audit_fails:
+        monkeypatch.setattr(AuditService, 'record', fail_audit)
+    if operation == 'close':
+        response = client.post(
+            f'/api/capas/{capa.id}/close',
+            json={'D8_confirmation': '確認結案'},
+            headers=headers,
+        )
+    else:
+        response = client.delete(f'/api/capas/{capa.id}', headers=headers)
+
+    if not audit_fails:
+        assert response.status_code == 200
+        logs = AuditLog.query.all()
+        assert len(logs) == 1
+        assert (logs[0].user_id, logs[0].action, logs[0].module, logs[0].record_id) == (
+            user.id, operation, 'CAPA', capa.id,
+        )
+        return
+
+    assert response.status_code == 500
+    assert response.get_json()['error']['code'] == 'INTERNAL_ERROR'
+    db_session.expire_all()
+    persisted = db_session.get(CorrectiveAction, capa.id)
+    assert persisted.status == '進行中'
+    assert persisted.deleted_at is None
+    assert persisted.d8_confirmation is None
+    assert AuditLog.query.count() == 0

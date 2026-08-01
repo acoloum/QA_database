@@ -1,10 +1,10 @@
 """客訴路由 — CRUD、統計、開立 CAPA"""
 from flask import Blueprint, jsonify, request
-from ..extensions import db
 from ..services.complaint_service import ComplaintService
 from ..services.complaint_stats_service import ComplaintStatsService
+from ..errors import APIError
 from ..authorization import require_permissions
-from ..utils import auth_required, bounded_int, parse_optional_date, require_permission, log_audit
+from ..utils import auth_required, bounded_int, parse_optional_date, require_permission
 
 complaint_bp = Blueprint('complaint', __name__)
 
@@ -83,10 +83,10 @@ def update_complaint(current_user, complaint_id: int):
 def delete_complaint(current_user, complaint_id: int):
     """DELETE /api/complaints/<id>"""
     try:
-        ComplaintService.delete(complaint_id)
-        log_audit(current_user.id, 'delete', '客訴', complaint_id)
-        db.session.commit()
+        ComplaintService.delete(complaint_id, actor_id=current_user.id)
         return jsonify({'message': '刪除成功'}), 200
+    except APIError as e:
+        return jsonify(e.to_dict()), e.status_code
     except ValueError as e:
         return jsonify({'error': str(e)}), 404
     except Exception as e:
@@ -100,23 +100,10 @@ def delete_complaint(current_user, complaint_id: int):
 def open_capa_from_complaint(current_user, complaint_id: int):
     """POST /api/complaints/<id>/open-capa — 從客訴開立 CAPA"""
     try:
-        from ..services.capa_service import CAPAService
-        source_info = ComplaintService.prepare_capa_source(complaint_id)
-        capa = CAPAService.create_from_source(
-            source_type  = source_info['source_type'],
-            source_id    = source_info['source_id'],
-            symptom      = source_info['symptom'],
-            severity     = source_info.get('severity', 'Major'),
-            creator_id   = current_user.id,
-        )
-        # 更新客訴關聯，並將狀態改為「處理中」
-        from ..models import CustomerComplaint
-        c = db.session.get(CustomerComplaint, complaint_id)
-        if c:
-            c.related_capa_id = capa['id']
-            c.status = '處理中'
-            db.session.commit()
+        capa = ComplaintService.open_capa(complaint_id, actor_id=current_user.id)
         return jsonify(capa), 201
+    except APIError as e:
+        return jsonify(e.to_dict()), e.status_code
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:
@@ -131,8 +118,10 @@ def open_capa_from_complaint(current_user, complaint_id: int):
 def open_rework_from_complaint(current_user, complaint_id: int):
     """POST /api/complaints/<id>/open-rework — 從客訴開立重工申請單"""
     try:
-        result = ComplaintService.open_rework(complaint_id)
+        result = ComplaintService.open_rework(complaint_id, actor_id=current_user.id)
         return jsonify(result), 201
+    except APIError as e:
+        return jsonify(e.to_dict()), e.status_code
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:

@@ -4,7 +4,9 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import and_, func
 from ..extensions import db
 from ..models import CustomerComplaint, Inspector
+from ..errors import APIError, NotFoundError
 from ..utils import acquire_number_lock
+from .audit_service import AuditService
 
 VALID_TYPES     = {'quality', 'warranty', 'field_failure'}
 VALID_STATUSES  = {'待處理', '處理中', '已結案'}
@@ -173,28 +175,124 @@ class ComplaintService:
 
     # ── 刪除 ─────────────────────────────────────────────────
     @staticmethod
-    def delete(complaint_id: int) -> bool:
-        c = CustomerComplaint.active_query().filter(CustomerComplaint.id == complaint_id).first()
-        if not c:
-            raise ValueError('客訴不存在')
-        c.soft_delete()
-        db.session.commit()
-        return True
+    def delete(complaint_id: int, *, actor_id: Optional[int]) -> bool:
+        try:
+            c = ComplaintService._locked_active(complaint_id)
+            if not c:
+                raise NotFoundError('客訴不存在')
+            old_value = ComplaintService._audit_snapshot(c)
+            c.soft_delete()
+            AuditService.record(
+                actor_id=actor_id,
+                action='delete',
+                module='客訴',
+                record_id=c.id,
+                old_value=old_value,
+                new_value=ComplaintService._audit_snapshot(c),
+            )
+            db.session.commit()
+            return True
+        except Exception:
+            db.session.rollback()
+            raise
 
     # ── 從客訴開立重工 ───────────────────────────────────────
     @staticmethod
-    def open_rework(complaint_id: int) -> Dict[str, Any]:
-        c = CustomerComplaint.active_query().filter(CustomerComplaint.id == complaint_id).first()
-        if not c:
-            raise ValueError('客訴不存在')
-        if c.related_rework_id:
-            raise ValueError(f'此客訴已開立重工單（ID: {c.related_rework_id}）')
+    def open_rework(complaint_id: int, *, actor_id: Optional[int]) -> Dict[str, Any]:
+        try:
+            c = ComplaintService._locked_active(complaint_id)
+            if not c:
+                raise NotFoundError('客訴不存在')
+            if c.related_rework_id:
+                raise APIError(
+                    f'此客訴已開立重工單（ID: {c.related_rework_id}）',
+                    code='COMPLAINT_REWORK_EXISTS',
+                    status_code=409,
+                )
+            old_value = ComplaintService._audit_snapshot(c)
+            from ..services.rework_service import ReworkService
+            result = ReworkService._create_from_complaint(c)
+            c.related_rework_id = result['rework_id']
+            c.status = '處理中'
+            AuditService.record(
+                actor_id=actor_id,
+                action='create',
+                module='重工',
+                record_id=result['rework_id'],
+                old_value={'source': old_value},
+                new_value={
+                    'source': ComplaintService._audit_snapshot(c),
+                    'rework_id': result['rework_id'],
+                },
+            )
+            db.session.commit()
+            return result
+        except Exception:
+            db.session.rollback()
+            raise
 
-        from ..services.rework_service import ReworkService
-        result = ReworkService.create_from_complaint(c)
-        c.related_rework_id = result['rework_id']
-        db.session.commit()
-        return result
+    @staticmethod
+    def open_capa(complaint_id: int, *, actor_id: Optional[int]) -> Dict[str, Any]:
+        """在單一交易中建立 CAPA 並關聯客訴。"""
+        try:
+            c = ComplaintService._locked_active(complaint_id)
+            if not c:
+                raise NotFoundError('客訴不存在')
+            if c.related_capa_id:
+                raise APIError(
+                    f'此客訴已開立 CAPA（ID: {c.related_capa_id}）',
+                    code='COMPLAINT_CAPA_EXISTS',
+                    status_code=409,
+                )
+            old_value = ComplaintService._audit_snapshot(c)
+            from ..services.capa_service import CAPAService
+            result = CAPAService._create_from_source(
+                source_type='complaint',
+                source_id=c.id,
+                symptom=c.description,
+                severity=c.severity or 'Major',
+                creator_id=actor_id,
+            )
+            c.related_capa_id = result['id']
+            c.status = '處理中'
+            AuditService.record(
+                actor_id=actor_id,
+                action='create',
+                module='CAPA',
+                record_id=result['id'],
+                old_value={'source': old_value},
+                new_value={
+                    'source': ComplaintService._audit_snapshot(c),
+                    'capa_id': result['id'],
+                },
+            )
+            db.session.commit()
+            return result
+        except Exception:
+            db.session.rollback()
+            raise
+
+    @staticmethod
+    def _locked_active(complaint_id: int) -> Optional[CustomerComplaint]:
+        return db.session.execute(
+            db.select(CustomerComplaint)
+            .where(
+                CustomerComplaint.id == complaint_id,
+                CustomerComplaint.deleted_at.is_(None),
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).scalar_one_or_none()
+
+    @staticmethod
+    def _audit_snapshot(c: CustomerComplaint) -> Dict[str, Any]:
+        return {
+            'id': c.id,
+            'status': c.status,
+            'related_capa_id': c.related_capa_id,
+            'related_rework_id': c.related_rework_id,
+            'deleted_at': c.deleted_at,
+        }
 
     # ── 開立 CAPA（回傳 CAPA source 資訊，由 CAPA service 建立）
     @staticmethod

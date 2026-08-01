@@ -127,14 +127,11 @@ def test_audit_service_flushes_without_committing(app, db_session, monkeypatch):
         assert AuditLog.query.filter_by(record_id=11).count() == 0
 
 
-def test_route_modules_do_not_commit_outside_temporary_allowlist():
-    """交易由 service 擁有；Task 8 前只允許三個既定工作流程 route。"""
+def test_route_modules_do_not_commit():
+    """route 不得擁有交易 commit，業務與稽核必須由 service 原子寫入。"""
     route_dir = Path(__file__).parents[2] / 'routes'
-    temporary_allowlist = {'capa.py', 'complaint.py', 'rework.py'}
     violations = []
     for path in route_dir.glob('*.py'):
-        if path.name in temporary_allowlist:
-            continue
         tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):

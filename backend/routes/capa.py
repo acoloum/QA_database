@@ -2,8 +2,8 @@
 from flask import Blueprint, jsonify, request
 from ..services.capa_service import CAPAService
 from ..services.task_service import TaskService
-from ..utils import auth_required, bounded_int, parse_optional_date, require_permission, log_audit
-from ..extensions import db
+from ..errors import APIError
+from ..utils import auth_required, bounded_int, parse_optional_date, require_permission
 
 capa_bp = Blueprint('capa', __name__)
 
@@ -146,10 +146,11 @@ def close_capa(current_user, capa_id: int):
             capa_id      = capa_id,
             confirmation = confirmation,
             recognition  = data.get('D8_recognition'),
+            actor_id     = current_user.id,
         )
-        log_audit(current_user.id, 'close', 'CAPA', capa_id)
-        db.session.commit()
         return jsonify(result), 200
+    except APIError as e:
+        return jsonify(e.to_dict()), e.status_code
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:
@@ -163,10 +164,10 @@ def close_capa(current_user, capa_id: int):
 def delete_capa(current_user, capa_id: int):
     """DELETE /api/capas/<id> — 刪除 CAPA（同步刪除 pending 橫展任務）"""
     try:
-        CAPAService.delete(capa_id)
-        log_audit(current_user.id, 'delete', 'CAPA', capa_id)
-        db.session.commit()
+        CAPAService.delete(capa_id, actor_id=current_user.id)
         return jsonify({'message': '刪除成功'}), 200
+    except APIError as e:
+        return jsonify(e.to_dict()), e.status_code
     except ValueError as e:
         return jsonify({'error': str(e)}), 404
     except Exception as e:

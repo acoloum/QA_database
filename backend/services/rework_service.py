@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import joinedload
 from sqlalchemy import desc, func
 from ..extensions import db
+from ..errors import APIError, NotFoundError
 from ..models import (
     ReworkRequest, ReworkExecution, ReworkInspection, 
     NCMR, Inspector, CorrectiveAction, ReworkCost
@@ -13,8 +14,73 @@ from ..utils import (
     generate_number,
     validate_status_transition,
 )
+from .audit_service import AuditService
 
 class ReworkService:
+    @staticmethod
+    def _locked_active_request(rework_id: int) -> Optional[ReworkRequest]:
+        return db.session.execute(
+            db.select(ReworkRequest)
+            .where(ReworkRequest.id == rework_id, ReworkRequest.deleted_at.is_(None))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).scalar_one_or_none()
+
+    @staticmethod
+    def _locked_request_by_number(rework_number: str) -> Optional[ReworkRequest]:
+        return db.session.execute(
+            db.select(ReworkRequest)
+            .where(
+                ReworkRequest.rework_number == rework_number,
+                ReworkRequest.deleted_at.is_(None),
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).scalar_one_or_none()
+
+    @staticmethod
+    def _locked_child(model, child_id: int, not_found_message: str):
+        """統一先鎖重工主單、再鎖子資料，避免共用 parent 死鎖順序不一。"""
+        rework_id = db.session.execute(
+            db.select(model.rework_id).where(model.id == child_id)
+        ).scalar_one_or_none()
+        if rework_id is None:
+            raise NotFoundError(not_found_message)
+        request_row = ReworkService._locked_active_request(rework_id)
+        if request_row is None:
+            raise NotFoundError('找不到重工申請單')
+        child = db.session.execute(
+            db.select(model)
+            .where(model.id == child_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).scalar_one_or_none()
+        if child is None:
+            raise NotFoundError(not_found_message)
+        return request_row, child
+
+    @staticmethod
+    def _request_snapshot(req: ReworkRequest) -> Dict[str, Any]:
+        return {
+            'id': req.id,
+            'ncmr_id': req.ncmr_id,
+            'complaint_id': req.complaint_id,
+            'status': req.status,
+            'review_status': req.review_status,
+            'reviewer_id': req.reviewer_id,
+            'deleted_at': req.deleted_at,
+            'actual_finish_date': req.actual_finish_date,
+        }
+
+    @staticmethod
+    def _child_snapshot(item) -> Dict[str, Any]:
+        fields = {
+            ReworkExecution: ('id', 'rework_id', 'dept', 'owner_id', 'complete_qty', 'defect_qty', 'yield_rate', 'status'),
+            ReworkInspection: ('id', 'rework_id', 'date', 'inspector_id', 'item', 'result', 'defect_qty'),
+            ReworkCost: ('id', 'rework_id', 'cost_type', 'cost_item', 'unit_cost', 'quantity', 'total_cost', 'currency'),
+        }[type(item)]
+        return {field: getattr(item, field) for field in fields}
+
     def generate_rework_number(self):
         """生成重工單號"""
         return generate_number('RW', "重工申請單", "申請單號")
@@ -181,11 +247,17 @@ class ReworkService:
             raise e
 
     @staticmethod
-    def create_application(data: Dict[str, Any]) -> Dict[str, Any]:
+    def create_application(data: Dict[str, Any], *, actor_id: Optional[int]) -> Dict[str, Any]:
         try:
             ncmr_id = data.get('NCMR_ID')
-            ncmr = NCMR.active_query().filter_by(id=ncmr_id).first()
-            if not ncmr: raise ValueError("找不到對應的NCMR記錄")
+            ncmr = db.session.execute(
+                db.select(NCMR)
+                .where(NCMR.id == ncmr_id, NCMR.deleted_at.is_(None))
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            ).scalar_one_or_none()
+            if not ncmr:
+                raise NotFoundError("找不到對應的NCMR記錄")
 
             applicant = Inspector.query.filter_by(name=data.get('申請人員姓名')).first()
             if not applicant: raise ValueError("找不到申請人員")
@@ -216,38 +288,53 @@ class ReworkService:
             db.session.flush()
             
             ncmr.status = '轉重工'
-            
-            return {"rework_id": req.id, "ncmr_number": ncmr.ncmr_number}
-        except Exception as e:
+            result = {"rework_id": req.id, "ncmr_number": ncmr.ncmr_number}
+            AuditService.record(
+                actor_id=actor_id,
+                action='create',
+                module='重工',
+                record_id=req.id,
+                new_value=ReworkService._request_snapshot(req),
+            )
+            db.session.commit()
+            return result
+        except Exception:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
-    def create_from_complaint(complaint) -> Dict[str, Any]:
-        """從客訴直接開立重工申請單（不需 NCMR）"""
+    def _create_from_complaint(complaint) -> Dict[str, Any]:
+        """建立客訴來源重工單；不 commit，由外層交易擁有者決定。"""
         from ..models import CustomerComplaint
         if not isinstance(complaint, CustomerComplaint):
             raise ValueError('無效的客訴物件')
+        rework_number = generate_number('RW', "重工申請單", "申請單號")
+        req = ReworkRequest(
+            ncmr_id=None,
+            complaint_id=complaint.id,
+            rework_number=rework_number,
+            applicant_id=None,
+            product_info=f'{complaint.material or ""} {complaint.spec or ""} / {complaint.customer}'.strip(),
+            reason=complaint.description,
+            urgency='普通',
+            department='',
+            status='申請中',
+            material=complaint.material,
+        )
+        db.session.add(req)
+        db.session.flush()
+        return {'rework_id': req.id, 'rework_number': req.rework_number}
+
+    @staticmethod
+    def create_from_complaint(complaint) -> Dict[str, Any]:
+        """保留既有公開介面；新的跨 service 流程使用不 commit builder。"""
         try:
-            rework_number = generate_number('RW', "重工申請單", "申請單號")
-            req = ReworkRequest(
-                ncmr_id      = None,
-                complaint_id = complaint.id,
-                rework_number= rework_number,
-                applicant_id = None,
-                product_info = f'{complaint.material or ""} {complaint.spec or ""} / {complaint.customer}'.strip(),
-                reason       = complaint.description,
-                urgency      = '普通',
-                department   = '',
-                status       = '申請中',
-                material     = complaint.material,
-            )
-            db.session.add(req)
+            result = ReworkService._create_from_complaint(complaint)
             db.session.commit()
-            return {'rework_id': req.id, 'rework_number': req.rework_number}
-        except Exception as e:
+            return result
+        except Exception:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def update_application(rework_id: int, data: Dict[str, Any]) -> bool:
@@ -301,14 +388,16 @@ class ReworkService:
             raise e
 
     @staticmethod
-    def approve_application(data: Dict[str, Any]) -> bool:
+    def approve_application(data: Dict[str, Any], *, actor_id: Optional[int]) -> bool:
         try:
             rework_id = data.get('rework_id')
             action = data.get('action')
             reviewer_name = data.get('審核人員姓名')
             
-            req = ReworkRequest.active_query().filter_by(id=rework_id).first()
-            if not req: raise ValueError("找不到重工申請單")
+            req = ReworkService._locked_active_request(rework_id)
+            if not req:
+                raise NotFoundError("找不到重工申請單")
+            old_value = ReworkService._request_snapshot(req)
 
             reviewer = Inspector.query.filter_by(name=reviewer_name).first()
             
@@ -318,13 +407,21 @@ class ReworkService:
                 new_status = '已拒絕'
             else:
                 raise ValueError("無效的審核動作")
-            
+
+            validate_status_transition('重工', req.status, new_status)
             req.review_status = new_status
             req.status = new_status
             req.reviewer_id = reviewer.id if reviewer else None
             req.review_time = datetime.now()
             req.review_opinion = data.get('opinion', '')
-            
+            AuditService.record(
+                actor_id=actor_id,
+                action='approve' if action == '核准' else 'reject',
+                module='重工',
+                record_id=req.id,
+                old_value=old_value,
+                new_value=ReworkService._request_snapshot(req),
+            )
             db.session.commit()
             return True
         except Exception as e:
@@ -383,14 +480,15 @@ class ReworkService:
             raise e
 
     @staticmethod
-    def create_execution(data: Dict[str, Any]) -> bool:
+    def create_execution(data: Dict[str, Any], *, actor_id: Optional[int]) -> bool:
         try:
             executor = Inspector.query.filter_by(name=data.get('負責人員姓名')).first()
             if not executor: raise ValueError("找不到負責人員")
 
             rework_number = data.get('重工單號')
-            req = ReworkRequest.query.filter_by(rework_number=rework_number).first()
-            if not req: raise ValueError("找不到重工申請單")
+            req = ReworkService._locked_request_by_number(rework_number)
+            if not req:
+                raise NotFoundError("找不到重工申請單")
 
             # Calculate Yield
             comp = float(data.get('完成數量', 0) or 0)
@@ -433,9 +531,18 @@ class ReworkService:
                 # Legacy: 
                 # INSERT ... VALUES (..., executor_id) -> executor_id came from `data.get('負責人員姓名')` lookup
             )
-            
+
+            validate_status_transition('重工', req.status, '執行中')
             db.session.add(execution)
             req.status = '執行中'
+            db.session.flush()
+            AuditService.record(
+                actor_id=actor_id,
+                action='create',
+                module='重工執行',
+                record_id=execution.id,
+                new_value=ReworkService._child_snapshot(execution),
+            )
             db.session.commit()
             return True
         except Exception as e:
@@ -473,10 +580,10 @@ class ReworkService:
             raise e
 
     @staticmethod
-    def update_execution(execution_id: int, data: Dict[str, Any]) -> bool:
+    def update_execution(execution_id: int, data: Dict[str, Any], *, actor_id: Optional[int]) -> bool:
         try:
-            e = db.session.get(ReworkExecution, execution_id)
-            if not e: raise ValueError("找不到執行記錄")
+            _, e = ReworkService._locked_child(ReworkExecution, execution_id, "找不到執行記錄")
+            old_value = ReworkService._child_snapshot(e)
 
             if data.get('負責人員姓名'):
                 owner = Inspector.query.filter_by(name=data.get('負責人員姓名')).first()
@@ -507,6 +614,14 @@ class ReworkService:
             if '預計完成時間' in data: e.est_end_time = parse_dt(data['預計完成時間'])
             if '實際完成時間' in data: e.real_end_time = parse_dt(data['實際完成時間'])
             
+            AuditService.record(
+                actor_id=actor_id,
+                action='update',
+                module='重工執行',
+                record_id=e.id,
+                old_value=old_value,
+                new_value=ReworkService._child_snapshot(e),
+            )
             db.session.commit()
             return True
         except Exception as e:
@@ -514,12 +629,19 @@ class ReworkService:
             raise e
 
     @staticmethod
-    def delete_execution(execution_id: int) -> bool:
+    def delete_execution(execution_id: int, *, actor_id: Optional[int]) -> bool:
         try:
-            e = db.session.get(ReworkExecution, execution_id)
-            if e:
-                db.session.delete(e)
-                db.session.commit()
+            _, e = ReworkService._locked_child(ReworkExecution, execution_id, "找不到執行記錄")
+            old_value = ReworkService._child_snapshot(e)
+            db.session.delete(e)
+            AuditService.record(
+                actor_id=actor_id,
+                action='delete',
+                module='重工執行',
+                record_id=e.id,
+                old_value=old_value,
+            )
+            db.session.commit()
             return True
         except Exception as e:
             db.session.rollback()
@@ -564,10 +686,11 @@ class ReworkService:
             raise e
             
     @staticmethod
-    def create_inspection(data: Dict[str, Any]) -> bool:
+    def create_inspection(data: Dict[str, Any], *, actor_id: Optional[int]) -> bool:
         try:
-            req = ReworkRequest.query.filter_by(rework_number=data.get('重工單號')).first()
-            if not req: raise ValueError("找不到重工申請單")
+            req = ReworkService._locked_request_by_number(data.get('重工單號'))
+            if not req:
+                raise NotFoundError("找不到重工申請單")
 
             inspector = Inspector.query.filter_by(name=data.get('檢驗人員姓名')).first()
             if not inspector: raise ValueError("找不到檢驗人員")
@@ -583,6 +706,14 @@ class ReworkService:
                 remark=data.get('檢驗備註', '')
             )
             db.session.add(insp)
+            db.session.flush()
+            AuditService.record(
+                actor_id=actor_id,
+                action='create',
+                module='重工品檢',
+                record_id=insp.id,
+                new_value=ReworkService._child_snapshot(insp),
+            )
             db.session.commit()
             return True
         except Exception as e:
@@ -611,10 +742,10 @@ class ReworkService:
             raise e
 
     @staticmethod
-    def update_inspection(inspection_id: int, data: Dict[str, Any]) -> bool:
+    def update_inspection(inspection_id: int, data: Dict[str, Any], *, actor_id: Optional[int]) -> bool:
         try:
-            i = db.session.get(ReworkInspection, inspection_id)
-            if not i: raise ValueError("找不到品檢記錄")
+            _, i = ReworkService._locked_child(ReworkInspection, inspection_id, "找不到品檢記錄")
+            old_value = ReworkService._child_snapshot(i)
             
             if data.get('檢驗人員姓名'):
                 inspector = Inspector.query.filter_by(name=data.get('檢驗人員姓名')).first()
@@ -628,6 +759,14 @@ class ReworkService:
             for k, attr in mapping.items():
                 if k in data: setattr(i, attr, data[k])
             
+            AuditService.record(
+                actor_id=actor_id,
+                action='update',
+                module='重工品檢',
+                record_id=i.id,
+                old_value=old_value,
+                new_value=ReworkService._child_snapshot(i),
+            )
             db.session.commit()
             return True
         except Exception as e:
@@ -635,34 +774,49 @@ class ReworkService:
             raise e
 
     @staticmethod
-    def delete_inspection(inspection_id: int) -> bool:
+    def delete_inspection(inspection_id: int, *, actor_id: Optional[int]) -> bool:
         try:
-            i = db.session.get(ReworkInspection, inspection_id)
-            if i:
-                db.session.delete(i)
-                db.session.commit()
+            _, i = ReworkService._locked_child(ReworkInspection, inspection_id, "找不到品檢記錄")
+            old_value = ReworkService._child_snapshot(i)
+            db.session.delete(i)
+            AuditService.record(
+                actor_id=actor_id,
+                action='delete',
+                module='重工品檢',
+                record_id=i.id,
+                old_value=old_value,
+            )
+            db.session.commit()
             return True
         except Exception as e:
             db.session.rollback()
             raise e
 
     @staticmethod
-    def close_rework(data: Dict[str, Any]) -> bool:
+    def close_rework(data: Dict[str, Any], *, actor_id: Optional[int]) -> bool:
         try:
             rework_id = data.get('rework_id')
-            req = ReworkRequest.active_query().filter_by(id=rework_id).first()
-            if not req: raise ValueError("找不到該重工單")
+            req = ReworkService._locked_active_request(rework_id)
+            if not req:
+                raise NotFoundError("找不到該重工單")
+            old_value = ReworkService._request_snapshot(req)
 
-            if req.status == '已完成': raise ValueError("該重工單已結案")
+            if req.status == '已完成':
+                raise APIError("該重工單已結案", code='INVALID_STATE', status_code=409)
             if not ReworkService._has_passed_final_inspection(req):
                 raise ValueError("重工結案前必須至少有一筆品檢合格且不良數為 0 的品檢記錄")
 
+            validate_status_transition('重工', req.status, '已完成')
             req.status = '已完成'
             req.actual_finish_date = datetime.now()
 
             # 重工完成時自動同步 NCMR（無關聯 CAPA 時）
             if req.ncmr_id:
-                ncmr = NCMR.active_query().filter_by(id=req.ncmr_id).first()
+                ncmr = db.session.execute(
+                    db.select(NCMR)
+                    .where(NCMR.id == req.ncmr_id, NCMR.deleted_at.is_(None))
+                    .with_for_update()
+                ).scalar_one_or_none()
                 if ncmr and ncmr.status == '矯正中':
                     # 只有在 NCMR 沒有任何 CAPA（或全部已結案）時才自動結案
                     open_capas = [
@@ -672,6 +826,14 @@ class ReworkService:
                     if not open_capas:
                         ncmr.status = '矯正完成'
 
+            AuditService.record(
+                actor_id=actor_id,
+                action='close',
+                module='重工',
+                record_id=req.id,
+                old_value=old_value,
+                new_value=ReworkService._request_snapshot(req),
+            )
             db.session.commit()
             return True
         except Exception as e:
@@ -688,13 +850,23 @@ class ReworkService:
         return False
 
     @staticmethod
-    def delete_rework(rework_id: int) -> bool:
+    def delete_rework(rework_id: int, *, actor_id: Optional[int]) -> bool:
         try:
-            req = ReworkRequest.active_query().filter_by(id=rework_id).first()
-            if not req: raise ValueError("找不到重工申請單")
+            req = ReworkService._locked_active_request(rework_id)
+            if not req:
+                raise NotFoundError("找不到重工申請單")
+            old_value = ReworkService._request_snapshot(req)
 
             # 軟刪除申請單（保留相關執行/品檢/成本記錄）
             req.soft_delete()
+            AuditService.record(
+                actor_id=actor_id,
+                action='delete',
+                module='重工',
+                record_id=req.id,
+                old_value=old_value,
+                new_value=ReworkService._request_snapshot(req),
+            )
             db.session.commit()
             return True
         except Exception as e:
@@ -735,11 +907,12 @@ class ReworkService:
             raise e
 
     @staticmethod
-    def create_cost(data: Dict[str, Any]) -> bool:
+    def create_cost(data: Dict[str, Any], *, actor_id: Optional[int]) -> bool:
         try:
             rework_number = data.get('重工單號')
-            req = ReworkRequest.query.filter_by(rework_number=rework_number).first()
-            if not req: raise ValueError("找不到重工申請單")
+            req = ReworkService._locked_request_by_number(rework_number)
+            if not req:
+                raise NotFoundError("找不到重工申請單")
 
             recorder = Inspector.query.filter_by(name=data.get('記錄人員姓名')).first()
             if not recorder: raise ValueError("找不到記錄人員")
@@ -760,6 +933,14 @@ class ReworkService:
                 remark=data.get('備註', '')
             )
             db.session.add(cost)
+            db.session.flush()
+            AuditService.record(
+                actor_id=actor_id,
+                action='create',
+                module='重工成本',
+                record_id=cost.id,
+                new_value=ReworkService._child_snapshot(cost),
+            )
             db.session.commit()
             return True
         except Exception as e:
@@ -789,10 +970,10 @@ class ReworkService:
             raise e
 
     @staticmethod
-    def update_cost(cost_id: int, data: Dict[str, Any]) -> bool:
+    def update_cost(cost_id: int, data: Dict[str, Any], *, actor_id: Optional[int]) -> bool:
         try:
-            c = db.session.get(ReworkCost, cost_id)
-            if not c: raise ValueError("找不到成本記錄")
+            _, c = ReworkService._locked_child(ReworkCost, cost_id, "找不到成本記錄")
+            old_value = ReworkService._child_snapshot(c)
 
             if data.get('記錄人員姓名'):
                 recorder = Inspector.query.filter_by(name=data.get('記錄人員姓名')).first()
@@ -807,6 +988,14 @@ class ReworkService:
             c.currency = data.get('成本幣別', c.currency)
             c.remark = data.get('備註', c.remark)
 
+            AuditService.record(
+                actor_id=actor_id,
+                action='update',
+                module='重工成本',
+                record_id=c.id,
+                old_value=old_value,
+                new_value=ReworkService._child_snapshot(c),
+            )
             db.session.commit()
             return True
         except Exception as e:
@@ -814,12 +1003,19 @@ class ReworkService:
             raise e
 
     @staticmethod
-    def delete_cost(cost_id: int) -> bool:
+    def delete_cost(cost_id: int, *, actor_id: Optional[int]) -> bool:
         try:
-            c = db.session.get(ReworkCost, cost_id)
-            if c:
-                db.session.delete(c)
-                db.session.commit()
+            _, c = ReworkService._locked_child(ReworkCost, cost_id, "找不到成本記錄")
+            old_value = ReworkService._child_snapshot(c)
+            db.session.delete(c)
+            AuditService.record(
+                actor_id=actor_id,
+                action='delete',
+                module='重工成本',
+                record_id=c.id,
+                old_value=old_value,
+            )
+            db.session.commit()
             return True
         except Exception as e:
             db.session.rollback()
