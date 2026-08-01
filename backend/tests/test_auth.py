@@ -2,14 +2,23 @@
 使用者管理 API 測試（auth routes）
 """
 from datetime import datetime, timedelta, timezone
+from functools import wraps
+import os
+from threading import Event, Thread, current_thread
+from uuid import uuid4
 
 import jwt
 import pytest
-from sqlalchemy import event
+from flask import g, jsonify
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.orm import Session
 
+from backend.app import app as flask_app
 from backend.config import SECRET_KEY
+from backend.extensions import db
 from backend.models import AuditLog, NCMR, Inspector, Role, User
-from backend.utils import generate_token, hash_password, verify_password
+from backend.services.user_service import UserService
+from backend.utils import auth_required, generate_token, hash_password, verify_password
 
 
 # ── 輔助函式 ────────────────────────────────────────────────────
@@ -34,6 +43,30 @@ def make_user_headers(user):
         user.token_version,
     )
     return {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+
+
+def _read_current_user_model_from_g(handler):
+    """測試用內層 decorator：透過真實 Flask request context 讀取 g。"""
+    @wraps(handler)
+    def wrapped(*args, **kwargs):
+        current_user_model = getattr(g, 'current_user_model', None)
+        g.inner_current_user_id = getattr(current_user_model, 'id', None)
+        return handler(*args, **kwargs)
+    return wrapped
+
+
+@flask_app.get('/_test/auth/current-user-model')
+@auth_required
+@_read_current_user_model_from_g
+def _protected_current_user_model_route():
+    """以真實 protected route 驗證 auth seam 對 Flask g 的契約。"""
+    current_user_model = getattr(g, 'current_user_model', None)
+    return jsonify({
+        'inner_user_id': getattr(g, 'inner_current_user_id', None),
+        'handler_user_id': getattr(current_user_model, 'id', None),
+        'handler_username': getattr(current_user_model, 'username', None),
+        'is_user_model': isinstance(current_user_model, User),
+    })
 
 
 @pytest.fixture
@@ -422,6 +455,27 @@ def test_authentication_uses_current_role_permissions_and_inspector(
     assert authenticated.inspector_id == inspector.id
 
 
+def test_protected_route_exposes_current_database_user_model_on_g(
+    client,
+    db_session,
+    normal_user,
+):
+    """若 auth seam 未設定 g.current_user_model，內層 decorator 與 handler 讀不到目前 User。"""
+    headers = make_user_headers(normal_user)
+    normal_user.username = '目前資料庫帳號名稱'
+    db_session.commit()
+
+    response = client.get('/_test/auth/current-user-model', headers=headers)
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        'inner_user_id': normal_user.id,
+        'handler_user_id': normal_user.id,
+        'handler_username': '目前資料庫帳號名稱',
+        'is_user_model': True,
+    }
+
+
 def test_require_perm_uses_current_database_role(client, db_session, normal_user):
     """舊式 require_perm 若仍信任 JWT role，降權後會進入 mutation handler。"""
     allowed = Role(
@@ -561,3 +615,183 @@ def test_reset_password_requires_at_least_eight_characters(
     )
 
     assert response.status_code == 400
+
+
+@pytest.fixture
+def postgres_user_service_app():
+    """以唯一 schema 建立 UserService PostgreSQL 併發測試環境。"""
+    database_url = os.getenv('TOKEN_VERSION_TEST_DATABASE_URL')
+    if not database_url:
+        pytest.skip('未設定 TOKEN_VERSION_TEST_DATABASE_URL')
+
+    root_engine = create_engine(database_url, pool_pre_ping=True)
+    schema_name = f'token_version_service_{uuid4().hex}'
+    pg_app = None
+    try:
+        with root_engine.connect() as connection:
+            if connection.dialect.name != 'postgresql':
+                pytest.fail('TOKEN_VERSION_TEST_DATABASE_URL 必須指向 PostgreSQL')
+            current_database = connection.execute(text('SELECT current_database()')).scalar_one()
+            if not current_database.startswith('codex_token50_'):
+                pytest.fail('UserService 併發測試僅允許 codex_token50_ 前綴的隔離資料庫')
+            connection.execute(text(f'CREATE SCHEMA "{schema_name}"'))
+            connection.commit()
+
+        from flask import Flask
+
+        pg_app = Flask(f'user-service-postgresql-{schema_name}')
+        pg_app.config.update(
+            TESTING=True,
+            SQLALCHEMY_DATABASE_URI=database_url,
+            SQLALCHEMY_TRACK_MODIFICATIONS=False,
+            SQLALCHEMY_ENGINE_OPTIONS={
+                'pool_pre_ping': True,
+                'connect_args': {
+                    'options': f'-csearch_path={schema_name},public',
+                },
+            },
+        )
+        db.init_app(pg_app)
+
+        @pg_app.get('/protected')
+        @auth_required
+        def protected_route():
+            return jsonify({'user_id': g.current_user_model.id})
+
+        with pg_app.app_context():
+            db.metadata.create_all(
+                bind=db.engine,
+                tables=[
+                    Inspector.__table__,
+                    Role.__table__,
+                    User.__table__,
+                    AuditLog.__table__,
+                ],
+            )
+            actor = User(
+                username='postgres_actor',
+                password=hash_password('actor-password'),
+                role='admin',
+                is_active=True,
+            )
+            target = User(
+                username='postgres_target',
+                password=hash_password('target-password'),
+                role='user',
+                is_active=True,
+            )
+            db.session.add_all([actor, target])
+            db.session.commit()
+            identifiers = {
+                'actor_id': actor.id,
+                'target_id': target.id,
+                'initial_version': target.token_version,
+            }
+
+        yield pg_app, identifiers
+    finally:
+        if pg_app is not None:
+            with pg_app.app_context():
+                db.session.remove()
+                db.engine.dispose()
+        try:
+            with root_engine.connect() as connection:
+                connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE'))
+                connection.commit()
+        finally:
+            root_engine.dispose()
+
+
+def test_postgresql_concurrent_security_changes_increment_each_commit_and_revoke_intermediate_token(
+    postgres_user_service_app,
+):
+    """未鎖定 User row 的 RMW 會遺失一次版本遞增，並讓中間版本 token 繼續有效。"""
+    pg_app, identifiers = postgres_user_service_app
+    first_at_commit = Event()
+    allow_first_commit = Event()
+    second_at_commit = Event()
+    intermediate_token_issued = Event()
+    results = {}
+    errors = []
+
+    def synchronize_commits(_session):
+        if current_thread().name == 'token-change-first':
+            first_at_commit.set()
+            if not allow_first_commit.wait(timeout=5):
+                raise TimeoutError('等待第一個安全異動提交逾時')
+        elif current_thread().name == 'token-change-second':
+            second_at_commit.set()
+            if not intermediate_token_issued.wait(timeout=5):
+                raise TimeoutError('等待中間版本 token 簽發逾時')
+
+    def first_change():
+        with pg_app.app_context():
+            try:
+                changed = UserService.set_role(
+                    identifiers['actor_id'],
+                    identifiers['target_id'],
+                    'admin',
+                )
+                results['first_version'] = changed.token_version
+                results['intermediate_token'] = generate_token(
+                    changed.id,
+                    changed.username,
+                    changed.role,
+                    changed.token_version,
+                )
+                intermediate_token_issued.set()
+            except Exception as error:  # pragma: no cover - 由主執行緒顯示原始錯誤
+                errors.append(error)
+                intermediate_token_issued.set()
+            finally:
+                db.session.remove()
+
+    def second_change():
+        with pg_app.app_context():
+            try:
+                changed = UserService.reset_password(
+                    identifiers['actor_id'],
+                    identifiers['target_id'],
+                    'concurrent-password',
+                )
+                results['second_version'] = changed.token_version
+            except Exception as error:  # pragma: no cover - 由主執行緒顯示原始錯誤
+                errors.append(error)
+            finally:
+                db.session.remove()
+
+    event.listen(Session, 'before_commit', synchronize_commits)
+    first_thread = Thread(target=first_change, name='token-change-first')
+    second_thread = Thread(target=second_change, name='token-change-second')
+    try:
+        first_thread.start()
+        assert first_at_commit.wait(timeout=5), '第一個安全異動未進入 commit'
+        second_thread.start()
+        second_entered_commit_while_first_locked = second_at_commit.wait(timeout=0.75)
+        allow_first_commit.set()
+        first_thread.join(timeout=5)
+        second_thread.join(timeout=5)
+    finally:
+        allow_first_commit.set()
+        intermediate_token_issued.set()
+        first_thread.join(timeout=1)
+        second_thread.join(timeout=1)
+        event.remove(Session, 'before_commit', synchronize_commits)
+
+    assert not first_thread.is_alive(), '第一個 PostgreSQL session 未在 timeout 內結束'
+    assert not second_thread.is_alive(), '第二個 PostgreSQL session 未在 timeout 內結束'
+    assert errors == []
+    assert second_entered_commit_while_first_locked is False
+    assert results['first_version'] == identifiers['initial_version'] + 1
+
+    with pg_app.app_context():
+        persisted = db.session.get(User, identifiers['target_id'])
+        assert persisted.token_version == identifiers['initial_version'] + 2
+        assert results['second_version'] == persisted.token_version
+        audits = AuditLog.query.filter_by(record_id=persisted.id).order_by(AuditLog.id).all()
+        assert [audit.new_value['token_version'] for audit in audits] == [1, 2]
+        response = pg_app.test_client().get(
+            '/protected',
+            headers={'Authorization': f"Bearer {results['intermediate_token']}"},
+        )
+        assert response.status_code == 401

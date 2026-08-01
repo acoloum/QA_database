@@ -7,7 +7,7 @@ import decimal
 import bcrypt
 from datetime import datetime, timedelta, timezone, date
 from functools import wraps
-from flask import request, jsonify, session
+from flask import g, request, jsonify, session
 from typing import List, Dict, Any, Optional, Union
 from .config import SECRET_KEY, TOKEN_EXPIRATION_HOURS
 from .errors import build_error_envelope
@@ -209,6 +209,7 @@ def auth_required(f: Any) -> Any:
             )
         request.user = authenticated_user.as_request_user()
         request.authenticated_user = authenticated_user
+        g.current_user_model = current_user
 
         if _inject_user:
             return f(current_user, *args, **kwargs)

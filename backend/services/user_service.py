@@ -10,7 +10,13 @@ class UserService:
 
     @staticmethod
     def _find(user_id: int) -> User | None:
-        return db.session.get(User, user_id)
+        statement = (
+            db.select(User)
+            .where(User.id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return db.session.execute(statement).scalar_one_or_none()
 
     @staticmethod
     def set_active(actor_user_id: int, user_id: int, is_active: bool) -> User | None:
