@@ -7,11 +7,11 @@ FROM (
     VALUES
         (
             'inspector',
-            '{"tolerance.view": true, "mechanical.view": true, "mechanical.create": true, "task.view": true}'::jsonb
+            '{"tolerance.view": true, "mechanical.view": true, "mechanical.create": true, "mechanical.edit": false, "mechanical.delete": false, "task.view": true, "analytics.view": false, "vendor.view": false}'::jsonb
         ),
         (
             'qa_supervisor',
-            '{"tolerance.view": true, "mechanical.view": true, "mechanical.create": true, "mechanical.edit": true, "task.view": true}'::jsonb
+            '{"tolerance.view": true, "mechanical.view": true, "mechanical.create": true, "mechanical.edit": true, "mechanical.delete": false, "task.view": true, "analytics.view": false, "vendor.view": false}'::jsonb
         ),
         (
             'qc_manager',

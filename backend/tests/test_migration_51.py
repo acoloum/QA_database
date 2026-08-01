@@ -69,11 +69,11 @@ def _migrated_role_schema(database_url):
                     "權限" JSONB NOT NULL DEFAULT '{}'::jsonb
                 );
                 INSERT INTO "角色" ("角色代碼", "權限") VALUES
-                    ('inspector', '{"custom.keep": true, "mechanical.view": false}'),
-                    ('qa_supervisor', '{"custom.keep": true}'),
+                    ('inspector', '{"custom.keep": true, "mechanical.view": false, "mechanical.edit": true}'),
+                    ('qa_supervisor', '{"custom.keep": true, "mechanical.delete": true}'),
                     ('qc_manager', '{"custom.keep": true}'),
                     ('admin', '{"custom.keep": true}'),
-                    ('custom_role', '{"custom.only": true}');
+                    ('custom_role', '{"custom.only": true, "mechanical.delete": true}');
             '''))
             connection.commit()
             if not MIGRATION_PATH.exists():
@@ -115,6 +115,24 @@ def _connect(migration_schema):
     return connection
 
 
+def _assert_exact_task_4_matrix(permissions):
+    """批准角色的八個 Task 4 keys 必須全部存在且為精確 boolean grant/deny。"""
+    for role_code, expected_grants in EXPECTED_TASK_4_GRANTS.items():
+        role_permissions = permissions[role_code]
+        assert TASK_4_PERMISSION_KEYS <= role_permissions.keys()
+        actual_grants = {
+            key for key in TASK_4_PERMISSION_KEYS
+            if role_permissions[key] is True
+        }
+        actual_denials = {
+            key for key in TASK_4_PERMISSION_KEYS
+            if role_permissions[key] is False
+        }
+        assert actual_grants == expected_grants
+        assert actual_denials == TASK_4_PERMISSION_KEYS - expected_grants
+        assert role_permissions['custom.keep'] is True
+
+
 def test_migration_51_merges_role_specific_permissions_and_preserves_custom_keys(
     migration_schema,
 ):
@@ -124,16 +142,11 @@ def test_migration_51_merges_role_specific_permissions_and_preserves_custom_keys
         permissions = dict(connection.execute(text(
             'SELECT "角色代碼", "權限" FROM "角色"'
         )).all())
-        for role_code, expected_grants in EXPECTED_TASK_4_GRANTS.items():
-            actual_grants = {
-                key for key in TASK_4_PERMISSION_KEYS
-                if permissions[role_code].get(key) is True
-            }
-            actual_denials = TASK_4_PERMISSION_KEYS - actual_grants
-            assert actual_grants == expected_grants
-            assert actual_denials == TASK_4_PERMISSION_KEYS - expected_grants
-            assert permissions[role_code]['custom.keep'] is True
-        assert permissions['custom_role'] == {'custom.only': True}
+        _assert_exact_task_4_matrix(permissions)
+        assert permissions['custom_role'] == {
+            'custom.only': True,
+            'mechanical.delete': True,
+        }
     finally:
         connection.close()
 
@@ -145,11 +158,14 @@ def test_migration_51_is_idempotent(migration_schema):
         migration_sql = MIGRATION_PATH.read_text(encoding='utf-8')
         connection.exec_driver_sql(migration_sql)
         connection.commit()
-        permissions = connection.execute(text(
-            'SELECT "權限" FROM "角色" WHERE "角色代碼" = \'inspector\''
-        )).scalar_one()
-        assert permissions['custom.keep'] is True
-        assert permissions['mechanical.view'] is True
+        permissions = dict(connection.execute(text(
+            'SELECT "角色代碼", "權限" FROM "角色"'
+        )).all())
+        _assert_exact_task_4_matrix(permissions)
+        assert permissions['custom_role'] == {
+            'custom.only': True,
+            'mechanical.delete': True,
+        }
     finally:
         connection.close()
 
@@ -165,7 +181,10 @@ def test_migration_51_rollback_removes_only_added_keys(migration_schema):
         )).all())
         for role_code in EXPECTED_TASK_4_GRANTS:
             assert permissions[role_code] == {'custom.keep': True}
-        assert permissions['custom_role'] == {'custom.only': True}
+        assert permissions['custom_role'] == {
+            'custom.only': True,
+            'mechanical.delete': True,
+        }
     finally:
         connection.close()
 
