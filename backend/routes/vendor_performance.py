@@ -17,8 +17,8 @@ def list_vendor_performance(current_user):
     try:
         data = VendorPerformanceService.list_by_period(period)
         return api_success(data)
-    except Exception as e:
-        return api_error(str(e), 500)
+    except Exception:
+        raise
 
 
 @vendor_perf_bp.route('/api/vendor-performance/<int:vendor_id>/history', methods=['GET'])
@@ -30,5 +30,5 @@ def vendor_history(current_user, vendor_id: int):
     try:
         data = VendorPerformanceService.history(vendor_id, months)
         return api_success(data)
-    except Exception as e:
-        return api_error(str(e), 500)
+    except Exception:
+        raise

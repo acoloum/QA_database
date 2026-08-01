@@ -12,8 +12,8 @@ def get_data():
     try:
         result = ShippingService.get_list(request.args)
         return jsonify(result)
-    except Exception as e:
-        return api_error(str(e), 500)
+    except Exception:
+        raise
 
 @shipping_bp.route('/api/data/<int:data_id>', methods=['GET'])
 @auth_required
@@ -25,8 +25,8 @@ def get_shipping_data(data_id):
         if result is None:
             return api_error('資料不存在', 404)
         return jsonify(result)
-    except Exception as e:
-        return api_error(str(e), 500)
+    except Exception:
+        raise
 
 @shipping_bp.route('/api/stats', methods=['GET'])
 @auth_required
@@ -36,10 +36,8 @@ def get_shipping_stats():
     try:
         result = ShippingService.get_stats(request.args)
         return jsonify(result)
-    except Exception as e:
-        from flask import current_app
-        current_app.logger.exception("Shipping error: %s", str(e))
-        return api_error(str(e), 500)
+    except Exception:
+        raise
 
 @shipping_bp.route('/api/data/<int:data_id>/measurements', methods=['GET'])
 @auth_required
@@ -48,8 +46,8 @@ def get_shipping_measurements(data_id):
     """取得單筆出貨記錄的量測明細（含離群標記）"""
     try:
         return jsonify(ShippingService.get_measurements(data_id))
-    except Exception as e:
-        return api_error(str(e), 500)
+    except Exception:
+        raise
 
 
 @shipping_bp.route('/api/measurements/<int:measurement_id>/exclusion', methods=['PATCH'])
@@ -69,8 +67,8 @@ def set_measurement_exclusion(measurement_id):
         return jsonify(result)
     except ValueError as e:
         return api_error(str(e), 400)
-    except Exception as e:
-        return api_error(str(e), 500)
+    except Exception:
+        raise
 
 
 @shipping_bp.route('/api/control-limits', methods=['GET'])
@@ -89,8 +87,8 @@ def get_control_limits_route():
         if legacy:
             legacy.update({"status": "legacy_imported", "audit_incomplete": True})
         return jsonify(legacy or {})
-    except Exception as e:
-        return api_error(str(e), 500)
+    except Exception:
+        raise
 
 
 @shipping_bp.route('/api/control-limits', methods=['POST'])
@@ -157,9 +155,7 @@ def export_spc_report():
             return jsonify({
                 "success": False, "code": e.code, "message": e.message,
             }), e.status_code
-        from flask import current_app
-        current_app.logger.exception("Shipping error: %s", str(e))
-        return api_error(str(e), 500)
+        raise
 
 @shipping_bp.route('/api/add', methods=['POST'])
 @auth_required
@@ -199,8 +195,8 @@ def delete_data():
         
         ShippingService.delete_data(record_id)
         return jsonify({"success": True})
-    except Exception as e:
-        return api_error(str(e), 500)
+    except Exception:
+        raise
 
 @shipping_bp.route('/api/import', methods=['POST', 'OPTIONS'])
 @auth_required
@@ -225,8 +221,8 @@ def shipping_import():
         return jsonify({"success": True, "message": f"匯入成功，共 {count} 筆資料"})
     except ValueError as e:
         return api_error(str(e), 400)
-    except Exception as e:
-        return api_error(str(e), 500)
+    except Exception:
+        raise
 
 @shipping_bp.route('/api/export/excel')
 @auth_required
@@ -240,6 +236,6 @@ def export_excel():
             download_name='出貨檢驗數據.xlsx', 
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-    except Exception as e:
-        return api_error(str(e), 500)
+    except Exception:
+        raise
 

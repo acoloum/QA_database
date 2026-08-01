@@ -78,8 +78,8 @@ def get_ncmr_list():
         return jsonify(result)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 @ncmr_bp.route('/api/ncmr/add', methods=['POST'])
 @auth_required
@@ -128,8 +128,8 @@ def get_source_info():
     try:
         info = NCMRService.get_source_info(request.args.get('type'), request.args.get('id'))
         return jsonify(info)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 @ncmr_bp.route('/api/ncmr/<int:ncmr_id>/open-capa', methods=['POST'])
 @auth_required
@@ -161,8 +161,8 @@ def get_ncmr_info(ncmr_id):
         if info is None:
             return jsonify({"error": "找不到NCMR記錄"}), 404
         return jsonify(info)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 # ==================================================
 # 【不合格品處置】Disposition API（IATF 16949 §8.7）
@@ -174,8 +174,8 @@ def get_ncmr_info(ncmr_id):
 def get_dispositions(ncmr_id):
     try:
         return jsonify(NCMRService.get_dispositions(ncmr_id))
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 
 @ncmr_bp.route('/api/ncmr/<int:ncmr_id>/reworks', methods=['GET'])
@@ -184,8 +184,8 @@ def get_dispositions(ncmr_id):
 def get_ncmr_reworks(ncmr_id):
     try:
         return jsonify(NCMRService.get_ncmr_reworks(ncmr_id))
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 
 @ncmr_bp.route('/api/ncmr/<int:ncmr_id>/dispositions', methods=['POST'])
@@ -237,8 +237,8 @@ def delete_disposition(current_user, disposition_id):
 def get_risk_releases():
     try:
         return jsonify(NCMRService.get_risk_releases())
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 # ==================================================
 # 【異常矯正】CAPA API (8D)
@@ -263,8 +263,8 @@ def get_capa_list():
         return jsonify(result)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 @ncmr_bp.route('/api/capa/create', methods=['POST'])
 @auth_required
@@ -275,8 +275,8 @@ def create_capa(current_user):
         return jsonify({"success": True, **result})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 @ncmr_bp.route('/api/capa/detail/<int:id>')
 @auth_required
@@ -287,8 +287,8 @@ def get_capa_detail(id):
         if data is None:
             return jsonify({"error": "找不到資料"}), 404
         return jsonify(data)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 @ncmr_bp.route('/api/capa/update', methods=['POST'])
 @auth_required
@@ -299,8 +299,8 @@ def update_capa(current_user):
         return jsonify({"success": True})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 @ncmr_bp.route('/api/capa/delete', methods=['POST'])
 @auth_required
@@ -312,5 +312,5 @@ def delete_capa(current_user):
             return jsonify({"error": "缺少識別碼"}), 400
         NCMRService.delete_capa(capa_id)
         return jsonify({"success": True})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise

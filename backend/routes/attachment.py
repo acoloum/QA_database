@@ -225,7 +225,7 @@ def upload_attachment(current_user):
                 details={'entity_type': entity_type},
             )
         return jsonify({'error': str(e)}), 400
-    except Exception as e:
+    except Exception:
         if is_msa:
             return _msa_service_error(
                 MsaInternalError(
@@ -233,7 +233,7 @@ def upload_attachment(current_user):
                     '附件上傳發生未預期錯誤',
                 )
             )
-        return jsonify({'error': f'上傳失敗：{e}'}), 500
+        raise
 
 
 @attachment_bp.route('/api/attachments', methods=['GET'])
@@ -278,15 +278,15 @@ def list_attachments(current_user):
                 422,
                 details={'entity_type': entity_type},
             )
-        return jsonify({'error': str(e)}), 500
-    except Exception as e:
+        raise
+    except Exception:
         if is_msa:
             return _msa_error(
                 'MSA_ATTACHMENT_INTERNAL_ERROR',
                 '附件清單查詢發生未預期錯誤',
                 500,
             )
-        return jsonify({'error': str(e)}), 500
+        raise
 
 
 @attachment_bp.route('/api/attachments/<int:att_id>/download', methods=['GET'])
@@ -370,7 +370,7 @@ def delete_attachment(current_user, att_id: int):
                 details={'attachment_id': att_id},
             )
         return jsonify({'error': str(e)}), 403
-    except Exception as e:
+    except Exception:
         if 'is_msa' in locals() and is_msa:
             return _msa_error(
                 'MSA_ATTACHMENT_INTERNAL_ERROR',
@@ -378,4 +378,4 @@ def delete_attachment(current_user, att_id: int):
                 500,
                 details={'attachment_id': att_id},
             )
-        return jsonify({'error': str(e)}), 500
+        raise

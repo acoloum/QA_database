@@ -32,8 +32,8 @@ def list_tasks(current_user):
         return jsonify(result), 200
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        raise
 
 
 @task_bp.route('/api/tasks/my', methods=['GET'])
@@ -44,8 +44,8 @@ def my_tasks(current_user):
     try:
         tasks = TaskService.my_tasks_for_user(current_user)
         return jsonify(tasks), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        raise
 
 
 @task_bp.route('/api/tasks', methods=['POST'])
@@ -72,8 +72,8 @@ def create_task(current_user):
         return jsonify(task), 201
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        raise
 
 
 @task_bp.route('/api/tasks/<int:task_id>/status', methods=['PATCH'])
@@ -95,8 +95,8 @@ def update_task_status(current_user, task_id: int):
         return jsonify(task), 200
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        raise
 
 
 @task_bp.route('/api/tasks/<int:task_id>', methods=['DELETE'])
@@ -109,8 +109,8 @@ def delete_task(current_user, task_id: int):
         return jsonify({'message': '刪除成功'}), 200
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        raise
 
 
 @task_bp.route('/api/tasks/check-gate', methods=['GET'])
@@ -125,5 +125,5 @@ def check_close_gate(current_user):
     try:
         result = TaskService.check_close_gate(source_type, int(source_id))
         return jsonify(result), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        raise

@@ -45,8 +45,8 @@ def overdue_capas(current_user):
             CorrectiveAction.d0_deadline < today,
         ).order_by(CorrectiveAction.d0_deadline.asc()).all()
         return jsonify([CAPAService._to_list_dict(ca) for ca in items]), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        raise
 
 
 # ── 單筆明細 ─────────────────────────────────────────────────
@@ -87,8 +87,8 @@ def update_step(current_user, capa_id: int):
         return jsonify(result), 200
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        raise
 
 
 # ── D6 Gate 檢查 ─────────────────────────────────────────────
@@ -100,8 +100,8 @@ def check_d6_gate(current_user, capa_id: int):
     try:
         passed = CAPAService.check_d6_gate(capa_id)
         return jsonify({'d6_passed': passed}), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        raise
 
 
 # ── 結案 Gate 檢查 ────────────────────────────────────────────
@@ -118,8 +118,8 @@ def check_close_gate(current_user, capa_id: int):
         gate['missing_steps'] = missing
         gate['can_close'] = gate['can_close'] and d6 and not missing
         return jsonify(gate), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        raise
 
 
 # ── D8 結案 ───────────────────────────────────────────────────
@@ -188,8 +188,8 @@ def download_pdf(current_user, capa_id: int):
             as_attachment=True,
             download_name=filename,
         )
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        raise
 
 
 @capa_bp.route('/api/capas/<int:capa_id>/report/excel', methods=['GET'])
@@ -211,5 +211,5 @@ def download_excel(current_user, capa_id: int):
             as_attachment=True,
             download_name=filename,
         )
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        raise

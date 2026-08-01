@@ -11,8 +11,8 @@ def patrol_options():
     try:
         options = PatrolService.get_options()
         return jsonify(options)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 @patrol_bp.route('/api/patrol/spc')
 @auth_required
@@ -21,8 +21,8 @@ def patrol_spc():
     try:
         data = PatrolService.get_spc(request.args)
         return jsonify(data)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 @patrol_bp.route('/api/patrol/live-limits')
 @auth_required
@@ -32,8 +32,8 @@ def patrol_live_limits():
     try:
         data = PatrolService.get_live_limits(request.args)
         return jsonify(data)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 @patrol_bp.route('/api/patrol/detail/<int:id>')
 @auth_required
@@ -44,8 +44,8 @@ def patrol_detail(id):
         if data is None:
             return jsonify({"error": "資料不存在"}), 404
         return jsonify(data)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 @patrol_bp.route('/api/patrol/<int:main_id>/details', methods=['GET'])
 @auth_required
@@ -54,8 +54,8 @@ def get_patrol_details_route(main_id):
     """取得單筆巡檢記錄的量測明細（含離群標記）"""
     try:
         return jsonify(PatrolService.get_patrol_details(main_id))
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 
 @patrol_bp.route('/api/patrol-details/<int:detail_id>/exclusion', methods=['PATCH'])
@@ -75,8 +75,8 @@ def set_patrol_detail_exclusion_route(detail_id):
         return jsonify(result)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 
 @patrol_bp.route('/api/patrol/control-limits', methods=['GET'])
@@ -95,8 +95,8 @@ def get_patrol_control_limits_route():
         if legacy:
             legacy.update({"status": "legacy_imported", "audit_incomplete": True})
         return jsonify(legacy or {})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 
 @patrol_bp.route('/api/patrol/control-limits', methods=['POST'])
@@ -134,8 +134,8 @@ def patrol_add():
         return jsonify({"success": True, "id": patrol_id})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 @patrol_bp.route('/api/patrol/update', methods=['POST'])
 @auth_required
@@ -146,8 +146,8 @@ def patrol_update():
         return jsonify({"success": True})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 @patrol_bp.route('/api/patrol/delete', methods=['POST'])
 @auth_required
@@ -159,8 +159,8 @@ def patrol_delete():
             return jsonify({"error": "缺少記錄 ID"}), 400
         PatrolService.delete_patrol(record_id)
         return jsonify({"success": True})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 @patrol_bp.route('/api/patrol/history')
 @auth_required
@@ -169,8 +169,8 @@ def patrol_history():
     try:
         result = PatrolService.get_history(request.args)
         return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise
 
 @patrol_bp.route('/api/patrol/export')
 @auth_required
@@ -222,7 +222,7 @@ def patrol_export():
             return jsonify({
                 "success": False, "code": e.code, "message": e.message,
             }), e.status_code
-        return jsonify({"error": str(e)}), 500
+        raise
 
 @patrol_bp.route('/api/patrol/import', methods=['POST', 'OPTIONS'])
 @auth_required
@@ -247,5 +247,5 @@ def patrol_import():
         return jsonify({"success": True, "message": f"匯入成功，共 {count} 筆資料"})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        raise

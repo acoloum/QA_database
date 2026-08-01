@@ -31,8 +31,8 @@ def list_complaints(current_user):
         return jsonify(result), 200
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        raise
 
 
 @complaint_bp.route('/api/complaints', methods=['POST'])
@@ -46,8 +46,8 @@ def create_complaint(current_user):
         return jsonify(result), 201
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        raise
 
 
 # ── 單筆操作 ─────────────────────────────────────────────────
@@ -73,8 +73,8 @@ def update_complaint(current_user, complaint_id: int):
         return jsonify(result), 200
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        raise
 
 
 @complaint_bp.route('/api/complaints/<int:complaint_id>', methods=['DELETE'])

@@ -15,7 +15,7 @@ def rework_error_response(error, context):
     if isinstance(error, ValueError):
         return jsonify({"error": str(error)}), 400
     current_app.logger.exception("%s error: %s", context, str(error))
-    return jsonify({"error": str(error)}), 500
+    return jsonify({"error": "伺服器內部錯誤"}), 500
 
 
 def rework_route_errors(context, *, propagate_unexpected=False):
