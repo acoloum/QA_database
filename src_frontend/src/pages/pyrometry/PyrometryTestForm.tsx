@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Modal, Form, Button } from 'react-bootstrap';
 import toast from 'react-hot-toast';
 import type { TusPoint, SatPoint, SatReading } from '../../types';
@@ -61,6 +61,9 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
   const [activeZone, setActiveZone] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // 記錄已 hydrate 過的 editId；同一筆資料重新載入（refetch／快取更新）時不重跑，
+  // 避免覆寫使用者已輸入的內容
+  const hydratedEditIdRef = useRef<number | null>(null);
 
   // TUS：記錄器資料
   const [chartData, setChartData] = useState<ChartData | null>(null);
@@ -114,6 +117,9 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
 
   useEffect(() => {
     if (!editId || !editData) return;
+    // 同一筆資料再次載入（refetch／快取更新）時不重跑 hydrate，避免覆寫使用者輸入
+    if (hydratedEditIdRef.current === editId) return;
+    hydratedEditIdRef.current = editId;
     let active = true;
     setError('');
     queueMicrotask(() => {

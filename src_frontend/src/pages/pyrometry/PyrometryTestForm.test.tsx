@@ -167,4 +167,37 @@ describe('PyrometryTestForm', () => {
     expect(api.post).not.toHaveBeenCalled();
     expect(api.put).not.toHaveBeenCalled();
   });
+
+  it('使用者修改欄位後重新載入資料不會覆寫輸入（hydrate 只執行一次）', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === '/pyrometry/furnaces?active_only=1') {
+        return Promise.resolve({ data: { data: [] } });
+      }
+      if (url === '/inspectors') {
+        return Promise.resolve({ data: [] });
+      }
+      if (url === '/pyrometry/tests/1') {
+        return Promise.resolve(testResponse(1, '2026-06-01'));
+      }
+      return Promise.reject(new Error(`unexpected url: ${url}`));
+    });
+
+    const { queryClient } = renderForm(1);
+    await waitFor(() => expect(screen.getByDisplayValue('2026-06-01')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByDisplayValue('2026-06-01'), { target: { value: '2026-06-05' } });
+    expect(screen.getByDisplayValue('2026-06-05')).toBeInTheDocument();
+
+    // 模擬伺服器資料已變更並重新載入（另一使用者改過日期）
+    await act(async () => {
+      queryClient.setQueryData(['pyrometry-test-detail', 1], testResponse(1, '2026-06-02').data);
+      // 讓出事件迴圈：React Query 通知微任務、React re-render 與 passive effects 依序執行
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // 確認使用者修改未被覆寫
+    expect(screen.getByDisplayValue('2026-06-05')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('2026-06-01')).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue('2026-06-02')).not.toBeInTheDocument();
+  });
 });
