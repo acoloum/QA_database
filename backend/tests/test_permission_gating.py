@@ -601,6 +601,77 @@ def test_ncmr_update_checks_ownership_before_full_payload_validation(
     assert db_session.get(NCMR, ncmr.id).description == '原始內容'
 
 
+def test_ncmr_edit_own_hides_missing_record_as_same_ownership_denial(
+    client,
+    db_session,
+):
+    """edit_own 不可由 403／404 差異判斷任意 active NCMR 是否存在。"""
+    owner_inspector = Inspector(name='存在性測試擁有者')
+    other_inspector = Inspector(name='存在性測試查詢者')
+    db_session.add_all([owner_inspector, other_inspector])
+    db_session.flush()
+    ncmr = NCMR(
+        ncmr_number='NCMR-EXISTENCE-ORACLE',
+        source='測試',
+        inspector_id=owner_inspector.id,
+        description='原始內容',
+        status='待處理',
+    )
+    db_session.add(ncmr)
+    db_session.commit()
+    editor = _create_ncmr_edit_user(
+        db_session,
+        'ncmr_existence_probe',
+        other_inspector.id,
+        {'ncmr.edit_own': True},
+    )
+    headers = _headers(editor)
+
+    existing_response = client.post(
+        '/api/ncmr/update',
+        headers=headers,
+        json={'識別碼': ncmr.id, '不良描述': '不應更新'},
+    )
+    missing_response = client.post(
+        '/api/ncmr/update',
+        headers=headers,
+        json={'識別碼': ncmr.id + 9999, '不良描述': '不應更新'},
+    )
+
+    assert existing_response.status_code == missing_response.status_code == 403
+    existing_error = existing_response.get_json()['error']
+    missing_error = missing_response.get_json()['error']
+    assert {
+        key: existing_error.get(key)
+        for key in ('code', 'message', 'details')
+    } == {
+        key: missing_error.get(key)
+        for key in ('code', 'message', 'details')
+    }
+    db_session.expire_all()
+    assert db_session.get(NCMR, ncmr.id).description == '原始內容'
+
+
+def test_ncmr_full_editor_keeps_missing_record_not_found(client, db_session):
+    """完整編輯權限可保留正常的找不到資源語意。"""
+    editor = _create_ncmr_edit_user(
+        db_session,
+        'ncmr_full_editor_missing',
+        None,
+        {'ncmr.edit': True},
+    )
+
+    response = client.post(
+        '/api/ncmr/update',
+        headers=_headers(editor),
+        json={'識別碼': 999999, '不良描述': '不存在'},
+    )
+
+    assert response.status_code == 404
+    assert response.get_json()['error']['code'] == 'NOT_FOUND'
+    assert db_session.scalar(select(func.count()).select_from(NCMR)) == 0
+
+
 def test_ncmr_update_checks_route_permission_before_payload_validation(
     client,
     db_session,

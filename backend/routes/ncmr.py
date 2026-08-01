@@ -1,7 +1,11 @@
 from flask import Blueprint, jsonify, request
 from marshmallow import ValidationError as MarshmallowValidationError
-from ..services.ncmr_service import NCMRService
-from ..authorization import can_edit_ncmr, require_permissions
+from ..services.ncmr_service import NCMRService, NCMRValidationError
+from ..authorization import (
+    can_edit_ncmr,
+    has_permission,
+    require_permissions,
+)
 from ..errors import APIError, AuthorizationError
 from ..models import NCMR as NCMRModel
 from ..schemas import NCMRCreateSchema, NCMRUpdateIdentifierSchema, NCMRUpdateSchema
@@ -39,6 +43,31 @@ def _load_schema(schema, payload):
             details=error.messages,
         ) from error
 
+
+def _call_ncmr_service(callback, *args):
+    """把 service 的領域參照錯誤映射為正式 422 契約。"""
+    try:
+        return callback(*args)
+    except NCMRValidationError as error:
+        raise APIError(
+            error.message,
+            code='VALIDATION_ERROR',
+            status_code=422,
+            details=error.details,
+        ) from error
+
+
+def _raise_ownership_denial():
+    """edit_own 對不存在與非本人資源使用完全相同的拒絕內容。"""
+    raise AuthorizationError(
+        '權限不足',
+        details={
+            'required': ['ncmr.edit', 'ncmr.edit_own'],
+            'ownership_required': True,
+        },
+    )
+
+
 # ==================================================
 # 【不合格品管理】NCMR API
 # ==================================================
@@ -71,7 +100,7 @@ def get_ncmr_list():
 @require_permission('ncmr.create')
 def add_ncmr(current_user):
     payload = _load_schema(_ncmr_create_schema, _json_object())
-    ncmr_number = NCMRService.add_ncmr(payload)
+    ncmr_number = _call_ncmr_service(NCMRService.add_ncmr, payload)
     try:
         log_audit(current_user.id if current_user else None, 'create', 'NCMR',
                   new_val={'ncmr_number': ncmr_number})
@@ -89,17 +118,13 @@ def update_ncmr(current_user):
     ncmr_id = identifier['識別碼']
     ncmr = NCMRModel.active_query().filter_by(id=ncmr_id).first()
     if not ncmr:
+        if not has_permission(current_user, 'ncmr.edit'):
+            _raise_ownership_denial()
         return jsonify({"error": "找不到該筆資料"}), 404
     if not can_edit_ncmr(current_user, ncmr):
-        raise AuthorizationError(
-            '權限不足',
-            details={
-                'required': ['ncmr.edit', 'ncmr.edit_own'],
-                'ownership_required': True,
-            },
-        )
+        _raise_ownership_denial()
     payload = _load_schema(_ncmr_update_schema, raw_payload)
-    NCMRService.update_ncmr(payload)
+    _call_ncmr_service(NCMRService.update_ncmr, payload)
     return jsonify({"success": True})
 
 @ncmr_bp.route('/api/ncmr/delete', methods=['POST'])

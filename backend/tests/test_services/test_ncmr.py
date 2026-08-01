@@ -64,6 +64,16 @@ def _assert_validation_error(response, status, field=None):
         ({'日期': '2026-08-01', '來源': '進料', '產品數量': -1}, 422, '產品數量'),
         ({'日期': '2026-08-01', '來源': '進料', '未知欄位': 'x'}, 422, '未知欄位'),
         ({'日期': '2026-08-01', '來源': '進料', '產品數量': True}, 422, '產品數量'),
+        ({'日期': '2026-08-01', '來源': '進料', '產品數量': 1.0}, 422, '產品數量'),
+        ({'日期': '2026-08-01', '來源': '進料', '產品數量': 1.9}, 422, '產品數量'),
+        ({'日期': '2026-08-01', '來源': '進料', '產品數量': -0.5}, 422, '產品數量'),
+        ({'日期': '2026-08-01', '來源': '進料', '產品數量': float('nan')}, 422, '產品數量'),
+        ({'日期': '2026-08-01', '來源': '進料', '產品數量': float('inf')}, 422, '產品數量'),
+        ({'日期': '2026-08-01', '來源': '進料', '產品數量': '1.0'}, 422, '產品數量'),
+        ({'日期': '2026-08-01', '來源': '進料', '產品數量': '01'}, 422, '產品數量'),
+        ({'日期': '2026-08-01', '來源': '進料', '產品數量': ' 1'}, 422, '產品數量'),
+        ({'日期': '2026-08-01', '來源': '進料', '狀態': None}, 422, '狀態'),
+        ({'日期': '2026-08-01', '來源': '進料', '狀態': ''}, 422, '狀態'),
     ],
 )
 def test_ncmr_create_rejects_invalid_contract(
@@ -82,9 +92,13 @@ def test_ncmr_create_rejects_invalid_contract(
     assert db_session.scalar(select(func.count()).select_from(NCMR)) == before
 
 
+@pytest.mark.parametrize('product_quantity', [0, '0'])
+@pytest.mark.parametrize('inspector_name', [None, ''])
 def test_ncmr_create_loads_dates_and_accepts_existing_optional_payload(
     client,
     db_session,
+    product_quantity,
+    inspector_name,
 ):
     headers = _ncmr_headers(db_session, 'ncmr.create')
 
@@ -96,9 +110,10 @@ def test_ncmr_create_loads_dates_and_accepts_existing_optional_payload(
             '建立日期': '2026-08-02',
             '來源': '進料',
             '廠商': None,
-            '產品數量': 0,
+            '產品數量': product_quantity,
             '不良描述': None,
             '不合格數量': '',
+            '發現人員姓名': inspector_name,
         },
     )
 
@@ -110,6 +125,27 @@ def test_ncmr_create_loads_dates_and_accepts_existing_optional_payload(
     assert type(stored.create_date) is datetime.date
     assert stored.quantity == 0
     assert stored.defect_quantity is None
+    assert stored.inspector_id is None
+
+
+def test_ncmr_create_rejects_unknown_inspector_without_writing(
+    client,
+    db_session,
+):
+    headers = _ncmr_headers(db_session, 'ncmr.create')
+
+    response = client.post(
+        '/api/ncmr/add',
+        headers=headers,
+        json={
+            '日期': '2026-08-01',
+            '來源': '進料',
+            '發現人員姓名': '不存在的人員',
+        },
+    )
+
+    _assert_validation_error(response, 422, '發現人員姓名')
+    assert db_session.scalar(select(func.count()).select_from(NCMR)) == 0
 
 
 @pytest.mark.parametrize(
@@ -118,9 +154,17 @@ def test_ncmr_create_loads_dates_and_accepts_existing_optional_payload(
         (None, None),
         ([], None),
         ({'識別碼': True, '不良描述': '不應更新'}, '識別碼'),
+        ({'識別碼': 1.0, '不良描述': '不應更新'}, '識別碼'),
+        ({'識別碼': 1.9, '不良描述': '不應更新'}, '識別碼'),
+        ({'識別碼': float('nan'), '不良描述': '不應更新'}, '識別碼'),
+        ({'識別碼': float('inf'), '不良描述': '不應更新'}, '識別碼'),
+        ({'識別碼': '1', '不良描述': '不應更新'}, '識別碼'),
+        ({'識別碼': '01', '不良描述': '不應更新'}, '識別碼'),
         ({'識別碼': 1, '日期': 'not-a-date'}, '日期'),
         ({'識別碼': 1, '不合格數量': -1}, '不合格數量'),
         ({'識別碼': 1, '未知欄位': 'x'}, '未知欄位'),
+        ({'識別碼': 1, '狀態': None}, '狀態'),
+        ({'識別碼': 1, '狀態': ''}, '狀態'),
     ],
 )
 def test_ncmr_update_rejects_invalid_contract_without_writing(
@@ -172,6 +216,7 @@ def test_ncmr_update_loads_date_object_and_keeps_partial_update_legal(
             '日期': '2026-08-03',
             '不良描述': '更新內容',
             '產品數量': 0,
+            '狀態': '矯正中',
         },
     )
 
@@ -182,6 +227,82 @@ def test_ncmr_update_loads_date_object_and_keeps_partial_update_legal(
     assert type(stored.date) is datetime.date
     assert stored.description == '更新內容'
     assert stored.quantity == 0
+    assert stored.status == '矯正中'
+
+
+@pytest.mark.parametrize('inspector_name', [None, ''])
+def test_ncmr_update_explicit_empty_inspector_clears_assignment(
+    client,
+    db_session,
+    inspector_name,
+):
+    original_inspector = Inspector(name='原發現人員')
+    db_session.add(original_inspector)
+    db_session.flush()
+    record = _make_ncmr(db_session, inspector_id=original_inspector.id)
+    headers = _ncmr_headers(
+        db_session,
+        'ncmr.edit',
+        username=f'ncmr_clear_inspector_{"none" if inspector_name is None else "empty"}',
+    )
+
+    response = client.post(
+        '/api/ncmr/update',
+        headers=headers,
+        json={'識別碼': record.id, '發現人員姓名': inspector_name},
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    assert db_session.get(NCMR, record.id).inspector_id is None
+
+
+def test_ncmr_update_sets_existing_inspector(client, db_session):
+    original_inspector = Inspector(name='原發現人員')
+    replacement_inspector = Inspector(name='新發現人員')
+    db_session.add_all([original_inspector, replacement_inspector])
+    db_session.flush()
+    record = _make_ncmr(db_session, inspector_id=original_inspector.id)
+    headers = _ncmr_headers(
+        db_session,
+        'ncmr.edit',
+        username='ncmr_replace_inspector',
+    )
+
+    response = client.post(
+        '/api/ncmr/update',
+        headers=headers,
+        json={'識別碼': record.id, '發現人員姓名': replacement_inspector.name},
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    assert db_session.get(NCMR, record.id).inspector_id == replacement_inspector.id
+
+
+def test_ncmr_update_rejects_unknown_inspector_without_writing(
+    client,
+    db_session,
+):
+    original_inspector = Inspector(name='原發現人員')
+    db_session.add(original_inspector)
+    db_session.flush()
+    record = _make_ncmr(db_session, inspector_id=original_inspector.id)
+    headers = _ncmr_headers(
+        db_session,
+        'ncmr.edit',
+        username='ncmr_unknown_inspector',
+    )
+
+    response = client.post(
+        '/api/ncmr/update',
+        headers=headers,
+        json={'識別碼': record.id, '發現人員姓名': '不存在的人員'},
+    )
+
+    _assert_validation_error(response, 422, '發現人員姓名')
+    db_session.expire_all()
+    assert db_session.get(NCMR, record.id).inspector_id == original_inspector.id
 
 
 def test_get_ncmr_list_pagination(app, db_session):

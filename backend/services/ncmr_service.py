@@ -13,6 +13,35 @@ from ..utils import (
     validate_status_transition
 )
 
+
+class NCMRValidationError(ValueError):
+    """NCMR 輸入通過結構驗證，但不符合領域參照規則。"""
+
+    def __init__(self, message: str, *, details=None):
+        super().__init__(message)
+        self.message = message
+        self.details = details
+
+
+_FIELD_ABSENT = object()
+
+
+def _resolve_inspector_id(data: Dict[str, Any]):
+    """解析發現人員；欄位缺席、明確清除與無效參照須可區分。"""
+    if '發現人員姓名' not in data:
+        return _FIELD_ABSENT
+    inspector_name = data['發現人員姓名']
+    if inspector_name is None or inspector_name == '':
+        return None
+    inspector = Inspector.query.filter_by(name=inspector_name).first()
+    if inspector is None:
+        raise NCMRValidationError(
+            '指定的發現人員不存在',
+            details={'發現人員姓名': ['指定的發現人員不存在。']},
+        )
+    return inspector.id
+
+
 class NCMRService:
     # ==================================================
     # NCMR Logic
@@ -105,8 +134,9 @@ class NCMRService:
     @staticmethod
     def add_ncmr(data: Dict[str, Any]) -> str:
         try:
-            inspector_name = data.get('發現人員姓名')
-            inspector = Inspector.query.filter_by(name=inspector_name).first() if inspector_name else None
+            inspector_id = _resolve_inspector_id(data)
+            if inspector_id is _FIELD_ABSENT:
+                inspector_id = None
             
             ncmr_number = generate_ncmr_number()
             
@@ -122,7 +152,7 @@ class NCMRService:
                 batch_num=data.get('批號'),
                 description=data.get('不良描述'),
                 defect_quantity=data.get('不合格數量') if data.get('不合格數量') != '' else None,
-                inspector_id=inspector.id if inspector else None,
+                inspector_id=inspector_id,
                 result=data.get('判定結果'),
                 status=data.get('狀態', '待處理'),
                 defect_category=data.get('不良原因大類'),
@@ -149,7 +179,7 @@ class NCMRService:
 
             # 狀態轉移驗證
             new_status = data.get('狀態')
-            if new_status and new_status != ncmr.status:
+            if '狀態' in data and new_status != ncmr.status:
                 validate_status_transition('NCMR', ncmr.status, new_status)
                 ncmr.status = new_status  # 通過驗證後才套用新狀態
 
@@ -196,10 +226,9 @@ class NCMRService:
                         if d.exceed_customer_spec and d.auth_status == '未取得' and not d.unauth_reason:
                             raise ValueError('未授權放行須填寫未授權放行理由')
 
-            if data.get('發現人員姓名'):
-                inspector = Inspector.query.filter_by(name=data.get('發現人員姓名')).first()
-                if inspector:
-                     ncmr.inspector_id = inspector.id
+            inspector_id = _resolve_inspector_id(data)
+            if inspector_id is not _FIELD_ABSENT:
+                ncmr.inspector_id = inspector_id
 
             # Schema 已完成型別轉換；service 僅負責套用正式欄位。
             # 注意：'狀態' 已由上方狀態機驗證區塊單獨處理，

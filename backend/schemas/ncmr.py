@@ -1,5 +1,7 @@
 """NCMR 建立與更新的正式輸入契約。"""
 
+import re
+
 from marshmallow import (
     INCLUDE,
     RAISE,
@@ -11,11 +13,25 @@ from marshmallow import (
 )
 
 
-class IntegerWithoutBoolean(fields.Integer):
-    """整數欄位，但拒絕 Python 將布林值視為 0／1 的隱式轉換。"""
+_CANONICAL_INTEGER = re.compile(r'(?:0|[1-9]\d*|-[1-9]\d*)\Z')
+
+
+class CanonicalInteger(fields.Integer):
+    """接受 JSON integer 或無空白、前導零與小數點的整數字串。"""
 
     def _deserialize(self, value, attr, data, **kwargs):
-        if isinstance(value, bool):
+        if type(value) is int:
+            return super()._deserialize(value, attr, data, **kwargs)
+        if isinstance(value, str) and _CANONICAL_INTEGER.fullmatch(value):
+            return super()._deserialize(value, attr, data, **kwargs)
+        raise ValidationError('不是有效的整數。')
+
+
+class JSONInteger(fields.Integer):
+    """只接受 JSON 原生 integer；拒絕 bool、float 與數字字串。"""
+
+    def _deserialize(self, value, attr, data, **kwargs):
+        if type(value) is not int:
             raise ValidationError('不是有效的整數。')
         return super()._deserialize(value, attr, data, **kwargs)
 
@@ -33,18 +49,18 @@ class NCMRFieldsSchema(Schema):
     材質 = fields.String(allow_none=True, validate=validate.Length(max=100))
     批號 = fields.String(allow_none=True, validate=validate.Length(max=100))
     產品資訊 = fields.String(allow_none=True, validate=validate.Length(max=500))
-    產品數量 = IntegerWithoutBoolean(
+    產品數量 = CanonicalInteger(
         allow_none=True,
         validate=validate.Range(min=0),
     )
     不良描述 = fields.String(allow_none=True, validate=validate.Length(max=5000))
-    不合格數量 = IntegerWithoutBoolean(
+    不合格數量 = CanonicalInteger(
         allow_none=True,
         validate=validate.Range(min=0),
     )
     發現人員姓名 = fields.String(allow_none=True, validate=validate.Length(max=200))
     判定結果 = fields.String(allow_none=True, validate=validate.Length(max=500))
-    狀態 = fields.String(allow_none=True, validate=validate.Length(max=100))
+    狀態 = fields.String(validate=validate.Length(min=1, max=100))
     不良原因大類 = fields.String(allow_none=True, validate=validate.Length(max=200))
     不良原因細項 = fields.String(allow_none=True, validate=validate.Length(max=1000))
 
@@ -70,7 +86,7 @@ class NCMRCreateSchema(NCMRFieldsSchema):
 class NCMRUpdateSchema(NCMRFieldsSchema):
     """部分更新 NCMR；僅識別碼必填。"""
 
-    識別碼 = IntegerWithoutBoolean(
+    識別碼 = JSONInteger(
         required=True,
         validate=validate.Range(min=1),
     )
@@ -82,7 +98,7 @@ class NCMRUpdateIdentifierSchema(Schema):
     class Meta:
         unknown = INCLUDE
 
-    識別碼 = IntegerWithoutBoolean(
+    識別碼 = JSONInteger(
         required=True,
         validate=validate.Range(min=1),
     )
