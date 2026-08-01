@@ -3,6 +3,7 @@ from datetime import datetime, date, timezone
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import joinedload
 from ..extensions import db
+from ..errors import APIError, NotFoundError
 from ..models import CorrectiveAction, NCMR, CustomerComplaint, Inspector, ActionTask
 from ..utils import generate_number, validate_status_transition
 from .task_service import TaskService
@@ -138,11 +139,21 @@ class CAPAService:
     ) -> Dict[str, Any]:
         """在單一交易內開立 CAPA、更新 NCMR 並寫入一筆稽核。"""
         try:
-            ncmr = NCMR.active_query().filter_by(id=ncmr_id).with_for_update().first()
+            statement = (
+                db.select(NCMR)
+                .where(NCMR.id == ncmr_id, NCMR.deleted_at.is_(None))
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            ncmr = db.session.execute(statement).scalar_one_or_none()
             if not ncmr:
-                raise ValueError(f'NCMR #{ncmr_id} 不存在')
+                raise NotFoundError(f'NCMR #{ncmr_id} 不存在')
             if ncmr.related_capa_id:
-                raise ValueError('此 NCMR 已開立 CAPA，不可重複開立')
+                raise APIError(
+                    '此 NCMR 已開立 CAPA，不可重複開立',
+                    code='CONFLICT',
+                    status_code=409,
+                )
 
             old_source = {
                 'status': ncmr.status,

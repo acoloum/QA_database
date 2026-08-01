@@ -205,6 +205,44 @@ def test_idempotent_delete_disposition_leaves_no_pending_transaction(app, db_ses
         assert db_session().in_transaction() is False
 
 
+@pytest.mark.parametrize('operation', ('create', 'update', 'delete'))
+def test_closed_ncmr_rejects_all_disposition_mutations(
+    app, db_session, operation
+):
+    """結案後處置 aggregate 必須凍結，三種 mutation 都不得繞過。"""
+    with app.app_context():
+        ncmr = _make_ncmr(db_session, status='已結案')
+        disposition = NcmrDisposition(
+            ncmr_id=ncmr.id,
+            disposition_type='報廢',
+            quantity=100,
+        )
+        db_session.add(disposition)
+        db_session.commit()
+
+        with pytest.raises(ValueError, match='已結案'):
+            if operation == 'create':
+                NCMRService.create_disposition(
+                    ncmr.id,
+                    {'處置類型': '報廢', '處置數量': 1},
+                    handler_id=None,
+                    actor_id=None,
+                )
+            elif operation == 'update':
+                NCMRService.update_disposition(
+                    disposition.id,
+                    {'處置類型': '報廢', '處置數量': 99},
+                    actor_id=None,
+                )
+            else:
+                NCMRService.delete_disposition(disposition.id, actor_id=None)
+
+        db_session.expire_all()
+        assert NcmrDisposition.query.filter_by(ncmr_id=ncmr.id).count() == 1
+        assert db_session.get(NcmrDisposition, disposition.id).quantity == 100
+        assert AuditLog.query.count() == 0
+
+
 def test_update_disposition_recomputes_risk(app, db_session):
     with app.app_context():
         n = _make_ncmr(db_session)

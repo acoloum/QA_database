@@ -3,6 +3,7 @@ import datetime
 from sqlalchemy import func, select
 
 from backend.models import AuditLog, NCMR, Inspector, Role, User
+from backend.errors import NotFoundError
 from backend.services.audit_service import AuditService
 from backend.services.ncmr_service import NCMRService
 from backend.utils import generate_token, hash_password
@@ -460,9 +461,22 @@ def test_ncmr_update_rejects_unknown_inspector_without_writing(
 
 
 def test_ncmr_not_found_leaves_no_pending_transaction(app, db_session):
-    with app.app_context(), pytest.raises(ValueError, match='找不到'):
+    with app.app_context(), pytest.raises(NotFoundError, match='找不到'):
         NCMRService.update_ncmr({'識別碼': 999999}, actor_id=None)
     assert db_session().in_transaction() is False
+
+
+def test_invalid_update_id_rolls_back_an_existing_transaction(app, db_session):
+    """識別碼驗證即使在既有 read transaction 後失敗，也必須清乾淨 session。"""
+    with app.app_context():
+        _make_ncmr(db_session)
+        assert NCMR.query.first() is not None
+        assert db_session().in_transaction() is True
+
+        with pytest.raises(ValueError, match='缺少識別碼'):
+            NCMRService.update_ncmr({}, actor_id=None)
+
+        assert db_session().in_transaction() is False
 
 
 def test_idempotent_delete_ncmr_leaves_no_pending_transaction(app, db_session):

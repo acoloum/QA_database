@@ -4,6 +4,8 @@ from typing import List, Dict, Any, Optional, Union
 from sqlalchemy.orm import joinedload, subqueryload
 from sqlalchemy import desc
 from ..extensions import db
+from ..authorization import has_permission
+from ..errors import AuthorizationError, NotFoundError
 from ..models import NCMR, CorrectiveAction, Inspector, Vendor, PatrolMain, ShippingData, ReworkRequest, ReworkExecution, NcmrDisposition
 from ..utils import (
     format_value,
@@ -44,6 +46,63 @@ def _resolve_inspector_id(data: Dict[str, Any]):
 
 
 class NCMRService:
+    @staticmethod
+    def _locked_active_ncmr(ncmr_id: int) -> Optional[NCMR]:
+        """以固定 parent-first 順序鎖定並刷新最新 active NCMR。"""
+        statement = (
+            db.select(NCMR)
+            .where(NCMR.id == ncmr_id, NCMR.deleted_at.is_(None))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return db.session.execute(statement).scalar_one_or_none()
+
+    @staticmethod
+    def _require_mutable_ncmr(ncmr_id: int) -> NCMR:
+        ncmr = NCMRService._locked_active_ncmr(ncmr_id)
+        if ncmr is None:
+            raise ValueError('找不到該 NCMR')
+        if ncmr.status == '已結案':
+            raise ValueError('NCMR 已結案，不可異動處置')
+        return ncmr
+
+    @staticmethod
+    def _locked_parent_for_disposition(
+        disposition_id: int,
+    ) -> Optional[NCMR]:
+        """先鎖 parent NCMR，不在同一查詢取得 child write lock。"""
+        statement = (
+            db.select(NCMR)
+            .join(NcmrDisposition, NcmrDisposition.ncmr_id == NCMR.id)
+            .where(NcmrDisposition.id == disposition_id)
+            .with_for_update(of=NCMR)
+            .execution_options(populate_existing=True)
+        )
+        return db.session.execute(statement).scalar_one_or_none()
+
+    @staticmethod
+    def _require_mutable_parent_for_disposition(
+        disposition_id: int,
+    ) -> Optional[NCMR]:
+        ncmr = NCMRService._locked_parent_for_disposition(disposition_id)
+        if ncmr is None:
+            return None
+        if ncmr.deleted_at is not None:
+            raise ValueError('找不到該 NCMR')
+        if ncmr.status == '已結案':
+            raise ValueError('NCMR 已結案，不可異動處置')
+        return ncmr
+
+    @staticmethod
+    def _raise_ownership_denial() -> None:
+        raise AuthorizationError(
+            '權限不足',
+            details={
+                'required': ['ncmr.edit', 'ncmr.edit_own'],
+                'ownership_required': True,
+            },
+        )
+
     @staticmethod
     def audit_snapshot(ncmr: NCMR) -> Dict[str, Any]:
         """NCMR 稽核快照；僅保存受控業務欄位。"""
@@ -224,15 +283,35 @@ class NCMRService:
             raise e
 
     @staticmethod
-    def update_ncmr(data: Dict[str, Any], *, actor_id: Optional[int] = None) -> bool:
-        ncmr_id = data.get('識別碼')
-        if not ncmr_id:
-            raise ValueError("缺少識別碼")
-        
+    def update_ncmr(
+        data: Dict[str, Any],
+        *,
+        actor_id: Optional[int] = None,
+        actor=None,
+        payload_loader=None,
+    ) -> bool:
         try:
-            ncmr = NCMR.active_query().filter_by(id=ncmr_id).with_for_update().first()
+            ncmr_id = data.get('識別碼')
+            if not ncmr_id:
+                raise ValueError("缺少識別碼")
+
+            ncmr = NCMRService._locked_active_ncmr(ncmr_id)
+            can_edit_all = actor is not None and has_permission(actor, 'ncmr.edit')
             if not ncmr:
-                raise ValueError("找不到該筆資料")
+                if actor is not None and not can_edit_all:
+                    NCMRService._raise_ownership_denial()
+                raise NotFoundError("找不到該筆資料")
+            if actor is not None and not can_edit_all:
+                owns_record = (
+                    has_permission(actor, 'ncmr.edit_own')
+                    and actor.inspector_id is not None
+                    and actor.inspector_id == ncmr.inspector_id
+                )
+                if not owns_record:
+                    NCMRService._raise_ownership_denial()
+
+            if payload_loader is not None:
+                data = payload_loader(data)
             old_value = NCMRService.audit_snapshot(ncmr)
 
             # 狀態轉移驗證
@@ -324,7 +403,7 @@ class NCMRService:
             # Explicitly delete CAs first if cascade not trusted, but defined cascade should work.
             # However legacy code deleted CA then NCMR.
             # I set cascade="all, delete-orphan".
-            ncmr = NCMR.active_query().filter_by(id=ncmr_id).with_for_update().first()
+            ncmr = NCMRService._locked_active_ncmr(ncmr_id)
             if ncmr:
                 old_value = NCMRService.audit_snapshot(ncmr)
                 ncmr.soft_delete()
@@ -485,9 +564,7 @@ class NCMRService:
         actor_id: Optional[int] = None,
     ) -> int:
         try:
-            ncmr = NCMR.active_query().filter_by(id=ncmr_id).with_for_update().first()
-            if not ncmr:
-                raise ValueError('找不到該 NCMR')
+            NCMRService._require_mutable_ncmr(ncmr_id)
             NCMRService._validate_disposition(data)
             d = NcmrDisposition(ncmr_id=ncmr_id, handler_id=handler_id)
             NCMRService._apply_disposition_fields(d, data)
@@ -514,8 +591,19 @@ class NCMRService:
         actor_id: Optional[int] = None,
     ) -> bool:
         try:
-            d = NcmrDisposition.query.filter_by(id=disposition_id).with_for_update().first()
-            if not d:
+            ncmr = NCMRService._require_mutable_parent_for_disposition(
+                disposition_id
+            )
+            if ncmr is None:
+                raise ValueError('找不到該處置記錄')
+            statement = (
+                db.select(NcmrDisposition)
+                .where(NcmrDisposition.id == disposition_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            d = db.session.execute(statement).scalar_one_or_none()
+            if d is None:
                 raise ValueError('找不到該處置記錄')
             old_value = NCMRService.disposition_audit_snapshot(d)
             NCMRService._validate_disposition(data)
@@ -541,8 +629,20 @@ class NCMRService:
         actor_id: Optional[int] = None,
     ) -> bool:
         try:
-            d = NcmrDisposition.query.filter_by(id=disposition_id).with_for_update().first()
-            if d:
+            ncmr = NCMRService._require_mutable_parent_for_disposition(
+                disposition_id
+            )
+            if ncmr is None:
+                db.session.rollback()
+                return True
+            statement = (
+                db.select(NcmrDisposition)
+                .where(NcmrDisposition.id == disposition_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            d = db.session.execute(statement).scalar_one_or_none()
+            if d is not None:
                 old_value = NCMRService.disposition_audit_snapshot(d)
                 db.session.delete(d)
                 AuditService.record(

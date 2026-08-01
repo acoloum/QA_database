@@ -3,6 +3,7 @@
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from decimal import Decimal
+import math
 import re
 from typing import Any
 
@@ -10,7 +11,7 @@ from ..extensions import db
 from ..models import AuditLog
 
 
-_SECRET_KEY = re.compile(
+_SENSITIVE_KEY_PATTERN = re.compile(
     r"(?:password|passwd|token|secret|credential|authorization|cookie|api[_-]?key)",
     re.IGNORECASE,
 )
@@ -18,9 +19,17 @@ _SECRET_KEY = re.compile(
 
 def _json_value(value: Any, *, key: str | None = None) -> Any:
     """建立可安全寫入 JSON 欄位的快照，不保留憑證值。"""
-    if key is not None and _SECRET_KEY.search(key):
+    if key is not None and _SENSITIVE_KEY_PATTERN.search(key):
         return "[REDACTED]"
-    if value is None or isinstance(value, (str, int, float, bool)):
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return value
+        if math.isnan(value):
+            marker = 'NaN'
+        else:
+            marker = 'Infinity' if value > 0 else '-Infinity'
+        return f'[NON_FINITE_FLOAT:{marker}]'
+    if value is None or isinstance(value, (str, int, bool)):
         return value
     if isinstance(value, (date, datetime)):
         return value.isoformat()

@@ -1,13 +1,8 @@
 from flask import Blueprint, jsonify, request
 from marshmallow import ValidationError as MarshmallowValidationError
 from ..services.ncmr_service import NCMRService, NCMRValidationError
-from ..authorization import (
-    can_edit_ncmr,
-    has_permission,
-    require_permissions,
-)
-from ..errors import APIError, AuthorizationError
-from ..models import NCMR as NCMRModel
+from ..authorization import require_permissions
+from ..errors import APIError
 from ..schemas import NCMRCreateSchema, NCMRUpdateIdentifierSchema, NCMRUpdateSchema
 from ..utils import auth_required, bounded_int, parse_optional_date, require_permission
 from ..extensions import db
@@ -59,17 +54,6 @@ def _call_ncmr_service(callback, *args, **kwargs):
         ) from error
 
 
-def _raise_ownership_denial():
-    """edit_own 對不存在與非本人資源使用完全相同的拒絕內容。"""
-    raise AuthorizationError(
-        '權限不足',
-        details={
-            'required': ['ncmr.edit', 'ncmr.edit_own'],
-            'ownership_required': True,
-        },
-    )
-
-
 # ==================================================
 # 【不合格品管理】NCMR API
 # ==================================================
@@ -115,22 +99,12 @@ def add_ncmr(current_user):
 def update_ncmr(current_user):
     raw_payload = _json_object()
     identifier = _load_schema(_ncmr_update_identifier_schema, raw_payload)
-    ncmr_id = identifier['識別碼']
-    ncmr = NCMRModel.active_query().filter_by(id=ncmr_id).first()
-    if not ncmr:
-        if not has_permission(current_user, 'ncmr.edit'):
-            db.session.rollback()
-            _raise_ownership_denial()
-        db.session.rollback()
-        return jsonify({"error": "找不到該筆資料"}), 404
-    if not can_edit_ncmr(current_user, ncmr):
-        db.session.rollback()
-        _raise_ownership_denial()
-    payload = _load_schema(_ncmr_update_schema, raw_payload)
     _call_ncmr_service(
         NCMRService.update_ncmr,
-        payload,
+        {**raw_payload, '識別碼': identifier['識別碼']},
         actor_id=current_user.id if current_user else None,
+        actor=current_user,
+        payload_loader=lambda payload: _load_schema(_ncmr_update_schema, payload),
     )
     return jsonify({"success": True})
 
@@ -170,23 +144,8 @@ def open_capa_from_ncmr(current_user, ncmr_id):
     """
     from ..services.capa_service import CAPAService
     data = request.get_json() or {}
-    # route 僅做 HTTP 狀態映射；實際 mutation 由 service 鎖定後再次驗證。
-    ncmr = NCMRModel.active_query().filter_by(id=ncmr_id).first()
-    if not ncmr:
-        db.session.rollback()
-        raise APIError(
-            f'NCMR #{ncmr_id} 不存在', code='NOT_FOUND', status_code=404
-        )
-    if ncmr.related_capa_id:
-        db.session.rollback()
-        raise APIError(
-            '此 NCMR 已開立 CAPA，不可重複開立',
-            code='CONFLICT',
-            status_code=409,
-        )
     capa = CAPAService.open_from_ncmr(
         ncmr_id,
-        symptom=ncmr.description,
         severity=data.get('severity', 'Major'),
         actor_id=current_user.id if current_user else None,
     )
