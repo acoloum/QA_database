@@ -14,6 +14,34 @@ MIGRATION_PATH = (
     / 'migration'
     / '51_backfill_route_permissions.sql'
 )
+ROLLBACK_PATH = MIGRATION_PATH.with_name('51_backfill_route_permissions.rollback.sql')
+TASK_4_PERMISSION_KEYS = frozenset({
+    'tolerance.view',
+    'mechanical.view',
+    'mechanical.create',
+    'mechanical.edit',
+    'mechanical.delete',
+    'task.view',
+    'analytics.view',
+    'vendor.view',
+})
+EXPECTED_TASK_4_GRANTS = {
+    'inspector': frozenset({
+        'tolerance.view', 'mechanical.view', 'mechanical.create', 'task.view',
+    }),
+    'qa_supervisor': frozenset({
+        'tolerance.view', 'mechanical.view', 'mechanical.create',
+        'mechanical.edit', 'task.view',
+    }),
+    'qc_manager': TASK_4_PERMISSION_KEYS,
+    'admin': TASK_4_PERMISSION_KEYS,
+}
+
+
+def test_migration_51_ships_forward_and_rollback_artifacts():
+    """若 rollback 只留在 forward 註解中，正式回復流程沒有可執行 artifact。"""
+    assert MIGRATION_PATH.is_file()
+    assert ROLLBACK_PATH.is_file()
 
 
 def _assert_disposable_database(connection) -> None:
@@ -96,12 +124,15 @@ def test_migration_51_merges_role_specific_permissions_and_preserves_custom_keys
         permissions = dict(connection.execute(text(
             'SELECT "角色代碼", "權限" FROM "角色"'
         )).all())
-        assert permissions['inspector']['custom.keep'] is True
-        assert permissions['inspector']['mechanical.view'] is True
-        assert permissions['inspector']['mechanical.create'] is True
-        assert permissions['qa_supervisor']['mechanical.edit'] is True
-        assert permissions['qc_manager']['analytics.view'] is True
-        assert permissions['admin']['vendor.view'] is True
+        for role_code, expected_grants in EXPECTED_TASK_4_GRANTS.items():
+            actual_grants = {
+                key for key in TASK_4_PERMISSION_KEYS
+                if permissions[role_code].get(key) is True
+            }
+            actual_denials = TASK_4_PERMISSION_KEYS - actual_grants
+            assert actual_grants == expected_grants
+            assert actual_denials == TASK_4_PERMISSION_KEYS - expected_grants
+            assert permissions[role_code]['custom.keep'] is True
         assert permissions['custom_role'] == {'custom.only': True}
     finally:
         connection.close()
@@ -127,24 +158,14 @@ def test_migration_51_rollback_removes_only_added_keys(migration_schema):
     """rollback 只能移除 Task 4 新 key，不可刪除角色的其他權限。"""
     connection = _connect(migration_schema)
     try:
-        connection.execute(text('''
-            UPDATE "角色"
-            SET "權限" = "權限"
-                - 'tolerance.view'
-                - 'mechanical.view'
-                - 'mechanical.create'
-                - 'mechanical.edit'
-                - 'mechanical.delete'
-                - 'task.view'
-                - 'analytics.view'
-                - 'vendor.view'
-            WHERE "角色代碼" IN ('inspector', 'qa_supervisor', 'qc_manager', 'admin')
-        '''))
+        connection.exec_driver_sql(ROLLBACK_PATH.read_text(encoding='utf-8'))
         connection.commit()
-        permissions = connection.execute(text(
-            'SELECT "權限" FROM "角色" WHERE "角色代碼" = \'inspector\''
-        )).scalar_one()
-        assert permissions == {'custom.keep': True}
+        permissions = dict(connection.execute(text(
+            'SELECT "角色代碼", "權限" FROM "角色"'
+        )).all())
+        for role_code in EXPECTED_TASK_4_GRANTS:
+            assert permissions[role_code] == {'custom.keep': True}
+        assert permissions['custom_role'] == {'custom.only': True}
     finally:
         connection.close()
 

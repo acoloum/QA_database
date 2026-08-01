@@ -166,21 +166,27 @@ def test_seed_roles_applies_approved_route_permission_matrix(app, db_session):
     seed()
 
     roles = {role.code: role.permissions for role in Role.query.all()}
-    assert {
-        key for key, enabled in roles['inspector'].items() if enabled
-    } >= {
-        'tolerance.view', 'mechanical.view', 'mechanical.create', 'task.view',
-    }
-    assert {
-        key for key, enabled in roles['qa_supervisor'].items() if enabled
-    } >= {
-        'tolerance.view', 'mechanical.view', 'mechanical.create',
-        'mechanical.edit', 'task.view',
-    }
-    manager_keys = {
+    task_4_keys = {
         'tolerance.view', 'mechanical.view', 'mechanical.create',
         'mechanical.edit', 'mechanical.delete', 'task.view',
         'analytics.view', 'vendor.view',
     }
-    assert {key for key, enabled in roles['qc_manager'].items() if enabled} >= manager_keys
-    assert {key for key, enabled in roles['admin'].items() if enabled} >= manager_keys
+    expected_grants = {
+        'inspector': {
+            'tolerance.view', 'mechanical.view', 'mechanical.create', 'task.view',
+        },
+        'qa_supervisor': {
+            'tolerance.view', 'mechanical.view', 'mechanical.create',
+            'mechanical.edit', 'task.view',
+        },
+        'qc_manager': task_4_keys,
+        'admin': task_4_keys,
+    }
+
+    for role_code, expected in expected_grants.items():
+        actual = {
+            key for key in task_4_keys
+            if roles[role_code].get(key) is True
+        }
+        assert actual == expected
+        assert task_4_keys - actual == task_4_keys - expected

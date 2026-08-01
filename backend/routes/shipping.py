@@ -162,13 +162,25 @@ def export_spc_report():
         return api_error(str(e), 500)
 
 @shipping_bp.route('/api/add', methods=['POST'])
-@shipping_bp.route('/api/update', methods=['POST'])
 @auth_required
 @require_perm('shipping.create')
 def save_data():
     try:
-        is_update = request.path.endswith('update')
-        ShippingService.save_data(request.json, is_update=is_update)
+        ShippingService.save_data(request.json, is_update=False)
+        return jsonify({"success": True})
+    except ValueError as e:
+        return api_error(str(e), 400)
+    except Exception as e:
+        db_err = handle_db_error(e)
+        return api_error(db_err.get('message', '資料庫錯誤'), 500, details=db_err)
+
+
+@shipping_bp.route('/api/update', methods=['POST'])
+@auth_required
+@require_perm('shipping.edit')
+def update_data():
+    try:
+        ShippingService.save_data(request.json, is_update=True)
         return jsonify({"success": True})
     except ValueError as e:
         return api_error(str(e), 400)

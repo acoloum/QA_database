@@ -23,16 +23,3 @@ FROM (
         )
 ) AS patch(role_code, permissions)
 WHERE role_row."角色代碼" = patch.role_code;
-
--- Rollback（需要時另行經變更核准執行）：只移除 Migration 51 新增的 keys。
--- UPDATE "角色"
--- SET "權限" = "權限"
---     - 'tolerance.view'
---     - 'mechanical.view'
---     - 'mechanical.create'
---     - 'mechanical.edit'
---     - 'mechanical.delete'
---     - 'task.view'
---     - 'analytics.view'
---     - 'vendor.view'
--- WHERE "角色代碼" IN ('inspector', 'qa_supervisor', 'qc_manager', 'admin');

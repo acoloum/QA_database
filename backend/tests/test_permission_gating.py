@@ -7,19 +7,29 @@
 - admin 一律放行
 - GET 讀取路由維持對所有已登入者開放
 """
-import ast
-from pathlib import Path
+from uuid import UUID
 
 import pytest
-from sqlalchemy import func, select
+from flask import Flask
+from sqlalchemy import event, func, select
+from werkzeug.routing import (
+    AnyConverter,
+    FloatConverter,
+    IntegerConverter,
+    PathConverter,
+    UUIDConverter,
+)
 
+from backend.extensions import db
 from backend.models import (
     CorrectiveAction,
     CustomerComplaint,
     Inspector,
     NCMR,
+    PatrolMain,
     ReworkRequest,
     Role,
+    ShippingData,
     User,
 )
 from backend.utils import hash_password, generate_token
@@ -95,6 +105,125 @@ def test_capa_step_update_requires_capa_edit_permission(client, db_session):
     )
 
     assert resp.status_code == 403
+
+
+@pytest.mark.parametrize(
+    ('domain', 'update_path', 'service_name', 'model'),
+    [
+        ('shipping', '/api/update', 'ShippingService.save_data', ShippingData),
+        ('patrol', '/api/patrol/update', 'PatrolService.update_patrol', PatrolMain),
+    ],
+)
+def test_create_only_role_cannot_enter_update_handler_or_write(
+    client,
+    db_session,
+    monkeypatch,
+    domain,
+    update_path,
+    service_name,
+    model,
+):
+    """若 update 錯用 create guard，handler spy 會被呼叫且請求不會是 403。"""
+    role_code = f'{domain}_create_only'
+    db_session.add(Role(
+        code=role_code,
+        name=f'{domain} 僅新增',
+        permissions={f'{domain}.create': True},
+    ))
+    db_session.commit()
+    user = _make_user(db_session, f'{role_code}_user', role_code)
+    calls = []
+
+    if service_name.startswith('ShippingService'):
+        monkeypatch.setattr(
+            'backend.routes.shipping.ShippingService.save_data',
+            lambda *args, **kwargs: calls.append((args, kwargs)),
+        )
+    else:
+        monkeypatch.setattr(
+            'backend.routes.patrol.PatrolService.update_patrol',
+            lambda *args, **kwargs: calls.append((args, kwargs)),
+        )
+    before = db_session.scalar(select(func.count()).select_from(model))
+
+    response = client.post(update_path, headers=_headers(user), json={'id': 1})
+
+    assert response.status_code == 403
+    assert calls == []
+    db_session.expire_all()
+    assert db_session.scalar(select(func.count()).select_from(model)) == before
+
+
+@pytest.mark.parametrize(
+    ('domain', 'update_path', 'monkeypatch_target'),
+    [
+        ('shipping', '/api/update', 'backend.routes.shipping.ShippingService.save_data'),
+        ('patrol', '/api/patrol/update', 'backend.routes.patrol.PatrolService.update_patrol'),
+    ],
+)
+def test_edit_role_enters_update_handler(
+    client,
+    db_session,
+    monkeypatch,
+    domain,
+    update_path,
+    monkeypatch_target,
+):
+    """若 update 沒有使用 edit guard，具 edit 權限者會在 handler 前被錯擋。"""
+    role_code = f'{domain}_edit_only'
+    db_session.add(Role(
+        code=role_code,
+        name=f'{domain} 僅編輯',
+        permissions={f'{domain}.edit': True},
+    ))
+    db_session.commit()
+    user = _make_user(db_session, f'{role_code}_user', role_code)
+    calls = []
+    monkeypatch.setattr(
+        monkeypatch_target,
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    response = client.post(update_path, headers=_headers(user), json={'id': 1})
+
+    assert response.status_code == 200
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    ('domain', 'add_path', 'monkeypatch_target'),
+    [
+        ('shipping', '/api/add', 'backend.routes.shipping.ShippingService.save_data'),
+        ('patrol', '/api/patrol/add', 'backend.routes.patrol.PatrolService.add_patrol'),
+    ],
+)
+def test_create_role_still_enters_add_handler(
+    client,
+    db_session,
+    monkeypatch,
+    domain,
+    add_path,
+    monkeypatch_target,
+):
+    """更新權限分流不可把既有 add 誤改成需要 edit。"""
+    role_code = f'{domain}_add_create_only'
+    db_session.add(Role(
+        code=role_code,
+        name=f'{domain} 新增',
+        permissions={f'{domain}.create': True},
+    ))
+    db_session.commit()
+    user = _make_user(db_session, f'{role_code}_user', role_code)
+    calls = []
+    monkeypatch.setattr(
+        monkeypatch_target,
+        lambda *args, **kwargs: calls.append((args, kwargs)) or 1,
+    )
+
+    response = client.post(add_path, headers=_headers(user), json={})
+
+    assert response.status_code == 200
+    assert len(calls) == 1
 
 
 @pytest.fixture
@@ -431,73 +560,125 @@ def test_ncmr_update_rejects_non_integer_identifier_before_lookup(
     assert db_session.scalar(select(func.count()).select_from(NCMR)) == before
 
 
-def _route_methods(route_decorator):
-    """從實際 route decorator AST 取得 HTTP methods，支援 route/post/put/patch/delete。"""
-    call = route_decorator
-    if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Attribute):
-        return set()
-    method_name = call.func.attr.lower()
-    if method_name in {'post', 'put', 'patch', 'delete'}:
-        return {method_name.upper()}
-    if method_name != 'route':
-        return set()
-    for keyword in call.keywords:
-        if keyword.arg == 'methods':
-            return {str(value).upper() for value in ast.literal_eval(keyword.value)}
-    return {'GET'}
+_MUTATION_METHODS = {'POST', 'PUT', 'PATCH', 'DELETE'}
+_MUTATION_AUTH_EXEMPT_ENDPOINTS = {'auth.login'}
 
 
-def test_every_mutation_route_has_runtime_authorization_semantics(app):
-    """
-    AST 只用來找出真實 mutation route；通過條件必須來自已註冊
-    Flask view 的權限語意 metadata，不接受名稱像 decorator 的假陽性。
-    """
-    route_dir = Path(__file__).resolve().parents[1] / 'routes'
-    missing = []
-    login_paths = {'/api/login', '/api/auth/login'}
+def _probe_value(converter):
+    """依 Werkzeug converter 產生可通過 URL build 的固定測試值。"""
+    if isinstance(converter, IntegerConverter):
+        return 1
+    if isinstance(converter, FloatConverter):
+        return 1.0
+    if isinstance(converter, UUIDConverter):
+        return UUID('00000000-0000-0000-0000-000000000001')
+    if isinstance(converter, PathConverter):
+        return 'probe/path'
+    if isinstance(converter, AnyConverter):
+        return next(iter(converter.items))
+    return 'probe'
 
-    for route_file in sorted(route_dir.glob('*.py')):
-        tree = ast.parse(route_file.read_text(encoding='utf-8'), filename=str(route_file))
-        blueprint_names = {}
-        for statement in tree.body:
-            if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
-                continue
-            target = statement.targets[0]
-            value = statement.value
-            if (
-                isinstance(target, ast.Name)
-                and isinstance(value, ast.Call)
-                and isinstance(value.func, ast.Name)
-                and value.func.id == 'Blueprint'
-                and value.args
-            ):
-                blueprint_names[target.id] = ast.literal_eval(value.args[0])
-        for node in tree.body:
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            for decorator in node.decorator_list:
-                methods = _route_methods(decorator)
-                mutation_methods = methods & {'POST', 'PUT', 'PATCH', 'DELETE'}
-                if not mutation_methods:
-                    continue
-                path = ast.literal_eval(decorator.args[0]) if decorator.args else ''
-                if path in login_paths:
-                    continue
-                blueprint_variable = (
-                    decorator.func.value.id
-                    if isinstance(decorator.func.value, ast.Name)
-                    else None
+
+def _concrete_rule_path(rule):
+    values = {
+        argument: _probe_value(converter)
+        for argument, converter in rule._converters.items()
+    }
+    return rule.build(values, append_unknown=False)[1]
+
+
+def _probe_mutation_routes(app, client, headers):
+    """實際呼叫所有已註冊 mutation rule；不讀 decorator 名稱或 metadata。"""
+    failures = []
+    probes = []
+    for rule in sorted(app.url_map.iter_rules(), key=lambda item: (item.rule, item.endpoint)):
+        if rule.endpoint in _MUTATION_AUTH_EXEMPT_ENDPOINTS:
+            continue
+        for method in sorted(set(rule.methods) & _MUTATION_METHODS):
+            path = _concrete_rule_path(rule)
+            response = client.open(path, method=method, headers=headers, json={})
+            probes.append((method, path, rule.endpoint))
+            if response.status_code != 403:
+                failures.append(
+                    (method, path, rule.endpoint, response.status_code, response.get_data(as_text=True))
                 )
-                blueprint_name = blueprint_names.get(blueprint_variable)
-                endpoint = f'{blueprint_name}.{node.name}' if blueprint_name else None
-                endpoints = [app.view_functions[endpoint]] if endpoint in app.view_functions else []
-                if not endpoints or not any(
-                    getattr(view, '__required_permissions__', None)
-                    or getattr(view, '__admin_required__', False)
-                    for view in endpoints
-                ):
-                    missing.append(
-                        f'{route_file.name}:{node.lineno} {sorted(mutation_methods)} {path}'
-                    )
+    return probes, failures
 
-    assert missing == []
+
+def test_every_registered_mutation_route_rejects_zero_permission_user_before_write(
+    app,
+    client,
+    db_session,
+):
+    """若 mutation guard 缺失、晚於 validation/lookup 或只有 metadata，實際回應不會是 403。"""
+    db_session.add(Role(code='runtime_zero_permission', name='執行期零權限', permissions={}))
+    db_session.commit()
+    user = _make_user(db_session, 'runtime_zero_permission_user', 'runtime_zero_permission')
+    before_counts = {
+        table.name: db_session.scalar(select(func.count()).select_from(table))
+        for table in db.metadata.sorted_tables
+    }
+    attempted_writes = []
+
+    def reject_write(_connection, _cursor, statement, _parameters, _context, _many):
+        operation = statement.lstrip().split(None, 1)[0].upper() if statement.strip() else ''
+        if operation in {'INSERT', 'UPDATE', 'DELETE'}:
+            attempted_writes.append(statement)
+            raise AssertionError('零權限 mutation probe 不得執行資料庫寫入')
+
+    event.listen(db.engine, 'before_cursor_execute', reject_write)
+    try:
+        probes, failures = _probe_mutation_routes(app, client, _headers(user))
+    finally:
+        event.remove(db.engine, 'before_cursor_execute', reject_write)
+
+    assert probes
+    assert failures == []
+    assert attempted_writes == []
+    db_session.expire_all()
+    after_counts = {
+        table.name: db_session.scalar(select(func.count()).select_from(table))
+        for table in db.metadata.sorted_tables
+    }
+    assert after_counts == before_counts
+
+
+def test_runtime_gate_catches_metadata_only_alias_and_dynamic_rules():
+    """只複製權限 metadata 的 add_url_rule/alias/dynamic route 不得騙過 gate。"""
+    fake_app = Flask('metadata-only-runtime-gate')
+
+    def metadata_only_handler(item_id=None):
+        return {'item_id': item_id}, 204
+
+    metadata_only_handler.__required_permissions__ = ({'fake.edit'}, 'all')
+    fake_app.add_url_rule(
+        '/fake/<int:item_id>/update',
+        endpoint='fake.dynamic_update',
+        view_func=metadata_only_handler,
+        methods=['PATCH'],
+    )
+    fake_app.add_url_rule(
+        '/fake/alias-one',
+        endpoint='fake.alias_update',
+        view_func=metadata_only_handler,
+        methods=['POST'],
+    )
+    fake_app.add_url_rule(
+        '/fake/alias-two',
+        endpoint='fake.alias_update',
+        view_func=metadata_only_handler,
+        methods=['POST'],
+    )
+
+    probes, failures = _probe_mutation_routes(fake_app, fake_app.test_client(), {})
+
+    assert {(method, path) for method, path, _endpoint in probes} == {
+        ('PATCH', '/fake/1/update'),
+        ('POST', '/fake/alias-one'),
+        ('POST', '/fake/alias-two'),
+    }
+    assert {(method, path, status) for method, path, _endpoint, status, _body in failures} == {
+        ('PATCH', '/fake/1/update', 204),
+        ('POST', '/fake/alias-one', 204),
+        ('POST', '/fake/alias-two', 204),
+    }

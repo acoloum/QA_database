@@ -139,7 +139,7 @@ def patrol_add():
 
 @patrol_bp.route('/api/patrol/update', methods=['POST'])
 @auth_required
-@require_perm('patrol.create')
+@require_perm('patrol.edit')
 def patrol_update():
     try:
         PatrolService.update_patrol(request.json)
