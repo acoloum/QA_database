@@ -5,7 +5,11 @@ from collections import Counter, defaultdict
 from datetime import date
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import Integer, case, func
+
+from ..extensions import db
 from ..models import CorrectiveAction, CustomerComplaint, NCMR
+from .date_range import month_bucket
 from .vendor_performance_service import VendorPerformanceService
 
 
@@ -25,6 +29,7 @@ NCMR_DEFECT_CATEGORY_LABELS = {
 
 
 class QualityAnalyticsService:
+
     @staticmethod
     def pareto(
         source: str,
@@ -33,26 +38,26 @@ class QualityAnalyticsService:
         date_to: Optional[date] = None,
         limit: int = 10,
     ) -> Dict[str, Any]:
-        """回傳 NCMR 或客訴的不良 Pareto 統計。"""
-        records = QualityAnalyticsService._records_for_source(source, date_from, date_to)
-        counter: Counter[str] = Counter()
+        """回傳 NCMR 或客訴的不良 Pareto 統計（欄位級 GROUP BY 聚合）。"""
+        column, filters = QualityAnalyticsService._defect_column(source, field, date_from, date_to)
+        rows = db.session.query(
+            column.label('bucket'),
+            func.count().label('count'),
+        ).filter(*filters).group_by(column).order_by(
+            func.count().desc(), column.asc(),
+        ).all()
 
-        for record in records:
-            label = QualityAnalyticsService._defect_label(record, source, field)
-            counter[label or '未分類'] += 1
-
-        total = sum(counter.values())
+        total = sum(row.count for row in rows)
         running = 0
         items = []
-        for label, count in counter.most_common(max(1, limit)):
-            running += count
+        for row in rows[:max(1, limit)]:
+            running += row.count
             items.append({
-                'label': label,
-                'count': count,
-                'pct': round(count / total * 100, 1) if total else 0,
+                'label': QualityAnalyticsService._bucket_label(row.bucket, source, field),
+                'count': row.count,
+                'pct': round(row.count / total * 100, 1) if total else 0,
                 'cumulative_pct': round(running / total * 100, 1) if total else 0,
             })
-
         return {'source': source, 'field': field, 'total': total, 'items': items}
 
     @staticmethod
@@ -62,21 +67,33 @@ class QualityAnalyticsService:
         date_to: Optional[date] = None,
         top_n: int = 5,
     ) -> Dict[str, Any]:
-        """依月份回傳 Top N 不良分類趨勢。"""
-        records = QualityAnalyticsService._records_for_source(source, date_from, date_to)
+        """依月份回傳 Top N 不良分類趨勢（SQL 月份分桶）。"""
+        if source == 'complaint':
+            date_column = CustomerComplaint.complaint_date
+            category_column = CustomerComplaint.defect_category
+            filters = QualityAnalyticsService._complaint_filters(date_from, date_to)
+        elif source == 'ncmr':
+            date_column = NCMR.date
+            category_column = NCMR.defect_category
+            filters = QualityAnalyticsService._ncmr_filters(date_from, date_to)
+        else:
+            raise ValueError('source 僅支援 ncmr 或 complaint')
+
+        month = month_bucket(date_column).label('month')
+        rows = db.session.query(
+            month,
+            category_column.label('bucket'),
+            func.count().label('count'),
+        ).filter(*filters).group_by(month, category_column).all()
+
         month_set = set()
         category_total: Counter[str] = Counter()
         by_month: Dict[str, Counter[str]] = defaultdict(Counter)
-
-        for record in records:
-            record_date = QualityAnalyticsService._record_date(record, source)
-            if not record_date:
-                continue
-            month = record_date.strftime('%Y-%m')
-            label = QualityAnalyticsService._defect_label(record, source, 'category') or '未分類'
-            month_set.add(month)
-            category_total[label] += 1
-            by_month[month][label] += 1
+        for row in rows:
+            label = QualityAnalyticsService._bucket_label(row.bucket, source, 'category')
+            month_set.add(row.month)
+            category_total[label] += row.count
+            by_month[row.month][label] += row.count
 
         months = sorted(month_set)
         top_labels = [label for label, _ in category_total.most_common(max(1, top_n))]
@@ -87,50 +104,86 @@ class QualityAnalyticsService:
         return {'source': source, 'months': months, 'series': series}
 
     @staticmethod
-    def capa_aging(today: Optional[date] = None) -> Dict[str, Any]:
-        """統計未結案 CAPA aging、逾期清單與平均結案天數。"""
+    def capa_aging(today: Optional[date] = None, overdue_limit: int = 10) -> Dict[str, Any]:
+        """統計未結案 CAPA aging、逾期清單與平均結案天數（SQL 分桶與 avg 聚合）。"""
         today = today or date.today()
-        open_capas = CorrectiveAction.query.filter(
+        raw_age = QualityAnalyticsService._age_days_expr(CorrectiveAction.created_at, today)
+        # NULL created_at 視為今天（age 0）；負數（未來建立）clamp 到 0，與舊版 max(..., 0) 等價
+        age_value = func.coalesce(raw_age, 0)
+        safe_age = case((age_value < 0, 0), else_=age_value)
+        bucket = case(
+            (safe_age <= 7, '0-7'),
+            (safe_age <= 14, '8-14'),
+            (safe_age <= 30, '15-30'),
+            else_='31+',
+        ).label('bucket')
+
+        open_filters = [
             CorrectiveAction.eight_d_number.isnot(None),
             CorrectiveAction.status != '已結案',
             CorrectiveAction.deleted_at.is_(None),
-        ).all()
+        ]
+        bucket_rows = db.session.query(
+            bucket,
+            func.count().label('cnt'),
+        ).filter(*open_filters).group_by(bucket).all()
 
         buckets = {'0-7': 0, '8-14': 0, '15-30': 0, '31+': 0}
-        overdue_items = []
-        for capa in open_capas:
-            created_date = capa.created_at.date() if capa.created_at else today
-            age_days = max((today - created_date).days, 0)
-            buckets[QualityAnalyticsService._aging_bucket(age_days)] += 1
-            if capa.d0_deadline and capa.d0_deadline < today:
-                overdue_items.append({
-                    'id': capa.id,
-                    'number': capa.eight_d_number,
-                    'status': capa.status,
-                    'age_days': age_days,
-                    'deadline': capa.d0_deadline.isoformat(),
-                    'overdue_days': (today - capa.d0_deadline).days,
-                })
+        open_count = 0
+        for row in bucket_rows:
+            buckets[row.bucket] = row.cnt
+            open_count += row.cnt
 
-        closed_capas = CorrectiveAction.query.filter(
+        overdue_filters = [
+            *open_filters,
+            CorrectiveAction.d0_deadline.isnot(None),
+            CorrectiveAction.d0_deadline < today,
+        ]
+        overdue_count = (
+            db.session.query(func.count())
+            .select_from(CorrectiveAction)
+            .filter(*overdue_filters)
+            .scalar()
+        )
+
+        # 逾期清單只 select 顯示欄位並 limit，不載入完整 ORM 實體
+        overdue_expr = QualityAnalyticsService._date_diff_days(CorrectiveAction.d0_deadline, today)
+        overdue_rows = db.session.query(
+            CorrectiveAction.id,
+            CorrectiveAction.eight_d_number.label('number'),
+            CorrectiveAction.status,
+            safe_age.label('age_days'),
+            CorrectiveAction.d0_deadline.label('deadline'),
+            overdue_expr.label('overdue_days'),
+        ).filter(*overdue_filters).order_by(overdue_expr.desc()).limit(max(1, overdue_limit)).all()
+
+        overdue_items = [
+            {
+                'id': row.id,
+                'number': row.number,
+                'status': row.status,
+                'age_days': row.age_days if row.age_days is not None else 0,
+                'deadline': row.deadline.isoformat() if row.deadline else None,
+                'overdue_days': row.overdue_days if row.overdue_days is not None else 0,
+            }
+            for row in overdue_rows
+        ]
+
+        closed_filters = [
             CorrectiveAction.eight_d_number.isnot(None),
             CorrectiveAction.status == '已結案',
             CorrectiveAction.d8_close_date.isnot(None),
             CorrectiveAction.created_at.isnot(None),
             CorrectiveAction.deleted_at.is_(None),
-        ).all()
-        close_days = [
-            (capa.d8_close_date - capa.created_at.date()).days
-            for capa in closed_capas
-            if capa.d8_close_date and capa.created_at
         ]
-        avg_close_days = round(sum(close_days) / len(close_days), 1) if close_days else None
+        avg_expr = QualityAnalyticsService._close_days_expr()
+        avg_value = db.session.query(func.avg(avg_expr)).filter(*closed_filters).scalar()
+        avg_close_days = round(float(avg_value), 1) if avg_value is not None else None
 
-        overdue_items.sort(key=lambda x: x['overdue_days'], reverse=True)
         return {
             'buckets': buckets,
-            'open_count': len(open_capas),
-            'overdue_count': len(overdue_items),
+            'open_count': open_count,
+            'overdue_count': overdue_count,
             'overdue_items': overdue_items,
             'avg_close_days': avg_close_days,
         }
@@ -141,16 +194,25 @@ class QualityAnalyticsService:
         date_to: Optional[date] = None,
         limit: int = 10,
     ) -> Dict[str, Any]:
-        """回傳 NCMR 聚合重複問題與已標記的重複客訴。"""
-        ncmrs = QualityAnalyticsService._filter_ncmr(date_from, date_to).all()
+        """回傳 NCMR 聚合重複問題與已標記的重複客訴（欄位級 select）。"""
+        ncmr_rows = db.session.query(
+            NCMR.vendor,
+            NCMR.material,
+            NCMR.product_info,
+            NCMR.defect_category,
+            NCMR.defect_detail,
+            NCMR.ncmr_number,
+            NCMR.date,
+        ).filter(*QualityAnalyticsService._ncmr_filters(date_from, date_to)).all()
+
         groups: Dict[tuple, Dict[str, Any]] = {}
-        for ncmr in ncmrs:
+        for row in ncmr_rows:
             key = (
-                ncmr.vendor or '未填',
-                ncmr.material or '未填',
-                ncmr.product_info or '未填',
-                ncmr.defect_category or '未分類',
-                ncmr.defect_detail or '未分類',
+                row.vendor or '未填',
+                row.material or '未填',
+                row.product_info or '未填',
+                row.defect_category or '未分類',
+                row.defect_detail or '未分類',
             )
             entry = groups.setdefault(key, {
                 'vendor': key[0],
@@ -163,9 +225,9 @@ class QualityAnalyticsService:
                 'numbers': [],
             })
             entry['count'] += 1
-            entry['numbers'].append(ncmr.ncmr_number)
-            if ncmr.date and (entry['latest_date'] is None or ncmr.date > entry['latest_date']):
-                entry['latest_date'] = ncmr.date
+            entry['numbers'].append(row.ncmr_number)
+            if row.date and (entry['latest_date'] is None or row.date > entry['latest_date']):
+                entry['latest_date'] = row.date
 
         repeated_ncmr = [
             {**entry, 'latest_date': entry['latest_date'].isoformat() if entry['latest_date'] else None}
@@ -174,80 +236,117 @@ class QualityAnalyticsService:
         ]
         repeated_ncmr.sort(key=lambda x: (x['count'], x['latest_date'] or ''), reverse=True)
 
-        complaint_query = CustomerComplaint.query.filter(
+        complaint_filters = [
             CustomerComplaint.deleted_at.is_(None),
             CustomerComplaint.is_repeat.is_(True),
-        )
+        ]
         if date_from:
-            complaint_query = complaint_query.filter(CustomerComplaint.complaint_date >= date_from)
+            complaint_filters.append(CustomerComplaint.complaint_date >= date_from)
         if date_to:
-            complaint_query = complaint_query.filter(CustomerComplaint.complaint_date <= date_to)
+            complaint_filters.append(CustomerComplaint.complaint_date <= date_to)
+
+        complaint_rows = db.session.query(
+            CustomerComplaint.id,
+            CustomerComplaint.complaint_no,
+            CustomerComplaint.customer,
+            CustomerComplaint.defect_category,
+            CustomerComplaint.complaint_date,
+            CustomerComplaint.repeat_refs,
+        ).filter(*complaint_filters).order_by(
+            CustomerComplaint.complaint_date.desc()
+        ).limit(limit).all()
 
         complaints = [
             {
-                'id': c.id,
-                'complaint_no': c.complaint_no,
-                'customer': c.customer,
-                'defect_category': c.defect_category or '未分類',
-                'complaint_date': c.complaint_date.isoformat() if c.complaint_date else None,
-                'repeat_refs': c.repeat_refs or [],
+                'id': row.id,
+                'complaint_no': row.complaint_no,
+                'customer': row.customer,
+                'defect_category': row.defect_category or '未分類',
+                'complaint_date': row.complaint_date.isoformat() if row.complaint_date else None,
+                'repeat_refs': row.repeat_refs or [],
             }
-            for c in complaint_query.order_by(CustomerComplaint.complaint_date.desc()).limit(limit).all()
+            for row in complaint_rows
         ]
 
         return {'ncmr': repeated_ncmr[:limit], 'complaints': complaints}
 
     @staticmethod
     def vendor_ranking(period: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """回傳指定月份供應商績效排名，分數由低到高。"""
+        """回傳指定月份供應商績效排名，分數由低到高（委派 VendorPerformanceService）。"""
         rows = VendorPerformanceService.list_by_period(period)
         return rows[:max(1, limit)]
 
+    # ---------------------------------------------------------------
+    # SQL 聚合輔助
+    # ---------------------------------------------------------------
+
     @staticmethod
-    def _records_for_source(source: str, date_from: Optional[date], date_to: Optional[date]):
+    def _defect_column(source: str, field: str, date_from: Optional[date], date_to: Optional[date]):
+        """依 source/field 選取 Pareto 聚合欄位與過濾條件。"""
         if source == 'complaint':
-            return QualityAnalyticsService._filter_complaints(date_from, date_to).all()
-        if source == 'ncmr':
-            return QualityAnalyticsService._filter_ncmr(date_from, date_to).all()
-        raise ValueError('source 僅支援 ncmr 或 complaint')
+            return CustomerComplaint.defect_category, QualityAnalyticsService._complaint_filters(
+                date_from, date_to
+            )
+        if source != 'ncmr':
+            raise ValueError('source 僅支援 ncmr 或 complaint')
+        column = NCMR.defect_detail if field == 'detail' else NCMR.defect_category
+        return column, QualityAnalyticsService._ncmr_filters(date_from, date_to)
 
     @staticmethod
-    def _filter_ncmr(date_from: Optional[date], date_to: Optional[date]):
-        query = NCMR.active_query()
+    def _bucket_label(bucket: Optional[str], source: str, field: str) -> str:
+        """將聚合分桶值轉成顯示文字（含 NCMR 大類代碼翻譯）。"""
+        if source == 'complaint' or field == 'detail':
+            return bucket or '未分類'
+        label = bucket or '未分類'
+        return NCMR_DEFECT_CATEGORY_LABELS.get(label, label)
+
+    @staticmethod
+    def _ncmr_filters(date_from: Optional[date], date_to: Optional[date]):
+        filters = [NCMR.deleted_at.is_(None)]
         if date_from:
-            query = query.filter(NCMR.date >= date_from)
+            filters.append(NCMR.date >= date_from)
         if date_to:
-            query = query.filter(NCMR.date <= date_to)
-        return query
+            filters.append(NCMR.date <= date_to)
+        return filters
 
     @staticmethod
-    def _filter_complaints(date_from: Optional[date], date_to: Optional[date]):
-        query = CustomerComplaint.active_query()
+    def _complaint_filters(date_from: Optional[date], date_to: Optional[date]):
+        filters = [CustomerComplaint.deleted_at.is_(None)]
         if date_from:
-            query = query.filter(CustomerComplaint.complaint_date >= date_from)
+            filters.append(CustomerComplaint.complaint_date >= date_from)
         if date_to:
-            query = query.filter(CustomerComplaint.complaint_date <= date_to)
-        return query
+            filters.append(CustomerComplaint.complaint_date <= date_to)
+        return filters
 
     @staticmethod
-    def _record_date(record: Any, source: str) -> Optional[date]:
-        return record.complaint_date if source == 'complaint' else record.date
+    def _age_days_expr(column: Any, today: date):
+        """產生 (today - column) 天數表達式；SQLite 用 julianday、PostgreSQL 用 date 相減。
+
+        column 為 NULL 時結果為 NULL，由呼叫方以 coalesce 補 0（等價舊版 None → today）。
+        """
+        bind = db.session.get_bind()
+        today_iso = today.isoformat()
+        if bind and bind.dialect.name == 'sqlite':
+            return func.cast(func.julianday(today_iso) - func.julianday(column), Integer)
+        return func.date(today_iso) - func.date(column)
 
     @staticmethod
-    def _defect_label(record: Any, source: str, field: str) -> str:
-        if source == 'complaint':
-            return record.defect_category or '未分類'
-        if field == 'detail':
-            return record.defect_detail or '未分類'
-        category = record.defect_category or '未分類'
-        return NCMR_DEFECT_CATEGORY_LABELS.get(category, category)
+    def _date_diff_days(column: Any, today: date):
+        """產生 (today - column) 天數表達式；column 為 Date 欄位（d0_deadline 等）。"""
+        bind = db.session.get_bind()
+        today_iso = today.isoformat()
+        if bind and bind.dialect.name == 'sqlite':
+            return func.cast(func.julianday(today_iso) - func.julianday(column), Integer)
+        return func.date(today_iso) - func.date(column)
 
     @staticmethod
-    def _aging_bucket(age_days: int) -> str:
-        if age_days <= 7:
-            return '0-7'
-        if age_days <= 14:
-            return '8-14'
-        if age_days <= 30:
-            return '15-30'
-        return '31+'
+    def _close_days_expr():
+        """(d8_close_date - created_at) 天數表達式，供已結案平均天數 AVG 使用。"""
+        bind = db.session.get_bind()
+        if bind and bind.dialect.name == 'sqlite':
+            return func.cast(
+                func.julianday(CorrectiveAction.d8_close_date)
+                - func.julianday(CorrectiveAction.created_at),
+                Integer,
+            )
+        return func.date(CorrectiveAction.d8_close_date) - func.date(CorrectiveAction.created_at)

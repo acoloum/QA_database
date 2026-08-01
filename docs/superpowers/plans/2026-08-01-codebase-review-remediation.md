@@ -1,4 +1,4 @@
-# 全庫審查修復 Implementation Plan
+﻿# 全庫審查修復 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -962,7 +962,7 @@ git commit -m "修復：統一儀表板日期視窗與統計服務"
 - Modify: `src_frontend/src/pages/vendor/VendorPerformancePage.tsx`
 - Create: `src_frontend/src/pages/vendor/VendorPerformancePage.test.tsx`
 
-- [ ] **Step 1: 寫月份、純讀與 query count RED 測試**
+- [x] **Step 1: 寫月份、純讀與 query count RED 測試**
 
 ```python
 @pytest.mark.parametrize("period", ["abc", "2026-00", "2026-13", "2026-1", "26-01"])
@@ -983,13 +983,13 @@ def test_list_query_count_is_constant(app, vendors):
 
 GET 測試 monkeypatch `db.session.commit` 為會拋錯，仍須 200，證明純讀不 commit。
 
-- [ ] **Step 2: 執行 RED 測試**
+- [x] **Step 2: 執行 RED 測試**
 
 Run: `C:\QC_Database\venv\Scripts\python.exe -m pytest backend/tests/test_services/test_vendor_performance.py -q`
 
 Expected: FAIL；月份 slice 可接受無效值，GET 逐廠商查詢並寫 snapshot。
 
-- [ ] **Step 3: 實作嚴格月份與集合式計算**
+- [x] **Step 3: 實作嚴格月份與集合式計算**
 
 ```python
 PERIOD_RE = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
@@ -1005,15 +1005,15 @@ def parse_period(value: str) -> PeriodWindow:
 
 以三個集合查詢取得 shipping、CAPA、complaint 聚合，再在 Python 只對聚合 row 計分。`list_by_period()` 回即時計算結果、不 add、不 commit。
 
-- [ ] **Step 4: 新增明確 refresh mutation**
+- [x] **Step 4: 新增明確 refresh mutation**
 
 `POST /api/vendor-performance/refresh`，body `{ "period": "2026-08" }`，需 `vendor.manage`。service 以 `(vendor_id, period)` 唯一鍵 bulk upsert，單一 transaction commit；競爭衝突 rollback 後回 409。
 
-- [ ] **Step 5: 前端 refresh 後精確 invalidation**
+- [x] **Step 5: 前端 refresh 後精確 invalidation**
 
 mutation success 只 invalidates `['vendor-performance', period]` 與該 period ranking；history query key 含 vendor id 與 months。
 
-- [ ] **Step 6: 驗證與提交**
+- [x] **Step 6: 驗證與提交**
 
 Run: `C:\QC_Database\venv\Scripts\python.exe -m pytest backend/tests/test_services/test_vendor_performance.py backend/tests/test_permission_gating.py -q`
 
@@ -1037,7 +1037,7 @@ git commit -m "效能：以集合式查詢重整廠商績效"
 - Modify: `backend/tests/test_services/test_quality_analytics.py`
 - Modify: `backend/tests/test_route_parameter_bounds.py`
 
-- [ ] **Step 1: 寫結果等價、邊界與禁止完整 ORM 載入測試**
+- [x] **Step 1: 寫結果等價、邊界與禁止完整 ORM 載入測試**
 
 ```python
 def test_pareto_uses_grouped_columns_only(db_session, seeded_ncmrs, monkeypatch):
@@ -1056,13 +1056,13 @@ def test_pareto_uses_grouped_columns_only(db_session, seeded_ncmrs, monkeypatch)
 
 另測 SQLite/PostgreSQL month expression、CAPA aging bucket、overdue limit 1..100、top_n 1..50、日期範圍最多 366 天。
 
-- [ ] **Step 2: 執行 RED 測試**
+- [x] **Step 2: 執行 RED 測試**
 
 Run: `C:\QC_Database\venv\Scripts\python.exe -m pytest backend/tests/test_services/test_quality_analytics.py backend/tests/test_route_parameter_bounds.py -q`
 
 Expected: FAIL；Pareto/trend/repeat 仍 `.all()` 完整 ORM 後 Python 聚合。
 
-- [ ] **Step 3: 改為欄位級 GROUP BY**
+- [x] **Step 3: 改為欄位級 GROUP BY**
 
 ```python
 rows = db.session.query(
@@ -1075,11 +1075,11 @@ rows = db.session.query(
 
 月份 adapter 重用 `DashboardService` 可抽出的 `_month_expr`，移到 `date_range.py` 的 `month_bucket(column)`，SQLite 用 `strftime`、PostgreSQL 用 `to_char`。CAPA aging 以 `case()` + `avg()` 聚合；逾期只 select 顯示欄位並 limit。
 
-- [ ] **Step 4: vendor ranking 重用 VendorPerformanceService**
+- [x] **Step 4: vendor ranking 重用 VendorPerformanceService**
 
 只呼叫 `VendorPerformanceService.list_by_period(parse_period(period))`，不複製評分公式；route 使用 bounded parser 並只捕捉 ValidationError。
 
-- [ ] **Step 5: 驗證與提交**
+- [x] **Step 5: 驗證與提交**
 
 Run: `C:\QC_Database\venv\Scripts\python.exe -m pytest backend/tests/test_services/test_quality_analytics.py backend/tests/test_route_parameter_bounds.py -q`
 

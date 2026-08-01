@@ -7,19 +7,15 @@ from sqlalchemy import and_, case, func, or_
 
 from ..extensions import db
 from ..models import CorrectiveAction, NCMR, PatrolMain, ReworkRequest, ShippingData
-from .date_range import DateWindow
+from .date_range import DateWindow, month_bucket
 
 REWORK_TERMINAL_STATUSES = {'已完成', '已結案', '已拒絕', '撤銷'}
 REWORK_ACTIONABLE_STATUSES = {'待審核', '已通過', '進行中'}
 
 
 def _month_expr(column: Any):
-    """依資料庫方言產生 YYYY-MM 聚合欄位，讓測試 SQLite 與正式 PostgreSQL 都可執行。"""
-    bind = db.session.get_bind()
-    dialect = bind.dialect.name if bind else ''
-    if dialect == 'sqlite':
-        return func.strftime('%Y-%m', column)
-    return func.to_char(column, 'YYYY-MM')
+    """依資料庫方言產生 YYYY-MM 聚合欄位（委派至 date_range.month_bucket）。"""
+    return month_bucket(column)
 
 
 def _month_counts(model, date_column, since, *filters) -> dict[str, int]:

@@ -3,6 +3,19 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from typing import Any, Mapping
 
+from sqlalchemy import func
+
+
+def month_bucket(column: Any) -> Any:
+    """依資料庫方言產生 YYYY-MM 聚合欄位：SQLite 用 strftime、PostgreSQL 用 to_char。"""
+    from ..extensions import db
+
+    bind = db.session.get_bind()
+    dialect = bind.dialect.name if bind else ''
+    if dialect == 'sqlite':
+        return func.strftime('%Y-%m', column)
+    return func.to_char(column, 'YYYY-MM')
+
 
 @dataclass(frozen=True)
 class DateWindow:

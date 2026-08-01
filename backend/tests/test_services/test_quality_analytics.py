@@ -1,5 +1,7 @@
 import datetime as dt
 
+from sqlalchemy import event
+
 from backend.extensions import db
 from backend.models import CorrectiveAction, CustomerComplaint, NCMR, ShippingData, Vendor
 from backend.services.quality_analytics_service import QualityAnalyticsService
@@ -166,3 +168,117 @@ def test_vendor_ranking_orders_worst_vendor_first(app, db_session):
         assert result[0]['vendor_name'] == '供應商A'
         assert result[0]['defect_rate'] == 100.0
         assert result[1]['vendor_name'] == '供應商B'
+
+
+def _capture_sql(db_session):
+    """註冊 before_cursor_execute 監聽，回傳收集到的 SQL 清單與 listener。"""
+    statements = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(db_session.get_bind(), "before_cursor_execute", capture)
+    return statements, capture
+
+
+def test_pareto_aggregates_in_sql_with_group_by(app, db_session):
+    """Pareto 應以 SQL GROUP BY 聚合，且不得 SELECT 整列實體（不得拉回『不良描述』）。"""
+    with app.app_context():
+        db_session.add_all([
+            _make_ncmr('NCMR-S1', dt.date(2026, 5, 1), '尺寸', '外徑過大'),
+            _make_ncmr('NCMR-S2', dt.date(2026, 5, 2), '尺寸', '內徑過小'),
+            _make_ncmr('NCMR-S3', dt.date(2026, 5, 3), '外觀', '刮傷'),
+        ])
+        db_session.commit()
+
+        statements, capture = _capture_sql(db_session)
+        try:
+            result = QualityAnalyticsService.pareto(
+                source='ncmr',
+                field='category',
+                date_from=dt.date(2026, 5, 1),
+                date_to=dt.date(2026, 5, 31),
+                limit=10,
+            )
+        finally:
+            event.remove(db_session.get_bind(), "before_cursor_execute", capture)
+
+        # 結果等價
+        assert result['total'] == 3
+        assert result['items'][0]['label'] == '尺寸'
+        assert result['items'][0]['count'] == 2
+        # SQL 層面：聚合必須下推資料庫
+        assert any('GROUP BY' in s.upper() for s in statements)
+        # 欄位級聚合：不得 SELECT 整列實體（『不良描述』為 NCMR.description 欄位名）
+        assert all('不良描述' not in s for s in statements)
+
+
+def test_defect_trends_buckets_by_month_in_sql(app, db_session):
+    """趨勢應以 SQL 月份函數分桶（sqlite strftime / postgres to_char），而非 Python strftime。"""
+    with app.app_context():
+        db_session.add_all([
+            _make_ncmr('NCMR-B1', dt.date(2026, 4, 10), '尺寸', '外徑過大'),
+            _make_ncmr('NCMR-B2', dt.date(2026, 5, 10), '尺寸', '外徑過大'),
+            _make_ncmr('NCMR-B3', dt.date(2026, 5, 11), '外觀', '刮傷'),
+        ])
+        db_session.commit()
+
+        statements, capture = _capture_sql(db_session)
+        try:
+            result = QualityAnalyticsService.defect_trends(
+                source='ncmr',
+                date_from=dt.date(2026, 4, 1),
+                date_to=dt.date(2026, 5, 31),
+                top_n=2,
+            )
+        finally:
+            event.remove(db_session.get_bind(), "before_cursor_execute", capture)
+
+        assert result['months'] == ['2026-04', '2026-05']
+        size_series = next(s for s in result['series'] if s['label'] == '尺寸')
+        assert size_series['data'] == [1, 1]
+        # SQL 層面：月份分桶必須在資料庫執行
+        assert any('strftime' in s.lower() or 'to_char' in s.lower() for s in statements)
+
+
+def test_capa_aging_respects_overdue_limit(app, db_session):
+    """capa_aging 應支援 overdue_limit 上限，逾期清單不得超過指定筆數。"""
+    with app.app_context():
+        today = dt.date(2026, 5, 30)
+        db_session.add_all([
+            CorrectiveAction(
+                eight_d_number=f'CAPA-O{i}',
+                status='進行中',
+                created_at=dt.datetime(2026, 5, 1, tzinfo=dt.timezone.utc),
+                d0_deadline=dt.date(2026, 5, 10),
+            )
+            for i in range(1, 4)
+        ])
+        db_session.commit()
+
+        result = QualityAnalyticsService.capa_aging(today=today, overdue_limit=2)
+
+        assert result['overdue_count'] == 3
+        assert len(result['overdue_items']) == 2
+
+
+def test_repeat_issues_selects_grouped_columns_only(app, db_session):
+    """重複問題 NCMR 聚合不應 SELECT 整列實體（SQL 不得含『不良描述』欄位）。"""
+    with app.app_context():
+        db_session.add_all([
+            _make_ncmr('NCMR-RR1', dt.date(2026, 5, 1), '尺寸', '外徑過大'),
+            _make_ncmr('NCMR-RR2', dt.date(2026, 5, 3), '尺寸', '外徑過大'),
+        ])
+        db_session.commit()
+
+        statements, capture = _capture_sql(db_session)
+        try:
+            result = QualityAnalyticsService.repeat_issues(
+                date_from=dt.date(2026, 5, 1),
+                date_to=dt.date(2026, 5, 31),
+            )
+        finally:
+            event.remove(db_session.get_bind(), "before_cursor_execute", capture)
+
+        assert result['ncmr'][0]['count'] == 2
+        assert all('不良描述' not in s for s in statements)
