@@ -3,6 +3,7 @@ from flask import Blueprint, jsonify, request
 from ..extensions import db
 from ..services.complaint_service import ComplaintService
 from ..services.complaint_stats_service import ComplaintStatsService
+from ..authorization import require_permissions
 from ..utils import auth_required, bounded_int, parse_optional_date, require_permission, log_audit
 
 complaint_bp = Blueprint('complaint', __name__)
@@ -11,6 +12,7 @@ complaint_bp = Blueprint('complaint', __name__)
 # ── 列表 / 建立 ───────────────────────────────────────────────
 @complaint_bp.route('/api/complaints', methods=['GET'])
 @auth_required
+@require_permission('complaint.view')
 def list_complaints(current_user):
     """GET /api/complaints — 客訴列表，支援多維篩選"""
     try:
@@ -35,6 +37,7 @@ def list_complaints(current_user):
 
 @complaint_bp.route('/api/complaints', methods=['POST'])
 @auth_required
+@require_permission('complaint.create')
 def create_complaint(current_user):
     """POST /api/complaints — 新增客訴"""
     data = request.get_json() or {}
@@ -50,6 +53,7 @@ def create_complaint(current_user):
 # ── 單筆操作 ─────────────────────────────────────────────────
 @complaint_bp.route('/api/complaints/<int:complaint_id>', methods=['GET'])
 @auth_required
+@require_permission('complaint.view')
 def get_complaint(current_user, complaint_id: int):
     """GET /api/complaints/<id>"""
     c = ComplaintService.get_detail(complaint_id)
@@ -60,6 +64,7 @@ def get_complaint(current_user, complaint_id: int):
 
 @complaint_bp.route('/api/complaints/<int:complaint_id>', methods=['PUT'])
 @auth_required
+@require_permission('complaint.edit')
 def update_complaint(current_user, complaint_id: int):
     """PUT /api/complaints/<id>"""
     data = request.get_json() or {}
@@ -91,6 +96,7 @@ def delete_complaint(current_user, complaint_id: int):
 # ── 開立 CAPA ────────────────────────────────────────────────
 @complaint_bp.route('/api/complaints/<int:complaint_id>/open-capa', methods=['POST'])
 @auth_required
+@require_permissions('complaint.edit', 'capa.create')
 def open_capa_from_complaint(current_user, complaint_id: int):
     """POST /api/complaints/<id>/open-capa — 從客訴開立 CAPA"""
     try:
@@ -121,6 +127,7 @@ def open_capa_from_complaint(current_user, complaint_id: int):
 # ── 從客訴開立重工 ────────────────────────────────────────────
 @complaint_bp.route('/api/complaints/<int:complaint_id>/open-rework', methods=['POST'])
 @auth_required
+@require_permissions('complaint.edit', 'rework.create')
 def open_rework_from_complaint(current_user, complaint_id: int):
     """POST /api/complaints/<id>/open-rework — 從客訴開立重工申請單"""
     try:
@@ -135,6 +142,7 @@ def open_rework_from_complaint(current_user, complaint_id: int):
 # ── Dashboard 快查 ───────────────────────────────────────────
 @complaint_bp.route('/api/complaints/overdue', methods=['GET'])
 @auth_required
+@require_permission('complaint.view')
 def overdue_complaints(current_user):
     """GET /api/complaints/overdue — 逾期客訴列表"""
     return jsonify(ComplaintService.overdue_list()), 200
@@ -142,6 +150,7 @@ def overdue_complaints(current_user):
 
 @complaint_bp.route('/api/complaints/recent-repeats', methods=['GET'])
 @auth_required
+@require_permission('complaint.view')
 def recent_repeat_complaints(current_user):
     """GET /api/complaints/recent-repeats — 近 30 天重複客訴"""
     days = bounded_int(request.args.get('days'), 30, 1, 365)
@@ -151,6 +160,7 @@ def recent_repeat_complaints(current_user):
 # ── 統計 ─────────────────────────────────────────────────────
 @complaint_bp.route('/api/complaints/stats/by-customer', methods=['GET'])
 @auth_required
+@require_permission('complaint.view')
 def stats_by_customer(current_user):
     df, dt = _date_params()
     return jsonify(ComplaintStatsService.by_customer(df, dt)), 200
@@ -158,6 +168,7 @@ def stats_by_customer(current_user):
 
 @complaint_bp.route('/api/complaints/stats/by-product', methods=['GET'])
 @auth_required
+@require_permission('complaint.view')
 def stats_by_product(current_user):
     df, dt = _date_params()
     return jsonify(ComplaintStatsService.by_product(df, dt)), 200
@@ -165,6 +176,7 @@ def stats_by_product(current_user):
 
 @complaint_bp.route('/api/complaints/stats/by-category', methods=['GET'])
 @auth_required
+@require_permission('complaint.view')
 def stats_by_category(current_user):
     df, dt = _date_params()
     return jsonify(ComplaintStatsService.by_category(df, dt)), 200
@@ -172,6 +184,7 @@ def stats_by_category(current_user):
 
 @complaint_bp.route('/api/complaints/stats/by-month', methods=['GET'])
 @auth_required
+@require_permission('complaint.view')
 def stats_by_month(current_user):
     df, dt = _date_params()
     return jsonify(ComplaintStatsService.by_month(df, dt)), 200
@@ -179,6 +192,7 @@ def stats_by_month(current_user):
 
 @complaint_bp.route('/api/complaints/stats/warranty', methods=['GET'])
 @auth_required
+@require_permission('complaint.view')
 def stats_warranty(current_user):
     df, dt = _date_params()
     return jsonify(ComplaintStatsService.warranty_stats(df, dt)), 200

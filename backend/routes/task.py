@@ -14,6 +14,7 @@ task_bp = Blueprint('task', __name__)
 
 @task_bp.route('/api/tasks', methods=['GET'])
 @auth_required
+@require_permission('task.view')
 def list_tasks(current_user):
     """GET /api/tasks — 任務列表，支援多維篩選"""
     try:
@@ -37,6 +38,7 @@ def list_tasks(current_user):
 
 @task_bp.route('/api/tasks/my', methods=['GET'])
 @auth_required
+@require_permission('task.view')
 def my_tasks(current_user):
     """GET /api/tasks/my — 當前使用者的未完成待辦"""
     try:
@@ -113,6 +115,7 @@ def delete_task(current_user, task_id: int):
 
 @task_bp.route('/api/tasks/check-gate', methods=['GET'])
 @auth_required
+@require_permission('task.view')
 def check_close_gate(current_user):
     """GET /api/tasks/check-gate?source_type=capa&source_id=1 — D8 結案前 gate 確認"""
     source_type = request.args.get('source_type')

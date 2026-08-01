@@ -6,6 +6,7 @@ patrol_bp = Blueprint('patrol', __name__)
 
 @patrol_bp.route('/api/patrol/options')
 @auth_required
+@require_perm('patrol.view')
 def patrol_options():
     try:
         options = PatrolService.get_options()
@@ -15,6 +16,7 @@ def patrol_options():
 
 @patrol_bp.route('/api/patrol/spc')
 @auth_required
+@require_perm('patrol.view')
 def patrol_spc():
     try:
         data = PatrolService.get_spc(request.args)
@@ -35,6 +37,7 @@ def patrol_live_limits():
 
 @patrol_bp.route('/api/patrol/detail/<int:id>')
 @auth_required
+@require_perm('patrol.view')
 def patrol_detail(id):
     try:
         data = PatrolService.get_detail(id)
@@ -46,6 +49,7 @@ def patrol_detail(id):
 
 @patrol_bp.route('/api/patrol/<int:main_id>/details', methods=['GET'])
 @auth_required
+@require_perm('patrol.view')
 def get_patrol_details_route(main_id):
     """取得單筆巡檢記錄的量測明細（含離群標記）"""
     try:
@@ -77,6 +81,7 @@ def set_patrol_detail_exclusion_route(detail_id):
 
 @patrol_bp.route('/api/patrol/control-limits', methods=['GET'])
 @auth_required
+@require_perm('patrol.view')
 def get_patrol_control_limits_route():
     """查詢巡檢管制界限凍結狀態（AIAG-VDA SPC 2026 §9.4）"""
     try:
@@ -96,6 +101,7 @@ def get_patrol_control_limits_route():
 
 @patrol_bp.route('/api/patrol/control-limits', methods=['POST'])
 @auth_required
+@require_perm('patrol.view')
 def freeze_patrol_control_limits_route():
     """舊凍結流程已停用；正式界限必須走研究送審與核准。"""
     return jsonify({
@@ -107,6 +113,7 @@ def freeze_patrol_control_limits_route():
 
 @patrol_bp.route('/api/patrol/control-limits', methods=['DELETE'])
 @auth_required
+@require_perm('patrol.view')
 def unfreeze_patrol_control_limits_route():
     """舊凍結流程已停用；正式界限必須走研究送審與核准。"""
     return jsonify({
@@ -157,6 +164,7 @@ def patrol_delete():
 
 @patrol_bp.route('/api/patrol/history')
 @auth_required
+@require_perm('patrol.view')
 def patrol_history():
     try:
         result = PatrolService.get_history(request.args)
@@ -166,6 +174,7 @@ def patrol_history():
 
 @patrol_bp.route('/api/patrol/export')
 @auth_required
+@require_perm('patrol.view')
 def patrol_export():
     try:
         # 動態檔名：包含測量項目與位置資訊

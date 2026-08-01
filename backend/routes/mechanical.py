@@ -40,6 +40,7 @@ def _json_object():
 
 @mechanical_bp.route('/api/mechanical/tests', methods=['GET'])
 @auth_required
+@require_perm('mechanical.view')
 def list_tests():
     """機械性質檢驗清單查詢"""
     try:
@@ -50,6 +51,7 @@ def list_tests():
 
 @mechanical_bp.route('/api/mechanical/tests/<int:test_id>', methods=['GET'])
 @auth_required
+@require_perm('mechanical.view')
 def get_test(test_id):
     """取得單筆機械性質檢驗明細"""
     try:
@@ -134,6 +136,7 @@ def import_tests():
 
 @mechanical_bp.route('/api/mechanical/stats', methods=['GET'])
 @auth_required
+@require_perm('mechanical.view')
 def get_stats():
     """機械性質即時 SPC 預覽（供頁面內嵌圖表使用）"""
     try:
@@ -144,6 +147,7 @@ def get_stats():
 
 @mechanical_bp.route('/api/mechanical/spec', methods=['GET'])
 @auth_required
+@require_perm('mechanical.view')
 def get_spec():
     """依材質+尺寸查規格下限（供表單即時顯示）"""
     from ..services.mechanical_spec import lookup_lower_limits
@@ -161,6 +165,7 @@ def get_spec():
 
 @mechanical_bp.route('/api/mechanical/options', methods=['GET'])
 @auth_required
+@require_perm('mechanical.view')
 def get_options():
     """取得指定廠商公差中受控且去重的材質與尺寸建議。"""
     try:

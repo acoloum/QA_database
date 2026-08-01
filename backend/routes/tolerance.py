@@ -7,6 +7,7 @@ tolerance_bp = Blueprint('tolerance', __name__)
 
 @tolerance_bp.route('/api/tolerance/search', methods=['GET'])
 @auth_required
+@require_permission('tolerance.view')
 def search_tolerance():
     """
     查詢公差資料
@@ -60,6 +61,7 @@ def search_tolerance():
 
 @tolerance_bp.route('/api/tolerance/<int:id>', methods=['GET'])
 @auth_required
+@require_permission('tolerance.view')
 def get_tolerance_detail(id):
     """
     獲取單筆公差詳細資料
@@ -129,6 +131,7 @@ def delete_tolerance(current_user, id):
 
 @tolerance_bp.route('/api/tolerance/options', methods=['GET'])
 @auth_required
+@require_permission('tolerance.view')
 def get_tolerance_options():
     """獲取公差選項資料"""
     try:
@@ -139,6 +142,7 @@ def get_tolerance_options():
 
 @tolerance_bp.route('/api/tolerance/export', methods=['GET'])
 @auth_required
+@require_permission('tolerance.view')
 def export_tolerance_excel():
     """匯出公差資料為 Excel"""
     try:
@@ -150,6 +154,7 @@ def export_tolerance_excel():
 
 @tolerance_bp.route('/api/tolerance/check', methods=['GET'])
 @auth_required
+@require_permission('tolerance.view')
 def check_tolerance():
     """根據廠商+材質+規格查詢公差標準，用於出貨檢驗驗證"""
     try:

@@ -11,6 +11,7 @@ capa_bp = Blueprint('capa', __name__)
 # ── 列表 ─────────────────────────────────────────────────────
 @capa_bp.route('/api/capas', methods=['GET'])
 @auth_required
+@require_permission('capa.view')
 def list_capas(current_user):
     """GET /api/capas — CAPA 列表，支援多維篩選"""
     try:
@@ -33,6 +34,7 @@ def list_capas(current_user):
 # ── 逾期查詢（Dashboard 用）──────────────────────────────────
 @capa_bp.route('/api/capas/overdue', methods=['GET'])
 @auth_required
+@require_permission('capa.view')
 def overdue_capas(current_user):
     """GET /api/capas/overdue — 依 D0 客戶要求結案日計算逾期 CAPA"""
     try:
@@ -52,6 +54,7 @@ def overdue_capas(current_user):
 # ── 單筆明細 ─────────────────────────────────────────────────
 @capa_bp.route('/api/capas/<int:capa_id>', methods=['GET'])
 @auth_required
+@require_permission('capa.view')
 def get_capa(current_user, capa_id: int):
     """GET /api/capas/<id> — CAPA 明細"""
     detail = CAPAService.get_detail(capa_id)
@@ -93,6 +96,7 @@ def update_step(current_user, capa_id: int):
 # ── D6 Gate 檢查 ─────────────────────────────────────────────
 @capa_bp.route('/api/capas/<int:capa_id>/d6-gate', methods=['GET'])
 @auth_required
+@require_permission('capa.view')
 def check_d6_gate(current_user, capa_id: int):
     """GET /api/capas/<id>/d6-gate — 查詢 D6 驗證是否通過"""
     try:
@@ -105,6 +109,7 @@ def check_d6_gate(current_user, capa_id: int):
 # ── 結案 Gate 檢查 ────────────────────────────────────────────
 @capa_bp.route('/api/capas/<int:capa_id>/close-gate', methods=['GET'])
 @auth_required
+@require_permission('capa.view')
 def check_close_gate(current_user, capa_id: int):
     """GET /api/capas/<id>/close-gate — 查詢 D8 結案 gate（任務狀態）"""
     try:
@@ -171,6 +176,7 @@ def delete_capa(current_user, capa_id: int):
 # ── 報表下載 ────────────────────────────────────────────────────
 @capa_bp.route('/api/capas/<int:capa_id>/report/pdf', methods=['GET'])
 @auth_required
+@require_permission('capa.view')
 def download_pdf(current_user, capa_id: int):
     """GET /api/capas/<id>/report/pdf — 下載 AIAG 8D 報表 PDF"""
     detail = CAPAService.get_detail(capa_id)
@@ -193,6 +199,7 @@ def download_pdf(current_user, capa_id: int):
 
 @capa_bp.route('/api/capas/<int:capa_id>/report/excel', methods=['GET'])
 @auth_required
+@require_permission('capa.view')
 def download_excel(current_user, capa_id: int):
     """GET /api/capas/<id>/report/excel — 下載 AIAG 8D 報表 Excel"""
     detail = CAPAService.get_detail(capa_id)

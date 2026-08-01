@@ -8,6 +8,7 @@ extrusion_tolerance_bp = Blueprint('extrusion_tolerance', __name__)
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/search', methods=['GET'])
 @auth_required
+@require_perm('tolerance.view')
 def search():
     """查詢擠壓公差列表"""
     try:
@@ -18,6 +19,7 @@ def search():
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/<int:id>', methods=['GET'])
 @auth_required
+@require_perm('tolerance.view')
 def get_detail(id):
     """取得單筆擠壓公差詳細"""
     try:
@@ -68,6 +70,7 @@ def delete(id):
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/options', methods=['GET'])
 @auth_required
+@require_perm('tolerance.view')
 def get_options():
     """取得材質、規格選項"""
     try:
@@ -78,6 +81,7 @@ def get_options():
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/check', methods=['GET'])
 @auth_required
+@require_perm('tolerance.view')
 def check():
     """依材質+規格查詢對應公差（供巡檢 NG 比對用）"""
     try:

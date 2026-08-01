@@ -4,8 +4,10 @@ from functools import wraps
 
 from flask import jsonify
 
+from ..authorization import require_permissions
+from ..errors import AuthorizationError
 from ..services.msa_errors import MsaServiceError
-from ..utils import auth_required, require_permission, role_grants_permission
+from ..utils import auth_required, role_grants_permission
 
 
 def handle_msa_errors(function):
@@ -49,7 +51,7 @@ def require_msa_permission(permission: str):
     """先拒絕不存在或已停用帳號，再套用既有角色權限判定。"""
 
     def decorator(function):
-        guarded = require_permission(permission)(function)
+        guarded = require_permissions(permission)(function)
 
         @wraps(function)
         def wrapped(current_user, *args, **kwargs):
@@ -79,7 +81,21 @@ def require_msa_permission(permission: str):
                     ),
                     401,
                 )
-            result = guarded(current_user, *args, **kwargs)
+            try:
+                result = guarded(current_user, *args, **kwargs)
+            except AuthorizationError:
+                return (
+                    jsonify(
+                        {
+                            "error": {
+                                "code": "MSA_PERMISSION_DENIED",
+                                "message": "權限不足",
+                                "details": {"permission": permission},
+                            }
+                        }
+                    ),
+                    403,
+                )
             if isinstance(result, tuple) and len(result) == 2:
                 response, status_code = result
                 # 只改寫「權限檢查本身」產生的 403。服務層的 403
@@ -100,6 +116,8 @@ def require_msa_permission(permission: str):
                     )
             return result
 
+        wrapped.__authorization_guards__ = guarded.__authorization_guards__
+        wrapped.__required_permissions__ = guarded.__required_permissions__
         return wrapped
 
     return decorator

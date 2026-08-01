@@ -1,9 +1,13 @@
 """附件路由 — 上傳、查詢、下載、刪除"""
+from functools import wraps
+
 from flask import Blueprint, jsonify, request, send_file, redirect
 from typing import Optional
 from ..services.attachment_service import AttachmentService
 from ..services.attachment_service import MSA_ATTACHMENT_ENTITY_TYPES
 from ..services.msa_errors import MsaInternalError, MsaServiceError
+from ..authorization import require_permissions
+from ..errors import AuthorizationError
 from ..utils import auth_required
 from ..models import Role
 
@@ -112,6 +116,37 @@ def _msa_service_error(error: MsaServiceError):
     )
 
 
+def _preserve_attachment_authorization_contract(function):
+    """將中央權限拒絕翻譯為已公開的 MSA 附件錯誤契約。"""
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        try:
+            return function(*args, **kwargs)
+        except AuthorizationError:
+            entity_type = request.form.get('entity_type')
+            if not entity_type and kwargs.get('att_id') is not None:
+                attachment = AttachmentService.get_by_id(kwargs['att_id'])
+                entity_type = attachment.get('entity_type') if attachment else None
+            if entity_type in MSA_ATTACHMENT_ENTITY_TYPES:
+                required = (
+                    'calibration.execute、calibration.manage 或 msa.manage'
+                    if entity_type == 'equipment_calibration'
+                    else 'msa.manage'
+                )
+                return _msa_error(
+                    'MSA_ATTACHMENT_PERMISSION_DENIED',
+                    '權限不足',
+                    403,
+                    details={
+                        'entity_type': entity_type,
+                        'permission': required,
+                    },
+                )
+            raise
+
+    return wrapped
+
+
 def _missing_attachment_error(att_id: int):
     """只有呼叫端明確提供 MSA 實體 context 時才使用 MSA 契約。"""
     entity_type = request.args.get('entity_type')
@@ -127,6 +162,12 @@ def _missing_attachment_error(att_id: int):
 
 @attachment_bp.route('/api/attachments/upload', methods=['POST'])
 @auth_required
+@_preserve_attachment_authorization_contract
+@require_permissions(
+    'capa.edit', 'task.edit', 'complaint.edit', 'pyrometry.edit',
+    'msa.manage', 'calibration.execute', 'calibration.manage',
+    mode='any',
+)
 def upload_attachment(current_user):
     """
     POST /api/attachments/upload
@@ -287,6 +328,12 @@ def download_attachment(current_user, att_id: int):
 
 @attachment_bp.route('/api/attachments/<int:att_id>', methods=['DELETE'])
 @auth_required
+@_preserve_attachment_authorization_contract
+@require_permissions(
+    'capa.edit', 'task.edit', 'complaint.edit', 'pyrometry.edit',
+    'msa.manage', 'calibration.execute', 'calibration.manage',
+    mode='any',
+)
 def delete_attachment(current_user, att_id: int):
     """DELETE /api/attachments/<id>"""
     try:

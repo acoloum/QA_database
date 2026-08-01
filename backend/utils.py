@@ -173,6 +173,7 @@ def require_admin(f: Any) -> Any:
         if user.get('role') != 'admin':
             return jsonify({'error': '此操作需要管理員權限'}), 403
         return f(*args, **kwargs)
+    decorated.__admin_required__ = True
     return decorated
 
 def auth_required(f: Any) -> Any:
@@ -222,50 +223,21 @@ def auth_required(f: Any) -> Any:
 # 細粒度權限控制
 # ==================================================
 def role_grants_permission(current_user, perm: str) -> bool:
-    """判斷使用者角色是否具備指定權限（不含 is_active 判斷，呼叫端視情境自行檢查）。
-    保留既有 admin 超級管理員語意，避免尚未建立 Role 資料時鎖死管理功能。
-    """
-    if getattr(current_user, 'role', None) == 'admin':
-        return True
-    from .models import Role
-    role = Role.query.filter_by(code=current_user.role).first()
-    return bool(role and role.has_permission(perm))
+    """舊 import path 相容 alias；實作集中於 authorization。"""
+    from .authorization import role_grants_permission as grants
+    return grants(current_user, perm)
 
 
 def require_permission(perm: str):
-    """裝飾器：驗證當前使用者是否具備指定細粒度權限。
-    必須搭配 auth_required 使用，且路由函式第一個參數須為 current_user。
-    """
-    def decorator(f):
-        @wraps(f)
-        def wrapped(current_user, *args, **kwargs):
-            if current_user is None:
-                return jsonify({'success': False, 'error': '使用者不存在'}), 401
-            if not role_grants_permission(current_user, perm):
-                return jsonify({'success': False, 'error': '權限不足'}), 403
-            return f(current_user, *args, **kwargs)
-        return wrapped
-    return decorator
+    """單一權限相容 alias，不再依賴 route 函式參數。"""
+    from .authorization import require_permission as centralized
+    return centralized(perm)
 
 
 def require_perm(perm: str):
-    """權限裝飾器（舊式路由用）：依 request.user 的角色檢查權限，毋需注入 current_user，
-    因此可直接疊加在既有路由上而不改動函式簽名。須緊接在 @auth_required 之後（其下方）使用。
-    admin 角色一律放行，保留超級管理員語意。
-    """
-    def decorator(f):
-        @wraps(f)
-        def wrapped(*args, **kwargs):
-            user = getattr(request, 'user', {}) or {}
-            role_code = user.get('role')
-            if role_code == 'admin':
-                return f(*args, **kwargs)
-            permissions = user.get('permissions') or {}
-            if not permissions.get(perm):
-                return jsonify({'success': False, 'error': '權限不足'}), 403
-            return f(*args, **kwargs)
-        return wrapped
-    return decorator
+    """舊式名稱相容 alias，與 require_permission 共用同一實作。"""
+    from .authorization import require_perm as centralized
+    return centralized(perm)
 
 
 # ==================================================

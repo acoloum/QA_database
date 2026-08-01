@@ -4,7 +4,7 @@ from datetime import date, datetime
 from flask import Blueprint, request
 
 from ..services.quality_analytics_service import QualityAnalyticsService
-from ..utils import api_error, api_success, auth_required
+from ..utils import api_error, api_success, auth_required, require_permission
 
 quality_analytics_bp = Blueprint('quality_analytics', __name__)
 
@@ -17,6 +17,7 @@ def _parse_date(raw: str | None) -> date | None:
 
 @quality_analytics_bp.route('/api/quality-analytics/pareto', methods=['GET'])
 @auth_required
+@require_permission('analytics.view')
 def pareto(current_user):
     try:
         data = QualityAnalyticsService.pareto(
@@ -33,6 +34,7 @@ def pareto(current_user):
 
 @quality_analytics_bp.route('/api/quality-analytics/defect-trends', methods=['GET'])
 @auth_required
+@require_permission('analytics.view')
 def defect_trends(current_user):
     try:
         data = QualityAnalyticsService.defect_trends(
@@ -48,6 +50,7 @@ def defect_trends(current_user):
 
 @quality_analytics_bp.route('/api/quality-analytics/capa-aging', methods=['GET'])
 @auth_required
+@require_permission('analytics.view')
 def capa_aging(current_user):
     try:
         return api_success(QualityAnalyticsService.capa_aging())
@@ -57,6 +60,7 @@ def capa_aging(current_user):
 
 @quality_analytics_bp.route('/api/quality-analytics/repeat-issues', methods=['GET'])
 @auth_required
+@require_permission('analytics.view')
 def repeat_issues(current_user):
     try:
         data = QualityAnalyticsService.repeat_issues(
@@ -71,6 +75,7 @@ def repeat_issues(current_user):
 
 @quality_analytics_bp.route('/api/quality-analytics/vendor-ranking', methods=['GET'])
 @auth_required
+@require_permission('analytics.view')
 def vendor_ranking(current_user):
     try:
         period = request.args.get('period', date.today().strftime('%Y-%m'))

@@ -62,7 +62,15 @@ def _decision_version(db_session, actor, stream_key):
 @pytest.fixture
 def spc_roles(db_session):
     db_session.add_all([
-        Role(code="spc_viewer", name="SPC檢視", permissions={"spc.view": True}),
+        Role(
+            code="spc_viewer",
+            name="SPC檢視",
+            permissions={
+                "spc.view": True,
+                "shipping.view": True,
+                "patrol.view": True,
+            },
+        ),
         Role(
             code="spc_manager", name="SPC管理",
             permissions={"spc.view": True, "spc.manage": True},

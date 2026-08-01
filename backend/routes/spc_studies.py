@@ -309,6 +309,7 @@ def _handle_spc_errors(function):
 
 @spc_studies_bp.post("/api/spc/studies/analyze")
 @auth_required
+@require_permission("spc.view")
 @_handle_spc_errors
 def analyze_study(current_user):
     body = request.get_json(silent=True) or {}

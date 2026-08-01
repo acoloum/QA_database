@@ -5,9 +5,10 @@ from functools import wraps
 from flask import current_app, jsonify
 from werkzeug.exceptions import HTTPException
 
-from ..models import Role
+from ..authorization import require_permissions
+from ..errors import AuthorizationError
 from ..services.calibration_errors import CalibrationServiceError
-from ..utils import auth_required, require_permission
+from ..utils import auth_required
 
 
 def handle_calibration_errors(function):
@@ -99,7 +100,7 @@ def require_calibration_permission(permission: str):
     """先拒絕不存在或已停用帳號，再套用獨立校正權限判定。"""
 
     def decorator(function):
-        guarded = require_permission(permission)(function)
+        guarded = require_permissions(permission)(function)
 
         @wraps(function)
         def wrapped(current_user, *args, **kwargs):
@@ -107,7 +108,21 @@ def require_calibration_permission(permission: str):
             if rejection is not None:
                 return rejection
 
-            result = guarded(current_user, *args, **kwargs)
+            try:
+                result = guarded(current_user, *args, **kwargs)
+            except AuthorizationError:
+                return (
+                    jsonify(
+                        {
+                            "error": {
+                                "code": "CALIBRATION_PERMISSION_DENIED",
+                                "message": "權限不足",
+                                "details": {"permission": permission},
+                            }
+                        }
+                    ),
+                    403,
+                )
             if isinstance(result, tuple) and len(result) == 2:
                 response, status_code = result
                 # 僅改寫既有權限檢查產生的 generic 403；服務層的職責
@@ -130,6 +145,8 @@ def require_calibration_permission(permission: str):
                     )
             return result
 
+        wrapped.__authorization_guards__ = guarded.__authorization_guards__
+        wrapped.__required_permissions__ = guarded.__required_permissions__
         return wrapped
 
     return decorator
@@ -141,36 +158,33 @@ def require_calibration_any_permission(*permissions: str):
         raise ValueError("至少必須指定一項權限")
 
     def decorator(function):
+        guarded = require_permissions(*permissions, mode="any")(function)
+
         @wraps(function)
         def wrapped(current_user, *args, **kwargs):
             rejection = _reject_if_user_missing_or_inactive(current_user)
             if rejection is not None:
                 return rejection
-            if current_user.role == "admin":
-                return function(current_user, *args, **kwargs)
-
-            role = Role.query.filter_by(code=current_user.role).first()
-            if role and any(
-                role.has_permission(permission)
-                for permission in permissions
-            ):
-                return function(current_user, *args, **kwargs)
-
-            return (
-                jsonify(
-                    {
-                        "error": {
-                            "code": "CALIBRATION_PERMISSION_DENIED",
-                            "message": "權限不足",
-                            "details": {
-                                "permission": " 或 ".join(permissions),
-                            },
+            try:
+                return guarded(current_user, *args, **kwargs)
+            except AuthorizationError:
+                return (
+                    jsonify(
+                        {
+                            "error": {
+                                "code": "CALIBRATION_PERMISSION_DENIED",
+                                "message": "權限不足",
+                                "details": {
+                                    "permission": " 或 ".join(permissions),
+                                },
+                            }
                         }
-                    }
-                ),
-                403,
-            )
+                    ),
+                    403,
+                )
 
+        wrapped.__authorization_guards__ = guarded.__authorization_guards__
+        wrapped.__required_permissions__ = guarded.__required_permissions__
         return wrapped
 
     return decorator

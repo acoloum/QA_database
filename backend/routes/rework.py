@@ -30,6 +30,7 @@ def rework_route_errors(context):
 
 @rework_bp.route('/api/rework/statistics', methods=['GET'])
 @auth_required
+@require_permission('rework.view')
 @rework_route_errors('Rework statistics')
 def get_rework_statistics():
     """獲取重工統計數據"""
@@ -38,6 +39,7 @@ def get_rework_statistics():
 
 @rework_bp.route('/api/rework/applications', methods=['GET'])
 @auth_required
+@require_permission('rework.view')
 @rework_route_errors('Rework applications')
 def get_rework_applications():
     """獲取重工申請列表"""
@@ -59,6 +61,7 @@ def apply_rework(current_user):
 
 @rework_bp.route('/api/rework/application/<int:rework_id>', methods=['PUT'])
 @auth_required
+@require_permission('rework.create')
 @rework_route_errors('Update rework application')
 def update_rework_application(rework_id):
     """更新重工申請單"""
@@ -83,6 +86,7 @@ def approve_rework(current_user):
 
 @rework_bp.route('/api/rework/executions', methods=['GET'])
 @auth_required
+@require_permission('rework.view')
 @rework_route_errors('Rework executions')
 def get_rework_executions():
     """獲取重工執行記錄"""
@@ -91,6 +95,7 @@ def get_rework_executions():
 
 @rework_bp.route('/api/rework/execute', methods=['POST'])
 @auth_required
+@require_permission('rework.create')
 @rework_route_errors('Execute rework')
 def execute_rework():
     """記錄重工執行"""
@@ -101,6 +106,7 @@ def execute_rework():
 
 @rework_bp.route('/api/rework/execution/<int:execution_id>', methods=['GET'])
 @auth_required
+@require_permission('rework.view')
 @rework_route_errors('Get execution')
 def get_execution(execution_id):
     """獲取單筆執行記錄"""
@@ -111,6 +117,7 @@ def get_execution(execution_id):
 
 @rework_bp.route('/api/rework/execution/<int:execution_id>', methods=['PUT'])
 @auth_required
+@require_permission('rework.create')
 @rework_route_errors('Update execution')
 def update_execution(execution_id):
     """更新執行記錄"""
@@ -121,6 +128,7 @@ def update_execution(execution_id):
 
 @rework_bp.route('/api/rework/execution/<int:execution_id>', methods=['DELETE'])
 @auth_required
+@require_permission('rework.delete')
 @rework_route_errors('Delete execution')
 def delete_execution(execution_id):
     """刪除執行記錄"""
@@ -129,6 +137,7 @@ def delete_execution(execution_id):
 
 @rework_bp.route('/api/rework/inspections', methods=['GET'])
 @auth_required
+@require_permission('rework.view')
 @rework_route_errors('Rework inspections')
 def get_rework_inspections():
     """獲取重工品檢記錄"""
@@ -138,6 +147,7 @@ def get_rework_inspections():
 
 @rework_bp.route('/api/rework/costs', methods=['GET'])
 @auth_required
+@require_permission('rework.view')
 @rework_route_errors('Rework costs')
 def get_rework_costs():
     """獲取重工成本記錄"""
@@ -147,6 +157,7 @@ def get_rework_costs():
 
 @rework_bp.route('/api/rework/cost', methods=['POST'])
 @auth_required
+@require_permission('rework.create')
 @rework_route_errors('Add rework cost')
 def add_rework_cost():
     """新增重工成本記錄"""
@@ -157,6 +168,7 @@ def add_rework_cost():
 
 @rework_bp.route('/api/rework/cost/<int:cost_id>', methods=['GET'])
 @auth_required
+@require_permission('rework.view')
 @rework_route_errors('Get rework cost')
 def get_rework_cost(cost_id):
     """獲取單筆成本記錄"""
@@ -167,6 +179,7 @@ def get_rework_cost(cost_id):
 
 @rework_bp.route('/api/rework/cost/<int:cost_id>', methods=['PUT'])
 @auth_required
+@require_permission('rework.create')
 @rework_route_errors('Update rework cost')
 def update_rework_cost(cost_id):
     """更新成本記錄"""
@@ -177,6 +190,7 @@ def update_rework_cost(cost_id):
 
 @rework_bp.route('/api/rework/cost/<int:cost_id>', methods=['DELETE'])
 @auth_required
+@require_permission('rework.delete')
 @rework_route_errors('Delete rework cost')
 def delete_rework_cost(cost_id):
     """刪除成本記錄"""
@@ -185,6 +199,7 @@ def delete_rework_cost(cost_id):
 
 @rework_bp.route('/api/rework/inspect', methods=['POST'])
 @auth_required
+@require_permission('rework.create')
 @rework_route_errors('Inspect rework')
 def inspect_rework():
     """記錄重工品檢"""
@@ -195,6 +210,7 @@ def inspect_rework():
 
 @rework_bp.route('/api/rework/inspection/<int:inspection_id>', methods=['GET'])
 @auth_required
+@require_permission('rework.view')
 @rework_route_errors('Get inspection')
 def get_inspection(inspection_id):
     """獲取單筆品檢記錄"""
@@ -205,6 +221,7 @@ def get_inspection(inspection_id):
 
 @rework_bp.route('/api/rework/inspection/<int:inspection_id>', methods=['PUT'])
 @auth_required
+@require_permission('rework.create')
 @rework_route_errors('Update inspection')
 def update_inspection(inspection_id):
     """更新品檢記錄"""
@@ -215,6 +232,7 @@ def update_inspection(inspection_id):
 
 @rework_bp.route('/api/rework/inspection/<int:inspection_id>', methods=['DELETE'])
 @auth_required
+@require_permission('rework.delete')
 @rework_route_errors('Delete inspection')
 def delete_inspection(inspection_id):
     """刪除品檢記錄"""
@@ -223,6 +241,7 @@ def delete_inspection(inspection_id):
 
 @rework_bp.route('/api/rework/close', methods=['POST'])
 @auth_required
+@require_permission('rework.approve')
 @rework_route_errors('Close rework')
 def close_rework():
     """結案重工申請"""

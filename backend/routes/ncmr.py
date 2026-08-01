@@ -1,6 +1,9 @@
 from flask import Blueprint, jsonify, request
-from marshmallow import Schema, fields, validate, ValidationError, EXCLUDE
+from marshmallow import Schema, fields, validate, ValidationError, EXCLUDE, INCLUDE
 from ..services.ncmr_service import NCMRService
+from ..authorization import can_edit_ncmr, require_permissions
+from ..errors import AuthorizationError
+from ..models import NCMR as NCMRModel
 from ..utils import auth_required, bounded_int, parse_optional_date, require_permission, log_audit
 from ..extensions import db
 
@@ -22,12 +25,24 @@ class NCMRCreateSchema(Schema):
 
 _ncmr_create_schema = NCMRCreateSchema()
 
+
+class NCMRUpdatePermissionSchema(Schema):
+    """只在授權邊界解析 ID；其餘契約由 Task 6 集中處理。"""
+    class Meta:
+        unknown = INCLUDE
+
+    識別碼 = fields.Integer(required=True)
+
+
+_ncmr_update_permission_schema = NCMRUpdatePermissionSchema()
+
 # ==================================================
 # 【不合格品管理】NCMR API
 # ==================================================
 
 @ncmr_bp.route('/api/ncmr', methods=['GET'])
 @auth_required
+@require_permission('ncmr.view')
 def get_ncmr_list():
     try:
         params = {
@@ -71,10 +86,30 @@ def add_ncmr(current_user):
 
 @ncmr_bp.route('/api/ncmr/update', methods=['POST'])
 @auth_required
-def update_ncmr():
+@require_permissions('ncmr.edit', 'ncmr.edit_own', mode='any')
+def update_ncmr(current_user):
     try:
-        NCMRService.update_ncmr(request.json)
+        payload = _ncmr_update_permission_schema.load(
+            request.get_json(silent=True) or {}
+        )
+        ncmr_id = payload['識別碼']
+        ncmr = NCMRModel.active_query().filter_by(id=ncmr_id).first()
+        if not ncmr:
+            return jsonify({"error": "找不到該筆資料"}), 404
+        if not can_edit_ncmr(current_user, ncmr):
+            raise AuthorizationError(
+                '權限不足',
+                details={
+                    'required': ['ncmr.edit', 'ncmr.edit_own'],
+                    'ownership_required': True,
+                },
+            )
+        NCMRService.update_ncmr(payload)
         return jsonify({"success": True})
+    except AuthorizationError:
+        raise
+    except ValidationError as error:
+        return jsonify({"error": "資料驗證失敗", "details": error.messages}), 400
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
@@ -101,6 +136,7 @@ def delete_ncmr(current_user):
 
 @ncmr_bp.route('/api/ncmr/source_info', methods=['GET'])
 @auth_required
+@require_permission('ncmr.view')
 def get_source_info():
     try:
         info = NCMRService.get_source_info(request.args.get('type'), request.args.get('id'))
@@ -110,6 +146,7 @@ def get_source_info():
 
 @ncmr_bp.route('/api/ncmr/<int:ncmr_id>/open-capa', methods=['POST'])
 @auth_required
+@require_permissions('ncmr.edit', 'capa.create')
 def open_capa_from_ncmr(current_user, ncmr_id):
     """POST /api/ncmr/<id>/open-capa — 從 NCMR 開立 CAPA（8D）
 
@@ -119,7 +156,6 @@ def open_capa_from_ncmr(current_user, ncmr_id):
     }
     """
     from ..services.capa_service import CAPAService
-    from ..models import NCMR as NCMRModel
     data = request.get_json() or {}
     try:
         # 使用 active_query 排除已軟刪除的 NCMR，避免對已刪除單據開立 CAPA
@@ -155,6 +191,7 @@ def open_capa_from_ncmr(current_user, ncmr_id):
 
 @ncmr_bp.route('/api/ncmr/<int:ncmr_id>', methods=['GET'])
 @auth_required
+@require_permission('ncmr.view')
 def get_ncmr_info(ncmr_id):
     try:
         info = NCMRService.get_ncmr_info(ncmr_id)
@@ -170,6 +207,7 @@ def get_ncmr_info(ncmr_id):
 
 @ncmr_bp.route('/api/ncmr/<int:ncmr_id>/dispositions', methods=['GET'])
 @auth_required
+@require_permission('ncmr.view')
 def get_dispositions(ncmr_id):
     try:
         return jsonify(NCMRService.get_dispositions(ncmr_id))
@@ -179,6 +217,7 @@ def get_dispositions(ncmr_id):
 
 @ncmr_bp.route('/api/ncmr/<int:ncmr_id>/reworks', methods=['GET'])
 @auth_required
+@require_permission('ncmr.view')
 def get_ncmr_reworks(ncmr_id):
     try:
         return jsonify(NCMRService.get_ncmr_reworks(ncmr_id))
@@ -244,6 +283,7 @@ def delete_disposition(current_user, disposition_id):
 
 @ncmr_bp.route('/api/ncmr/risk-releases', methods=['GET'])
 @auth_required
+@require_permission('ncmr.view')
 def get_risk_releases():
     try:
         return jsonify(NCMRService.get_risk_releases())
@@ -256,6 +296,7 @@ def get_risk_releases():
 
 @ncmr_bp.route('/api/capa', methods=['GET'])
 @auth_required
+@require_permission('capa.view')
 def get_capa_list():
     try:
         params = {
@@ -277,7 +318,8 @@ def get_capa_list():
 
 @ncmr_bp.route('/api/capa/create', methods=['POST'])
 @auth_required
-def create_capa():
+@require_permission('capa.create')
+def create_capa(current_user):
     try:
         result = NCMRService.create_capa(request.json)
         return jsonify({"success": True, **result})
@@ -288,6 +330,7 @@ def create_capa():
 
 @ncmr_bp.route('/api/capa/detail/<int:id>')
 @auth_required
+@require_permission('capa.view')
 def get_capa_detail(id):
     try:
         data = NCMRService.get_capa_detail(id)
@@ -299,7 +342,8 @@ def get_capa_detail(id):
 
 @ncmr_bp.route('/api/capa/update', methods=['POST'])
 @auth_required
-def update_capa():
+@require_permission('capa.edit')
+def update_capa(current_user):
     try:
         NCMRService.update_capa(request.json)
         return jsonify({"success": True})
@@ -310,7 +354,8 @@ def update_capa():
 
 @ncmr_bp.route('/api/capa/delete', methods=['POST'])
 @auth_required
-def delete_capa():
+@require_permission('capa.close')
+def delete_capa(current_user):
     try:
         capa_id = request.json.get('id')
         if not capa_id:

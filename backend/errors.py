@@ -26,6 +26,16 @@ class AuthenticationError(APIError):
     def __init__(self, message="Authentication failed", details=None):
         super().__init__(message, code="AUTH_ERROR", status_code=401, details=details)
 
+
+class AuthorizationError(APIError):
+    def __init__(self, message="權限不足", details=None):
+        super().__init__(
+            message,
+            code="AUTHORIZATION_ERROR",
+            status_code=403,
+            details=details,
+        )
+
 class NotFoundError(APIError):
     def __init__(self, message="Resource not found", details=None):
         super().__init__(message, code="NOT_FOUND", status_code=404, details=details)

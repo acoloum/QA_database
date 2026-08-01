@@ -21,7 +21,9 @@ ROLES = [
             'msa.view': True, 'msa.execute': True,
             'calibration.view': True, 'calibration.execute': True,
             'pyrometry.edit': True, 'pyrometry.view': True,
-            'task.create': True, 'task.edit': True,
+            'tolerance.view': True,
+            'mechanical.view': True, 'mechanical.create': True,
+            'task.view': True, 'task.create': True, 'task.edit': True,
         }
     },
     {
@@ -39,7 +41,9 @@ ROLES = [
             'calibration.view': True, 'calibration.execute': True,
             'calibration.manage': True,
             'pyrometry.edit': True, 'pyrometry.view': True,
-            'task.create': True, 'task.edit': True,
+            'tolerance.view': True,
+            'mechanical.view': True, 'mechanical.create': True, 'mechanical.edit': True,
+            'task.view': True, 'task.create': True, 'task.edit': True,
         }
     },
     {
@@ -51,14 +55,17 @@ ROLES = [
             'rework.create': True, 'rework.approve': True, 'rework.delete': True, 'rework.view': True,
             'complaint.create': True, 'complaint.edit': True, 'complaint.delete': True, 'complaint.view': True,
             'vendor.manage': True, 'report.view': True,
-            'tolerance.manage': True,
+            'tolerance.view': True, 'tolerance.manage': True,
+            'mechanical.view': True, 'mechanical.create': True,
+            'mechanical.edit': True, 'mechanical.delete': True,
+            'analytics.view': True, 'vendor.view': True,
             'shipping.create': True, 'shipping.edit': True, 'shipping.delete': True, 'shipping.view': True,
             'patrol.create': True, 'patrol.edit': True, 'patrol.delete': True, 'patrol.view': True,
             'spc.view': True, 'spc.manage': True, 'spc.approve': True,
             'msa.view': True, 'msa.execute': True, 'msa.manage': True, 'msa.approve': True,
             'calibration.view': True, 'calibration.approve': True,
             'pyrometry.edit': True, 'pyrometry.delete': True, 'pyrometry.view': True,
-            'task.create': True, 'task.edit': True, 'task.delete': True,
+            'task.view': True, 'task.create': True, 'task.edit': True, 'task.delete': True,
         }
     },
     {
@@ -70,7 +77,10 @@ ROLES = [
             'rework.create': True, 'rework.approve': True, 'rework.delete': True, 'rework.view': True,
             'complaint.create': True, 'complaint.edit': True, 'complaint.delete': True, 'complaint.view': True,
             'vendor.manage': True, 'report.view': True,
-            'tolerance.manage': True,
+            'tolerance.view': True, 'tolerance.manage': True,
+            'mechanical.view': True, 'mechanical.create': True,
+            'mechanical.edit': True, 'mechanical.delete': True,
+            'analytics.view': True, 'vendor.view': True,
             'shipping.create': True, 'shipping.edit': True, 'shipping.delete': True, 'shipping.view': True,
             'patrol.create': True, 'patrol.edit': True, 'patrol.delete': True, 'patrol.view': True,
             'spc.view': True, 'spc.manage': True, 'spc.approve': True,
@@ -78,7 +88,7 @@ ROLES = [
             'calibration.view': True, 'calibration.execute': True,
             'calibration.manage': True, 'calibration.approve': True,
             'pyrometry.edit': True, 'pyrometry.delete': True, 'pyrometry.view': True,
-            'task.create': True, 'task.edit': True, 'task.delete': True,
+            'task.view': True, 'task.create': True, 'task.edit': True, 'task.delete': True,
             'user.manage': True,
         }
     },

@@ -16,7 +16,8 @@ def _auth_headers(db_session, role_code, permissions):
 
 def test_create_and_list_via_api(client, db_session):
     headers = _auth_headers(db_session, 'qc', {
-        'mechanical.create': True, 'mechanical.edit': True, 'mechanical.delete': True,
+        'mechanical.view': True, 'mechanical.create': True,
+        'mechanical.edit': True, 'mechanical.delete': True,
     })
     db_session.commit()
     payload = {
@@ -94,7 +95,7 @@ def test_missing_test_remains_404(client, db_session):
 
 
 def test_get_spec_accepts_vendor_id_and_scopes_limits(client, db_session):
-    headers = _auth_headers(db_session, 'qc', {})
+    headers = _auth_headers(db_session, 'qc', {'mechanical.view': True})
     first_vendor = Vendor(name="安泰")
     second_vendor = Vendor(name="宏達")
     db_session.add_all([first_vendor, second_vendor])
@@ -118,7 +119,7 @@ def test_get_spec_accepts_vendor_id_and_scopes_limits(client, db_session):
 
 
 def test_get_spec_rejects_invalid_vendor_id(client, db_session):
-    headers = _auth_headers(db_session, 'qc', {})
+    headers = _auth_headers(db_session, 'qc', {'mechanical.view': True})
     db_session.commit()
 
     response = client.get(
@@ -130,7 +131,7 @@ def test_get_spec_rejects_invalid_vendor_id(client, db_session):
 
 
 def test_get_spec_rejects_missing_vendor(client, db_session):
-    headers = _auth_headers(db_session, 'qc', {})
+    headers = _auth_headers(db_session, 'qc', {'mechanical.view': True})
     db_session.commit()
 
     response = client.get(
@@ -142,7 +143,7 @@ def test_get_spec_rejects_missing_vendor(client, db_session):
 
 
 def test_get_options_is_vendor_scoped(client, db_session):
-    headers = _auth_headers(db_session, 'qc', {})
+    headers = _auth_headers(db_session, 'qc', {'mechanical.view': True})
     vendor = Vendor(name="安泰")
     other = Vendor(name="宏達")
     db_session.add_all([vendor, other])

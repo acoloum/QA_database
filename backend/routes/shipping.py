@@ -7,6 +7,7 @@ shipping_bp = Blueprint('shipping', __name__)
 
 @shipping_bp.route('/api/data', methods=['GET'])
 @auth_required
+@require_perm('shipping.view')
 def get_data():
     try:
         result = ShippingService.get_list(request.args)
@@ -16,6 +17,7 @@ def get_data():
 
 @shipping_bp.route('/api/data/<int:data_id>', methods=['GET'])
 @auth_required
+@require_perm('shipping.view')
 def get_shipping_data(data_id):
     """根據 ID 獲取單筆出貨檢驗資料"""
     try:
@@ -28,6 +30,7 @@ def get_shipping_data(data_id):
 
 @shipping_bp.route('/api/stats', methods=['GET'])
 @auth_required
+@require_perm('shipping.view')
 def get_shipping_stats():
     """獲取出貨檢驗的 SPC 統計數據"""
     try:
@@ -40,6 +43,7 @@ def get_shipping_stats():
 
 @shipping_bp.route('/api/data/<int:data_id>/measurements', methods=['GET'])
 @auth_required
+@require_perm('shipping.view')
 def get_shipping_measurements(data_id):
     """取得單筆出貨記錄的量測明細（含離群標記）"""
     try:
@@ -71,6 +75,7 @@ def set_measurement_exclusion(measurement_id):
 
 @shipping_bp.route('/api/control-limits', methods=['GET'])
 @auth_required
+@require_perm('spc.view')
 def get_control_limits_route():
     """查詢管制界限凍結狀態（AIAG-VDA SPC 2026 §9.4）"""
     try:
@@ -90,6 +95,7 @@ def get_control_limits_route():
 
 @shipping_bp.route('/api/control-limits', methods=['POST'])
 @auth_required
+@require_perm('spc.view')
 def freeze_control_limits_route():
     """舊凍結流程已停用；正式界限必須走研究送審與核准。"""
     return jsonify({
@@ -101,6 +107,7 @@ def freeze_control_limits_route():
 
 @shipping_bp.route('/api/control-limits', methods=['DELETE'])
 @auth_required
+@require_perm('spc.view')
 def unfreeze_control_limits_route():
     """舊凍結流程已停用；正式界限必須走研究送審與核准。"""
     return jsonify({
@@ -112,6 +119,7 @@ def unfreeze_control_limits_route():
 
 @shipping_bp.route('/api/spc-report', methods=['GET'])
 @auth_required
+@require_perm('shipping.view')
 @require_perm('spc.view')
 def export_spc_report():
     """只由不可變研究版本匯出 SPC 報告，避免混入目前來源資料。"""
@@ -210,6 +218,7 @@ def shipping_import():
 
 @shipping_bp.route('/api/export/excel')
 @auth_required
+@require_perm('shipping.view')
 def export_excel():
     try:
         output = ShippingService.export_excel(request.args)
