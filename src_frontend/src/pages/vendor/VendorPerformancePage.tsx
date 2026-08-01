@@ -1,12 +1,17 @@
 import { useState } from 'react';
-import { Container, Card, Table, Badge, Form, Row, Col, Spinner } from 'react-bootstrap';
+import { Container, Card, Table, Badge, Form, Row, Col, Spinner, Button } from 'react-bootstrap';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale, LinearScale, PointElement, LineElement,
   Title, Tooltip, Legend, Filler,
 } from 'chart.js';
-import { useVendorPerformanceList, useVendorPerformanceHistory } from '../../hooks/useVendorPerformance';
+import { useAuth } from '../../context/useAuth';
+import {
+  useVendorPerformanceList,
+  useVendorPerformanceHistory,
+  useRefreshVendorPerformance,
+} from '../../hooks/useVendorPerformance';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
@@ -20,20 +25,42 @@ const VendorPerformancePage = () => {
     `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
   );
   const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null);
+  const { hasPermission } = useAuth();
+  const refreshMutation = useRefreshVendorPerformance();
 
   const { data: list = [], isLoading } = useVendorPerformanceList(period);
   const { data: history = [] } = useVendorPerformanceHistory(selectedVendorId ?? 0);
+  const canRefresh = hasPermission('vendor.manage');
 
   return (
     <Container fluid className="py-4">
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h4 className="mb-0">廠商績效評比</h4>
-        <Form.Control
-          type="month"
-          value={period}
-          onChange={e => setPeriod(e.target.value)}
-          style={{ width: '160px' }}
-        />
+        <div className="d-flex gap-2 align-items-center">
+          {canRefresh && (
+            <Button
+              variant="outline-primary"
+              size="sm"
+              disabled={refreshMutation.isPending}
+              onClick={() => refreshMutation.mutate(period)}
+            >
+              {refreshMutation.isPending ? (
+                <>
+                  <Spinner animation="border" size="sm" className="me-1" />
+                  計算中…
+                </>
+              ) : (
+                '重新計算'
+              )}
+            </Button>
+          )}
+          <Form.Control
+            type="month"
+            value={period}
+            onChange={e => setPeriod(e.target.value)}
+            style={{ width: '160px' }}
+          />
+        </div>
       </div>
 
       <Card className="shadow-sm mb-4">

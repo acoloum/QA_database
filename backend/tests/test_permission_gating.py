@@ -393,6 +393,47 @@ def test_domain_get_requires_its_view_permission(
     assert response.status_code == 403
 
 
+def test_vendor_performance_refresh_requires_manage_permission(client, db_session):
+    """只有 vendor.view 而無 vendor.manage 時，不可觸發績效快照重算。"""
+    role_code = 'vendor_view_only'
+    db_session.add(Role(
+        code=role_code,
+        name='廠商績效唯讀',
+        permissions={'vendor.view': True},
+    ))
+    db_session.commit()
+    user = _make_user(db_session, f'{role_code}_user', role_code)
+
+    response = client.post(
+        '/api/vendor-performance/refresh',
+        headers=_headers(user),
+        json={'period': '2026-08'},
+    )
+
+    assert response.status_code == 403
+
+
+def test_vendor_performance_refresh_allowed_with_manage_permission(client, db_session):
+    """具 vendor.manage 權限時 refresh 可執行（無資料月份回 200 與 0 筆）。"""
+    role_code = 'vendor_manager'
+    db_session.add(Role(
+        code=role_code,
+        name='廠商績效管理',
+        permissions={'vendor.view': True, 'vendor.manage': True},
+    ))
+    db_session.commit()
+    user = _make_user(db_session, f'{role_code}_user', role_code)
+
+    response = client.post(
+        '/api/vendor-performance/refresh',
+        headers=_headers(user),
+        json={'period': '2026-08'},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()['data']['updated'] == 0
+
+
 @pytest.mark.parametrize(
     ('permissions', 'path'),
     [

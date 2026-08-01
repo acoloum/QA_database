@@ -32,3 +32,18 @@ def vendor_history(current_user, vendor_id: int):
         return api_success(data)
     except Exception:
         raise
+
+
+@vendor_perf_bp.route('/api/vendor-performance/refresh', methods=['POST'])
+@auth_required
+@require_permission('vendor.manage')
+def refresh_vendor_performance(current_user):
+    """POST /api/vendor-performance/refresh
+
+    body: {"period": "2026-08"}
+    以 (vendor_id, period) 唯一鍵 bulk upsert 該月份所有廠商績效快照。
+    """
+    payload = request.get_json(silent=True) or {}
+    period = payload.get('period')
+    updated = VendorPerformanceService.refresh_period(period)
+    return api_success({'period': period, 'updated': updated})
