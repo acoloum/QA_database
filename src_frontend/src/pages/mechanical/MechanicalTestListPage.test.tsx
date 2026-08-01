@@ -181,16 +181,44 @@ describe('MechanicalTestListPage', () => {
     })));
   });
 
-  it('依 create/edit/delete 權限控制操作按鈕', async () => {
+  it('缺少 create/delete 時保留停用動作與理由，edit 權限仍可用', async () => {
     authMock.mockReturnValue({
       hasPermission: (permission: string) => permission === 'mechanical.edit',
     });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderPage();
     await screen.findByText('62.5 x 2.3');
 
-    expect(screen.queryByRole('button', { name: /新增檢驗/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '編輯' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '刪除' })).not.toBeInTheDocument();
+    const importButton = screen.getByRole('button', { name: '匯入 Excel' });
+    const createButton = screen.getByRole('button', { name: /新增檢驗/ });
+    const editButton = screen.getByRole('button', { name: '編輯' });
+    const deleteButton = screen.getByRole('button', { name: '刪除' });
+    expect(importButton).toBeDisabled();
+    expect(createButton).toBeDisabled();
+    expect(editButton).toBeEnabled();
+    expect(deleteButton).toBeDisabled();
+    expect(screen.getAllByText('需要 mechanical.create 權限')).toHaveLength(2);
+    expect(screen.getByText('需要 mechanical.delete 權限')).toBeInTheDocument();
+
+    fireEvent.click(importButton);
+    fireEvent.click(createButton);
+    fireEvent.click(deleteButton);
+    expect(screen.queryByTestId('mechanical-test-form')).not.toBeInTheDocument();
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(mechanicalApi.remove).not.toHaveBeenCalled();
+  });
+
+  it('具有 create/edit/delete 時所有動作可用且新增會開啟表單', async () => {
+    renderPage();
+    await screen.findByText('62.5 x 2.3');
+
+    const create = screen.getByRole('button', { name: /新增檢驗/ });
+    expect(screen.getByRole('button', { name: '匯入 Excel' })).toBeEnabled();
+    expect(create).toBeEnabled();
+    expect(screen.getByRole('button', { name: '編輯' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '刪除' })).toBeEnabled();
+    fireEvent.click(create);
+    expect(screen.getByTestId('mechanical-test-form')).toBeInTheDocument();
   });
 
   it('確認刪除後呼叫刪除 API', async () => {

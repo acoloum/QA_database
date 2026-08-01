@@ -96,12 +96,12 @@ export default function MechanicalTestListPage() {
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h4>機械性質檢驗</h4>
         <div className="d-flex gap-2">
-          <PermissionAction permission="mechanical.create" mode="hide">
+          <PermissionAction permission="mechanical.create">
             <Button size="sm" variant="outline-secondary" onClick={() => setShowImport(true)}>
               匯入 Excel
             </Button>
           </PermissionAction>
-          <PermissionAction permission="mechanical.create" mode="hide">
+          <PermissionAction permission="mechanical.create">
             <Button size="sm" onClick={() => setEditingId('new')}>+ 新增檢驗</Button>
           </PermissionAction>
         </div>
@@ -256,7 +256,7 @@ export default function MechanicalTestListPage() {
                     </td>
                     <td>{row.免測 || '—'}</td>
                     <td>
-                      <PermissionAction permission="mechanical.edit" mode="hide"><Button
+                      <PermissionAction permission="mechanical.edit"><Button
                         size="sm"
                         variant="outline-primary"
                         className="me-1"
@@ -264,7 +264,7 @@ export default function MechanicalTestListPage() {
                       >
                         編輯
                       </Button></PermissionAction>
-                      <PermissionAction permission="mechanical.delete" mode="hide"><Button
+                      <PermissionAction permission="mechanical.delete"><Button
                         size="sm"
                         variant="outline-danger"
                         onClick={() => {

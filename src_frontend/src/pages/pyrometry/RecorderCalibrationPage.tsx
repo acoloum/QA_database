@@ -12,6 +12,7 @@ import {
   type CalibrationFieldErrors,
   type RecorderGrid,
 } from './pyrometryCalibrationPayload';
+import PermissionAction from '../../components/PermissionAction';
 
 const emptyMeta = () => ({
   編號: '', 校正日期: '', 到期日: '', 啟用狀態: true, 備註: '',
@@ -90,7 +91,7 @@ const RecorderCalibrationPage = () => {
     <div>
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h4>溫度記錄器校正</h4>
-        <Button variant="primary" size="sm" onClick={openAdd}>+ 新增</Button>
+        <PermissionAction permission="pyrometry.edit"><Button variant="primary" size="sm" onClick={openAdd}>+ 新增</Button></PermissionAction>
       </div>
       <Card>
         <Card.Body>
@@ -114,8 +115,8 @@ const RecorderCalibrationPage = () => {
                       </Badge>
                     </td>
                     <td>
-                      <Button size="sm" variant="outline-primary" className="me-1" onClick={() => openEdit(r)}>編輯</Button>
-                      <Button size="sm" variant="outline-danger" onClick={() => handleDelete(r)}>刪除</Button>
+                      <PermissionAction permission="pyrometry.edit"><Button size="sm" variant="outline-primary" className="me-1" onClick={() => openEdit(r)}>編輯</Button></PermissionAction>
+                      <PermissionAction permission="pyrometry.delete"><Button size="sm" variant="outline-danger" onClick={() => handleDelete(r)}>刪除</Button></PermissionAction>
                     </td>
                   </tr>
                 ))}
@@ -187,9 +188,9 @@ const RecorderCalibrationPage = () => {
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowModal(false)}>取消</Button>
-          <Button variant="primary" onClick={handleSave} disabled={saveMutation.isPending}>
+          <PermissionAction permission="pyrometry.edit"><Button variant="primary" onClick={handleSave} disabled={saveMutation.isPending}>
             {saveMutation.isPending ? '儲存中…' : '儲存'}
-          </Button>
+          </Button></PermissionAction>
         </Modal.Footer>
       </Modal>
       <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />

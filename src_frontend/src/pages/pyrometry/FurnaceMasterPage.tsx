@@ -16,6 +16,7 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import { buildFurnacePayload, type FurnaceFormState } from './furnaceFormPayload';
+import PermissionAction from '../../components/PermissionAction';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -64,7 +65,7 @@ const FurnaceMasterPage = () => {
     <div>
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h4>爐子設備主檔</h4>
-        <Button variant="primary" size="sm" onClick={openAdd}>+ 新增</Button>
+        <PermissionAction permission="pyrometry.edit"><Button variant="primary" size="sm" onClick={openAdd}>+ 新增</Button></PermissionAction>
       </div>
       <Card>
         <Card.Body>
@@ -94,8 +95,8 @@ const FurnaceMasterPage = () => {
                       </Badge>
                     </td>
                     <td>
-                      <Button size="sm" variant="outline-primary" className="me-1" onClick={() => openEdit(f)}>編輯</Button>
-                      <Button size="sm" variant="outline-danger" onClick={() => handleDelete(f)}>刪除</Button>
+                      <PermissionAction permission="pyrometry.edit"><Button size="sm" variant="outline-primary" className="me-1" onClick={() => openEdit(f)}>編輯</Button></PermissionAction>
+                      <PermissionAction permission="pyrometry.delete"><Button size="sm" variant="outline-danger" onClick={() => handleDelete(f)}>刪除</Button></PermissionAction>
                       <Button size="sm" variant="outline-info" className="ms-1"
                         onClick={() => { setTrendFurnaceId(f.識別碼); setShowTrend(true); }}>趨勢</Button>
                     </td>
@@ -177,13 +178,13 @@ const FurnaceMasterPage = () => {
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowModal(false)}>取消</Button>
-          <Button
+          <PermissionAction permission="pyrometry.edit"><Button
             variant="primary"
             onClick={handleSave}
             disabled={saveMutation.isPending}
           >
             {saveMutation.isPending ? '儲存中…' : '儲存'}
-          </Button>
+          </Button></PermissionAction>
         </Modal.Footer>
       </Modal>
       <Modal show={showTrend} onHide={() => setShowTrend(false)} size="lg">
