@@ -4,17 +4,34 @@ import pytest
 from flask import jsonify
 
 from backend.routes.shipping import save_data
+from backend.models import User
 from backend.services.dashboard_service import DashboardService
 from backend.services.shipping_service import ShippingService
 from backend.utils import generate_token
 
 
-def _auth_headers(**headers):
-    token = generate_token(user_id=1, username="route-error-contract")
-    return {"Authorization": f"Bearer {token}", **headers}
+@pytest.fixture
+def auth_headers(db_session):
+    user = User(
+        username="route-error-contract",
+        password="pw",
+        role="user",
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    token = generate_token(
+        user_id=user.id,
+        username=user.username,
+        role=user.role,
+        token_version=user.token_version,
+    )
+    return {"Authorization": f"Bearer {token}"}
 
 
-def test_unexpected_error_is_sanitized_even_when_legacy_route_catches_it(client, monkeypatch):
+def test_unexpected_error_is_sanitized_even_when_legacy_route_catches_it(
+    client, monkeypatch, auth_headers
+):
     """若 legacy route 自行攔截例外，正式 500 envelope 仍不可洩漏或退回字串。"""
     monkeypatch.setattr(
         DashboardService,
@@ -22,7 +39,7 @@ def test_unexpected_error_is_sanitized_even_when_legacy_route_catches_it(client,
         Mock(side_effect=RuntimeError("password=secret")),
     )
 
-    response = client.get("/api/dashboard/todos", headers=_auth_headers())
+    response = client.get("/api/dashboard/todos", headers=auth_headers)
 
     assert response.status_code == 500
     assert response.get_json() == {
@@ -33,7 +50,9 @@ def test_unexpected_error_is_sanitized_even_when_legacy_route_catches_it(client,
     assert response.headers["X-Correlation-ID"]
 
 
-def test_valid_correlation_id_is_reused_on_error_response(client, monkeypatch):
+def test_valid_correlation_id_is_reused_on_error_response(
+    client, monkeypatch, auth_headers
+):
     """若合法追蹤碼被替換，跨層 log 將無法串接同一請求。"""
     monkeypatch.setattr(
         DashboardService,
@@ -43,7 +62,7 @@ def test_valid_correlation_id_is_reused_on_error_response(client, monkeypatch):
 
     response = client.get(
         "/api/dashboard/todos",
-        headers=_auth_headers(**{"X-Correlation-ID": "trace_2026.08-01"}),
+        headers={**auth_headers, "X-Correlation-ID": "trace_2026.08-01"},
     )
 
     assert response.headers["X-Correlation-ID"] == "trace_2026.08-01"

@@ -3,11 +3,20 @@ import pytest
 from unittest.mock import patch
 from sqlalchemy.exc import SQLAlchemyError
 from backend.errors import APIError
+from backend.models import User
 from backend.utils import generate_token
 
 @pytest.fixture
-def auth_headers():
-    token = generate_token(user_id=1, username="testuser")
+def auth_headers(db_session):
+    user = User(username="testuser", password="pw", role="user", is_active=True)
+    db_session.add(user)
+    db_session.commit()
+    token = generate_token(
+        user_id=user.id,
+        username=user.username,
+        role=user.role,
+        token_version=user.token_version,
+    )
     return {'Authorization': f'Bearer {token}'}
 
 def test_api_error_handler(app, client, auth_headers):

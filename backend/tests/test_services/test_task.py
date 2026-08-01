@@ -43,7 +43,7 @@ def test_task_list_route_clamps_per_page(client, db_session):
     user = User(username='task_list_user', password='pw', role='viewer', is_active=True)
     db_session.add(user)
     db_session.commit()
-    token = generate_token(user.id, user.username, user.role)
+    token = generate_token(user.id, user.username, user.role, user.token_version)
 
     response = client.get('/api/tasks?per_page=5000', headers={'Authorization': f'Bearer {token}'})
 
@@ -55,7 +55,7 @@ def test_task_list_route_uses_default_for_invalid_page(client, db_session):
     user = User(username='task_list_bad_page', password='pw', role='viewer', is_active=True)
     db_session.add(user)
     db_session.commit()
-    token = generate_token(user.id, user.username, user.role)
+    token = generate_token(user.id, user.username, user.role, user.token_version)
 
     response = client.get('/api/tasks?page=abc', headers={'Authorization': f'Bearer {token}'})
 

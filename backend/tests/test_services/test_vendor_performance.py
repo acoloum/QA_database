@@ -57,7 +57,7 @@ def test_vendor_history_route_clamps_months(client, db_session, monkeypatch):
     vendor = Vendor(name='測試廠商_月份限制')
     db_session.add_all([user, vendor])
     db_session.commit()
-    token = generate_token(user.id, user.username, user.role)
+    token = generate_token(user.id, user.username, user.role, user.token_version)
     captured = {}
 
     def fake_history(vendor_id, months):
@@ -81,7 +81,7 @@ def test_vendor_history_route_uses_default_for_invalid_months(client, db_session
     vendor = Vendor(name='測試廠商_月份格式')
     db_session.add_all([user, vendor])
     db_session.commit()
-    token = generate_token(user.id, user.username, user.role)
+    token = generate_token(user.id, user.username, user.role, user.token_version)
     captured = {}
 
     def fake_history(vendor_id, months):

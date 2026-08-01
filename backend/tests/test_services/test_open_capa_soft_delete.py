@@ -18,7 +18,7 @@ def _auth_headers(db_session):
     )
     db_session.add(user)
     db_session.commit()
-    token = generate_token(user.id, user.username, user.role)
+    token = generate_token(user.id, user.username, user.role, user.token_version)
     return {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
 
 

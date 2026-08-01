@@ -131,7 +131,9 @@ def calibration_users(db_session):
     return {
         key: {
             "user": user,
-            "token": generate_token(user.id, user.username, user.role),
+            "token": generate_token(
+                user.id, user.username, user.role, user.token_version
+            ),
         }
         for key, user in users.items()
     }

@@ -43,7 +43,7 @@ def test_attachment_list_requires_entity_view_permission(client, db_session):
         uploaded_by=user.id,
     ))
     db_session.commit()
-    token = generate_token(user.id, user.username, user.role)
+    token = generate_token(user.id, user.username, user.role, user.token_version)
 
     resp = client.get(
         '/api/attachments?entity_type=capa&entity_id=123',

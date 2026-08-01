@@ -19,7 +19,7 @@ def _auth_header(db_session, username):
     user = User(username=username, password="pw", role="viewer", is_active=True)
     db_session.add(user)
     db_session.commit()
-    token = generate_token(user.id, user.username, user.role)
+    token = generate_token(user.id, user.username, user.role, user.token_version)
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -61,9 +61,9 @@ def test_task_list_rejects_invalid_numeric_and_date_query(client, db_session):
     date_response = client.get("/api/tasks?due_from=2026-99-99", headers=headers)
 
     assert source_response.status_code == 400
-    assert "source_id" in source_response.get_json()["error"]
+    assert "source_id" in source_response.get_json()["error"]["message"]
     assert date_response.status_code == 400
-    assert "due_from" in date_response.get_json()["error"]
+    assert "due_from" in date_response.get_json()["error"]["message"]
 
 
 def test_complaint_list_rejects_invalid_date_query(client, db_session):
@@ -72,7 +72,7 @@ def test_complaint_list_rejects_invalid_date_query(client, db_session):
     response = client.get("/api/complaints?date_from=2026-99-99", headers=headers)
 
     assert response.status_code == 400
-    assert "date_from" in response.get_json()["error"]
+    assert "date_from" in response.get_json()["error"]["message"]
 
 
 def test_shipping_list_uses_default_for_invalid_page(app):

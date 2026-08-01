@@ -141,11 +141,17 @@ def verify_password(password: str, hashed: str) -> bool:
     # Legacy SHA256 fallback for migration
     return hashlib.sha256(password.encode()).hexdigest() == hashed
 
-def generate_token(user_id: int, username: str, role: str = 'user') -> str:
+def generate_token(
+    user_id: int,
+    username: str,
+    role: str,
+    token_version: int,
+) -> str:
     payload = {
         'user_id': user_id,
         'username': username,
         'role': role,
+        'token_version': token_version,
         'exp': datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRATION_HOURS)
     }
     return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
@@ -189,16 +195,22 @@ def auth_required(f: Any) -> Any:
             return jsonify({'error': '缺少認證 Token'}), 401
         if token.startswith('Bearer '):
             token = token[7:]
-        payload = verify_token(token)
-        if not payload:
-            return jsonify({'error': '無效或過期的 Token'}), 401
-        request.user = payload
+        from .authentication import authenticate_request_token
+        from .errors import AuthenticationError
+
+        try:
+            current_user, authenticated_user = authenticate_request_token(token)
+        except AuthenticationError as error:
+            return api_error(
+                error.message,
+                401,
+                code=error.code,
+                details=error.details,
+            )
+        request.user = authenticated_user.as_request_user()
+        request.authenticated_user = authenticated_user
 
         if _inject_user:
-            # 注入 User ORM 物件供新式路由使用
-            from .models import User
-            user_id = payload.get('id') or payload.get('user_id')
-            current_user = db.session.get(User, user_id) if user_id else None
             return f(current_user, *args, **kwargs)
 
         return f(*args, **kwargs)
@@ -247,9 +259,8 @@ def require_perm(perm: str):
             role_code = user.get('role')
             if role_code == 'admin':
                 return f(*args, **kwargs)
-            from .models import Role
-            role = Role.query.filter_by(code=role_code).first() if role_code else None
-            if not role or not role.has_permission(perm):
+            permissions = user.get('permissions') or {}
+            if not permissions.get(perm):
                 return jsonify({'success': False, 'error': '權限不足'}), 403
             return f(*args, **kwargs)
         return wrapped

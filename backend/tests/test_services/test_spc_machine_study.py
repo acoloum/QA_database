@@ -121,7 +121,7 @@ def test_machine_research_approval_api_requires_approval_permission(client, app,
         )
         SpcStudyService.submit(version.id, manager.id, reason="送審機器績效研究")
         headers = {
-            "Authorization": f"Bearer {generate_token(approver.id, approver.username, approver.role)}",
+            "Authorization": f"Bearer {generate_token(approver.id, approver.username, approver.role, approver.token_version)}",
             "Content-Type": "application/json",
         }
 

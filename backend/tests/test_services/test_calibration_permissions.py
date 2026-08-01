@@ -182,13 +182,16 @@ def calibration_api():
         db.session.commit()
 
         tokens = {
-            key: generate_token(user.id, user.username, user.role)
+            key: generate_token(
+                user.id, user.username, user.role, user.token_version
+            )
             for key, user in users.items()
         }
         tokens["deleted_user"] = generate_token(
             999_999,
             "deleted_calibration_manager",
             "calibration_manager",
+            0,
         )
         yield app.test_client(), tokens, app
 

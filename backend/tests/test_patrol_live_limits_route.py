@@ -13,7 +13,7 @@ def _user(db_session, username, role_code):
 
 
 def _headers(user):
-    token = generate_token(user.id, user.username, user.role)
+    token = generate_token(user.id, user.username, user.role, user.token_version)
     return {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
 
 

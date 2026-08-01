@@ -35,7 +35,7 @@ def _user(db_session, username, role_code):
 
 
 def _headers(user):
-    token = generate_token(user.id, user.username, user.role)
+    token = generate_token(user.id, user.username, user.role, user.token_version)
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
@@ -277,7 +277,7 @@ def test_time_model_route_requires_approve_permission_and_reason(
     )
 
     assert forbidden.status_code == 403
-    assert forbidden.get_json()["error"] == "權限不足"
+    assert forbidden.get_json()["error"]["message"] == "權限不足"
     assert missing_reason.status_code == 422
     assert missing_reason.get_json()["code"] == "REASON_REQUIRED"
 
@@ -332,7 +332,7 @@ def test_transformation_route_requires_approve_permission_and_reason(
     )
 
     assert forbidden.status_code == 403
-    assert forbidden.get_json()["error"] == "權限不足"
+    assert forbidden.get_json()["error"]["message"] == "權限不足"
     assert missing_reason.status_code == 422
     assert missing_reason.get_json()["code"] == "REASON_REQUIRED"
 

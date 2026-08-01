@@ -194,12 +194,29 @@ def calibration_auth_required(function):
                 if hasattr(response, "get_json")
                 else None
             )
-            legacy_message = (
-                body.get("error") if isinstance(body, dict) else None
+            raw_error = body.get("error") if isinstance(body, dict) else None
+            legacy_message = raw_error if isinstance(raw_error, str) else None
+            formal_message = (
+                raw_error.get("message")
+                if isinstance(raw_error, dict)
+                else None
+            )
+            formal_details = (
+                raw_error.get("details")
+                if isinstance(raw_error, dict)
+                and isinstance(raw_error.get("details"), dict)
+                else {}
             )
             code_by_message = {
                 "缺少認證 Token": "CALIBRATION_AUTH_REQUIRED",
                 "無效或過期的 Token": "CALIBRATION_AUTH_INVALID_TOKEN",
+            }
+            code_by_reason = {
+                "invalid_token": "CALIBRATION_AUTH_INVALID_TOKEN",
+                "legacy_or_invalid_claims": "CALIBRATION_AUTH_INVALID_TOKEN",
+                "token_revoked": "CALIBRATION_AUTH_INVALID_TOKEN",
+                "user_not_found": "CALIBRATION_USER_NOT_FOUND",
+                "user_inactive": "CALIBRATION_USER_INACTIVE",
             }
             if (
                 isinstance(legacy_message, str)
@@ -211,6 +228,31 @@ def calibration_auth_required(function):
                             "error": {
                                 "code": code_by_message[legacy_message],
                                 "message": legacy_message,
+                                "details": {},
+                            }
+                        }
+                    ),
+                    401,
+                )
+            reason = formal_details.get("reason")
+            if (
+                isinstance(formal_message, str)
+                and isinstance(reason, str)
+                and reason in code_by_reason
+            ):
+                message_by_reason = {
+                    "user_not_found": "使用者不存在",
+                    "user_inactive": "使用者帳號已停用",
+                }
+                return (
+                    jsonify(
+                        {
+                            "error": {
+                                "code": code_by_reason[reason],
+                                "message": message_by_reason.get(
+                                    reason,
+                                    formal_message,
+                                ),
                                 "details": {},
                             }
                         }

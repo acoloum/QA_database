@@ -27,12 +27,25 @@ JsonType = JSONB().with_variant(db.JSON(), 'sqlite')
 
 class User(db.Model):
     __tablename__ = '使用者'
+    __table_args__ = (
+        db.CheckConstraint(
+            '"憑證版本" >= 0',
+            name='ck_user_token_version_nonnegative',
+        ),
+    )
     id = db.Column('識別碼', db.Integer, primary_key=True)
     username = db.Column('使用者名稱', db.String, unique=True, nullable=False)
     password = db.Column('密碼', db.String, nullable=False)
     inspector_id = db.Column('品管人員ID', db.Integer, db.ForeignKey('品管人員.識別碼'), nullable=True)
     is_active = db.Column('是否啟用', db.Boolean, default=True)
     role = db.Column('角色', db.String(20), nullable=False, default='user', server_default='user')
+    token_version = db.Column(
+        '憑證版本',
+        db.Integer,
+        nullable=False,
+        default=0,
+        server_default='0',
+    )
     created_at = db.Column('建立時間', db.DateTime(timezone=True), nullable=True,
                            default=lambda: datetime.now(timezone.utc))
     inspector = db.relationship('Inspector', foreign_keys=[inspector_id], backref='users')

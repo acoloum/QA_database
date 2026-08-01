@@ -40,7 +40,7 @@ def msa_attachment_headers(db_session):
 
     def headers(code):
         user = users[code]
-        token = generate_token(user.id, user.username, user.role)
+        token = generate_token(user.id, user.username, user.role, user.token_version)
         return {"Authorization": f"Bearer {token}"}
 
     return headers
@@ -215,6 +215,7 @@ def test_legacy_manager_does_not_bypass_msa_permissions(
 
     assert response.status_code == 403
     assert response.get_json() == {
+        "success": False,
         "error": {
             "code": "MSA_ATTACHMENT_PERMISSION_DENIED",
             "message": "權限不足",
@@ -274,6 +275,7 @@ def test_msa_attachment_upload_rejects_missing_target_before_saving_file(
 
     assert response.status_code == 404
     assert response.get_json() == {
+        "success": False,
         "error": {
             "code": "MSA_ATTACHMENT_TARGET_NOT_FOUND",
             "message": "找不到附件所屬的 MSA 實體",
@@ -453,6 +455,7 @@ def test_msa_attachment_missing_id_uses_stable_not_found(
 
     assert response.status_code == 404
     assert response.get_json() == {
+        "success": False,
         "error": {
             "code": "MSA_ATTACHMENT_NOT_FOUND",
             "message": "附件不存在",
@@ -468,7 +471,7 @@ def test_msa_attachment_missing_id_uses_stable_not_found(
         ("delete", "/api/attachments/999999"),
     ],
 )
-def test_shared_missing_attachment_keeps_legacy_error_contract(
+def test_shared_missing_attachment_uses_formal_error_contract(
     client,
     msa_attachment_headers,
     method,
@@ -481,7 +484,10 @@ def test_shared_missing_attachment_keeps_legacy_error_contract(
     )
 
     assert response.status_code == 404
-    assert response.get_json() == {"error": "附件不存在"}
+    assert response.get_json() == {
+        "success": False,
+        "error": {"code": "NOT_FOUND", "message": "附件不存在"},
+    }
 
 
 def test_msa_upload_db_failure_compensates_saved_file(
@@ -511,9 +517,10 @@ def test_msa_upload_db_failure_compensates_saved_file(
     )
 
     assert response.status_code == 500
-    assert response.get_json()["error"]["code"] == (
-        "MSA_ATTACHMENT_PERSIST_FAILED"
-    )
+    assert response.get_json()["error"] == {
+        "code": "INTERNAL_ERROR",
+        "message": "伺服器內部錯誤",
+    }
     assert Attachment.query.count() == 0
     assert list(tmp_path.rglob("rollback.txt")) == []
 
@@ -552,9 +559,10 @@ def test_msa_delete_db_failure_keeps_file_and_database_link(
     )
 
     assert response.status_code == 500
-    assert response.get_json()["error"]["code"] == (
-        "MSA_ATTACHMENT_PERSIST_FAILED"
-    )
+    assert response.get_json()["error"] == {
+        "code": "INTERNAL_ERROR",
+        "message": "伺服器內部錯誤",
+    }
     assert db.session.get(Attachment, created["id"]) is not None
     assert app.config["STORAGE"].exists(created["file_path"]) is True
 
@@ -591,9 +599,10 @@ def test_msa_delete_storage_failure_restores_database_link(
     )
 
     assert response.status_code == 500
-    assert response.get_json()["error"]["code"] == (
-        "MSA_ATTACHMENT_STORAGE_DELETE_FAILED"
-    )
+    assert response.get_json()["error"] == {
+        "code": "INTERNAL_ERROR",
+        "message": "伺服器內部錯誤",
+    }
     assert db.session.get(Attachment, created["id"]) is not None
     assert app.config["STORAGE"].exists(created["file_path"]) is True
     actions = [

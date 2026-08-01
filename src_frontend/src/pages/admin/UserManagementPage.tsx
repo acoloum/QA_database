@@ -1,11 +1,16 @@
 import { useState } from 'react';
-import { Button, Card, Form, Table, Badge, Alert, Spinner, Nav } from 'react-bootstrap';
+import { Button, Card, Form, Table, Badge, Alert, Spinner, Nav, Modal } from 'react-bootstrap';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import { useAuth } from '../../context/useAuth';
 import { useRoles } from '../../context/useRoles';
 import type { UserRecord } from '../../types';
 import type { RoleOption } from '../../context/useRoles';
-import { useAdminUsers, useUpdateAdminUserActive, useUpdateAdminUserRole } from '../../hooks/useAdmin';
+import {
+    useAdminUsers,
+    useResetAdminUserPassword,
+    useUpdateAdminUserActive,
+    useUpdateAdminUserRole,
+} from '../../hooks/useAdmin';
 import CreateUserModal from './CreateUserModal';
 import RoleEditModal from './RoleEditModal';
 
@@ -44,6 +49,31 @@ const UserManagementPage = () => {
     const { data: users = [], isLoading, isError } = useAdminUsers();
     const roleMutation = useUpdateAdminUserRole();
     const activeMutation = useUpdateAdminUserActive();
+    const [resetTarget, setResetTarget] = useState<UserRecord | null>(null);
+    const [resetPassword, setResetPassword] = useState('');
+    const [resetError, setResetError] = useState('');
+    const closeResetModal = () => {
+        setResetTarget(null);
+        setResetPassword('');
+        setResetError('');
+    };
+    const resetPasswordMutation = useResetAdminUserPassword({
+        onSuccess: closeResetModal,
+    });
+
+    const handleResetPassword = (event: React.FormEvent) => {
+        event.preventDefault();
+        setResetError('');
+        if (!resetTarget) return;
+        if (resetPassword.length < 8) {
+            setResetError('密碼長度至少需要 8 個字元');
+            return;
+        }
+        resetPasswordMutation.mutate({
+            id: resetTarget.id,
+            password: resetPassword,
+        });
+    };
 
     const handleRoleChange = (u: UserRecord, newRole: string) => {
         if (newRole === 'admin' && u.role !== 'admin') {
@@ -155,10 +185,22 @@ const UserManagementPage = () => {
                                                 </td>
                                                 <td className="text-muted small">{formatCreatedAt(u.created_at)}</td>
                                                 <td className="text-end pe-4">
+                                                    {hasPermission('user.manage') && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline-primary"
+                                                            className="me-2"
+                                                            aria-label={`重設 ${u.username} 的密碼`}
+                                                            disabled={resetPasswordMutation.isPending}
+                                                            onClick={() => setResetTarget(u)}
+                                                        >
+                                                            <i className="fa-solid fa-key me-1"></i>重設密碼
+                                                        </Button>
+                                                    )}
                                                     <Button
                                                         size="sm"
                                                         variant={u.is_active ? 'outline-danger' : 'outline-success'}
-                                                        disabled={isSelf || activeMutation.isPending}
+                                                        disabled={isSelf || activeMutation.isPending || !hasPermission('user.manage')}
                                                         title={isSelf ? '無法停用自己的帳號' : undefined}
                                                         onClick={() => activeMutation.mutate({ id: u.id, is_active: !u.is_active })}
                                                     >
@@ -233,6 +275,46 @@ const UserManagementPage = () => {
                 roleOptions={roleOptions}
                 onHide={() => setShowModal(false)}
             />
+
+            <Modal show={!!resetTarget} onHide={closeResetModal} centered>
+                <Modal.Header closeButton>
+                    <Modal.Title>重設「{resetTarget?.username}」密碼</Modal.Title>
+                </Modal.Header>
+                <Modal.Body>
+                    {resetError && <Alert variant="danger">{resetError}</Alert>}
+                    <Form
+                        id="resetUserPasswordForm"
+                        aria-label="重設密碼表單"
+                        onSubmit={handleResetPassword}
+                    >
+                        <Form.Group>
+                            <Form.Label htmlFor="resetUserPassword">新密碼</Form.Label>
+                            <Form.Control
+                                id="resetUserPassword"
+                                type="password"
+                                value={resetPassword}
+                                minLength={8}
+                                autoComplete="new-password"
+                                onChange={event => setResetPassword(event.target.value)}
+                                required
+                            />
+                            <Form.Text muted>至少 8 個字元；完成後會撤銷該帳號既有登入憑證。</Form.Text>
+                        </Form.Group>
+                    </Form>
+                </Modal.Body>
+                <Modal.Footer>
+                    <Button variant="secondary" onClick={closeResetModal}>取消</Button>
+                    <Button
+                        variant="primary"
+                        type="submit"
+                        form="resetUserPasswordForm"
+                        aria-label="確認重設密碼"
+                        disabled={resetPasswordMutation.isPending}
+                    >
+                        {resetPasswordMutation.isPending ? '重設中…' : '確認重設'}
+                    </Button>
+                </Modal.Footer>
+            </Modal>
 
             {/* 角色權限編輯 Modal */}
             {editingRole && (

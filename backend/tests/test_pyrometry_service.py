@@ -27,7 +27,9 @@ def _make_user(db_session):
 
 
 def _headers(user):
-    return {"Authorization": f"Bearer {generate_token(user.id, user.username, user.role)}"}
+    return {
+        "Authorization": f"Bearer {generate_token(user.id, user.username, user.role, user.token_version)}"
+    }
 
 
 def test_update_test_can_change_type_from_tus_to_sat(db_session):

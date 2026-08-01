@@ -2,9 +2,11 @@ import re
 from flask import Blueprint, jsonify, request, current_app
 from ..extensions import db, limiter
 from ..models import User, Role
+from ..authentication import authenticate_request_token
+from ..errors import AuthenticationError
+from ..services.user_service import UserService
 from ..utils import (
     generate_token,
-    verify_token,
     generate_csrf_token,
     hash_password,
     verify_password,
@@ -60,7 +62,12 @@ def login():
             user.password = hash_password(password)
             db.session.commit()
 
-        token = generate_token(user.id, user.username, user.role)
+        token = generate_token(
+            user.id,
+            user.username,
+            user.role,
+            user.token_version,
+        )
         permissions = _permissions_for_role(user.role)
         return jsonify({
             'token': token,
@@ -83,20 +90,18 @@ def verify_token_api():
     if token.startswith('Bearer '):
         token = token[7:]
 
-    payload = verify_token(token)
-    if payload:
-        # 從 Role 資料表取得該角色的 permissions
-        role_code = payload.get('role', 'user')
-        permissions = _permissions_for_role(role_code)
+    try:
+        _user, authenticated = authenticate_request_token(token)
         return jsonify({
             'valid': True,
-            'username': payload.get('username'),
-            'user_id': payload.get('user_id'),
-            'role': role_code,
-            'permissions': permissions,
+            'username': authenticated.username,
+            'user_id': authenticated.id,
+            'role': authenticated.role,
+            'permissions': dict(authenticated.permissions),
+            'inspector_id': authenticated.inspector_id,
         })
-    else:
-        return jsonify({'valid': False, 'error': 'Token 無效或已過期'}), 401
+    except AuthenticationError as error:
+        return jsonify({'valid': False, 'error': error.message}), 401
 
 @auth_bp.route('/api/csrf-token', methods=['GET'])
 def get_csrf_token_api():
@@ -183,16 +188,13 @@ def update_user_role(current_user, user_id):
         return jsonify({"error": f"角色代碼不存在：{new_role}"}), 400
 
     # 禁止管理員修改自己的角色，避免意外失去管理員權限
-    request_user = getattr(request, 'user', {})
-    if request_user.get('user_id') == user_id:
+    if current_user.id == user_id:
         return jsonify({"error": "無法修改自己的角色"}), 400
 
     try:
-        user = db.session.get(User, user_id)
+        user = UserService.set_role(current_user.id, user_id, new_role)
         if not user:
             return jsonify({"error": "找不到使用者"}), 404
-        user.role = new_role
-        db.session.commit()
         return jsonify({"success": True, "message": f"角色已更新為 {new_role}"})
     except Exception as e:
         db.session.rollback()
@@ -209,21 +211,40 @@ def update_user_active(current_user, user_id):
     if not data or 'is_active' not in data:
         return jsonify({"error": "請求格式錯誤，需要 is_active 欄位"}), 400
 
-    request_user = getattr(request, 'user', {})
-    if request_user.get('user_id') == user_id:
+    if current_user.id == user_id:
         return jsonify({"error": "無法停用自己的帳號"}), 400
 
     try:
-        user = db.session.get(User, user_id)
+        user = UserService.set_active(current_user.id, user_id, bool(data['is_active']))
         if not user:
             return jsonify({"error": "找不到使用者"}), 404
-        user.is_active = bool(data['is_active'])
-        db.session.commit()
         status_text = '啟用' if user.is_active else '停用'
         return jsonify({"success": True, "message": f"帳號已{status_text}"})
     except Exception as e:
         db.session.rollback()
         current_app.logger.exception("Update user active error: %s", str(e))
+        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+
+
+@auth_bp.route('/api/users/<int:user_id>/password', methods=['PUT'])
+@auth_required
+@require_permission('user.manage')
+def reset_user_password(current_user, user_id):
+    """由 user.manage 管理者重設指定帳號密碼。"""
+    data = request.json
+    if not data or not isinstance(data.get('password'), str):
+        return jsonify({"error": "請求格式錯誤，需要 password 欄位"}), 400
+    password = data['password']
+    if len(password) < 8:
+        return jsonify({"error": "密碼長度至少需要 8 個字元"}), 400
+
+    try:
+        user = UserService.reset_password(current_user.id, user_id, password)
+        if not user:
+            return jsonify({"error": "找不到使用者"}), 404
+        return jsonify({"success": True, "message": "密碼已重設"})
+    except Exception as e:
+        current_app.logger.exception("Reset user password error: %s", str(e))
         return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
 
 

@@ -10,7 +10,7 @@ def _auth_headers(db_session, role_code, permissions):
     user = User(username=f'{role_code}_user', password=hash_password('pw12345678'), role=role_code, is_active=True)
     db_session.add(user)
     db_session.flush()
-    token = generate_token(user.id, user.username, user.role)
+    token = generate_token(user.id, user.username, user.role, user.token_version)
     return {"Authorization": f"Bearer {token}"}
 
 

@@ -82,7 +82,7 @@ def msa_user_headers(db_session):
 
     def headers(role_code):
         user = users[role_code]
-        token = generate_token(user.id, user.username, user.role)
+        token = generate_token(user.id, user.username, user.role, user.token_version)
         return {"Authorization": f"Bearer {token}"}
 
     return headers
@@ -213,6 +213,7 @@ def test_criteria_routes_use_stable_auth_and_permission_envelopes(
 
     assert missing_auth.status_code == 401
     assert missing_auth.get_json() == {
+        "success": False,
         "error": {
             "code": "MSA_AUTH_REQUIRED",
             "message": "缺少認證 Token",
@@ -440,6 +441,7 @@ def test_inactive_approver_with_old_jwt_cannot_approve_criteria(
 
     assert response.status_code == 401
     assert response.get_json() == {
+        "success": False,
         "error": {
             "code": "MSA_USER_INACTIVE",
             "message": "使用者帳號已停用",
@@ -497,6 +499,7 @@ def test_inactive_approver_is_rejected_before_retired_legacy_contract(
 
     assert response.status_code == 401
     assert response.get_json() == {
+        "success": False,
         "error": {
             "code": "CALIBRATION_USER_INACTIVE",
             "message": "使用者帳號已停用",
@@ -574,6 +577,7 @@ def test_legacy_calibration_endpoints_require_calibration_permissions_and_never_
     )
 
     expected = {
+        "success": False,
         "error": {
             "code": "CALIBRATION_LEGACY_ENDPOINT_RETIRED",
             "message": "舊版簡易校正介面已退役，請使用校正登錄流程",
@@ -686,6 +690,7 @@ def test_equipment_import_preview_requires_calibration_manage(
 
     assert response.status_code == 403
     assert response.get_json() == {
+        "success": False,
         "error": {
             "code": "CALIBRATION_PERMISSION_DENIED",
             "message": "權限不足",
@@ -802,6 +807,7 @@ def test_equipment_import_error_uses_stable_msa_envelope(
 
     assert response.status_code == 422
     assert response.get_json() == {
+        "success": False,
         "error": {
             "code": "MSA_IMPORT_FILE_TYPE_INVALID",
             "message": "設備匯入僅接受 CSV 檔案",
@@ -851,6 +857,7 @@ def test_equipment_import_auth_errors_use_stable_calibration_envelope(
 
     assert response.status_code == 401
     assert response.get_json() == {
+        "success": False,
         "error": {
             "code": code,
             "message": message,
@@ -861,7 +868,7 @@ def test_equipment_import_auth_errors_use_stable_calibration_envelope(
 
 def test_calibration_import_auth_adapter_preserves_missing_user_envelope(client):
     """有效 Token 找不到使用者時，不得誤報成 Token 無效。"""
-    token = generate_token(999999, "missing-user", "msa_manage")
+    token = generate_token(999999, "missing-user", "msa_manage", 0)
     response = client.post(
         "/api/measurement-equipment/imports/preview",
         headers={"Authorization": f"Bearer {token}"},
@@ -869,6 +876,7 @@ def test_calibration_import_auth_adapter_preserves_missing_user_envelope(client)
 
     assert response.status_code == 401
     assert response.get_json() == {
+        "success": False,
         "error": {
             "code": "CALIBRATION_USER_NOT_FOUND",
             "message": "使用者不存在",
@@ -883,6 +891,7 @@ def test_equipment_routes_use_stable_calibration_auth_envelope(client):
 
     assert response.status_code == 401
     assert response.get_json() == {
+        "success": False,
         "error": {
             "code": "CALIBRATION_AUTH_REQUIRED",
             "message": "缺少認證 Token",
@@ -924,6 +933,7 @@ def test_equipment_list_requires_calibration_or_msa_view(
 
     assert response.status_code == 403
     assert response.get_json() == {
+        "success": False,
         "error": {
             "code": "CALIBRATION_PERMISSION_DENIED",
             "message": "權限不足",
@@ -1011,6 +1021,7 @@ def test_equipment_execute_permission_is_not_equipment_manage(
 
     assert response.status_code == 403
     assert response.get_json() == {
+        "success": False,
         "error": {
             "code": "CALIBRATION_PERMISSION_DENIED",
             "message": "權限不足",

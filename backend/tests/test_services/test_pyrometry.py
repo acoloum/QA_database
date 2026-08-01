@@ -34,7 +34,7 @@ def _auth_header(client, db_session):
     u = User(username="pyro_tester", password=hash_password("pw"), role="admin")
     db_session.add(u)
     db_session.commit()
-    token = generate_token(u.id, u.username, u.role)
+    token = generate_token(u.id, u.username, u.role, u.token_version)
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -486,7 +486,7 @@ def test_parse_upload_route_rejects_oversized_file(client, db_session):
                     headers=headers, content_type="multipart/form-data")
 
     assert r.status_code == 400
-    assert "檔案大小" in r.get_json()["error"]
+    assert "檔案大小" in r.get_json()["error"]["message"]
 
 
 def test_dashboard_lists_all_furnaces_with_due(app, db_session):

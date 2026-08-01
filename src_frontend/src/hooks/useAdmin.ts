@@ -30,6 +30,11 @@ export interface UpdateRolePermissionsInput {
   permissions: Record<string, boolean>;
 }
 
+export interface ResetUserPasswordInput {
+  id: number;
+  password: string;
+}
+
 export const getAdminErrorMessage = (err: unknown): string => {
   if (err && typeof err === 'object' && 'response' in err) {
     const axiosErr = err as { response?: { data?: { error?: string; message?: string } } };
@@ -91,6 +96,22 @@ export const useUpdateAdminUserActive = () => {
     onSuccess: (_data, variables) => {
       toast.success(variables.is_active ? '帳號已啟用' : '帳號已停用');
       queryClient.invalidateQueries({ queryKey: adminKeys.users });
+    },
+    onError: err => toast.error(getAdminErrorMessage(err)),
+  });
+};
+
+export const useResetAdminUserPassword = (
+  options: { onSuccess?: () => void } = {},
+) => {
+  return useMutation({
+    mutationFn: async ({ id, password }: ResetUserPasswordInput) => {
+      const res = await api.put(`/users/${id}/password`, { password });
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success('密碼已重設，舊登入憑證已撤銷');
+      options.onSuccess?.();
     },
     onError: err => toast.error(getAdminErrorMessage(err)),
   });
