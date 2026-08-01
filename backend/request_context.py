@@ -45,24 +45,25 @@ def _normalize_api_error(response) -> None:
     """在 Task 9 完成 route 清理前，收斂既有錯誤回應至正式契約。"""
     if not request.path.startswith("/api/") or response.status_code < 400:
         return
+    if response.status_code >= 500 and response.is_json:
+        _replace_json(
+            response,
+            build_error_envelope("伺服器內部錯誤", "INTERNAL_ERROR"),
+        )
+        return
+
     payload = response.get_json(silent=True)
     if not isinstance(payload, dict):
         return
 
     raw_error = payload.get("error")
     if isinstance(raw_error, str):
-        if response.status_code >= 500:
-            normalized = build_error_envelope(
-                "伺服器內部錯誤",
-                "INTERNAL_ERROR",
-            )
-        else:
-            details = payload.get("details", payload.get("detail"))
-            normalized = build_error_envelope(
-                raw_error,
-                _STATUS_ERROR_CODES.get(response.status_code, "API_ERROR"),
-                details,
-            )
+        details = payload.get("details", payload.get("detail"))
+        normalized = build_error_envelope(
+            raw_error,
+            _STATUS_ERROR_CODES.get(response.status_code, "API_ERROR"),
+            details,
+        )
         _replace_json(response, normalized)
         return
 
@@ -71,16 +72,6 @@ def _normalize_api_error(response) -> None:
 
     code = raw_error.get("code")
     message = raw_error.get("message")
-    if response.status_code >= 500 and code in {
-        None,
-        "VALIDATION_ERROR",
-        "INTERNAL_SERVER_ERROR",
-    }:
-        _replace_json(
-            response,
-            build_error_envelope("伺服器內部錯誤", "INTERNAL_ERROR"),
-        )
-        return
     if not isinstance(code, str) or not isinstance(message, str):
         return
 

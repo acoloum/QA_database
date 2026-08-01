@@ -87,7 +87,7 @@ describe('API 實際 Axios 傳輸與穩定錯誤契約', () => {
   ] as const)('將 %i 穩定錯誤轉為可判定 ApiError', async (status, code, message, details, field) => {
     const adapter: AxiosAdapter = async (config) => {
       const response: AxiosResponse = {
-        data: { error: { code, message, details } },
+        data: { success: false, error: { code, message, details } },
         status,
         statusText: '受控錯誤',
         headers: {},
@@ -150,7 +150,7 @@ describe('API 實際 Axios 傳輸與穩定錯誤契約', () => {
     localStorage.setItem('authToken', 'keep-on-forbidden');
     const adapter: AxiosAdapter = async (config) => {
       const response: AxiosResponse = {
-        data: { error: { code: 'PERMISSION_DENIED', message: '權限不足' } },
+        data: { success: false, error: { code: 'PERMISSION_DENIED', message: '權限不足' } },
         status: 403,
         statusText: 'Forbidden',
         headers: {},
@@ -175,7 +175,7 @@ describe('API 實際 Axios 傳輸與穩定錯誤契約', () => {
     localStorage.setItem('username', 'expired-user');
     const adapter: AxiosAdapter = async (config) => {
       const response: AxiosResponse = {
-        data: { error: { code: 'AUTH_ERROR', message: '登入已過期' } },
+        data: { success: false, error: { code: 'AUTH_ERROR', message: '登入已過期' } },
         status: 401,
         statusText: 'Unauthorized',
         headers: {},
@@ -193,6 +193,72 @@ describe('API 實際 Axios 傳輸與穩定錯誤契約', () => {
     });
     expect(localStorage.getItem('authToken')).toBeNull();
     expect(localStorage.getItem('username')).toBeNull();
+  });
+
+  it.each([
+    ['無 response body', undefined],
+    ['非 JSON body', '<html>upstream unauthorized</html>'],
+    ['malformed object', { success: false, error: { code: 401, message: null } }],
+  ] as const)('401 %s 清除登入狀態並使用固定 ApiError fallback', async (_label, body) => {
+    window.history.replaceState({}, '', '/login');
+    localStorage.setItem('authToken', 'expired-token');
+    localStorage.setItem('username', 'expired-user');
+    let sourceResponse: AxiosResponse | undefined;
+    const adapter: AxiosAdapter = async (config) => {
+      sourceResponse = {
+        data: body,
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: {},
+        config,
+      };
+      throw new AxiosError('upstream internal message', undefined, config, {}, sourceResponse);
+    };
+    api.defaults.adapter = adapter;
+
+    let caught: unknown;
+    try {
+      await api.get('/expired-malformed');
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toMatchObject({
+      name: ApiError.name,
+      status: 401,
+      code: 'AUTH_ERROR',
+      message: '登入已過期，請重新登入',
+    });
+    expect((caught as ApiError).response).toBe(sourceResponse);
+    expect(localStorage.getItem('authToken')).toBeNull();
+    expect(localStorage.getItem('username')).toBeNull();
+  });
+
+  it('缺少 success false 的 object 不視為正式 envelope', async () => {
+    localStorage.setItem('authToken', 'keep-for-malformed-403');
+    let sourceError: AxiosError | undefined;
+    const adapter: AxiosAdapter = async (config) => {
+      const response: AxiosResponse = {
+        data: { error: { code: 'PERMISSION_DENIED', message: '非正式權限訊息' } },
+        status: 403,
+        statusText: 'Forbidden',
+        headers: {},
+        config,
+      };
+      sourceError = new AxiosError('原始 403', undefined, config, {}, response);
+      throw sourceError;
+    };
+    api.defaults.adapter = adapter;
+
+    let caught: unknown;
+    try {
+      await api.get('/malformed-formal-error');
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBe(sourceError);
+    expect(localStorage.getItem('authToken')).toBe('keep-for-malformed-403');
   });
 
   it('legacy 字串 error 過渡分支仍建立 ApiError', async () => {

@@ -26,12 +26,15 @@ const cloneCompatibleResponse = (
     };
 };
 
-const readStableError = (rawError: unknown, status?: number, response?: unknown): ApiError | null => {
+const readStableError = (payload: unknown, status?: number, response?: unknown): ApiError | null => {
     const apiResponse = response as ApiError['response'];
+    if (!isRecord(payload)) return null;
+
+    const rawError = payload.error;
     if (typeof rawError === 'string') {
         return new ApiError({ message: rawError, status, response: apiResponse });
     }
-    if (!isRecord(rawError)) return null;
+    if (payload.success !== false || !isRecord(rawError)) return null;
 
     if (typeof rawError.message !== 'string' || typeof rawError.code !== 'string') return null;
     const message = rawError.message;
@@ -75,23 +78,27 @@ api.interceptors.response.use(
         }
 
         // 2. 正式 envelope 與 legacy 字串過渡分支
-        if (response && response.data && response.data.error) {
-            // 後端可能回 { error: "訊息" } 或穩定 { error: { code, message, details } }。
-            const rawError = response.data.error;
-            const err = readStableError(rawError, response.status, response);
-            if (err === null) return Promise.reject(error);
+        if (response) {
+            const err = readStableError(response.data, response.status, response);
+            if (err !== null) {
+                // 4xx 驗證錯誤（如「使用者名稱已存在」）→ 不顯示 toast，讓 caller 自行處理
+                // 5xx server error → 顯示 toast
+                if (response.status >= 500) {
+                    toast.error(err.message);
+                    err._toasted = true;
+                }
 
-            // 4xx 驗證錯誤（如「使用者名稱已存在」）→ 不顯示 toast，讓 caller 自行處理
-            // 5xx server error 或沒有 response 的錯誤 → 顯示 toast
-            const isServerError = !response || response.status >= 500;
-
-            if (isServerError || !response) {
-                toast.error(err.message);
-                err._toasted = true;
+                return Promise.reject(err);
             }
-            // 4xx 驗證錯誤不放 toast，_toasted 保持 undefined
+        }
 
-            return Promise.reject(err);
+        if (response && response.status === 401) {
+            return Promise.reject(new ApiError({
+                message: '登入已過期，請重新登入',
+                status: 401,
+                code: 'AUTH_ERROR',
+                response,
+            }));
         }
 
         // 3. 處理網路或其他錯誤（沒有 error.data 的情況）

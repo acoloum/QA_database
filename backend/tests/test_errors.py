@@ -76,8 +76,8 @@ def test_unknown_database_exception_never_exposes_driver_message(app, client, au
     assert response.get_json() == {
         "success": False,
         "error": {
-            "code": "DB_ERROR",
-            "message": "資料庫操作失敗",
+            "code": "INTERNAL_ERROR",
+            "message": "伺服器內部錯誤",
         },
     }
     assert "password=database-secret" not in response.get_data(as_text=True)
