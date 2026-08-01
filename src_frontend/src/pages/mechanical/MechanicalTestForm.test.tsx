@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import toast from 'react-hot-toast';
 
@@ -29,13 +29,13 @@ const renderForm = (testId: number | null = null) => {
   const onClose = vi.fn();
   const onSaved = vi.fn();
 
-  render(
+  const result = render(
     <QueryClientProvider client={queryClient}>
       <MechanicalTestForm testId={testId} onClose={onClose} onSaved={onSaved} />
     </QueryClientProvider>,
   );
 
-  return { onClose, onSaved, invalidateSpy };
+  return { ...result, onClose, onSaved, invalidateSpy, queryClient };
 };
 
 const editDetail = {
@@ -533,5 +533,28 @@ describe('MechanicalTestForm', () => {
     fireEvent.click(screen.getByRole('button', { name: '儲存' }));
     expect(mechanicalApi.create).not.toHaveBeenCalled();
     expect(screen.getByText('量測值超出 NUMERIC(12,4) 可儲存範圍')).toBeInTheDocument();
+  });
+
+  it('編輯載入後修改欄位，重新載入詳情不覆寫使用者輸入', async () => {
+    vi.mocked(mechanicalApi.getDetail).mockResolvedValue(editDetail);
+    const { queryClient } = renderForm(8);
+
+    expect(await screen.findByDisplayValue('62.5 x 2.3')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('備註'), { target: { value: '使用者輸入' } });
+    expect(screen.getByDisplayValue('使用者輸入')).toBeInTheDocument();
+
+    // 模擬伺服器資料已變更並重新載入（另一使用者改過備註）
+    const changedDetail = JSON.parse(JSON.stringify(editDetail)) as typeof editDetail;
+    changedDetail.main = { ...changedDetail.main, 備註: '後端更新備註' };
+    await act(async () => {
+      queryClient.setQueryData(['mechanical-test', 8], changedDetail);
+      // 讓出事件迴圈：React Query 通知微任務、React re-render 與 passive effects 依序執行
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // 確認使用者修改未被覆寫
+    expect(screen.getByDisplayValue('使用者輸入')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('既有備註')).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue('後端更新備註')).not.toBeInTheDocument();
   });
 });

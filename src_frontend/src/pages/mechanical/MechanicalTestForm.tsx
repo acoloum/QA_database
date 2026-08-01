@@ -130,6 +130,9 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
   const [saveError, setSaveError] = useState('');
   const [hydratedTestId, setHydratedTestId] = useState<number | null>(null);
   const savingRef = useRef(false);
+  // 記錄已 hydrate 過的 testId；同一筆資料重新載入（refetch／快取更新）時不重跑，
+  // 避免覆寫使用者已輸入的內容
+  const hydratedTestIdRef = useRef<number | null>(null);
   const extrusionDuplicateIndexes = duplicateTraceNumberIndexes(extrusionNumbers);
   const t4FurnaceDuplicateIndexes = duplicateTraceNumberIndexes(t4FurnaceNumbers);
   const hasDuplicateTraceNumbers =
@@ -177,10 +180,14 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
       setValidationError('');
       setSaveError('');
       setHydratedTestId(null);
+      hydratedTestIdRef.current = null;
       return;
     }
 
     if (!detail) return;
+    // 同一筆資料再次載入（refetch／快取更新）時不重跑 hydrate，避免覆寫使用者輸入
+    if (hydratedTestIdRef.current === testId) return;
+    hydratedTestIdRef.current = testId;
 
     setBasic({
       產品尺寸: detail.main.產品尺寸,
