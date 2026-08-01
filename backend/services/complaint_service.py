@@ -3,7 +3,7 @@ from datetime import datetime, date, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from sqlalchemy import and_, func
 from ..extensions import db
-from ..models import CustomerComplaint, Inspector
+from ..models import CorrectiveAction, CustomerComplaint, Inspector, ReworkRequest
 from ..errors import APIError, NotFoundError
 from ..utils import acquire_number_lock
 from .audit_service import AuditService
@@ -181,6 +181,29 @@ class ComplaintService:
             if not c:
                 raise NotFoundError('客訴不存在')
             old_value = ComplaintService._audit_snapshot(c)
+            active_capa = None
+            if c.related_capa_id:
+                active_capa = CorrectiveAction.active_query().filter_by(
+                    id=c.related_capa_id
+                ).first()
+            active_rework = None
+            if c.related_rework_id:
+                active_rework = ReworkRequest.active_query().filter_by(
+                    id=c.related_rework_id
+                ).first()
+            if active_capa or active_rework:
+                raise APIError(
+                    '客訴尚有有效 CAPA 或重工單，不可刪除',
+                    code='COMPLAINT_HAS_ACTIVE_LINK',
+                    status_code=409,
+                    details={
+                        'capa_id': active_capa.id if active_capa else None,
+                        'rework_id': active_rework.id if active_rework else None,
+                    },
+                )
+            # 已軟刪或過期的關聯不再阻擋客訴刪除。
+            c.related_capa_id = None
+            c.related_rework_id = None
             c.soft_delete()
             AuditService.record(
                 actor_id=actor_id,

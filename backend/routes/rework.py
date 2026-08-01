@@ -18,13 +18,15 @@ def rework_error_response(error, context):
     return jsonify({"error": str(error)}), 500
 
 
-def rework_route_errors(context):
+def rework_route_errors(context, *, propagate_unexpected=False):
     def decorator(func):
         @wraps(func)
         def wrapped(*args, **kwargs):
             try:
                 return func(*args, **kwargs)
             except Exception as error:
+                if propagate_unexpected and not isinstance(error, (APIError, ValueError)):
+                    raise
                 return rework_error_response(error, context)
         return wrapped
     return decorator
@@ -51,7 +53,7 @@ def get_rework_applications():
 @rework_bp.route('/api/rework/apply', methods=['POST'])
 @auth_required
 @require_permission('rework.create')
-@rework_route_errors('Apply rework')
+@rework_route_errors('Apply rework', propagate_unexpected=True)
 def apply_rework(current_user):
     """提交重工申請"""
     if not request.json:
@@ -73,7 +75,7 @@ def update_rework_application(rework_id):
 @rework_bp.route('/api/rework/approve', methods=['POST'])
 @auth_required
 @require_permission('rework.approve')
-@rework_route_errors('Approve rework')
+@rework_route_errors('Approve rework', propagate_unexpected=True)
 def approve_rework(current_user):
     """審核重工申請"""
     if not request.json:
@@ -93,7 +95,7 @@ def get_rework_executions():
 @rework_bp.route('/api/rework/execute', methods=['POST'])
 @auth_required
 @require_permission('rework.create')
-@rework_route_errors('Execute rework')
+@rework_route_errors('Execute rework', propagate_unexpected=True)
 def execute_rework(current_user):
     """記錄重工執行"""
     if not request.json:
@@ -115,7 +117,7 @@ def get_execution(execution_id):
 @rework_bp.route('/api/rework/execution/<int:execution_id>', methods=['PUT'])
 @auth_required
 @require_permission('rework.create')
-@rework_route_errors('Update execution')
+@rework_route_errors('Update execution', propagate_unexpected=True)
 def update_execution(current_user, execution_id):
     """更新執行記錄"""
     if not request.json:
@@ -126,7 +128,7 @@ def update_execution(current_user, execution_id):
 @rework_bp.route('/api/rework/execution/<int:execution_id>', methods=['DELETE'])
 @auth_required
 @require_permission('rework.delete')
-@rework_route_errors('Delete execution')
+@rework_route_errors('Delete execution', propagate_unexpected=True)
 def delete_execution(current_user, execution_id):
     """刪除執行記錄"""
     ReworkService.delete_execution(execution_id, actor_id=current_user.id)
@@ -155,7 +157,7 @@ def get_rework_costs():
 @rework_bp.route('/api/rework/cost', methods=['POST'])
 @auth_required
 @require_permission('rework.create')
-@rework_route_errors('Add rework cost')
+@rework_route_errors('Add rework cost', propagate_unexpected=True)
 def add_rework_cost(current_user):
     """新增重工成本記錄"""
     if not request.json:
@@ -177,7 +179,7 @@ def get_rework_cost(cost_id):
 @rework_bp.route('/api/rework/cost/<int:cost_id>', methods=['PUT'])
 @auth_required
 @require_permission('rework.create')
-@rework_route_errors('Update rework cost')
+@rework_route_errors('Update rework cost', propagate_unexpected=True)
 def update_rework_cost(current_user, cost_id):
     """更新成本記錄"""
     if not request.json:
@@ -188,7 +190,7 @@ def update_rework_cost(current_user, cost_id):
 @rework_bp.route('/api/rework/cost/<int:cost_id>', methods=['DELETE'])
 @auth_required
 @require_permission('rework.delete')
-@rework_route_errors('Delete rework cost')
+@rework_route_errors('Delete rework cost', propagate_unexpected=True)
 def delete_rework_cost(current_user, cost_id):
     """刪除成本記錄"""
     ReworkService.delete_cost(cost_id, actor_id=current_user.id)
@@ -197,7 +199,7 @@ def delete_rework_cost(current_user, cost_id):
 @rework_bp.route('/api/rework/inspect', methods=['POST'])
 @auth_required
 @require_permission('rework.create')
-@rework_route_errors('Inspect rework')
+@rework_route_errors('Inspect rework', propagate_unexpected=True)
 def inspect_rework(current_user):
     """記錄重工品檢"""
     if not request.json:
@@ -219,7 +221,7 @@ def get_inspection(inspection_id):
 @rework_bp.route('/api/rework/inspection/<int:inspection_id>', methods=['PUT'])
 @auth_required
 @require_permission('rework.create')
-@rework_route_errors('Update inspection')
+@rework_route_errors('Update inspection', propagate_unexpected=True)
 def update_inspection(current_user, inspection_id):
     """更新品檢記錄"""
     if not request.json:
@@ -230,7 +232,7 @@ def update_inspection(current_user, inspection_id):
 @rework_bp.route('/api/rework/inspection/<int:inspection_id>', methods=['DELETE'])
 @auth_required
 @require_permission('rework.delete')
-@rework_route_errors('Delete inspection')
+@rework_route_errors('Delete inspection', propagate_unexpected=True)
 def delete_inspection(current_user, inspection_id):
     """刪除品檢記錄"""
     ReworkService.delete_inspection(inspection_id, actor_id=current_user.id)
@@ -239,7 +241,7 @@ def delete_inspection(current_user, inspection_id):
 @rework_bp.route('/api/rework/close', methods=['POST'])
 @auth_required
 @require_permission('rework.approve')
-@rework_route_errors('Close rework')
+@rework_route_errors('Close rework', propagate_unexpected=True)
 def close_rework(current_user):
     """結案重工申請"""
     if not request.json:
@@ -250,7 +252,7 @@ def close_rework(current_user):
 @rework_bp.route('/api/rework/delete', methods=['POST'])
 @auth_required
 @require_permission('rework.delete')
-@rework_route_errors('Delete rework')
+@rework_route_errors('Delete rework', propagate_unexpected=True)
 def delete_rework(current_user):
     """刪除重工申請"""
     if not request.json:

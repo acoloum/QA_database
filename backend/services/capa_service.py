@@ -398,7 +398,29 @@ class CAPAService:
             if ca.status == '已結案':
                 raise APIError('此 CAPA 已結案', code='INVALID_STATE', status_code=409)
 
-            old_value = CAPAService._audit_snapshot(ca)
+            ncmr = None
+            complaint = None
+            if ca.ncmr_id:
+                ncmr = db.session.execute(
+                    db.select(NCMR)
+                    .where(NCMR.id == ca.ncmr_id, NCMR.deleted_at.is_(None))
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                ).scalar_one_or_none()
+            elif ca.source_type == 'complaint' and ca.source_id:
+                complaint = db.session.execute(
+                    db.select(CustomerComplaint)
+                    .where(
+                        CustomerComplaint.id == ca.source_id,
+                        CustomerComplaint.deleted_at.is_(None),
+                    )
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                ).scalar_one_or_none()
+            old_value = {
+                'capa': CAPAService._audit_snapshot(ca),
+                'source': CAPAService._source_audit_snapshot(ncmr or complaint),
+            }
 
         # D6 gate
             if not ca.d6_verified:
@@ -431,25 +453,12 @@ class CAPAService:
             ca.closed_at = datetime.now(timezone.utc)
 
         # CAPA 結案時，若來源為 NCMR，自動更新 NCMR 狀態為「矯正完成」
-            if ca.ncmr_id:
-                ncmr = db.session.execute(
-                    db.select(NCMR)
-                    .where(NCMR.id == ca.ncmr_id, NCMR.deleted_at.is_(None))
-                    .with_for_update()
-                ).scalar_one_or_none()
+            if ncmr:
                 if ncmr and ncmr.status == '矯正中':
                     ncmr.status = '矯正完成'
 
         # 若來源為客訴，同步將客訴狀態設為已結案
-            if ca.source_type == 'complaint' and ca.source_id:
-                complaint = db.session.execute(
-                    db.select(CustomerComplaint)
-                    .where(
-                        CustomerComplaint.id == ca.source_id,
-                        CustomerComplaint.deleted_at.is_(None),
-                    )
-                    .with_for_update()
-                ).scalar_one_or_none()
+            if complaint:
                 if complaint:
                     complaint.status = '已結案'
 
@@ -459,10 +468,14 @@ class CAPAService:
                 module='CAPA',
                 record_id=ca.id,
                 old_value=old_value,
-                new_value=CAPAService._audit_snapshot(ca),
+                new_value={
+                    'capa': CAPAService._audit_snapshot(ca),
+                    'source': CAPAService._source_audit_snapshot(ncmr or complaint),
+                },
             )
+            result = CAPAService._to_dict(ca)
             db.session.commit()
-            return CAPAService._to_dict(ca)
+            return result
         except Exception:
             db.session.rollback()
             raise
@@ -479,27 +492,34 @@ class CAPAService:
             ).scalar_one_or_none()
             if not ca:
                 raise NotFoundError('CAPA 不存在')
-            old_value = CAPAService._audit_snapshot(ca)
+            complaint = None
+            ncmr = None
         # 若來源為客訴，將客訴狀態回退為待處理並清空 related_capa_id
             if ca.source_type == 'complaint' and ca.source_id:
                 complaint = db.session.execute(
                     db.select(CustomerComplaint)
                     .where(CustomerComplaint.id == ca.source_id, CustomerComplaint.deleted_at.is_(None))
                     .with_for_update()
+                    .execution_options(populate_existing=True)
                 ).scalar_one_or_none()
-                if complaint:
-                    complaint.status = '待處理'
-                    complaint.related_capa_id = None
             if ca.source_type == 'ncmr' and (ca.source_id or ca.ncmr_id):
                 ncmr = db.session.execute(
                     db.select(NCMR)
                     .where(NCMR.id == (ca.source_id or ca.ncmr_id), NCMR.deleted_at.is_(None))
                     .with_for_update()
+                    .execution_options(populate_existing=True)
                 ).scalar_one_or_none()
-                if ncmr and ncmr.related_capa_id == ca.id:
-                    ncmr.related_capa_id = None
-                    ncmr.related_capa_source = None
-                    ncmr.status = '待處理'
+            old_value = {
+                'capa': CAPAService._audit_snapshot(ca),
+                'source': CAPAService._source_audit_snapshot(ncmr or complaint),
+            }
+            if complaint:
+                complaint.status = '待處理'
+                complaint.related_capa_id = None
+            if ncmr and ncmr.related_capa_id == ca.id:
+                ncmr.related_capa_id = None
+                ncmr.related_capa_source = None
+                ncmr.status = '待處理'
 
         # 同步刪除關聯任務（pending 狀態）
             ActionTask.query.filter_by(
@@ -513,7 +533,10 @@ class CAPAService:
                 module='CAPA',
                 record_id=ca.id,
                 old_value=old_value,
-                new_value=CAPAService._audit_snapshot(ca),
+                new_value={
+                    'capa': CAPAService._audit_snapshot(ca),
+                    'source': CAPAService._source_audit_snapshot(ncmr or complaint),
+                },
             )
             db.session.commit()
             return True
@@ -533,6 +556,28 @@ class CAPAService:
             'deleted_at': ca.deleted_at,
             'closed_at': ca.closed_at,
         }
+
+    @staticmethod
+    def _source_audit_snapshot(source) -> Optional[Dict[str, Any]]:
+        if isinstance(source, NCMR):
+            return {
+                'module': 'NCMR',
+                'id': source.id,
+                'status': source.status,
+                'related_capa_id': source.related_capa_id,
+                'related_capa_source': source.related_capa_source,
+                'deleted_at': source.deleted_at,
+            }
+        if isinstance(source, CustomerComplaint):
+            return {
+                'module': '客訴',
+                'id': source.id,
+                'status': source.status,
+                'related_capa_id': source.related_capa_id,
+                'related_rework_id': source.related_rework_id,
+                'deleted_at': source.deleted_at,
+            }
+        return None
 
     # ── 進度計算 ─────────────────────────────────────────────
     @staticmethod

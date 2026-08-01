@@ -85,3 +85,96 @@ def test_complaint_http_mutation_has_exact_audit_or_atomic_rollback(
     assert CorrectiveAction.query.count() == 0
     assert ReworkRequest.query.count() == 0
     assert AuditLog.query.count() == 0
+
+
+def test_delete_complaint_rework_unlinks_source_and_allows_reopen(
+    client, db_session
+):
+    """刪除客訴來源重工後必須清聯，使客訴可再次開立。"""
+    user = User(username='complaint_rework_reopen', password='pw', role='admin', is_active=True)
+    complaint = CustomerComplaint(
+        complaint_no='CC-REWORK-REOPEN',
+        customer='重開客戶',
+        complaint_date=datetime.date(2026, 8, 1),
+        description='需重工',
+        complaint_type='quality',
+        status='處理中',
+    )
+    req = ReworkRequest(
+        complaint_id=None,
+        rework_number='RW-COMPLAINT-OLD',
+        status='申請中',
+    )
+    db_session.add_all([user, complaint, req])
+    db_session.flush()
+    req.complaint_id = complaint.id
+    complaint.related_rework_id = req.id
+    db_session.commit()
+    old_id = req.id
+    token = generate_token(user.id, user.username, user.role, user.token_version)
+    headers = {'Authorization': f'Bearer {token}'}
+
+    deleted = client.post('/api/rework/delete', json={'rework_id': old_id}, headers=headers)
+
+    assert deleted.status_code == 200
+    db_session.expire_all()
+    refreshed = db_session.get(CustomerComplaint, complaint.id)
+    assert refreshed.related_rework_id is None
+    assert refreshed.status == '待處理'
+    assert db_session.get(ReworkRequest, old_id).deleted_at is not None
+
+    reopened = client.post(
+        f'/api/complaints/{complaint.id}/open-rework', json={}, headers=headers
+    )
+    assert reopened.status_code == 201
+    assert reopened.get_json()['rework_id'] != old_id
+
+
+@pytest.mark.parametrize('linked_type', ['capa', 'rework'])
+def test_delete_complaint_rejects_active_link_without_writes(
+    client, db_session, linked_type
+):
+    """尚有 active CAPA/重工的客訴不得軟刪除而留下孤兒。"""
+    user = User(username=f'complaint_linked_{linked_type}', password='pw', role='admin', is_active=True)
+    complaint = CustomerComplaint(
+        complaint_no=f'CC-LINKED-{linked_type}',
+        customer='關聯客戶',
+        complaint_date=datetime.date(2026, 8, 1),
+        description='ACTIVE-LINK-SECRET',
+        complaint_type='quality',
+        status='處理中',
+    )
+    db_session.add_all([user, complaint])
+    db_session.flush()
+    if linked_type == 'capa':
+        linked = CorrectiveAction(
+            eight_d_number='CAPA-COMPLAINT-LINKED',
+            source_type='complaint',
+            source_id=complaint.id,
+            status='進行中',
+        )
+        db_session.add(linked)
+        db_session.flush()
+        complaint.related_capa_id = linked.id
+    else:
+        linked = ReworkRequest(
+            complaint_id=complaint.id,
+            rework_number='RW-COMPLAINT-LINKED',
+            status='申請中',
+        )
+        db_session.add(linked)
+        db_session.flush()
+        complaint.related_rework_id = linked.id
+    db_session.commit()
+    token = generate_token(user.id, user.username, user.role, user.token_version)
+
+    response = client.delete(
+        f'/api/complaints/{complaint.id}',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 409
+    assert response.get_json()['error']['code'] == 'COMPLAINT_HAS_ACTIVE_LINK'
+    db_session.expire_all()
+    assert db_session.get(CustomerComplaint, complaint.id).deleted_at is None
+    assert AuditLog.query.count() == 0

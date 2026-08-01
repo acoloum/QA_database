@@ -6,9 +6,10 @@ from backend.extensions import db
 from backend.services.rework_service import ReworkService
 from backend.models import (
     AuditLog, ReworkCost, ReworkExecution, ReworkInspection, ReworkRequest,
-    NCMR, Inspector, User,
+    CustomerComplaint, NCMR, NcmrDisposition, Inspector, User,
 )
 from backend.services.audit_service import AuditService
+from backend.services.ncmr_service import NCMRService
 from backend.utils import generate_token
 
 def test_create_rework_application(app, db_session):
@@ -341,6 +342,70 @@ def test_execute_rework(app, db_session):
         assert req.executions[0].complete_qty == 10.0
 
 
+def test_create_second_execution_keeps_in_progress_and_writes_exact_audit(
+    client, db_session
+):
+    """重工已執行中時可追加第二筆執行記錄，不需重複轉移狀態。"""
+    user = User(username='rework_second_execution', password='pw', role='admin', is_active=True)
+    inspector = Inspector(name='第二次執行人')
+    req = ReworkRequest(rework_number='RW-SECOND-EXEC', status='執行中')
+    db_session.add_all([user, inspector, req])
+    db_session.flush()
+    db_session.add(ReworkExecution(
+        rework_id=req.id,
+        owner_id=inspector.id,
+        executor_id=inspector.id,
+        complete_qty=2,
+        defect_qty=0,
+        status='已完成',
+    ))
+    db_session.commit()
+    token = generate_token(user.id, user.username, user.role, user.token_version)
+
+    response = client.post(
+        '/api/rework/execute',
+        json={
+            '重工單號': req.rework_number,
+            '負責人員姓名': inspector.name,
+            '完成數量': 3,
+            '不良數量': 0,
+            'password': 'SECOND-EXEC-SECRET',
+        },
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    assert db_session.get(ReworkRequest, req.id).status == '執行中'
+    assert ReworkExecution.query.filter_by(rework_id=req.id).count() == 2
+    log = AuditLog.query.one()
+    newest = ReworkExecution.query.filter_by(rework_id=req.id).order_by(ReworkExecution.id.desc()).first()
+    assert (log.user_id, log.action, log.module, log.record_id) == (
+        user.id, 'create', '重工執行', newest.id,
+    )
+    assert 'SECOND-EXEC-SECRET' not in json.dumps(log.new_value, ensure_ascii=False)
+
+
+def test_create_execution_rejects_closed_rework_without_writes(client, db_session):
+    """已結案重工單不可再新增執行記錄。"""
+    user = User(username='rework_closed_execution', password='pw', role='admin', is_active=True)
+    inspector = Inspector(name='結案後執行人')
+    req = ReworkRequest(rework_number='RW-CLOSED-EXEC', status='已結案')
+    db_session.add_all([user, inspector, req])
+    db_session.commit()
+    token = generate_token(user.id, user.username, user.role, user.token_version)
+
+    response = client.post(
+        '/api/rework/execute',
+        json={'重工單號': req.rework_number, '負責人員姓名': inspector.name},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 400
+    assert ReworkExecution.query.count() == 0
+    assert AuditLog.query.count() == 0
+
+
 def test_close_rework_requires_passed_final_inspection(app, db_session):
     with app.app_context():
         req = ReworkRequest(status="執行中", rework_number="RW-NoInspection")
@@ -372,4 +437,172 @@ def test_close_rework_allows_passed_final_inspection(app, db_session):
 
         ReworkService.close_rework({"rework_id": req.id}, actor_id=None)
 
-        assert req.status == "已完成"
+        assert req.status == "已結案"
+
+
+def test_close_rework_uses_ncmr_canonical_terminal_without_second_step(
+    client, db_session
+):
+    """close API 必須一次進入 NCMR gate 認得的正式終態。"""
+    user = User(username='rework_ncmr_close', password='pw', role='admin', is_active=True)
+    inspector = Inspector(name='NCMR 重工結案品檢員')
+    ncmr = NCMR(
+        ncmr_number='NCMR-RW-CLOSE',
+        status='矯正中',
+        defect_quantity=5,
+        quantity=5,
+    )
+    req = ReworkRequest(ncmr=ncmr, rework_number='RW-NCMR-CLOSE', status='執行中')
+    db_session.add_all([user, inspector, ncmr, req])
+    db_session.flush()
+    db_session.add_all([
+        ReworkInspection(
+            rework_id=req.id,
+            inspector_id=inspector.id,
+            item='最終品檢',
+            result='合格',
+            defect_qty=0,
+        ),
+        NcmrDisposition(
+            ncmr_id=ncmr.id,
+            disposition_type='矯正重工',
+            quantity=5,
+            rework_id=req.id,
+        ),
+    ])
+    db_session.commit()
+    token = generate_token(user.id, user.username, user.role, user.token_version)
+
+    response = client.post(
+        '/api/rework/close',
+        json={'rework_id': req.id},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    assert db_session.get(ReworkRequest, req.id).status == '已結案'
+    assert NCMRService.update_ncmr(
+        {'識別碼': ncmr.id, '狀態': '已結案'}, actor_id=user.id
+    ) is True
+    assert db_session.get(NCMR, ncmr.id).status == '已結案'
+
+
+def test_rework_apply_audit_contains_ncmr_source_transition_without_secret(app, db_session):
+    """轉重工時，同一筆稽核須保留 NCMR 舊新狀態且排除自由文字。"""
+    with app.app_context():
+        secret = 'REWORK-APPLY-SOURCE-SECRET'
+        inspector = Inspector(name='重工申請快照人員')
+        ncmr = NCMR(
+            ncmr_number='NCMR-RW-AUDIT-APPLY',
+            product_info='產品',
+            status='待處理',
+            description=secret,
+        )
+        db_session.add_all([inspector, ncmr])
+        db_session.commit()
+
+        result = ReworkService.create_application({
+            'NCMR_ID': ncmr.id,
+            '申請人員姓名': inspector.name,
+            '重工數量': 1,
+            '申請原因': secret,
+        }, actor_id=77)
+
+        log = AuditLog.query.one()
+        assert (log.user_id, log.action, log.module, log.record_id) == (
+            77, 'create', '重工', result['rework_id'],
+        )
+        assert log.old_value == {
+            'rework': None,
+            'source': {
+                'module': 'NCMR', 'id': ncmr.id, 'status': '待處理',
+                'related_capa_id': None, 'related_capa_source': None,
+                'deleted_at': None,
+            },
+        }
+        assert log.new_value['source']['status'] == '轉重工'
+        assert log.new_value['rework']['status'] == '申請中'
+        assert secret not in json.dumps(
+            {'old': log.old_value, 'new': log.new_value}, ensure_ascii=False,
+        )
+
+
+def test_rework_close_audit_contains_ncmr_source_transition_without_secret(app, db_session):
+    """重工結案須在同一筆稽核記錄重工與 NCMR 的狀態轉移。"""
+    with app.app_context():
+        secret = 'REWORK-CLOSE-SOURCE-SECRET'
+        inspector = Inspector(name='重工結案快照人員')
+        ncmr = NCMR(
+            ncmr_number='NCMR-RW-AUDIT-CLOSE', status='矯正中', description=secret,
+        )
+        req = ReworkRequest(
+            ncmr=ncmr, rework_number='RW-AUDIT-CLOSE', status='執行中', reason=secret,
+        )
+        db_session.add_all([inspector, ncmr, req])
+        db_session.flush()
+        db_session.add(ReworkInspection(
+            rework_id=req.id,
+            inspector_id=inspector.id,
+            item='最終品檢',
+            result='合格',
+            defect_qty=0,
+        ))
+        db_session.commit()
+
+        ReworkService.close_rework({'rework_id': req.id}, actor_id=78)
+
+        log = AuditLog.query.one()
+        assert (log.user_id, log.action, log.module, log.record_id) == (
+            78, 'close', '重工', req.id,
+        )
+        assert log.old_value['rework']['status'] == '執行中'
+        assert log.new_value['rework']['status'] == '已結案'
+        assert log.old_value['source']['status'] == '矯正中'
+        assert log.new_value['source']['status'] == '矯正完成'
+        assert secret not in json.dumps(
+            {'old': log.old_value, 'new': log.new_value}, ensure_ascii=False,
+        )
+
+
+def test_rework_delete_audit_contains_complaint_unlink_without_secret(app, db_session):
+    """刪除客訴來源重工時，稽核須包含解除連結與客訴狀態回退。"""
+    with app.app_context():
+        secret = 'REWORK-DELETE-COMPLAINT-SECRET'
+        complaint = CustomerComplaint(
+            complaint_no='CMP-RW-AUDIT-DELETE',
+            customer='客戶',
+            complaint_date=date(2026, 8, 1),
+            description=secret,
+            status='處理中',
+        )
+        req = ReworkRequest(
+            complaint_id=None,
+            rework_number='RW-AUDIT-DELETE',
+            status='申請中',
+            reason=secret,
+        )
+        db_session.add_all([complaint, req])
+        db_session.flush()
+        req.complaint_id = complaint.id
+        complaint.related_rework_id = req.id
+        db_session.commit()
+
+        ReworkService.delete_rework(req.id, actor_id=79)
+
+        log = AuditLog.query.one()
+        assert (log.user_id, log.action, log.module, log.record_id) == (
+            79, 'delete', '重工', req.id,
+        )
+        assert log.old_value['source'] == {
+            'module': '客訴', 'id': complaint.id, 'status': '處理中',
+            'related_capa_id': None, 'related_rework_id': req.id,
+            'deleted_at': None,
+        }
+        assert log.new_value['source']['status'] == '待處理'
+        assert log.new_value['source']['related_rework_id'] is None
+        assert log.old_value['rework']['deleted_at'] is None
+        assert log.new_value['rework']['deleted_at'] is not None
+        assert secret not in json.dumps(
+            {'old': log.old_value, 'new': log.new_value}, ensure_ascii=False,
+        )

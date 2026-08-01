@@ -89,8 +89,6 @@ def delete_complaint(current_user, complaint_id: int):
         return jsonify(e.to_dict()), e.status_code
     except ValueError as e:
         return jsonify({'error': str(e)}), 404
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 
 # ── 開立 CAPA ────────────────────────────────────────────────
@@ -106,8 +104,6 @@ def open_capa_from_complaint(current_user, complaint_id: int):
         return jsonify(e.to_dict()), e.status_code
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 
 
@@ -124,8 +120,6 @@ def open_rework_from_complaint(current_user, complaint_id: int):
         return jsonify(e.to_dict()), e.status_code
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 
 # ── Dashboard 快查 ───────────────────────────────────────────

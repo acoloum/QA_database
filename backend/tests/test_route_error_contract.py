@@ -6,6 +6,9 @@ from flask import jsonify
 from backend.routes.shipping import save_data
 from backend.models import User
 from backend.services.dashboard_service import DashboardService
+from backend.services.capa_service import CAPAService
+from backend.services.complaint_service import ComplaintService
+from backend.services.rework_service import ReworkService
 from backend.services.shipping_service import ShippingService
 from backend.utils import generate_token
 
@@ -27,6 +30,60 @@ def auth_headers(db_session):
         token_version=user.token_version,
     )
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def admin_headers(db_session):
+    user = User(
+        username="route-error-admin",
+        password="pw",
+        role="admin",
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    token = generate_token(user.id, user.username, user.role, user.token_version)
+    return {"Authorization": f"Bearer {token}", "X-Correlation-ID": "task8-global-500"}
+
+
+@pytest.mark.parametrize(
+    ('service', 'method_name', 'http_method', 'url', 'payload'),
+    [
+        (CAPAService, 'close', 'post', '/api/capas/999/close', {'D8_confirmation': '確認'}),
+        (ComplaintService, 'delete', 'delete', '/api/complaints/999', None),
+        (ReworkService, 'delete_rework', 'post', '/api/rework/delete', {'rework_id': 999}),
+    ],
+)
+def test_workflow_unexpected_error_reaches_global_handler(
+    client,
+    monkeypatch,
+    admin_headers,
+    caplog,
+    service,
+    method_name,
+    http_method,
+    url,
+    payload,
+):
+    """workflow route 不得吞掉 unexpected exception，必須由 global handler 統一記錄。"""
+    caplog.set_level('ERROR')
+
+    def fail_unexpected(*_args, **_kwargs):
+        raise RuntimeError('password=WORKFLOW-SECRET')
+
+    monkeypatch.setattr(service, method_name, fail_unexpected)
+    response = getattr(client, http_method)(url, json=payload, headers=admin_headers)
+
+    assert response.status_code == 500
+    assert response.get_json() == {
+        'success': False,
+        'error': {'code': 'INTERNAL_ERROR', 'message': '伺服器內部錯誤'},
+    }
+    assert 'WORKFLOW-SECRET' not in response.get_data(as_text=True)
+    assert any(
+        '未處理 API 例外 correlation_id=task8-global-500' in record.getMessage()
+        for record in caplog.records
+    )
 
 
 def test_unexpected_error_is_sanitized_even_when_legacy_route_catches_it(

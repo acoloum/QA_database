@@ -27,8 +27,6 @@ def list_capas(current_user):
         return jsonify(result), 200
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 
 # ── 逾期查詢（Dashboard 用）──────────────────────────────────
@@ -153,8 +151,6 @@ def close_capa(current_user, capa_id: int):
         return jsonify(e.to_dict()), e.status_code
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 
 # ── 刪除 ─────────────────────────────────────────────────────
@@ -170,8 +166,6 @@ def delete_capa(current_user, capa_id: int):
         return jsonify(e.to_dict()), e.status_code
     except ValueError as e:
         return jsonify({'error': str(e)}), 404
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 
 # ── 報表下載 ────────────────────────────────────────────────────
