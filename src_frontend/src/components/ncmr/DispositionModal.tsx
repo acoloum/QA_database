@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Modal, Button, Form, Table, Alert } from 'react-bootstrap';
+import PermissionAction from '../PermissionAction';
 import type { NCMR, NcmrDisposition, DispositionType } from '../../types';
 import ConfirmActionModal, { type ConfirmActionState } from '../common/ConfirmActionModal';
 import {
@@ -157,8 +158,8 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
                                 <td>{d.處置數量}</td>
                                 <td>{d.是否風險項 ? <span className="text-danger">⚠ 未授權放行</span> : ''}</td>
                                 <td>
-                                    <Button variant="outline-danger" size="sm"
-                                        onClick={() => handleDelete(d.識別碼)}>刪除</Button>
+                                    <PermissionAction permission="ncmr.disposition"><Button variant="outline-danger" size="sm"
+                                        onClick={() => handleDelete(d.識別碼)}>刪除</Button></PermissionAction>
                                 </td>
                             </tr>
                         ))}
@@ -274,22 +275,22 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
                     <Form.Control as="textarea" rows={1} value={form.備註 ?? ''}
                         onChange={e => setField('備註', e.target.value)} />
 
-                    <Button className="mt-2" variant="success" size="sm"
-                        onClick={handleAdd} disabled={!canAdd || createDisp.isPending}>新增此處置</Button>
+                    <PermissionAction permission="ncmr.disposition"><Button className="mt-2" variant="success" size="sm"
+                        onClick={handleAdd} disabled={!canAdd || createDisp.isPending}>新增此處置</Button></PermissionAction>
                 </Form>
             </Modal.Body>
             <Modal.Footer>
                 <div className="d-flex w-100 justify-content-between">
                     <div>
-                        <Button variant="warning" size="sm" className="me-1"
-                            onClick={handleCreateCAPA} disabled={createCAPA.isPending}>轉開 CAPA</Button>
-                        <Button variant="info" size="sm" onClick={convertToRework}>轉重工</Button>
+                        <PermissionAction permission="ncmr.edit" permissions={['capa.create']}><Button variant="warning" size="sm" className="me-1"
+                            onClick={handleCreateCAPA} disabled={createCAPA.isPending}>轉開 CAPA</Button></PermissionAction>
+                        <PermissionAction permission="rework.create"><Button variant="info" size="sm" onClick={convertToRework}>轉重工</Button></PermissionAction>
                     </div>
                     {/* 結案按鈕：僅在所有不良品皆已處置時可用 */}
-                    <Button variant="primary" onClick={handleCloseNcmr}
+                    <PermissionAction permission="ncmr.edit" permissions={['ncmr.edit_own']} requireMode="any" reason="需要 ncmr.edit 權限，或只能結案本人建立的 NCMR"><Button variant="primary" onClick={handleCloseNcmr}
                         disabled={!canClose || updateNCMR.isPending}>
                         結案（{canClose ? '可結案' : '處置未完成'}）
-                    </Button>
+                    </Button></PermissionAction>
                 </div>
             </Modal.Footer>
         </Modal>

@@ -14,6 +14,7 @@ import ConfirmActionModal, { type ConfirmActionState } from '../../components/co
 import PaginationBar from '../../components/common/PaginationBar';
 import type { CustomerComplaint } from '../../types';
 import { ComplaintFilterBar, ComplaintTable, type ComplaintFilters } from './ComplaintPageParts';
+import PermissionAction from '../../components/PermissionAction';
 
 const PAGE_SIZE = 20;
 
@@ -146,10 +147,10 @@ const ComplaintPage = () => {
                         <i className="bi bi-bar-chart-fill me-1" />
                         統計分析
                     </Button>
-                    <Button variant="primary" onClick={handleNew}>
+                    <PermissionAction permission="complaint.create"><Button variant="primary" onClick={handleNew}>
                         <i className="bi bi-plus-lg me-1" />
                         新增客訴
-                    </Button>
+                    </Button></PermissionAction>
                 </div>
             </div>
 

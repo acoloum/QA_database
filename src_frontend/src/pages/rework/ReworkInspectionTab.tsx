@@ -1,6 +1,7 @@
 import { Button } from 'react-bootstrap';
 
 import type { ReworkInspectionDetail } from '../../types';
+import PermissionAction from '../../components/PermissionAction';
 
 interface ReworkInspectionTabProps {
   inspections: ReworkInspectionDetail[];
@@ -18,9 +19,9 @@ const ReworkInspectionTab = ({
   <div className="tab-pane fade show active">
     <div className="d-flex justify-content-between align-items-center mb-3">
       <h6 className="mb-0">品檢記錄</h6>
-      <Button variant="primary" size="sm" onClick={onAddInspection}>
+      <PermissionAction permission="rework.create"><Button variant="primary" size="sm" onClick={onAddInspection}>
         <i className="bi bi-plus-lg"></i> 新增
-      </Button>
+      </Button></PermissionAction>
     </div>
     {inspections.length > 0 ? (
       <table className="table table-sm table-bordered">
@@ -39,8 +40,8 @@ const ReworkInspectionTab = ({
               <td>{inspection.檢驗日期 || '-'}</td>
               <td>
                 <div className="btn-group btn-group-sm">
-                  <button className="btn btn-outline-primary" onClick={() => onEditInspection(inspection)}>編輯</button>
-                  <button className="btn btn-outline-danger" onClick={() => inspection.識別碼 && onDeleteInspection(inspection.識別碼)}>刪除</button>
+                  <PermissionAction permission="rework.create"><button className="btn btn-outline-primary" onClick={() => onEditInspection(inspection)}>編輯</button></PermissionAction>
+                  <PermissionAction permission="rework.delete"><button className="btn btn-outline-danger" onClick={() => inspection.識別碼 && onDeleteInspection(inspection.識別碼)}>刪除</button></PermissionAction>
                 </div>
               </td>
             </tr>

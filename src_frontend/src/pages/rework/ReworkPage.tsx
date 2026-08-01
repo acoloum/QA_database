@@ -8,8 +8,10 @@ import ReworkModalHost from './ReworkModalHost';
 import { useReworkActions } from './useReworkActions';
 import { useReworkDetail } from './useReworkDetail';
 import { useReworkPageData } from './useReworkPageData';
+import { useAuth } from '../../context/useAuth';
 
 const ReworkPage = () => {
+    const { hasPermission } = useAuth();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
 
@@ -67,12 +69,13 @@ const ReworkPage = () => {
         reloadDetailData,
         loadData,
         setFollowUpModal,
+        hasPermission,
     });
 
     useEffect(() => {
         const ncmrId = searchParams.get('ncmr_id');
         const ncmrNo = searchParams.get('ncmr_no');
-        if (ncmrId) {
+        if (ncmrId && hasPermission('rework.create')) {
             let cancelled = false;
             queueMicrotask(() => {
                 if (cancelled) return;
@@ -84,7 +87,7 @@ const ReworkPage = () => {
                 cancelled = true;
             };
         }
-    }, [searchParams]);
+    }, [searchParams, hasPermission]);
 
     const handleCloseApplyModal = () => {
         setShowApplyModal(false);
@@ -240,12 +243,12 @@ const ReworkPage = () => {
             />
 
             <ReworkModalHost
-                showApplyModal={showApplyModal}
+                showApplyModal={showApplyModal && hasPermission('rework.create')}
                 onCloseApplyModal={handleCloseApplyModal}
                 onApplySuccess={loadData}
                 initialNcmrId={initialNcmrId}
                 initialNcmrNo={initialNcmrNo}
-                showApproveModal={showApproveModal}
+                showApproveModal={showApproveModal && hasPermission('rework.approve')}
                 onCloseApproveModal={() => setShowApproveModal(false)}
                 onApproveSuccess={loadData}
                 selectedReworkId={selectedReworkId}
@@ -268,29 +271,29 @@ const ReworkPage = () => {
                 onAddCost={() => setShowCostModal(true)}
                 onEditCost={handleEditCost}
                 onDeleteCost={handleDeleteCost}
-                showExecutionModal={showExecutionModal}
+                showExecutionModal={showExecutionModal && hasPermission('rework.create')}
                 onCloseExecutionModal={() => setShowExecutionModal(false)}
                 onExecutionSuccess={() => reloadDetailData()}
                 reworkNumber={selectedReworkDetail?.申請單號 || ''}
-                showInspectionModal={showInspectionModal}
+                showInspectionModal={showInspectionModal && hasPermission('rework.create')}
                 onCloseInspectionModal={() => setShowInspectionModal(false)}
                 onInspectionSuccess={() => reloadDetailData()}
-                showCostModal={showCostModal}
+                showCostModal={showCostModal && hasPermission('rework.create')}
                 onCloseCostModal={() => setShowCostModal(false)}
                 onCostSuccess={() => { reloadDetailData(); loadData(); }}
-                showEditExecutionModal={showEditExecutionModal}
+                showEditExecutionModal={showEditExecutionModal && hasPermission('rework.create')}
                 onCloseEditExecutionModal={() => setShowEditExecutionModal(false)}
                 onEditExecutionSuccess={() => reloadDetailData()}
                 selectedExecution={selectedExecution}
-                showEditInspectionModal={showEditInspectionModal}
+                showEditInspectionModal={showEditInspectionModal && hasPermission('rework.create')}
                 onCloseEditInspectionModal={() => setShowEditInspectionModal(false)}
                 onEditInspectionSuccess={() => reloadDetailData()}
                 selectedInspection={selectedInspection}
-                showEditCostModal={showEditCostModal}
+                showEditCostModal={showEditCostModal && hasPermission('rework.create')}
                 onCloseEditCostModal={() => setShowEditCostModal(false)}
                 onEditCostSuccess={() => { reloadDetailData(); loadData(); }}
                 selectedCost={selectedCost}
-                showEditBasicModal={showEditBasicModal}
+                showEditBasicModal={showEditBasicModal && hasPermission('rework.create')}
                 onCloseEditBasicModal={() => setShowEditBasicModal(false)}
                 onEditBasicSuccess={() => reloadDetailData()}
                 followUpModal={followUpModal}

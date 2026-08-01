@@ -4,6 +4,7 @@ import {
   COMPLAINT_TYPE_LABELS,
 } from '../../hooks/useComplaint';
 import type { ComplaintType, CustomerComplaint } from '../../types';
+import PermissionAction from '../../components/PermissionAction';
 
 export interface ComplaintFilters {
   customer: string;
@@ -164,24 +165,32 @@ export const ComplaintTable = ({
                     CAPA #{c.related_capa_id}
                   </Badge>
                 ) : (
-                  <Button variant="outline-warning" size="sm" style={{ fontSize: '0.7rem' }} onClick={() => onOpenCapa(c)} disabled={capaPending}>
-                    開立CAPA
-                  </Button>
+                  <PermissionAction permission="complaint.edit" permissions={['capa.create']}>
+                    <Button variant="outline-warning" size="sm" style={{ fontSize: '0.7rem' }} onClick={() => onOpenCapa(c)} disabled={capaPending}>
+                      開立CAPA
+                    </Button>
+                  </PermissionAction>
                 )}
                 {c.related_rework_id ? (
                   <Badge bg="secondary" style={{ cursor: 'pointer' }} onClick={() => onNavigateToRework(c.related_rework_id!)} title="點擊查看重工單">
                     重工 #{c.related_rework_id}
                   </Badge>
                 ) : (
-                  <Button variant="outline-secondary" size="sm" style={{ fontSize: '0.7rem' }} onClick={() => onOpenRework(c)} disabled={reworkPending}>
-                    開立重工
-                  </Button>
+                  <PermissionAction permission="complaint.edit" permissions={['rework.create']}>
+                    <Button variant="outline-secondary" size="sm" style={{ fontSize: '0.7rem' }} onClick={() => onOpenRework(c)} disabled={reworkPending}>
+                      開立重工
+                    </Button>
+                  </PermissionAction>
                 )}
               </div>
             </td>
             <td>
-              <Button variant="outline-primary" size="sm" className="me-1" onClick={() => onEdit(c)}>編輯</Button>
-              <Button variant="outline-danger" size="sm" onClick={() => onDelete(c)}>刪除</Button>
+              <PermissionAction permission="complaint.edit">
+                <Button variant="outline-primary" size="sm" className="me-1" onClick={() => onEdit(c)}>編輯</Button>
+              </PermissionAction>
+              <PermissionAction permission="complaint.delete">
+                <Button variant="outline-danger" size="sm" onClick={() => onDelete(c)}>刪除</Button>
+              </PermissionAction>
             </td>
           </tr>
         ))}

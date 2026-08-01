@@ -9,8 +9,11 @@ import ConfirmActionModal, { type ConfirmActionState } from '../../components/co
 import PaginationBar from '../../components/common/PaginationBar';
 import { usePatrolList, usePatrolOptions, useDeletePatrol, useExportPatrolRawData } from '../../hooks/usePatrol';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import PermissionAction from '../../components/PermissionAction';
+import { useAuth } from '../../context/useAuth';
 
 const PatrolPage = () => {
+    const { hasPermission } = useAuth();
     const navigate = useNavigate();
 
     // Filters
@@ -105,15 +108,15 @@ const PatrolPage = () => {
                     <button className="btn btn-back-home me-2" onClick={() => navigate('/')}>
                         <i className="bi bi-arrow-left"></i> 回首頁
                     </button>
-                    <button className="btn btn-outline-success me-2" onClick={handleExport} disabled={exportRawData.isPending}>
+                    <PermissionAction permission="patrol.view"><button className="btn btn-outline-success me-2" onClick={handleExport} disabled={exportRawData.isPending}>
                         <i className="bi bi-file-earmark-excel"></i> {exportRawData.isPending ? '匯出中...' : '匯出 Excel'}
-                    </button>
-                    <button className="btn btn-outline-info me-2" onClick={() => setShowImportModal(true)}>
+                    </button></PermissionAction>
+                    <PermissionAction permission="patrol.create"><button className="btn btn-outline-info me-2" onClick={() => setShowImportModal(true)}>
                         <i className="bi bi-upload"></i> 匯入 Excel
-                    </button>
-                    <button className="btn btn-primary" onClick={handleAdd}>
+                    </button></PermissionAction>
+                    <PermissionAction permission="patrol.create"><button className="btn btn-primary" onClick={handleAdd}>
                         <i className="bi bi-plus-lg"></i> 新增巡檢
-                    </button>
+                    </button></PermissionAction>
                 </div>
             </div>
 
@@ -176,7 +179,7 @@ const PatrolPage = () => {
                 spec={debouncedSpec}
                 startDate={startDate}
                 endDate={endDate}
-                onEditPoint={handleEdit}
+                onEditPoint={hasPermission('patrol.edit') ? handleEdit : undefined}
                 statsItem={statsItem}
                 statsPos={statsPos}
                 onItemChange={setStatsItem}
@@ -225,12 +228,12 @@ const PatrolPage = () => {
                                             )}
                                         </td>
                                         <td>
-                                            <Button variant="outline-primary" size="sm" className="me-2" onClick={() => handleEdit(item.id)}>
+                                            <PermissionAction permission="patrol.edit"><Button variant="outline-primary" size="sm" className="me-2" onClick={() => handleEdit(item.id)}>
                                                 <i className="bi bi-pencil"></i> 編輯
-                                            </Button>
-                                            <Button variant="outline-danger" size="sm" onClick={() => handleDelete(item.id)}>
+                                            </Button></PermissionAction>
+                                            <PermissionAction permission="patrol.delete"><Button variant="outline-danger" size="sm" onClick={() => handleDelete(item.id)}>
                                                 <i className="bi bi-trash"></i> 刪除
-                                            </Button>
+                                            </Button></PermissionAction>
                                         </td>
                                     </tr>
                                 ))

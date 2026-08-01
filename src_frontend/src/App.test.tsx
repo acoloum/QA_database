@@ -51,7 +51,71 @@ vi.mock('./pages/msa/MsaImportHistoryPage', () => ({
   default: () => <h2>設備匯入路由頁面</h2>,
 }));
 
+vi.mock('./pages/ncmr/NCMRPage', () => ({ default: () => <h2>NCMR 路由頁面</h2> }));
+vi.mock('./pages/capa/CAPAPage', () => ({ default: () => <h2>CAPA 路由頁面</h2> }));
+vi.mock('./pages/rework/ReworkPage', () => ({ default: () => <h2>重工路由頁面</h2> }));
+vi.mock('./pages/complaint/ComplaintPage', () => ({ default: () => <h2>客訴路由頁面</h2> }));
+vi.mock('./pages/shipping/ShippingPage', () => ({ default: () => <h2>出貨路由頁面</h2> }));
+vi.mock('./pages/patrol/PatrolPage', () => ({ default: () => <h2>巡檢路由頁面</h2> }));
+vi.mock('./pages/tolerance/TolerancePage', () => ({ default: () => <h2>公差路由頁面</h2> }));
+vi.mock('./pages/pyrometry/PyrometryDashboardPage', () => ({ default: () => <h2>爐溫路由頁面</h2> }));
+vi.mock('./pages/analytics/QualityAnalyticsPage', () => ({ default: () => <h2>品質分析路由頁面</h2> }));
+vi.mock('./pages/vendor/VendorPerformancePage', () => ({ default: () => <h2>廠商績效路由頁面</h2> }));
+vi.mock('./pages/task/TaskListPage', () => ({ default: () => <h2>任務路由頁面</h2> }));
+vi.mock('./pages/spc/AdvancedSpcPage', () => ({ default: () => <h2>SPC 路由頁面</h2> }));
+
 import App from './App';
+
+const domainRoutes = [
+  ['/ncmr', 'ncmr.view', 'NCMR 路由頁面'],
+  ['/capa', 'capa.view', 'CAPA 路由頁面'],
+  ['/rework', 'rework.view', '重工路由頁面'],
+  ['/complaints', 'complaint.view', '客訴路由頁面'],
+  ['/shipping', 'shipping.view', '出貨路由頁面'],
+  ['/patrol', 'patrol.view', '巡檢路由頁面'],
+  ['/tolerance', 'tolerance.view', '公差路由頁面'],
+  ['/pyrometry', 'pyrometry.view', '爐溫路由頁面'],
+  ['/mechanical', 'mechanical.view', '機械性質路由頁面'],
+  ['/quality-analytics', 'analytics.view', '品質分析路由頁面'],
+  ['/vendor-performance', 'vendor.view', '廠商績效路由頁面'],
+  ['/tasks', 'task.view', '任務路由頁面'],
+  ['/spc/advanced', 'spc.view', 'SPC 路由頁面'],
+  ['/msa', 'msa.view', 'MSA 工作台路由頁面'],
+  ['/calibrations', 'calibration.view', '校正工作佇列路由頁面'],
+] as const;
+
+describe('App 領域檢視權限矩陣', () => {
+  const originalPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+  afterEach(() => {
+    window.history.replaceState({}, '', originalPath);
+  });
+
+  it.each(domainRoutes)('%s 具有 %s 才呈現領域頁面', async (path, permission, heading) => {
+    window.history.replaceState({}, '', path);
+    authMock.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+      user: { username: '受權人員', role: 'user' },
+      hasPermission: (candidate: string) => candidate === permission,
+      logout: vi.fn(),
+    });
+    const { unmount } = render(<App />);
+    expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();
+    unmount();
+
+    authMock.mockReturnValue({
+      isAuthenticated: true,
+      isLoading: false,
+      user: { username: '無權人員', role: 'user' },
+      hasPermission: () => false,
+      logout: vi.fn(),
+    });
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: '儀表板路由頁面' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: heading })).not.toBeInTheDocument();
+  });
+});
 
 describe('App 機械性質路由', () => {
   let originalPathname: string;

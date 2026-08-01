@@ -11,6 +11,7 @@ import CAPAModal from '../../components/capa/CAPAModal';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import type { CAPAListItem } from '../../types';
 import { parseCapaOpenId } from './capaPageUtils';
+import PermissionAction from '../../components/PermissionAction';
 
 const PAGE_SIZE = 20;
 
@@ -219,22 +220,22 @@ const CAPAPage = () => {
                                             </Badge>
                                         </td>
                                         <td>
-                                            <Button
+                                            <PermissionAction permission="capa.view"><Button
                                                 variant="outline-primary"
                                                 size="sm"
                                                 className="me-1"
                                                 onClick={() => handleEdit(item)}
                                             >
                                                 處理
-                                            </Button>
-                                            <Button
+                                            </Button></PermissionAction>
+                                            <PermissionAction permission="capa.close"><Button
                                                 variant="outline-danger"
                                                 size="sm"
                                                 onClick={() => handleDelete(item)}
                                                 disabled={deleteMutation.isPending}
                                             >
                                                 刪除
-                                            </Button>
+                                            </Button></PermissionAction>
                                         </td>
                                     </tr>
                                 ))}

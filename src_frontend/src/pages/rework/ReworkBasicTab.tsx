@@ -2,6 +2,7 @@ import { Button } from 'react-bootstrap';
 
 import type { ReworkApplication } from '../../types';
 import { getReworkStatusBadge } from './reworkDetailUtils';
+import PermissionAction from '../../components/PermissionAction';
 
 interface ReworkBasicTabProps {
   detail: ReworkApplication;
@@ -14,13 +15,13 @@ const ReworkBasicTab = ({ detail, onEditBasic, onCloseRework }: ReworkBasicTabPr
     <div className="d-flex justify-content-between align-items-center mb-3">
       <h6 className="mb-0">基本資訊</h6>
       <div className="btn-group">
-        <Button variant="primary" size="sm" onClick={onEditBasic}>
+        <PermissionAction permission="rework.create"><Button variant="primary" size="sm" onClick={onEditBasic}>
           <i className="bi bi-pencil"></i> 編輯
-        </Button>
+        </Button></PermissionAction>
         {detail.狀態 !== '已完成' && (
-          <Button variant="success" size="sm" onClick={() => onCloseRework(detail.識別碼)}>
+          <PermissionAction permission="rework.approve"><Button variant="success" size="sm" onClick={() => onCloseRework(detail.識別碼)}>
             <i className="bi bi-check-circle"></i> 結案
-          </Button>
+          </Button></PermissionAction>
         )}
       </div>
     </div>

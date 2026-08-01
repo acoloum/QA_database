@@ -6,6 +6,7 @@ import ViewToleranceModal from '../../components/tolerance/ViewToleranceModal';
 import { useToleranceSearch, useToleranceOptions, useDeleteTolerance, useImportTolerance, useExportToleranceData } from '../../hooks/useTolerance';
 import type { ToleranceStandard, Vendor } from '../../types';
 import { useNavigate } from 'react-router';
+import PermissionAction from '../../components/PermissionAction';
 
 const TolerancePage = () => {
     const navigate = useNavigate();
@@ -103,11 +104,11 @@ const TolerancePage = () => {
                         <i className="bi bi-arrow-left"></i> 回首頁
                     </Button>
                     <input type="file" id="importFile" hidden accept=".xlsx,.xls" onChange={handleImport} />
-                    <Button variant="outline-success" className="me-2" onClick={handleExport} disabled={exportToleranceData.isPending}>
+                    <PermissionAction permission="tolerance.view"><Button variant="outline-success" className="me-2" onClick={handleExport} disabled={exportToleranceData.isPending}>
                         <i className="bi bi-download"></i> {exportToleranceData.isPending ? '匯出中...' : '匯出 Excel'}
-                    </Button>
-                    <Button variant="outline-primary" className="me-2" onClick={() => document.getElementById('importFile')?.click()}><i className="bi bi-upload"></i> 匯入 Excel</Button>
-                    <Button variant="warning" className="text-white" onClick={handleAdd}><i className="bi bi-plus-lg"></i> 新增公差資料</Button>
+                    </Button></PermissionAction>
+                    <PermissionAction permission="tolerance.manage"><Button variant="outline-primary" className="me-2" onClick={() => document.getElementById('importFile')?.click()}><i className="bi bi-upload"></i> 匯入 Excel</Button></PermissionAction>
+                    <PermissionAction permission="tolerance.manage"><Button variant="warning" className="text-white" onClick={handleAdd}><i className="bi bi-plus-lg"></i> 新增公差資料</Button></PermissionAction>
                 </div>
             </div>
 
@@ -164,8 +165,8 @@ const TolerancePage = () => {
                                         <td>{item.create_date?.substring(0, 10) || '-'}</td>
                                         <td>
                                             <Button variant="outline-info" size="sm" className="me-2" style={{ fontSize: '14px' }} onClick={() => handleView(item.id)}>查看</Button>
-                                            <Button variant="outline-primary" size="sm" className="me-2" style={{ fontSize: '14px' }} onClick={() => handleEdit(item.id)}>編輯</Button>
-                                            <Button variant="outline-danger" size="sm" style={{ fontSize: '14px' }} onClick={() => handleDelete(item.id)}>刪除</Button>
+                                            <PermissionAction permission="tolerance.manage"><Button variant="outline-primary" size="sm" className="me-2" style={{ fontSize: '14px' }} onClick={() => handleEdit(item.id)}>編輯</Button></PermissionAction>
+                                            <PermissionAction permission="tolerance.manage"><Button variant="outline-danger" size="sm" style={{ fontSize: '14px' }} onClick={() => handleDelete(item.id)}>刪除</Button></PermissionAction>
                                         </td>
                                     </tr>
                                 ))

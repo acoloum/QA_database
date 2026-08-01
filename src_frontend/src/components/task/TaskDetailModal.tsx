@@ -7,6 +7,7 @@ import {
     TASK_STATUS_VARIANT,
 } from '../../hooks/useTask';
 import type { ActionTask, TaskStatus } from '../../types';
+import PermissionAction from '../PermissionAction';
 
 interface TaskDetailModalProps {
     task: ActionTask | null;
@@ -163,7 +164,7 @@ const TaskDetailModal = ({ task, show, onHide }: TaskDetailModalProps) => {
             <Modal.Footer>
                 <Button variant="secondary" onClick={onHide}>關閉</Button>
                 {nextStatus && (
-                    <Button
+                    <PermissionAction permission="task.edit"><Button
                         variant="primary"
                         onClick={handleSubmit}
                         disabled={
@@ -173,7 +174,7 @@ const TaskDetailModal = ({ task, show, onHide }: TaskDetailModalProps) => {
                         }
                     >
                         {updateStatus.isPending ? '更新中…' : '確認更新'}
-                    </Button>
+                    </Button></PermissionAction>
                 )}
             </Modal.Footer>
         </Modal>

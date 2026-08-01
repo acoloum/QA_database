@@ -8,6 +8,7 @@ import {
 } from '../../hooks/useTask';
 import TaskDetailModal from '../../components/task/TaskDetailModal';
 import type { ActionTask, TaskStatus } from '../../types';
+import PermissionAction from '../../components/PermissionAction';
 
 const PAGE_SIZE = 20;
 
@@ -174,13 +175,13 @@ const TaskListPage = () => {
                                                 </Badge>
                                             </td>
                                             <td>
-                                                <Button
+                                                <PermissionAction permission="task.view"><Button
                                                     variant="outline-primary"
                                                     size="sm"
                                                     onClick={() => setSelected(task)}
                                                 >
                                                     明細
-                                                </Button>
+                                                </Button></PermissionAction>
                                             </td>
                                         </tr>
                                     ))

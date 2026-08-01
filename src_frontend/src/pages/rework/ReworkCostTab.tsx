@@ -2,6 +2,7 @@ import { Button } from 'react-bootstrap';
 
 import type { ReworkCostDetail } from '../../types';
 import { calculateReworkCostTotal, formatReworkCurrency } from './reworkDetailUtils';
+import PermissionAction from '../../components/PermissionAction';
 
 interface ReworkCostTabProps {
   costs: ReworkCostDetail[];
@@ -14,9 +15,9 @@ const ReworkCostTab = ({ costs, onAddCost, onEditCost, onDeleteCost }: ReworkCos
   <div className="tab-pane fade show active">
     <div className="d-flex justify-content-between align-items-center mb-3">
       <h6 className="mb-0">成本分析</h6>
-      <Button variant="primary" size="sm" onClick={onAddCost}>
+      <PermissionAction permission="rework.create"><Button variant="primary" size="sm" onClick={onAddCost}>
         <i className="bi bi-plus-lg"></i> 新增
-      </Button>
+      </Button></PermissionAction>
     </div>
     {costs.length > 0 ? (
       <table className="table table-sm table-bordered">
@@ -36,8 +37,8 @@ const ReworkCostTab = ({ costs, onAddCost, onEditCost, onDeleteCost }: ReworkCos
               <td>{cost.記錄日期 || '-'}</td>
               <td>
                 <div className="btn-group btn-group-sm">
-                  <button className="btn btn-outline-primary" onClick={() => onEditCost(cost)}>編輯</button>
-                  <button className="btn btn-outline-danger" onClick={() => cost.識別碼 && onDeleteCost(cost.識別碼)}>刪除</button>
+                  <PermissionAction permission="rework.create"><button className="btn btn-outline-primary" onClick={() => onEditCost(cost)}>編輯</button></PermissionAction>
+                  <PermissionAction permission="rework.delete"><button className="btn btn-outline-danger" onClick={() => cost.識別碼 && onDeleteCost(cost.識別碼)}>刪除</button></PermissionAction>
                 </div>
               </td>
             </tr>

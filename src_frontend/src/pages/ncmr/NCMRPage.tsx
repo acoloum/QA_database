@@ -11,6 +11,8 @@ import { useNavigate } from 'react-router';
 import { useNCMRList, useDeleteNCMR, useCreateCAPA, useNCMRDetail } from '../../hooks/useNCMR';
 import type { NCMRListParams } from '../../hooks/useNCMR';
 import { buildNcmrPrintHtml, buildReworkFromNcmrUrl } from './ncmrPageUtils';
+import PermissionAction from '../../components/PermissionAction';
+import { useAuth } from '../../context/useAuth';
 
 const EMPTY_FILTERS: NCMRListParams = {
     page: 1, per_page: 20,
@@ -18,6 +20,8 @@ const EMPTY_FILTERS: NCMRListParams = {
 };
 
 const NCMRPage = () => {
+    const { hasPermission } = useAuth();
+    const canEdit = hasPermission('ncmr.edit') || hasPermission('ncmr.edit_own');
     const navigate = useNavigate();
     const [filters, setFilters] = useState<NCMRListParams>(EMPTY_FILTERS);
     const [page, setPage] = useState(1);
@@ -125,9 +129,9 @@ const NCMRPage = () => {
                     <Button className="btn-back-home me-2" onClick={() => navigate('/')}>
                         <i className="bi bi-arrow-left"></i> 回首頁
                     </Button>
-                    <Button variant="primary" onClick={() => { setEditId(null); setShowModal(true); }}>
+                    <PermissionAction permission="ncmr.create"><Button variant="primary" onClick={() => { setEditId(null); setShowModal(true); }}>
                         <i className="bi bi-plus-lg"></i> 新增異常單
-                    </Button>
+                    </Button></PermissionAction>
                 </div>
             </div>
 
@@ -188,16 +192,16 @@ const NCMRPage = () => {
                                             </div>
                                         </td>
                                         <td>{item.defect_reason ? <Badge bg="info">{item.defect_reason.split(':')[0]}</Badge> : item.defect_category ? <Badge bg="secondary">{item.defect_category}</Badge> : '-'}</td>
-                                        <td onClick={() => { setDisposeItem(item); setShowDisposeModal(true); }} style={{ cursor: 'pointer', textDecoration: 'underline' }} title="點擊進行處置">{item.result || '-'}</td>
+                                        <td><PermissionAction permission="ncmr.disposition"><button type="button" className="btn btn-link p-0" onClick={() => { setDisposeItem(item); setShowDisposeModal(true); }}>{item.result || '-'}</button></PermissionAction></td>
                                         <td>{renderStatusBadge(item.status)}</td>
                                         <td>{renderProgress(item)}</td>
                                         <td>
                                             <RowActionMenu items={[
                                                 { label: '列印', onClick: () => setPrintItem(item) },
-                                                { label: '編輯', onClick: () => { setEditId(item.id); setShowModal(true); } },
-                                                { label: '轉重工', onClick: () => convertToRework(item.id, item.no || String(item.id)) },
-                                                { label: '轉8D', onClick: () => convertTo8D(item.id) },
-                                                { label: '刪除', onClick: () => handleDelete(item.id), danger: true },
+                                                { label: '編輯', onClick: () => { setEditId(item.id); setShowModal(true); }, disabled: !canEdit, disabledReason: hasPermission('ncmr.edit_own') ? '只能編輯本人建立的 NCMR' : '需要 ncmr.edit 權限' },
+                                                { label: '轉重工', onClick: () => convertToRework(item.id, item.no || String(item.id)), disabled: !hasPermission('rework.create'), disabledReason: '需要 rework.create 權限' },
+                                                { label: '轉8D', onClick: () => convertTo8D(item.id), disabled: !(hasPermission('ncmr.edit') && hasPermission('capa.create')), disabledReason: '需要 ncmr.edit 與 capa.create 權限' },
+                                                { label: '刪除', onClick: () => handleDelete(item.id), danger: true, disabled: !hasPermission('ncmr.delete'), disabledReason: '需要 ncmr.delete 權限' },
                                             ]} />
                                         </td>
                                     </tr>

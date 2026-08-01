@@ -12,6 +12,8 @@ export interface ActionItem {
     label: string;
     onClick: () => void;
     danger?: boolean;
+    disabled?: boolean;
+    disabledReason?: string;
 }
 
 interface RowActionMenuProps {
@@ -95,9 +97,11 @@ const RowActionMenu = ({ items, label = '操作' }: RowActionMenuProps) => {
                                 key={i}
                                 type="button"
                                 className={'dropdown-item' + (it.danger ? ' text-danger' : '')}
-                                onClick={() => { setOpen(false); it.onClick(); }}
+                                onClick={() => { setOpen(false); if (!it.disabled) it.onClick(); }}
+                                disabled={it.disabled}
+                                title={it.disabled ? it.disabledReason : undefined}
                             >
-                                {it.label}
+                                {it.label}{it.disabled && it.disabledReason ? `（${it.disabledReason}）` : ''}
                             </button>
                         ))}
                     </div>,

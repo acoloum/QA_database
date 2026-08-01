@@ -7,8 +7,7 @@ import MainLayout from './layouts/MainLayout';
 import AuthLayout from './layouts/AuthLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
-import SpcViewRoute from './components/SpcViewRoute';
-import CalibrationViewRoute from './components/CalibrationViewRoute';
+import PermissionRoute from './components/PermissionRoute';
 
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
@@ -66,16 +65,6 @@ const PageFallback = () => (
   </div>
 );
 
-const MsaViewRoute = ({ children }: { children: ReactNode }) => {
-  const { isAuthenticated, isLoading, hasPermission } = useAuth();
-
-  if (isLoading) {
-    return <div className="d-flex justify-content-center align-items-center vh-100" role="status">載入中…</div>;
-  }
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  return hasPermission('msa.view') ? children : <Navigate to="/" replace />;
-};
-
 const CalibrationEntryRoute = ({ children }: { children: ReactNode }) => {
   const { hasPermission } = useAuth();
   return (
@@ -101,38 +90,37 @@ function App() {
             <Route element={<ProtectedRoute />}>
               <Route element={<MainLayout />}>
                 <Route path="/" element={<DashboardPage />} />
-                <Route path="/rework" element={<ReworkPage />} />
-                <Route path="/shipping" element={<ShippingPage />} />
-                <Route path="/patrol" element={<PatrolPage />} />
-                <Route path="/ncmr" element={<NCMRPage />} />
-                <Route path="/ncmr/risk-releases" element={<RiskReleasePage />} />
-                <Route path="/capa" element={<CAPAPage />} />
-                <Route path="/tasks" element={<TaskListPage />} />
-                <Route path="/complaints" element={<ComplaintPage />} />
-                <Route path="/complaints/stats" element={<ComplaintStatsPage />} />
-                <Route path="/tolerance" element={<TolerancePage />} />
-                <Route path="/extrusion-tolerance" element={<ExtrusionTolerancePage />} />
-                <Route path="/vendor-performance" element={<VendorPerformancePage />} />
-                <Route path="/quality-analytics" element={<QualityAnalyticsPage />} />
-                <Route path="/pyrometry" element={<PyrometryDashboardPage />} />
-                <Route path="/pyrometry/furnaces" element={<FurnaceMasterPage />} />
-                <Route path="/pyrometry/tests" element={<PyrometryTestListPage />} />
-                <Route path="/pyrometry/recorders" element={<RecorderCalibrationPage />} />
-                <Route path="/pyrometry/thermocouples" element={<ThermocoupleCalibrationPage />} />
-                <Route path="/mechanical" element={<MechanicalTestListPage />} />
-                <Route path="/msa" element={<MsaViewRoute><MsaWorkspacePage /></MsaViewRoute>} />
+                <Route path="/rework" element={<PermissionRoute permission="rework.view"><ReworkPage /></PermissionRoute>} />
+                <Route path="/shipping" element={<PermissionRoute permission="shipping.view"><ShippingPage /></PermissionRoute>} />
+                <Route path="/patrol" element={<PermissionRoute permission="patrol.view"><PatrolPage /></PermissionRoute>} />
+                <Route path="/ncmr" element={<PermissionRoute permission="ncmr.view"><NCMRPage /></PermissionRoute>} />
+                <Route path="/ncmr/risk-releases" element={<PermissionRoute permission="ncmr.view"><RiskReleasePage /></PermissionRoute>} />
+                <Route path="/capa" element={<PermissionRoute permission="capa.view"><CAPAPage /></PermissionRoute>} />
+                <Route path="/tasks" element={<PermissionRoute permission="task.view"><TaskListPage /></PermissionRoute>} />
+                <Route path="/complaints" element={<PermissionRoute permission="complaint.view"><ComplaintPage /></PermissionRoute>} />
+                <Route path="/complaints/stats" element={<PermissionRoute permission="complaint.view"><ComplaintStatsPage /></PermissionRoute>} />
+                <Route path="/tolerance" element={<PermissionRoute permission="tolerance.view"><TolerancePage /></PermissionRoute>} />
+                <Route path="/extrusion-tolerance" element={<PermissionRoute permission="tolerance.view"><ExtrusionTolerancePage /></PermissionRoute>} />
+                <Route path="/vendor-performance" element={<PermissionRoute permission="vendor.view"><VendorPerformancePage /></PermissionRoute>} />
+                <Route path="/quality-analytics" element={<PermissionRoute permission="analytics.view"><QualityAnalyticsPage /></PermissionRoute>} />
+                <Route path="/pyrometry" element={<PermissionRoute permission="pyrometry.view"><PyrometryDashboardPage /></PermissionRoute>} />
+                <Route path="/pyrometry/furnaces" element={<PermissionRoute permission="pyrometry.view"><FurnaceMasterPage /></PermissionRoute>} />
+                <Route path="/pyrometry/tests" element={<PermissionRoute permission="pyrometry.view"><PyrometryTestListPage /></PermissionRoute>} />
+                <Route path="/pyrometry/recorders" element={<PermissionRoute permission="pyrometry.view"><RecorderCalibrationPage /></PermissionRoute>} />
+                <Route path="/pyrometry/thermocouples" element={<PermissionRoute permission="pyrometry.view"><ThermocoupleCalibrationPage /></PermissionRoute>} />
+                <Route path="/mechanical" element={<PermissionRoute permission="mechanical.view"><MechanicalTestListPage /></PermissionRoute>} />
+                <Route path="/msa" element={<PermissionRoute permission="msa.view"><MsaWorkspacePage /></PermissionRoute>} />
                 <Route path="/msa/equipment" element={<Navigate to="/measurement-equipment" replace />} />
-                <Route path="/msa/imports" element={<MsaViewRoute><MsaImportHistoryPage /></MsaViewRoute>} />
-                <Route path="/msa/criteria" element={<MsaViewRoute><MsaCriteriaPage /></MsaViewRoute>} />
-                <Route path="/msa/studies" element={<MsaViewRoute><MsaStudyListPage /></MsaViewRoute>} />
-                <Route path="/msa/studies/new" element={<MsaViewRoute><MsaStudyWizardPage /></MsaViewRoute>} />
-                <Route path="/msa/studies/:studyId/edit" element={<MsaViewRoute><MsaStudyWizardPage /></MsaViewRoute>} />
-                <Route path="/msa/studies/:studyId/collect" element={<MsaViewRoute><MsaDataCollectionPage /></MsaViewRoute>} />
+                <Route path="/msa/imports" element={<PermissionRoute permission="msa.view"><MsaImportHistoryPage /></PermissionRoute>} />
+                <Route path="/msa/criteria" element={<PermissionRoute permission="msa.view"><MsaCriteriaPage /></PermissionRoute>} />
+                <Route path="/msa/studies" element={<PermissionRoute permission="msa.view"><MsaStudyListPage /></PermissionRoute>} />
+                <Route path="/msa/studies/new" element={<PermissionRoute permission="msa.view"><MsaStudyWizardPage /></PermissionRoute>} />
+                <Route path="/msa/studies/:studyId/edit" element={<PermissionRoute permission="msa.view"><MsaStudyWizardPage /></PermissionRoute>} />
+                <Route path="/msa/studies/:studyId/collect" element={<PermissionRoute permission="msa.view"><MsaDataCollectionPage /></PermissionRoute>} />
               </Route>
             </Route>
 
-            <Route element={<CalibrationViewRoute />}>
-              <Route element={<MainLayout />}>
+            <Route element={<PermissionRoute permission="calibration.view"><MainLayout /></PermissionRoute>}>
                 <Route path="/measurement-equipment" element={<MeasurementEquipmentPage />} />
                 <Route path="/calibrations" element={<CalibrationWorkQueuePage />} />
                 <Route
@@ -160,13 +148,10 @@ function App() {
                     </CalibrationEntryRoute>
                   )}
                 />
-              </Route>
             </Route>
 
-            <Route element={<SpcViewRoute />}>
-              <Route element={<MainLayout />}>
+            <Route element={<PermissionRoute permission="spc.view"><MainLayout /></PermissionRoute>}>
                 <Route path="/spc/advanced" element={<AdvancedSpcPage />} />
-              </Route>
             </Route>
 
             {/* 管理員專屬路由 */}

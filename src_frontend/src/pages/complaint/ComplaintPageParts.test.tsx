@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { ComplaintFilterBar, ComplaintTable } from './ComplaintPageParts';
 import type { CustomerComplaint } from '../../types';
 
+const authMock = vi.fn();
+vi.mock('../../context/useAuth', () => ({ useAuth: () => authMock() }));
+
 const complaint: CustomerComplaint = {
   id: 1,
   complaint_no: 'CC-1',
@@ -37,6 +40,7 @@ describe('ComplaintPageParts', () => {
   });
 
   it('renders complaint table actions', () => {
+    authMock.mockReturnValue({ hasPermission: () => true });
     const onEdit = vi.fn();
     const onDelete = vi.fn();
     const onOpenCapa = vi.fn();
@@ -67,5 +71,35 @@ describe('ComplaintPageParts', () => {
     expect(onDelete).toHaveBeenCalledWith(complaint);
     expect(onOpenCapa).toHaveBeenCalledWith(complaint);
     expect(onOpenRework).toHaveBeenCalledWith(complaint);
+  });
+
+  it('跨領域開單缺少任一權限時停用且不呼叫 handler', () => {
+    authMock.mockReturnValue({
+      hasPermission: (permission: string) => permission === 'complaint.edit',
+    });
+    const onOpenCapa = vi.fn();
+    const onOpenRework = vi.fn();
+    render(
+      <ComplaintTable
+        loading={false}
+        complaints={[complaint]}
+        capaPending={false}
+        reworkPending={false}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onOpenCapa={onOpenCapa}
+        onOpenRework={onOpenRework}
+        onNavigateToCapa={vi.fn()}
+        onNavigateToRework={vi.fn()}
+      />,
+    );
+    const capa = screen.getByRole('button', { name: '開立CAPA' });
+    const rework = screen.getByRole('button', { name: '開立重工' });
+    expect(capa).toBeDisabled();
+    expect(rework).toBeDisabled();
+    fireEvent.click(capa);
+    fireEvent.click(rework);
+    expect(onOpenCapa).not.toHaveBeenCalled();
+    expect(onOpenRework).not.toHaveBeenCalled();
   });
 });

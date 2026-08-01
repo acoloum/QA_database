@@ -1,4 +1,5 @@
 import { Alert, Button, Form, Spinner } from 'react-bootstrap';
+import PermissionAction from '../PermissionAction';
 
 export interface CloseGateData {
     can_close: boolean;
@@ -103,7 +104,7 @@ const D8Pane = ({
             </Form.Group>
 
             <div className="d-flex justify-content-end">
-                <Button
+                <PermissionAction permission="capa.close"><Button
                     variant={canClose ? 'danger' : 'secondary'}
                     disabled={!canClose || !confirmation.trim() || closing}
                     onClick={onClose}
@@ -117,7 +118,7 @@ const D8Pane = ({
                             <i className="bi bi-lock-fill me-1" />確認結案（不可逆）
                         </>
                     )}
-                </Button>
+                </Button></PermissionAction>
             </div>
         </div>
     );

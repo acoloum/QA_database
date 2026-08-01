@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 import ReworkListTable from './ReworkListTable';
 import type { ReworkApplication } from '../../types';
 
+const authMock = vi.fn();
+vi.mock('../../context/useAuth', () => ({ useAuth: () => authMock() }));
+
 const item: ReworkApplication = {
   識別碼: 1,
   申請單號: 'RW-1',
@@ -20,6 +23,7 @@ const item: ReworkApplication = {
 
 describe('ReworkListTable', () => {
   it('renders rework rows and exposes row actions', () => {
+    authMock.mockReturnValue({ hasPermission: () => true });
     const onOpenDetail = vi.fn();
     const onApprove = vi.fn();
     const onDelete = vi.fn();
@@ -42,5 +46,28 @@ describe('ReworkListTable', () => {
     expect(onOpenDetail).toHaveBeenCalledWith(item);
     expect(onApprove).toHaveBeenCalledWith(1);
     expect(onDelete).toHaveBeenCalledWith(1);
+  });
+
+  it('缺少 approve/delete 權限時停用動作且不呼叫 handler', () => {
+    authMock.mockReturnValue({ hasPermission: (permission: string) => permission === 'rework.view' });
+    const onApprove = vi.fn();
+    const onDelete = vi.fn();
+    render(
+      <ReworkListTable
+        loading={false}
+        applications={[item]}
+        onOpenDetail={vi.fn()}
+        onApprove={onApprove}
+        onDelete={onDelete}
+      />,
+    );
+    const approve = screen.getByRole('button', { name: '審核' });
+    const remove = screen.getByRole('button', { name: '刪除' });
+    expect(approve).toBeDisabled();
+    expect(remove).toBeDisabled();
+    fireEvent.click(approve);
+    fireEvent.click(remove);
+    expect(onApprove).not.toHaveBeenCalled();
+    expect(onDelete).not.toHaveBeenCalled();
   });
 });

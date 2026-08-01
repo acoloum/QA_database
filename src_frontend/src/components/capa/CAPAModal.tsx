@@ -24,6 +24,7 @@ import D7Pane from './D7Pane';
 import D8Pane from './D8Pane';
 import SourceInfoBanner from './SourceInfoBanner';
 import { useCapaDraft } from './useCapaDraft';
+import { useAuth } from '../../context/useAuth';
 
 // ── 介面 Props ────────────────────────────────────────────────
 interface CAPAModalProps {
@@ -36,6 +37,7 @@ interface CAPAModalProps {
 // 主元件：CAPAModal
 // ══════════════════════════════════════════════════════════════
 const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
+    const { hasPermission } = useAuth();
     const { data: capa, isLoading } = useCapaDetail(capaId);
     const { data: inspectors = [] }  = useInspectors({ enabled: show });
     const updateStep  = useUpdateCapaStep();
@@ -44,6 +46,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
 
     // 唯讀模式（已結案）
     const isClosed = capa?.status === '已結案';
+    const isReadOnly = isClosed || !hasPermission('capa.edit');
 
     const draft = useCapaDraft({
         capa,
@@ -132,7 +135,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                                         severity={d0Severity} setSeverity={handleSeverityChange}
                                         rigor={d0Rigor} setRigor={setD0Rigor}
                                         deadline={d0Deadline} setDeadline={setD0Deadline}
-                                        readonly={isClosed}
+                                        readonly={isReadOnly}
                                         capaId={capa.id}
                                         onSave={saveD0}
                                         saving={updateStep.isPending}
@@ -146,7 +149,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                                         leader={d1Leader} setLeader={setD1Leader}
                                         members={d1Members} setMembers={setD1Members}
                                         inspectors={inspectors}
-                                        readonly={isClosed}
+                                        readonly={isReadOnly}
                                         onSave={saveD1}
                                         saving={updateStep.isPending}
                                     />
@@ -162,7 +165,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                                         why={d2Why} setWhy={setD2Why}
                                         how={d2How} setHow={setD2How}
                                         howMany={d2HowMany} setHowMany={setD2HowMany}
-                                        readonly={isClosed}
+                                        readonly={isReadOnly}
                                         capaId={capa.id}
                                         onSave={saveD2}
                                         saving={updateStep.isPending}
@@ -175,7 +178,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                                         action={d3Action} setAction={setD3Action}
                                         effectiveDate={d3EffDate} setEffectiveDate={setD3EffDate}
                                         verification={d3Verif} setVerification={setD3Verif}
-                                        readonly={isClosed}
+                                        readonly={isReadOnly}
                                         capaId={capa.id}
                                         onSave={saveD3}
                                         saving={updateStep.isPending}
@@ -189,7 +192,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                                         fiveWhy={d4FiveWhy} setFiveWhy={setD4FiveWhy}
                                         fishbone={d4Fishbone} setFishbone={setD4Fishbone}
                                         rootCause={d4RootCause} setRootCause={setD4RootCause}
-                                        readonly={isClosed}
+                                        readonly={isReadOnly}
                                         onSave={saveD4}
                                         saving={updateStep.isPending}
                                     />
@@ -201,7 +204,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                                         action={d5Action} setAction={setD5Action}
                                         plannedDate={d5PlannedDate} setPlannedDate={setD5PlannedDate}
                                         verifyPlan={d5VerifyPlan} setVerifyPlan={setD5VerifyPlan}
-                                        readonly={isClosed}
+                                        readonly={isReadOnly}
                                         onSave={saveD5}
                                         saving={updateStep.isPending}
                                     />
@@ -213,7 +216,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                                         implDate={d6ImplDate} setImplDate={setD6ImplDate}
                                         result={d6Result} setResult={setD6Result}
                                         verified={d6Verified} setVerified={setD6Verified}
-                                        readonly={isClosed}
+                                        readonly={isReadOnly}
                                         capaId={capa.id}
                                         onSave={saveD6}
                                         saving={updateStep.isPending}
@@ -226,7 +229,7 @@ const CAPAModal = ({ show, capaId, onHide }: CAPAModalProps) => {
                                         actions={d7Actions}
                                         tasks={capa.tasks ?? []}
                                         inspectors={inspectors}
-                                        readonly={isClosed}
+                                        readonly={isReadOnly}
                                         onToggle={toggleD7}
                                         onUpdateField={updateD7Field}
                                         onSave={saveD7}

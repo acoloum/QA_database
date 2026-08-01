@@ -5,6 +5,7 @@ import ConfirmActionModal, { type ConfirmActionState } from '../../components/co
 import PaginationBar from '../../components/common/PaginationBar';
 import { useDeletePyrometryTest, useExportPyrometryTest, useFurnaces, usePyrometryTests } from '../../hooks/usePyrometry';
 import PyrometryTestForm from './PyrometryTestForm';
+import PermissionAction from '../../components/PermissionAction';
 
 const PyrometryTestListPage = () => {
   const [showForm, setShowForm] = useState(false);
@@ -37,7 +38,7 @@ const PyrometryTestListPage = () => {
     <div>
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h4>爐溫測試紀錄</h4>
-        <Button variant="primary" size="sm" onClick={() => { setEditId(null); setShowForm(true); }}>+ 新增</Button>
+        <PermissionAction permission="pyrometry.edit"><Button variant="primary" size="sm" onClick={() => { setEditId(null); setShowForm(true); }}>+ 新增</Button></PermissionAction>
       </div>
 
       <Card className="mb-3">
@@ -107,14 +108,14 @@ const PyrometryTestListPage = () => {
                       </td>
                       <td>{r.測試人員姓名}</td>
                       <td>
-                        <Button size="sm" variant="outline-primary" className="me-1"
-                          onClick={() => { setEditId(r.識別碼); setShowForm(true); }}>編輯</Button>
-                        <Button size="sm" variant="outline-danger"
-                          onClick={() => confirmDelete(r)}>刪除</Button>
-                        <Button size="sm" variant="outline-secondary" className="ms-1"
+                        <PermissionAction permission="pyrometry.edit"><Button size="sm" variant="outline-primary" className="me-1"
+                          onClick={() => { setEditId(r.識別碼); setShowForm(true); }}>編輯</Button></PermissionAction>
+                        <PermissionAction permission="pyrometry.delete"><Button size="sm" variant="outline-danger"
+                          onClick={() => confirmDelete(r)}>刪除</Button></PermissionAction>
+                        <PermissionAction permission="pyrometry.view"><Button size="sm" variant="outline-secondary" className="ms-1"
                           onClick={() => exportMutation.mutate(r.識別碼)}
                           disabled={exportMutation.isPending}
-                        >匯出</Button>
+                        >匯出</Button></PermissionAction>
                       </td>
                     </tr>
                   ))}

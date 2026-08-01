@@ -10,6 +10,7 @@ interface UseReworkActionsOptions {
   reloadDetailData: () => Promise<void>;
   loadData: () => Promise<void>;
   setFollowUpModal: (state: ReworkFollowUpState | null) => void;
+  hasPermission: (permission: string) => boolean;
 }
 
 export const useReworkActions = ({
@@ -18,8 +19,13 @@ export const useReworkActions = ({
   reloadDetailData,
   loadData,
   setFollowUpModal,
+  hasPermission,
 }: UseReworkActionsOptions) => {
   const deleteExecution = async (executionId: number) => {
+    if (!hasPermission('rework.delete')) {
+      toast.error('需要 rework.delete 權限');
+      return;
+    }
     try {
       await api.delete(`/rework/execution/${executionId}`);
       toast.success('刪除成功');
@@ -30,6 +36,10 @@ export const useReworkActions = ({
   };
 
   const deleteInspection = async (inspectionId: number) => {
+    if (!hasPermission('rework.delete')) {
+      toast.error('需要 rework.delete 權限');
+      return;
+    }
     try {
       await api.delete(`/rework/inspection/${inspectionId}`);
       toast.success('刪除成功');
@@ -40,6 +50,10 @@ export const useReworkActions = ({
   };
 
   const deleteCost = async (costId: number) => {
+    if (!hasPermission('rework.delete')) {
+      toast.error('需要 rework.delete 權限');
+      return;
+    }
     try {
       await api.delete(`/rework/cost/${costId}`);
       toast.success('刪除成功');
@@ -51,6 +65,10 @@ export const useReworkActions = ({
   };
 
   const closeRework = async (reworkId: number) => {
+    if (!hasPermission('rework.approve')) {
+      toast.error('需要 rework.approve 權限');
+      return;
+    }
     try {
       await api.post('/rework/close', { rework_id: reworkId });
       toast.success('結案成功');
@@ -75,6 +93,10 @@ export const useReworkActions = ({
   };
 
   const deleteRework = async (reworkId: number) => {
+    if (!hasPermission('rework.delete')) {
+      toast.error('需要 rework.delete 權限');
+      return;
+    }
     try {
       await api.post('/rework/delete', { rework_id: reworkId });
       toast.success('刪除成功');

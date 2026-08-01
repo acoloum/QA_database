@@ -5,11 +5,12 @@ import toast from 'react-hot-toast';
 
 import { mechanicalApi } from '../../services/mechanicalApi';
 import { apiErrorMessage, apiErrorNeedsToast } from '../../services/apiError';
-import { useAuth } from '../../context/useAuth';
 import type { MechanicalJudgementStatus } from '../../types';
 import MechanicalTestForm from './MechanicalTestForm';
 import MechanicalImportModal from '../../components/mechanical/MechanicalImportModal';
 import MechanicalCharts from '../../components/mechanical/MechanicalCharts';
+import PermissionAction from '../../components/PermissionAction';
+import { useAuth } from '../../context/useAuth';
 
 const judgementDisplay: Record<MechanicalJudgementStatus, { label: string; variant: string }> = {
   NG: { label: 'NG', variant: 'danger' },
@@ -19,8 +20,8 @@ const judgementDisplay: Record<MechanicalJudgementStatus, { label: string; varia
 };
 
 export default function MechanicalTestListPage() {
-  const queryClient = useQueryClient();
   const { hasPermission } = useAuth();
+  const queryClient = useQueryClient();
   const [testId, setTestId] = useState('');
   const [size, setSize] = useState('');
   const [material, setMaterial] = useState('');
@@ -90,22 +91,20 @@ export default function MechanicalTestListPage() {
   });
 
   const rows = data?.data ?? [];
-  const canCreate = hasPermission('mechanical.create');
-  const canEdit = hasPermission('mechanical.edit');
-  const canDelete = hasPermission('mechanical.delete');
-
   return (
     <div>
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h4>機械性質檢驗</h4>
-        {canCreate && (
-          <div className="d-flex gap-2">
+        <div className="d-flex gap-2">
+          <PermissionAction permission="mechanical.create" mode="hide">
             <Button size="sm" variant="outline-secondary" onClick={() => setShowImport(true)}>
               匯入 Excel
             </Button>
+          </PermissionAction>
+          <PermissionAction permission="mechanical.create" mode="hide">
             <Button size="sm" onClick={() => setEditingId('new')}>+ 新增檢驗</Button>
-          </div>
-        )}
+          </PermissionAction>
+        </div>
       </div>
 
       <Card className="mb-3">
@@ -211,7 +210,7 @@ export default function MechanicalTestListPage() {
           productSize={size}
           startDate={dateFrom}
           endDate={dateTo}
-          onPointClick={canEdit ? (id) => setEditingId(id) : undefined}
+          onPointClick={hasPermission('mechanical.edit') ? (id) => setEditingId(id) : undefined}
         />
       )}
 
@@ -257,15 +256,15 @@ export default function MechanicalTestListPage() {
                     </td>
                     <td>{row.免測 || '—'}</td>
                     <td>
-                      {canEdit && <Button
+                      <PermissionAction permission="mechanical.edit" mode="hide"><Button
                         size="sm"
                         variant="outline-primary"
                         className="me-1"
                         onClick={() => setEditingId(row.識別碼)}
                       >
                         編輯
-                      </Button>}
-                      {canDelete && <Button
+                      </Button></PermissionAction>
+                      <PermissionAction permission="mechanical.delete" mode="hide"><Button
                         size="sm"
                         variant="outline-danger"
                         onClick={() => {
@@ -275,7 +274,7 @@ export default function MechanicalTestListPage() {
                         }}
                       >
                         刪除
-                      </Button>}
+                      </Button></PermissionAction>
                     </td>
                   </tr>
                 ))}

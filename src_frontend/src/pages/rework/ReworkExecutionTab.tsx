@@ -1,6 +1,7 @@
 import { Button } from 'react-bootstrap';
 
 import type { ReworkExecutionDetail } from '../../types';
+import PermissionAction from '../../components/PermissionAction';
 
 interface ReworkExecutionTabProps {
   executions: ReworkExecutionDetail[];
@@ -18,9 +19,9 @@ const ReworkExecutionTab = ({
   <div className="tab-pane fade show active">
     <div className="d-flex justify-content-between align-items-center mb-3">
       <h6 className="mb-0">執行記錄</h6>
-      <Button variant="primary" size="sm" onClick={onAddExecution}>
+      <PermissionAction permission="rework.create"><Button variant="primary" size="sm" onClick={onAddExecution}>
         <i className="bi bi-plus-lg"></i> 新增
-      </Button>
+      </Button></PermissionAction>
     </div>
     {executions.length > 0 ? (
       <table className="table table-sm table-bordered">
@@ -39,8 +40,8 @@ const ReworkExecutionTab = ({
               <td>{exec.執行狀況 || '-'}</td>
               <td>
                 <div className="btn-group btn-group-sm">
-                  <button className="btn btn-outline-primary" onClick={() => onEditExecution(exec)}>編輯</button>
-                  <button className="btn btn-outline-danger" onClick={() => exec.識別碼 && onDeleteExecution(exec.識別碼)}>刪除</button>
+                  <PermissionAction permission="rework.create"><button className="btn btn-outline-primary" onClick={() => onEditExecution(exec)}>編輯</button></PermissionAction>
+                  <PermissionAction permission="rework.delete"><button className="btn btn-outline-danger" onClick={() => exec.識別碼 && onDeleteExecution(exec.識別碼)}>刪除</button></PermissionAction>
                 </div>
               </td>
             </tr>

@@ -9,6 +9,7 @@ import ExtrusionToleranceModal from '../../components/extrusion-tolerance/Extrus
 import ViewExtrusionToleranceModal from '../../components/extrusion-tolerance/ViewExtrusionToleranceModal';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import PaginationBar from '../../components/common/PaginationBar';
+import PermissionAction from '../../components/PermissionAction';
 
 const ExtrusionTolerancePage = () => {
     const [page, setPage] = useState(1);
@@ -48,7 +49,7 @@ const ExtrusionTolerancePage = () => {
         <div>
             <div className="d-flex justify-content-between align-items-center mb-3">
                 <h4>擠壓公差管理</h4>
-                <Button variant="primary" size="sm" onClick={handleAdd}>+ 新增</Button>
+                <PermissionAction permission="tolerance.manage"><Button variant="primary" size="sm" onClick={handleAdd}>+ 新增</Button></PermissionAction>
             </div>
 
             <Card className="mb-3">
@@ -101,8 +102,8 @@ const ExtrusionTolerancePage = () => {
                                         <td>{r.備註}</td>
                                         <td>
                                             <Button size="sm" variant="outline-info" className="me-1" onClick={() => handleView(r.識別碼)}>查看</Button>
-                                            <Button size="sm" variant="outline-primary" className="me-1" onClick={() => handleEdit(r.識別碼)}>編輯</Button>
-                                            <Button size="sm" variant="outline-danger" onClick={() => handleDelete(r.識別碼)}>刪除</Button>
+                                            <PermissionAction permission="tolerance.manage"><Button size="sm" variant="outline-primary" className="me-1" onClick={() => handleEdit(r.識別碼)}>編輯</Button></PermissionAction>
+                                            <PermissionAction permission="tolerance.manage"><Button size="sm" variant="outline-danger" onClick={() => handleDelete(r.識別碼)}>刪除</Button></PermissionAction>
                                         </td>
                                     </tr>
                                 ))}

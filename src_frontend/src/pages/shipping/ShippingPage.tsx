@@ -9,8 +9,11 @@ import { useShippingToleranceMap } from '../../hooks/useShippingToleranceMap';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { evaluateShippingViolation } from '../../components/shipping/shippingViolationUtils';
 import PaginationBar from '../../components/common/PaginationBar';
+import PermissionAction from '../../components/PermissionAction';
+import { useAuth } from '../../context/useAuth';
 
 const ShippingPage = () => {
+    const { hasPermission } = useAuth();
     const navigate = useNavigate();
     const [page, setPage] = useState(1);
 
@@ -91,15 +94,15 @@ const ShippingPage = () => {
             <div className="d-flex justify-content-between align-items-center mb-4">
                 <h2 className="text-primary fw-bold"><i className="bi bi-clipboard-check"></i> 出貨檢驗數據系統</h2>
                 <div>
-                    <button className="btn btn-outline-success me-2" onClick={handleExport} disabled={exportShippingData.isPending}>
+                    <PermissionAction permission="shipping.view"><button className="btn btn-outline-success me-2" onClick={handleExport} disabled={exportShippingData.isPending}>
                         <i className="bi bi-file-earmark-excel"></i> {exportShippingData.isPending ? '匯出中...' : '匯出 Excel'}
-                    </button>
-                    <button className="btn btn-outline-info me-2" onClick={() => setShowImportModal(true)}>
+                    </button></PermissionAction>
+                    <PermissionAction permission="shipping.create"><button className="btn btn-outline-info me-2" onClick={() => setShowImportModal(true)}>
                         <i className="bi bi-upload"></i> 匯入 Excel
-                    </button>
-                    <button className="btn btn-primary me-2" onClick={handleAdd}>
+                    </button></PermissionAction>
+                    <PermissionAction permission="shipping.create"><button className="btn btn-primary me-2" onClick={handleAdd}>
                         <i className="bi bi-plus-lg"></i> 新增檢驗
-                    </button>
+                    </button></PermissionAction>
                     <button className="btn btn-back-home" onClick={() => navigate('/')}>
                         <i className="bi bi-arrow-left"></i> 回首頁
                     </button>
@@ -186,7 +189,7 @@ const ShippingPage = () => {
                         spec={debouncedSpec}
                         startDate={startDate}
                         endDate={endDate}
-                        onPointClick={handleEdit}
+                        onPointClick={hasPermission('shipping.edit') ? handleEdit : undefined}
                     />
                 </div>
             )}
@@ -248,18 +251,18 @@ const ShippingPage = () => {
                                                 </td>
                                                 <td>
                                                     <div className="action-buttons">
-                                                        <button
+                                                        <PermissionAction permission="shipping.edit"><button
                                                             className="btn btn-sm btn-outline-primary"
                                                             onClick={() => handleEdit(itemId)}
                                                         >
                                                             編輯
-                                                        </button>
-                                                        <button
+                                                        </button></PermissionAction>
+                                                        <PermissionAction permission="shipping.delete"><button
                                                             className="btn btn-sm btn-outline-danger"
                                                             onClick={() => handleDelete(itemId)}
                                                         >
                                                             刪除
-                                                        </button>
+                                                        </button></PermissionAction>
                                                     </div>
                                                 </td>
                                             </tr>

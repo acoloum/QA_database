@@ -1,4 +1,5 @@
 import type { ReworkApplication } from '../../types';
+import PermissionAction from '../../components/PermissionAction';
 
 interface ReworkListTableProps {
   loading: boolean;
@@ -80,9 +81,13 @@ const ReworkListTable = ({ loading, applications, onOpenDetail, onApprove, onDel
                     <div className="btn-group btn-group-sm">
                       <button className="btn btn-outline-info" onClick={() => onOpenDetail(item)}>詳情</button>
                       {item.狀態 === '申請中' && (
-                        <button className="btn btn-outline-success" onClick={() => onApprove(item.識別碼)}>審核</button>
+                        <PermissionAction permission="rework.approve">
+                          <button className="btn btn-outline-success" onClick={() => onApprove(item.識別碼)}>審核</button>
+                        </PermissionAction>
                       )}
-                      <button className="btn btn-outline-danger" onClick={() => onDelete(item.識別碼)}>刪除</button>
+                      <PermissionAction permission="rework.delete">
+                        <button className="btn btn-outline-danger" onClick={() => onDelete(item.識別碼)}>刪除</button>
+                      </PermissionAction>
                     </div>
                   </td>
                 </tr>
