@@ -23,6 +23,8 @@ ROLES = [
             'pyrometry.edit': True, 'pyrometry.view': True,
             'tolerance.view': True,
             'mechanical.view': True, 'mechanical.create': True,
+            'mechanical.edit': False, 'mechanical.delete': False,
+            'analytics.view': False, 'vendor.view': False,
             'task.view': True, 'task.create': True, 'task.edit': True,
         }
     },
@@ -43,6 +45,7 @@ ROLES = [
             'pyrometry.edit': True, 'pyrometry.view': True,
             'tolerance.view': True,
             'mechanical.view': True, 'mechanical.create': True, 'mechanical.edit': True,
+            'mechanical.delete': False, 'analytics.view': False, 'vendor.view': False,
             'task.view': True, 'task.create': True, 'task.edit': True,
         }
     },

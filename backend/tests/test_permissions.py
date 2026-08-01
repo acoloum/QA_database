@@ -163,6 +163,13 @@ def test_seed_roles_applies_approved_route_permission_matrix(app, db_session):
     """執行真實 seed，確保新部署與 Migration 51 的角色矩陣同步。"""
     from backend.seeds.seed_roles import seed
 
+    untouched = Role(
+        code='custom_seed_role',
+        name='未批准自訂角色',
+        permissions={'custom.keep': True, 'mechanical.delete': True},
+    )
+    db_session.add(untouched)
+    db_session.commit()
     seed()
 
     roles = {role.code: role.permissions for role in Role.query.all()}
@@ -184,9 +191,21 @@ def test_seed_roles_applies_approved_route_permission_matrix(app, db_session):
     }
 
     for role_code, expected in expected_grants.items():
-        actual = {
-            key for key in task_4_keys
-            if roles[role_code].get(key) is True
+        expected_boolean_patch = {
+            key: key in expected
+            for key in task_4_keys
         }
-        assert actual == expected
-        assert task_4_keys - actual == task_4_keys - expected
+        actual_boolean_patch = {
+            key: roles[role_code].get(key)
+            for key in task_4_keys
+        }
+        assert actual_boolean_patch == expected_boolean_patch
+
+    assert roles['inspector']['ncmr.create'] is True
+    assert roles['qa_supervisor']['capa.edit'] is True
+    assert roles['qc_manager']['spc.approve'] is True
+    assert roles['admin']['user.manage'] is True
+    assert roles['custom_seed_role'] == {
+        'custom.keep': True,
+        'mechanical.delete': True,
+    }
