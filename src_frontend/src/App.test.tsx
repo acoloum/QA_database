@@ -15,6 +15,13 @@ vi.mock('./pages/mechanical/MechanicalTestListPage', () => ({
   default: () => <h2>機械性質路由頁面</h2>,
 }));
 
+// 登入頁也與其他頁面一致採 mock：
+// 測試只驗證「未登入 → 導向登入頁」的路由行為，不需載入真實 lazy 模組，
+// 避免完整套件高並行下動態 import 逾時造成 flaky
+vi.mock('./pages/LoginPage', () => ({
+  default: () => <h2>品保管理系統</h2>,
+}));
+
 vi.mock('./pages/DashboardPage', () => ({
   default: () => <h2>儀表板路由頁面</h2>,
 }));
