@@ -12,6 +12,7 @@
 
 - 所有工作在 `C:\QC_Database\.worktrees\codebase-review-all`、分支 `fix/codebase-review-all` 進行。
 - 每個行為修復遵循 RED → GREEN → REFACTOR；先執行新測試並確認因預期缺陷失敗，再修改正式碼。
+- 使用者已批准純設定檔 TDD 例外：Docker、Nginx、npm script、pytest 設定與 CI workflow 不寫原始碼文字斷言，改以 `docker compose config`、`nginx -t`、實際 lint warning fixture、`pytest --markers` 與 `actionlint` 驗證 artifact 行為。
 - route 不得直接 `db.session.commit()`；一個 mutation 只允許一個 service 擁有 commit。
 - 後端授權是正式控制點；前端隱藏或停用按鈕只改善體驗。
 - 不輪替正式憑證、不重寫 Git 歷史、不 force-push；只移除目前追蹤樹的秘密並提供 runbook。
@@ -78,11 +79,19 @@ def test_tracked_files_do_not_contain_secrets(repo_root):
     assert result.returncode == 0, result.stdout + result.stderr
 
 def test_compose_requires_secrets(repo_root):
-    compose = (repo_root / "docker-compose.yml").read_text(encoding="utf-8")
-    assert "${DB_PASSWORD:?DB_PASSWORD is required}" in compose
-    assert "${SECRET_KEY:?SECRET_KEY is required}" in compose
-    assert ":-swordfish1" not in compose
-    assert '"127.0.0.1:5432:5432"' in compose
+    missing = subprocess.run(
+        ["docker", "compose", "config"], cwd=repo_root,
+        env=without_env("DB_PASSWORD", "SECRET_KEY"), text=True, capture_output=True,
+    )
+    assert missing.returncode != 0
+    assert "is required" in missing.stderr
+
+    rendered = subprocess.run(
+        ["docker", "compose", "config"], cwd=repo_root,
+        env=with_test_secrets(), text=True, capture_output=True,
+    )
+    assert rendered.returncode == 0, rendered.stderr
+    assert "127.0.0.1:5432" in rendered.stdout
 ```
 
 - [ ] **Step 2: 執行 RED 測試並確認它指出 JWT、PGPASSWORD、固定 fallback 與 Dockerfile copy**
@@ -1364,26 +1373,30 @@ git commit -m "重構：依領域拆分資料模型註冊表"
 
 - [ ] **Step 1: 先寫 marker 與 workflow 靜態測試**
 
-在 `backend/tests/test_repository_security.py` 加：
+以實際命令驗證 marker 與 workflow：
 
 ```python
 def test_pytest_markers_are_registered(repo_root):
-    config = (repo_root / "pytest.ini").read_text(encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "--markers"],
+        cwd=repo_root, text=True, capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
     for marker in ("unit", "integration", "postgresql", "slow"):
-        assert f"{marker}:" in config
-
-def test_postgresql_ci_runs_without_silent_skips(repo_root):
-    workflow = (repo_root / ".github/workflows/quality-gates.yml").read_text(encoding="utf-8")
-    assert "postgres:16" in workflow
-    assert "-m postgresql" in workflow
-    assert "--run-postgres" in workflow
+        assert f"@pytest.mark.{marker}" in result.stdout
 ```
+
+Workflow 不加原始碼文字測試；建立後執行 `actionlint .github/workflows/quality-gates.yml`，並以 GitHub Actions 的 PostgreSQL job 實際執行作為正式證據。
 
 - [ ] **Step 2: 執行 RED 測試**
 
 Run: `C:\QC_Database\venv\Scripts\python.exe -m pytest backend/tests/test_repository_security.py -q`
 
 Expected: FAIL；pytest.ini 與 workflow 尚不存在。
+
+Run: `actionlint .github/workflows/quality-gates.yml`
+
+Expected: FAIL；workflow 尚不存在。若本機沒有 `actionlint`，先用官方 release binary 的固定版本執行，不以 YAML 文字搜尋替代。
 
 - [ ] **Step 3: 註冊 markers 並標記現有測試**
 
@@ -1419,6 +1432,8 @@ markers =
 - [ ] **Step 6: 執行窄驗證並提交**
 
 Run: `C:\QC_Database\venv\Scripts\python.exe -m pytest backend/tests/test_repository_security.py -q`
+
+Run: `actionlint .github/workflows/quality-gates.yml`
 
 Run: `C:\QC_Database\venv\Scripts\python.exe -m pytest backend/tests -m "not postgresql and not slow" -q`
 
