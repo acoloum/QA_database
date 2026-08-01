@@ -556,8 +556,80 @@ def test_ncmr_update_rejects_non_integer_identifier_before_lookup(
         json={'識別碼': 'not-an-integer', '不良描述': '不應查詢'},
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 422
+    assert response.get_json()['error']['code'] == 'VALIDATION_ERROR'
     assert db_session.scalar(select(func.count()).select_from(NCMR)) == before
+
+
+def test_ncmr_update_checks_ownership_before_full_payload_validation(
+    client,
+    db_session,
+):
+    """edit_own 不屬於本人時，即使其餘 payload 無效也須先回 403 且零寫入。"""
+    owner_inspector = Inspector(name='NCMR 擁有者')
+    other_inspector = Inspector(name='NCMR 非擁有者')
+    db_session.add_all([owner_inspector, other_inspector])
+    db_session.flush()
+    ncmr = NCMR(
+        ncmr_number='NCMR-OWNERSHIP-BEFORE-SCHEMA',
+        source='測試',
+        inspector_id=owner_inspector.id,
+        description='原始內容',
+        status='待處理',
+    )
+    db_session.add(ncmr)
+    db_session.commit()
+    editor = _create_ncmr_edit_user(
+        db_session,
+        'ncmr_non_owner_invalid_payload',
+        other_inspector.id,
+        {'ncmr.edit_own': True},
+    )
+
+    response = client.post(
+        '/api/ncmr/update',
+        headers=_headers(editor),
+        json={
+            '識別碼': ncmr.id,
+            '日期': 'not-a-date',
+            '未知欄位': 'x',
+        },
+    )
+
+    assert response.status_code == 403
+    db_session.expire_all()
+    assert db_session.get(NCMR, ncmr.id).description == '原始內容'
+
+
+def test_ncmr_update_checks_route_permission_before_payload_validation(
+    client,
+    db_session,
+):
+    """完全無編輯權限時，非法 payload 不可先洩漏 schema 驗證結果。"""
+    ncmr = NCMR(
+        ncmr_number='NCMR-PERMISSION-BEFORE-SCHEMA',
+        source='測試',
+        description='原始內容',
+        status='待處理',
+    )
+    db_session.add(ncmr)
+    db_session.commit()
+    viewer = _create_ncmr_edit_user(
+        db_session,
+        'ncmr_viewer_invalid_payload',
+        None,
+        {'ncmr.view': True},
+    )
+
+    response = client.post(
+        '/api/ncmr/update',
+        headers=_headers(viewer),
+        json={'識別碼': True, '日期': 'not-a-date'},
+    )
+
+    assert response.status_code == 403
+    db_session.expire_all()
+    assert db_session.get(NCMR, ncmr.id).description == '原始內容'
 
 
 _MUTATION_METHODS = {'POST', 'PUT', 'PATCH', 'DELETE'}

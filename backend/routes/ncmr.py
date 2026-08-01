@@ -1,40 +1,43 @@
 from flask import Blueprint, jsonify, request
-from marshmallow import Schema, fields, validate, ValidationError, EXCLUDE, INCLUDE
+from marshmallow import ValidationError as MarshmallowValidationError
 from ..services.ncmr_service import NCMRService
 from ..authorization import can_edit_ncmr, require_permissions
-from ..errors import AuthorizationError
+from ..errors import APIError, AuthorizationError
 from ..models import NCMR as NCMRModel
+from ..schemas import NCMRCreateSchema, NCMRUpdateIdentifierSchema, NCMRUpdateSchema
 from ..utils import auth_required, bounded_int, parse_optional_date, require_permission, log_audit
 from ..extensions import db
 
 ncmr_bp = Blueprint('ncmr', __name__)
 
-class NCMRCreateSchema(Schema):
-    class Meta:
-        unknown = EXCLUDE
-
-    日期 = fields.Date(required=True)
-    來源 = fields.String(required=True, validate=validate.Length(min=1, max=100))
-    廠商 = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=200))
-    材質 = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=100))
-    批號 = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=100))
-    產品資訊 = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=500))
-    產品數量 = fields.Integer(load_default=None, allow_none=True, validate=validate.Range(min=0))
-    不良描述 = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=1000))
-    不合格數量 = fields.Integer(load_default=None, allow_none=True, validate=validate.Range(min=0))
-
 _ncmr_create_schema = NCMRCreateSchema()
+_ncmr_update_identifier_schema = NCMRUpdateIdentifierSchema()
+_ncmr_update_schema = NCMRUpdateSchema()
 
 
-class NCMRUpdatePermissionSchema(Schema):
-    """只在授權邊界解析 ID；其餘契約由 Task 6 集中處理。"""
-    class Meta:
-        unknown = INCLUDE
+def _json_object():
+    """取得 JSON 物件；null、array 與無法解析的 body 均不屬於輸入契約。"""
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        raise APIError(
+            '請求內容必須是 JSON 物件',
+            code='INVALID_JSON_BODY',
+            status_code=400,
+        )
+    return payload
 
-    識別碼 = fields.Integer(required=True)
 
-
-_ncmr_update_permission_schema = NCMRUpdatePermissionSchema()
+def _load_schema(schema, payload):
+    """將 Marshmallow 欄位錯誤轉為正式 API envelope。"""
+    try:
+        return schema.load(payload)
+    except MarshmallowValidationError as error:
+        raise APIError(
+            '資料驗證失敗',
+            code='VALIDATION_ERROR',
+            status_code=422,
+            details=error.messages,
+        ) from error
 
 # ==================================================
 # 【不合格品管理】NCMR API
@@ -67,53 +70,37 @@ def get_ncmr_list():
 @auth_required
 @require_permission('ncmr.create')
 def add_ncmr(current_user):
-    payload = {k: (None if v == '' else v) for k, v in (request.json or {}).items()}
+    payload = _load_schema(_ncmr_create_schema, _json_object())
+    ncmr_number = NCMRService.add_ncmr(payload)
     try:
-        _ncmr_create_schema.load(payload)
-    except ValidationError as err:
-        return jsonify({"error": "資料驗證失敗", "details": err.messages}), 400
-    try:
-        ncmr_number = NCMRService.add_ncmr(request.json)
-        try:
-            log_audit(current_user.id if current_user else None, 'create', 'NCMR',
-                      new_val={'ncmr_number': ncmr_number})
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-        return jsonify({"success": True, "ncmr_number": ncmr_number})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        log_audit(current_user.id if current_user else None, 'create', 'NCMR',
+                  new_val={'ncmr_number': ncmr_number})
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    return jsonify({"success": True, "ncmr_number": ncmr_number}), 201
 
 @ncmr_bp.route('/api/ncmr/update', methods=['POST'])
 @auth_required
 @require_permissions('ncmr.edit', 'ncmr.edit_own', mode='any')
 def update_ncmr(current_user):
-    try:
-        payload = _ncmr_update_permission_schema.load(
-            request.get_json(silent=True) or {}
+    raw_payload = _json_object()
+    identifier = _load_schema(_ncmr_update_identifier_schema, raw_payload)
+    ncmr_id = identifier['識別碼']
+    ncmr = NCMRModel.active_query().filter_by(id=ncmr_id).first()
+    if not ncmr:
+        return jsonify({"error": "找不到該筆資料"}), 404
+    if not can_edit_ncmr(current_user, ncmr):
+        raise AuthorizationError(
+            '權限不足',
+            details={
+                'required': ['ncmr.edit', 'ncmr.edit_own'],
+                'ownership_required': True,
+            },
         )
-        ncmr_id = payload['識別碼']
-        ncmr = NCMRModel.active_query().filter_by(id=ncmr_id).first()
-        if not ncmr:
-            return jsonify({"error": "找不到該筆資料"}), 404
-        if not can_edit_ncmr(current_user, ncmr):
-            raise AuthorizationError(
-                '權限不足',
-                details={
-                    'required': ['ncmr.edit', 'ncmr.edit_own'],
-                    'ownership_required': True,
-                },
-            )
-        NCMRService.update_ncmr(payload)
-        return jsonify({"success": True})
-    except AuthorizationError:
-        raise
-    except ValidationError as error:
-        return jsonify({"error": "資料驗證失敗", "details": error.messages}), 400
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    payload = _load_schema(_ncmr_update_schema, raw_payload)
+    NCMRService.update_ncmr(payload)
+    return jsonify({"success": True})
 
 @ncmr_bp.route('/api/ncmr/delete', methods=['POST'])
 @auth_required

@@ -201,7 +201,7 @@ class NCMRService:
                 if inspector:
                      ncmr.inspector_id = inspector.id
 
-            # Mapping with type conversion
+            # Schema 已完成型別轉換；service 僅負責套用正式欄位。
             # 注意：'狀態' 已由上方狀態機驗證區塊單獨處理，
             # 不納入 field_map 以防止被覆蓋為 None 或繞過狀態機驗證
             field_map = {
@@ -213,32 +213,9 @@ class NCMRService:
                 '不良原因細項': 'defect_detail'
             }
             
-            # Type converters
-            int_fields = {'產品數量', '不合格數量'}
-            date_fields = {'日期', '建立日期'}
-            
             for key, attr in field_map.items():
                 if key in data:
-                    val = data[key]
-                    # Handle empty strings -> None
-                    if val == '' or val is None:
-                        setattr(ncmr, attr, None)
-                    # Type conversion
-                    elif key in int_fields:
-                        try:
-                            setattr(ncmr, attr, int(val))
-                        except (ValueError, TypeError):
-                            setattr(ncmr, attr, None)
-                    elif key in date_fields:
-                        try:
-                            if isinstance(val, str):
-                                setattr(ncmr, attr, datetime.datetime.strptime(val, '%Y-%m-%d').date())
-                            else:
-                                setattr(ncmr, attr, val)
-                        except (ValueError, TypeError):
-                            setattr(ncmr, attr, None)
-                    else:
-                        setattr(ncmr, attr, val)
+                    setattr(ncmr, attr, data[key])
             
             db.session.commit()
             return True

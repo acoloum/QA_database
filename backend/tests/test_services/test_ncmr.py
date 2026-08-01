@@ -1,7 +1,10 @@
 import pytest
 import datetime
-from backend.models import NCMR, Inspector
+from sqlalchemy import func, select
+
+from backend.models import NCMR, Inspector, Role, User
 from backend.services.ncmr_service import NCMRService
+from backend.utils import generate_token, hash_password
 
 
 def _make_ncmr(db_session, **kwargs):
@@ -20,6 +23,165 @@ def _make_ncmr(db_session, **kwargs):
     db_session.add(n)
     db_session.commit()
     return n
+
+
+def _ncmr_headers(db_session, permission, username='ncmr_contract_user'):
+    role_code = f'{username}_role'
+    db_session.add(Role(
+        code=role_code,
+        name='NCMR 契約測試角色',
+        permissions={permission: True},
+    ))
+    user = User(
+        username=username,
+        password=hash_password('pw12345678'),
+        role=role_code,
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    token = generate_token(user.id, user.username, user.role, user.token_version)
+    return {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+
+
+def _assert_validation_error(response, status, field=None):
+    assert response.status_code == status
+    payload = response.get_json()
+    assert payload['success'] is False
+    assert payload['error']['code'] == (
+        'INVALID_JSON_BODY' if status == 400 else 'VALIDATION_ERROR'
+    )
+    if field is not None:
+        assert field in payload['error']['details']
+
+
+@pytest.mark.parametrize(
+    ('body', 'status', 'field'),
+    [
+        (None, 400, None),
+        ([], 400, None),
+        ({'日期': '2026-02-30', '來源': '進料'}, 422, '日期'),
+        ({'日期': '2026-08-01', '來源': '進料', '產品數量': -1}, 422, '產品數量'),
+        ({'日期': '2026-08-01', '來源': '進料', '未知欄位': 'x'}, 422, '未知欄位'),
+        ({'日期': '2026-08-01', '來源': '進料', '產品數量': True}, 422, '產品數量'),
+    ],
+)
+def test_ncmr_create_rejects_invalid_contract(
+    client,
+    db_session,
+    body,
+    status,
+    field,
+):
+    headers = _ncmr_headers(db_session, 'ncmr.create')
+    before = db_session.scalar(select(func.count()).select_from(NCMR))
+
+    response = client.post('/api/ncmr/add', json=body, headers=headers)
+
+    _assert_validation_error(response, status, field)
+    assert db_session.scalar(select(func.count()).select_from(NCMR)) == before
+
+
+def test_ncmr_create_loads_dates_and_accepts_existing_optional_payload(
+    client,
+    db_session,
+):
+    headers = _ncmr_headers(db_session, 'ncmr.create')
+
+    response = client.post(
+        '/api/ncmr/add',
+        headers=headers,
+        json={
+            '日期': '2026-08-01',
+            '建立日期': '2026-08-02',
+            '來源': '進料',
+            '廠商': None,
+            '產品數量': 0,
+            '不良描述': None,
+            '不合格數量': '',
+        },
+    )
+
+    assert response.status_code == 201
+    stored = db_session.scalar(select(NCMR))
+    assert stored.date == datetime.date(2026, 8, 1)
+    assert type(stored.date) is datetime.date
+    assert stored.create_date == datetime.date(2026, 8, 2)
+    assert type(stored.create_date) is datetime.date
+    assert stored.quantity == 0
+    assert stored.defect_quantity is None
+
+
+@pytest.mark.parametrize(
+    ('body', 'field'),
+    [
+        (None, None),
+        ([], None),
+        ({'識別碼': True, '不良描述': '不應更新'}, '識別碼'),
+        ({'識別碼': 1, '日期': 'not-a-date'}, '日期'),
+        ({'識別碼': 1, '不合格數量': -1}, '不合格數量'),
+        ({'識別碼': 1, '未知欄位': 'x'}, '未知欄位'),
+    ],
+)
+def test_ncmr_update_rejects_invalid_contract_without_writing(
+    client,
+    db_session,
+    body,
+    field,
+):
+    record = _make_ncmr(db_session, description='原始內容')
+    if (
+        isinstance(body, dict)
+        and type(body.get('識別碼')) is int
+        and body.get('識別碼') == 1
+    ):
+        body = {**body, '識別碼': record.id}
+    headers = _ncmr_headers(
+        db_session,
+        'ncmr.edit',
+        username='ncmr_update_contract_user',
+    )
+
+    response = client.post('/api/ncmr/update', json=body, headers=headers)
+
+    expected_status = 400 if not isinstance(body, dict) else 422
+    _assert_validation_error(response, expected_status, field)
+    db_session.expire_all()
+    stored = db_session.get(NCMR, record.id)
+    assert stored.description == '原始內容'
+    assert stored.date == datetime.date(2025, 1, 15)
+    assert stored.defect_quantity == 5
+
+
+def test_ncmr_update_loads_date_object_and_keeps_partial_update_legal(
+    client,
+    db_session,
+):
+    record = _make_ncmr(db_session, description='原始內容')
+    headers = _ncmr_headers(
+        db_session,
+        'ncmr.edit',
+        username='ncmr_update_success_user',
+    )
+
+    response = client.post(
+        '/api/ncmr/update',
+        headers=headers,
+        json={
+            '識別碼': record.id,
+            '日期': '2026-08-03',
+            '不良描述': '更新內容',
+            '產品數量': 0,
+        },
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    stored = db_session.get(NCMR, record.id)
+    assert stored.date == datetime.date(2026, 8, 3)
+    assert type(stored.date) is datetime.date
+    assert stored.description == '更新內容'
+    assert stored.quantity == 0
 
 
 def test_get_ncmr_list_pagination(app, db_session):
