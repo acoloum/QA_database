@@ -1,8 +1,10 @@
 import datetime
 import pytest
-from backend.models import NCMR, NcmrDisposition, Inspector, ReworkRequest
+from backend.models import AuditLog, NCMR, NcmrDisposition, Inspector, ReworkRequest, Role, User
 from backend.extensions import db
+from backend.services.audit_service import AuditService
 from backend.services.ncmr_service import NCMRService
+from backend.utils import generate_token, hash_password
 
 
 def _make_ncmr(db_session, **kwargs):
@@ -21,6 +23,99 @@ def _make_ncmr(db_session, **kwargs):
     db_session.add(n)
     db_session.commit()
     return n
+
+
+def _disposition_headers(db_session):
+    role = Role(
+        code='disposition_atomic_role',
+        name='處置交易測試',
+        permissions={'ncmr.disposition': True},
+    )
+    user = User(
+        username='disposition_atomic_user',
+        password=hash_password('pw12345678'),
+        role=role.code,
+        is_active=True,
+    )
+    db_session.add_all([role, user])
+    db_session.commit()
+    token = generate_token(user.id, user.username, user.role, user.token_version)
+    return {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+
+
+def _fail_audit(monkeypatch):
+    monkeypatch.setattr(
+        AuditService,
+        'record',
+        staticmethod(lambda **_: (_ for _ in ()).throw(RuntimeError('secret audit down'))),
+    )
+
+
+def _assert_internal_error(response):
+    assert response.status_code == 500
+    assert response.get_json()['error'] == {
+        'code': 'INTERNAL_ERROR',
+        'message': '伺服器內部錯誤',
+    }
+
+
+def test_create_disposition_rolls_back_when_audit_fails(client, db_session, monkeypatch):
+    ncmr = _make_ncmr(db_session)
+    headers = _disposition_headers(db_session)
+    _fail_audit(monkeypatch)
+
+    response = client.post(
+        f'/api/ncmr/{ncmr.id}/dispositions',
+        headers=headers,
+        json={'處置類型': '報廢', '處置數量': 100},
+    )
+
+    _assert_internal_error(response)
+    db_session.expire_all()
+    assert NcmrDisposition.query.count() == 0
+    assert AuditLog.query.count() == 0
+
+
+def test_update_disposition_rolls_back_when_audit_fails(client, db_session, monkeypatch):
+    ncmr = _make_ncmr(db_session)
+    disposition_id = NCMRService.create_disposition(
+        ncmr.id, {'處置類型': '報廢', '處置數量': 100}, handler_id=None
+    )
+    AuditLog.query.delete()
+    db_session.commit()
+    headers = _disposition_headers(db_session)
+    _fail_audit(monkeypatch)
+
+    response = client.put(
+        f'/api/ncmr/dispositions/{disposition_id}',
+        headers=headers,
+        json={'處置類型': '報廢', '處置數量': 50},
+    )
+
+    _assert_internal_error(response)
+    db_session.expire_all()
+    assert db_session.get(NcmrDisposition, disposition_id).quantity == 100
+    assert AuditLog.query.count() == 0
+
+
+def test_delete_disposition_rolls_back_when_audit_fails(client, db_session, monkeypatch):
+    ncmr = _make_ncmr(db_session)
+    disposition_id = NCMRService.create_disposition(
+        ncmr.id, {'處置類型': '報廢', '處置數量': 100}, handler_id=None
+    )
+    AuditLog.query.delete()
+    db_session.commit()
+    headers = _disposition_headers(db_session)
+    _fail_audit(monkeypatch)
+
+    response = client.delete(
+        f'/api/ncmr/dispositions/{disposition_id}', headers=headers
+    )
+
+    _assert_internal_error(response)
+    db_session.expire_all()
+    assert db_session.get(NcmrDisposition, disposition_id) is not None
+    assert AuditLog.query.count() == 0
 
 
 def test_disposition_model_relationship(app, db_session):
@@ -55,6 +150,9 @@ def test_create_disposition_scrap(app, db_session):
         d = db_session.get(NcmrDisposition, did)
         assert d.disposition_type == '報廢'
         assert d.quantity == 100
+        logs = AuditLog.query.filter_by(module='NCMR_DISPOSITION', action='create').all()
+        assert len(logs) == 1
+        assert logs[0].record_id == did
 
 
 def test_create_disposition_concession_unauthorized_sets_risk(app, db_session):
@@ -87,6 +185,7 @@ def test_create_disposition_sorting_qty_mismatch(app, db_session):
                 '處置類型': '挑選全檢', '處置數量': 100,
                 '合格數': 60, '不合格數': 30,
             }, handler_id=None)
+        assert db_session().in_transaction() is False
 
 
 def test_delete_disposition(app, db_session):
@@ -95,6 +194,15 @@ def test_delete_disposition(app, db_session):
         did = NCMRService.create_disposition(n.id, {'處置類型': '報廢', '處置數量': 100}, handler_id=None)
         NCMRService.delete_disposition(did)
         assert db_session.get(NcmrDisposition, did) is None
+        logs = AuditLog.query.filter_by(module='NCMR_DISPOSITION', action='delete').all()
+        assert len(logs) == 1
+        assert logs[0].record_id == did
+
+
+def test_idempotent_delete_disposition_leaves_no_pending_transaction(app, db_session):
+    with app.app_context():
+        assert NCMRService.delete_disposition(999999, actor_id=None) is True
+        assert db_session().in_transaction() is False
 
 
 def test_update_disposition_recomputes_risk(app, db_session):
@@ -109,6 +217,9 @@ def test_update_disposition_recomputes_risk(app, db_session):
         d = db_session.get(NcmrDisposition, did)
         assert d.disposition_type == '讓步放行'
         assert d.is_risk is True
+        logs = AuditLog.query.filter_by(module='NCMR_DISPOSITION', action='update').all()
+        assert len(logs) == 1
+        assert logs[0].record_id == did
 
 
 # ==================================================

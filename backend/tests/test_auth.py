@@ -3,6 +3,7 @@
 """
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+import hashlib
 import os
 from threading import Event, Thread, current_thread
 from uuid import uuid4
@@ -265,6 +266,46 @@ def test_create_user_has_created_at(client, admin_user, db_session):
     user = User.query.filter_by(username='ts_user').first()
     assert user is not None
     assert user.created_at is not None
+
+
+def test_login_upgrades_legacy_password_hash_through_service_transaction(
+    client, db_session
+):
+    password = 'legacy-pass-123'
+    user = User(
+        username='legacy_hash_user',
+        password=hashlib.sha256(password.encode()).hexdigest(),
+        role='user',
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    response = client.post(
+        '/api/login', json={'username': user.username, 'password': password}
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    assert db_session.get(User, user.id).password.startswith(('$2a$', '$2b$'))
+
+
+def test_update_role_permissions_persists_without_route_commit(
+    client, admin_user, db_session
+):
+    role = Role(code='atomic_role', name='原子角色', permissions={})
+    db_session.add(role)
+    db_session.commit()
+
+    response = client.patch(
+        f'/api/roles/{role.code}',
+        headers=make_admin_headers(admin_user),
+        json={'permissions': {'ncmr.view': True}},
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    assert db_session.get(Role, role.id).permissions == {'ncmr.view': True}
 
 
 # ── Token 即時撤銷與目前帳號狀態 ─────────────────────────────────

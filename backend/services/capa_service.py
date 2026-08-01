@@ -6,6 +6,7 @@ from ..extensions import db
 from ..models import CorrectiveAction, NCMR, CustomerComplaint, Inspector, ActionTask
 from ..utils import generate_number, validate_status_transition
 from .task_service import TaskService
+from .audit_service import AuditService
 
 # 嚴重度 → 嚴格度預設映射（可 override）
 SEVERITY_RIGOR_MAP = {
@@ -44,7 +45,7 @@ class CAPAService:
 
     # ── 從源頭建立 CAPA ──────────────────────────────────────
     @staticmethod
-    def create_from_source(
+    def _create_from_source(
         source_type: str,
         source_id: int,
         symptom: Optional[str] = None,
@@ -96,13 +97,89 @@ class CAPAService:
             d2_how_many    = d2_how_many,
         )
         db.session.add(ca)
+        db.session.flush()
 
         # 更新 NCMR 狀態
         if source_type == 'ncmr' and hasattr(source, 'status'):
             source.status = '矯正中'
 
-        db.session.commit()
         return CAPAService._to_dict(ca)
+
+    @staticmethod
+    def create_from_source(
+        source_type: str,
+        source_id: int,
+        symptom: Optional[str] = None,
+        severity: str = 'Major',
+        creator_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """相容既有客訴流程；來源 route 的全面交易遷移由 Task 8 完成。"""
+        try:
+            result = CAPAService._create_from_source(
+                source_type,
+                source_id,
+                symptom,
+                severity,
+                creator_id,
+            )
+            db.session.commit()
+            return result
+        except Exception:
+            db.session.rollback()
+            raise
+
+    @staticmethod
+    def open_from_ncmr(
+        ncmr_id: int,
+        *,
+        symptom: Optional[str] = None,
+        severity: str = 'Major',
+        actor_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """在單一交易內開立 CAPA、更新 NCMR 並寫入一筆稽核。"""
+        try:
+            ncmr = NCMR.active_query().filter_by(id=ncmr_id).with_for_update().first()
+            if not ncmr:
+                raise ValueError(f'NCMR #{ncmr_id} 不存在')
+            if ncmr.related_capa_id:
+                raise ValueError('此 NCMR 已開立 CAPA，不可重複開立')
+
+            old_source = {
+                'status': ncmr.status,
+                'related_capa_id': ncmr.related_capa_id,
+                'related_capa_source': ncmr.related_capa_source,
+            }
+            result = CAPAService._create_from_source(
+                'ncmr',
+                ncmr_id,
+                symptom or ncmr.description,
+                severity,
+                actor_id,
+            )
+            ncmr.related_capa_id = result['id']
+            ncmr.related_capa_source = 'capa'
+            AuditService.record(
+                actor_id=actor_id,
+                action='create',
+                module='CAPA',
+                record_id=result['id'],
+                old_value={'source': old_source},
+                new_value={
+                    'eight_d_number': result.get('no'),
+                    'source_type': 'ncmr',
+                    'source_id': ncmr_id,
+                    'source': {
+                        'status': ncmr.status,
+                        'related_capa_id': ncmr.related_capa_id,
+                        'related_capa_source': ncmr.related_capa_source,
+                    },
+                },
+            )
+            db.session.commit()
+            return result
+        except Exception:
+            db.session.rollback()
+            raise
 
     # ── 查詢列表 ─────────────────────────────────────────────
     @staticmethod

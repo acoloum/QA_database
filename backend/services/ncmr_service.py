@@ -12,6 +12,7 @@ from ..utils import (
     generate_8d_number,
     validate_status_transition
 )
+from .audit_service import AuditService
 
 
 class NCMRValidationError(ValueError):
@@ -43,6 +44,54 @@ def _resolve_inspector_id(data: Dict[str, Any]):
 
 
 class NCMRService:
+    @staticmethod
+    def audit_snapshot(ncmr: NCMR) -> Dict[str, Any]:
+        """NCMR 稽核快照；僅保存受控業務欄位。"""
+        return {
+            'id': ncmr.id,
+            'ncmr_number': ncmr.ncmr_number,
+            'date': ncmr.date,
+            'create_date': ncmr.create_date,
+            'source': ncmr.source,
+            'product_info': ncmr.product_info,
+            'quantity': ncmr.quantity,
+            'material': ncmr.material,
+            'vendor': ncmr.vendor,
+            'batch_num': ncmr.batch_num,
+            'description': ncmr.description,
+            'defect_quantity': ncmr.defect_quantity,
+            'inspector_id': ncmr.inspector_id,
+            'result': ncmr.result,
+            'status': ncmr.status,
+            'defect_category': ncmr.defect_category,
+            'defect_detail': ncmr.defect_detail,
+            'related_capa_id': ncmr.related_capa_id,
+            'deleted_at': ncmr.deleted_at,
+        }
+
+    @staticmethod
+    def disposition_audit_snapshot(disposition: NcmrDisposition) -> Dict[str, Any]:
+        """處置稽核快照。"""
+        return {
+            'id': disposition.id,
+            'ncmr_id': disposition.ncmr_id,
+            'disposition_type': disposition.disposition_type,
+            'quantity': disposition.quantity,
+            'handler_id': disposition.handler_id,
+            'handled_at': disposition.handled_at,
+            'note': disposition.note,
+            'rework_id': disposition.rework_id,
+            'pass_qty': disposition.pass_qty,
+            'fail_qty': disposition.fail_qty,
+            'exceed_customer_spec': disposition.exceed_customer_spec,
+            'auth_status': disposition.auth_status,
+            'auth_doc_no': disposition.auth_doc_no,
+            'auth_valid_until': disposition.auth_valid_until,
+            'auth_max_qty': disposition.auth_max_qty,
+            'unauth_reason': disposition.unauth_reason,
+            'is_risk': disposition.is_risk,
+        }
+
     # ==================================================
     # NCMR Logic
     # ==================================================
@@ -132,7 +181,7 @@ class NCMRService:
             raise e
 
     @staticmethod
-    def add_ncmr(data: Dict[str, Any]) -> str:
+    def add_ncmr(data: Dict[str, Any], *, actor_id: Optional[int] = None) -> str:
         try:
             inspector_id = _resolve_inspector_id(data)
             if inspector_id is _FIELD_ABSENT:
@@ -160,6 +209,14 @@ class NCMRService:
             )
             
             db.session.add(ncmr)
+            db.session.flush()
+            AuditService.record(
+                actor_id=actor_id,
+                action='create',
+                module='NCMR',
+                record_id=ncmr.id,
+                new_value=NCMRService.audit_snapshot(ncmr),
+            )
             db.session.commit()
             return ncmr_number
         except Exception as e:
@@ -167,15 +224,16 @@ class NCMRService:
             raise e
 
     @staticmethod
-    def update_ncmr(data: Dict[str, Any]) -> bool:
+    def update_ncmr(data: Dict[str, Any], *, actor_id: Optional[int] = None) -> bool:
         ncmr_id = data.get('識別碼')
         if not ncmr_id:
             raise ValueError("缺少識別碼")
         
         try:
-            ncmr = NCMR.active_query().filter_by(id=ncmr_id).first()
+            ncmr = NCMR.active_query().filter_by(id=ncmr_id).with_for_update().first()
             if not ncmr:
                 raise ValueError("找不到該筆資料")
+            old_value = NCMRService.audit_snapshot(ncmr)
 
             # 狀態轉移驗證
             new_status = data.get('狀態')
@@ -245,7 +303,15 @@ class NCMRService:
             for key, attr in field_map.items():
                 if key in data:
                     setattr(ncmr, attr, data[key])
-            
+
+            AuditService.record(
+                actor_id=actor_id,
+                action='update',
+                module='NCMR',
+                record_id=ncmr.id,
+                old_value=old_value,
+                new_value=NCMRService.audit_snapshot(ncmr),
+            )
             db.session.commit()
             return True
         except Exception as e:
@@ -253,15 +319,26 @@ class NCMRService:
             raise e
 
     @staticmethod
-    def delete_ncmr(ncmr_id: int) -> bool:
+    def delete_ncmr(ncmr_id: int, *, actor_id: Optional[int] = None) -> bool:
         try:
             # Explicitly delete CAs first if cascade not trusted, but defined cascade should work.
             # However legacy code deleted CA then NCMR.
             # I set cascade="all, delete-orphan".
-            ncmr = NCMR.active_query().filter_by(id=ncmr_id).first()
+            ncmr = NCMR.active_query().filter_by(id=ncmr_id).with_for_update().first()
             if ncmr:
+                old_value = NCMRService.audit_snapshot(ncmr)
                 ncmr.soft_delete()
+                AuditService.record(
+                    actor_id=actor_id,
+                    action='delete',
+                    module='NCMR',
+                    record_id=ncmr.id,
+                    old_value=old_value,
+                    new_value=NCMRService.audit_snapshot(ncmr),
+                )
                 db.session.commit()
+            else:
+                db.session.rollback()
             return True
         except Exception as e:
             db.session.rollback()
@@ -400,15 +477,29 @@ class NCMRService:
         d.is_risk = bool(d.exceed_customer_spec and d.auth_status == '未取得')
 
     @staticmethod
-    def create_disposition(ncmr_id: int, data: Dict[str, Any], handler_id: Optional[int]) -> int:
+    def create_disposition(
+        ncmr_id: int,
+        data: Dict[str, Any],
+        handler_id: Optional[int],
+        *,
+        actor_id: Optional[int] = None,
+    ) -> int:
         try:
-            ncmr = NCMR.active_query().filter_by(id=ncmr_id).first()
+            ncmr = NCMR.active_query().filter_by(id=ncmr_id).with_for_update().first()
             if not ncmr:
                 raise ValueError('找不到該 NCMR')
             NCMRService._validate_disposition(data)
             d = NcmrDisposition(ncmr_id=ncmr_id, handler_id=handler_id)
             NCMRService._apply_disposition_fields(d, data)
             db.session.add(d)
+            db.session.flush()
+            AuditService.record(
+                actor_id=actor_id,
+                action='create',
+                module='NCMR_DISPOSITION',
+                record_id=d.id,
+                new_value=NCMRService.disposition_audit_snapshot(d),
+            )
             db.session.commit()
             return d.id
         except Exception:
@@ -416,13 +507,27 @@ class NCMRService:
             raise
 
     @staticmethod
-    def update_disposition(disposition_id: int, data: Dict[str, Any]) -> bool:
+    def update_disposition(
+        disposition_id: int,
+        data: Dict[str, Any],
+        *,
+        actor_id: Optional[int] = None,
+    ) -> bool:
         try:
-            d = db.session.get(NcmrDisposition, disposition_id)
+            d = NcmrDisposition.query.filter_by(id=disposition_id).with_for_update().first()
             if not d:
                 raise ValueError('找不到該處置記錄')
+            old_value = NCMRService.disposition_audit_snapshot(d)
             NCMRService._validate_disposition(data)
             NCMRService._apply_disposition_fields(d, data)
+            AuditService.record(
+                actor_id=actor_id,
+                action='update',
+                module='NCMR_DISPOSITION',
+                record_id=d.id,
+                old_value=old_value,
+                new_value=NCMRService.disposition_audit_snapshot(d),
+            )
             db.session.commit()
             return True
         except Exception:
@@ -430,12 +535,27 @@ class NCMRService:
             raise
 
     @staticmethod
-    def delete_disposition(disposition_id: int) -> bool:
+    def delete_disposition(
+        disposition_id: int,
+        *,
+        actor_id: Optional[int] = None,
+    ) -> bool:
         try:
-            d = db.session.get(NcmrDisposition, disposition_id)
+            d = NcmrDisposition.query.filter_by(id=disposition_id).with_for_update().first()
             if d:
+                old_value = NCMRService.disposition_audit_snapshot(d)
                 db.session.delete(d)
+                AuditService.record(
+                    actor_id=actor_id,
+                    action='delete',
+                    module='NCMR_DISPOSITION',
+                    record_id=d.id,
+                    old_value=old_value,
+                    new_value={'deleted': True},
+                )
                 db.session.commit()
+            else:
+                db.session.rollback()
             # 找不到 id 時同樣回傳 True：冪等刪除，符合 RESTful DELETE 語意
             return True
         except Exception:

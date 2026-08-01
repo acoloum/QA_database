@@ -9,7 +9,7 @@ from ..authorization import (
 from ..errors import APIError, AuthorizationError
 from ..models import NCMR as NCMRModel
 from ..schemas import NCMRCreateSchema, NCMRUpdateIdentifierSchema, NCMRUpdateSchema
-from ..utils import auth_required, bounded_int, parse_optional_date, require_permission, log_audit
+from ..utils import auth_required, bounded_int, parse_optional_date, require_permission
 from ..extensions import db
 
 ncmr_bp = Blueprint('ncmr', __name__)
@@ -23,6 +23,7 @@ def _json_object():
     """取得 JSON 物件；null、array 與無法解析的 body 均不屬於輸入契約。"""
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
+        db.session.rollback()
         raise APIError(
             '請求內容必須是 JSON 物件',
             code='INVALID_JSON_BODY',
@@ -36,6 +37,7 @@ def _load_schema(schema, payload):
     try:
         return schema.load(payload)
     except MarshmallowValidationError as error:
+        db.session.rollback()
         raise APIError(
             '資料驗證失敗',
             code='VALIDATION_ERROR',
@@ -44,10 +46,10 @@ def _load_schema(schema, payload):
         ) from error
 
 
-def _call_ncmr_service(callback, *args):
+def _call_ncmr_service(callback, *args, **kwargs):
     """把 service 的領域參照錯誤映射為正式 422 契約。"""
     try:
-        return callback(*args)
+        return callback(*args, **kwargs)
     except NCMRValidationError as error:
         raise APIError(
             error.message,
@@ -100,13 +102,11 @@ def get_ncmr_list():
 @require_permission('ncmr.create')
 def add_ncmr(current_user):
     payload = _load_schema(_ncmr_create_schema, _json_object())
-    ncmr_number = _call_ncmr_service(NCMRService.add_ncmr, payload)
-    try:
-        log_audit(current_user.id if current_user else None, 'create', 'NCMR',
-                  new_val={'ncmr_number': ncmr_number})
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
+    ncmr_number = _call_ncmr_service(
+        NCMRService.add_ncmr,
+        payload,
+        actor_id=current_user.id if current_user else None,
+    )
     return jsonify({"success": True, "ncmr_number": ncmr_number}), 201
 
 @ncmr_bp.route('/api/ncmr/update', methods=['POST'])
@@ -119,32 +119,33 @@ def update_ncmr(current_user):
     ncmr = NCMRModel.active_query().filter_by(id=ncmr_id).first()
     if not ncmr:
         if not has_permission(current_user, 'ncmr.edit'):
+            db.session.rollback()
             _raise_ownership_denial()
+        db.session.rollback()
         return jsonify({"error": "找不到該筆資料"}), 404
     if not can_edit_ncmr(current_user, ncmr):
+        db.session.rollback()
         _raise_ownership_denial()
     payload = _load_schema(_ncmr_update_schema, raw_payload)
-    _call_ncmr_service(NCMRService.update_ncmr, payload)
+    _call_ncmr_service(
+        NCMRService.update_ncmr,
+        payload,
+        actor_id=current_user.id if current_user else None,
+    )
     return jsonify({"success": True})
 
 @ncmr_bp.route('/api/ncmr/delete', methods=['POST'])
 @auth_required
 @require_permission('ncmr.delete')
 def delete_ncmr(current_user):
-    try:
-        ncmr_id = request.json.get('id')
-        if not ncmr_id:
-            return jsonify({"error": "缺少識別碼"}), 400
-        NCMRService.delete_ncmr(ncmr_id)
-        try:
-            log_audit(current_user.id if current_user else None, 'delete', 'NCMR',
-                      record_id=ncmr_id)
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-        return jsonify({"success": True})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    ncmr_id = _json_object().get('id')
+    if not ncmr_id:
+        raise APIError('缺少識別碼', code='VALIDATION_ERROR', status_code=400)
+    NCMRService.delete_ncmr(
+        ncmr_id,
+        actor_id=current_user.id if current_user else None,
+    )
+    return jsonify({"success": True})
 
 @ncmr_bp.route('/api/ncmr/source_info', methods=['GET'])
 @auth_required
@@ -169,36 +170,27 @@ def open_capa_from_ncmr(current_user, ncmr_id):
     """
     from ..services.capa_service import CAPAService
     data = request.get_json() or {}
-    try:
-        # 使用 active_query 排除已軟刪除的 NCMR，避免對已刪除單據開立 CAPA
-        ncmr = NCMRModel.active_query().filter_by(id=ncmr_id).first()
-        if not ncmr:
-            return jsonify({'error': f'NCMR #{ncmr_id} 不存在'}), 404
-
-        # 若該 NCMR 已有關聯 CAPA，阻止重複開立
-        if getattr(ncmr, 'related_capa_id', None):
-            return jsonify({'error': '此 NCMR 已開立 CAPA，不可重複開立'}), 409
-
-        severity   = data.get('severity', 'Major')
-        creator_id = current_user.id if current_user else None
-        capa = CAPAService.create_from_source(
-            source_type = 'ncmr',
-            source_id   = ncmr_id,
-            symptom     = ncmr.description,
-            severity    = severity,
-            creator_id  = creator_id,
+    # route 僅做 HTTP 狀態映射；實際 mutation 由 service 鎖定後再次驗證。
+    ncmr = NCMRModel.active_query().filter_by(id=ncmr_id).first()
+    if not ncmr:
+        db.session.rollback()
+        raise APIError(
+            f'NCMR #{ncmr_id} 不存在', code='NOT_FOUND', status_code=404
         )
-
-        # 回寫 NCMR 關聯
-        ncmr.related_capa_id     = capa['id']
-        ncmr.related_capa_source = 'capa'
-        db.session.commit()
-
-        return jsonify(capa), 201
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    if ncmr.related_capa_id:
+        db.session.rollback()
+        raise APIError(
+            '此 NCMR 已開立 CAPA，不可重複開立',
+            code='CONFLICT',
+            status_code=409,
+        )
+    capa = CAPAService.open_from_ncmr(
+        ncmr_id,
+        symptom=ncmr.description,
+        severity=data.get('severity', 'Major'),
+        actor_id=current_user.id if current_user else None,
+    )
+    return jsonify(capa), 201
 
 
 @ncmr_bp.route('/api/ncmr/<int:ncmr_id>', methods=['GET'])
@@ -243,18 +235,15 @@ def get_ncmr_reworks(ncmr_id):
 def create_disposition(current_user, ncmr_id):
     try:
         handler_id = current_user.inspector_id if current_user else None
-        did = NCMRService.create_disposition(ncmr_id, request.json or {}, handler_id)
-        try:
-            log_audit(current_user.id if current_user else None, 'create', 'NCMR_DISPOSITION',
-                      record_id=did, new_val=request.json)
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
+        did = NCMRService.create_disposition(
+            ncmr_id,
+            request.json or {},
+            handler_id,
+            actor_id=current_user.id if current_user else None,
+        )
         return jsonify({"success": True, "id": did})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 
 @ncmr_bp.route('/api/ncmr/dispositions/<int:disposition_id>', methods=['PUT'])
@@ -262,35 +251,25 @@ def create_disposition(current_user, ncmr_id):
 @require_permission('ncmr.disposition')
 def update_disposition(current_user, disposition_id):
     try:
-        NCMRService.update_disposition(disposition_id, request.json or {})
-        try:
-            log_audit(current_user.id if current_user else None, 'update', 'NCMR_DISPOSITION',
-                      record_id=disposition_id, new_val=request.json)
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
+        NCMRService.update_disposition(
+            disposition_id,
+            request.json or {},
+            actor_id=current_user.id if current_user else None,
+        )
         return jsonify({"success": True})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 
 @ncmr_bp.route('/api/ncmr/dispositions/<int:disposition_id>', methods=['DELETE'])
 @auth_required
 @require_permission('ncmr.disposition')
 def delete_disposition(current_user, disposition_id):
-    try:
-        NCMRService.delete_disposition(disposition_id)
-        try:
-            log_audit(current_user.id if current_user else None, 'delete', 'NCMR_DISPOSITION',
-                      record_id=disposition_id)
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-        return jsonify({"success": True})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    NCMRService.delete_disposition(
+        disposition_id,
+        actor_id=current_user.id if current_user else None,
+    )
+    return jsonify({"success": True})
 
 
 @ncmr_bp.route('/api/ncmr/risk-releases', methods=['GET'])

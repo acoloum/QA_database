@@ -2,7 +2,8 @@ import pytest
 import datetime
 from sqlalchemy import func, select
 
-from backend.models import NCMR, Inspector, Role, User
+from backend.models import AuditLog, NCMR, Inspector, Role, User
+from backend.services.audit_service import AuditService
 from backend.services.ncmr_service import NCMRService
 from backend.utils import generate_token, hash_password
 
@@ -42,6 +43,95 @@ def _ncmr_headers(db_session, permission, username='ncmr_contract_user'):
     db_session.commit()
     token = generate_token(user.id, user.username, user.role, user.token_version)
     return {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+
+
+def _all_ncmr_headers(db_session, username):
+    role_code = f'{username}_role'
+    db_session.add(Role(
+        code=role_code,
+        name='NCMR 交易測試角色',
+        permissions={
+            'ncmr.create': True,
+            'ncmr.edit': True,
+            'ncmr.delete': True,
+        },
+    ))
+    user = User(
+        username=username,
+        password=hash_password('pw12345678'),
+        role=role_code,
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    token = generate_token(user.id, user.username, user.role, user.token_version)
+    return user, {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+
+
+def _assert_internal_error(response):
+    assert response.status_code == 500
+    assert response.get_json() == {
+        'success': False,
+        'error': {'code': 'INTERNAL_ERROR', 'message': '伺服器內部錯誤'},
+    }
+
+
+def test_create_ncmr_rolls_back_when_audit_fails(client, db_session, monkeypatch):
+    _, headers = _all_ncmr_headers(db_session, 'ncmr_create_atomic')
+    monkeypatch.setattr(
+        AuditService,
+        'record',
+        staticmethod(lambda **_: (_ for _ in ()).throw(RuntimeError('secret audit down'))),
+    )
+
+    response = client.post(
+        '/api/ncmr/add',
+        headers=headers,
+        json={'日期': '2026-08-01', '來源': '進料', '不良描述': '原子建立'},
+    )
+
+    _assert_internal_error(response)
+    db_session.expire_all()
+    assert NCMR.query.filter_by(description='原子建立').count() == 0
+    assert AuditLog.query.count() == 0
+
+
+def test_update_ncmr_rolls_back_when_audit_fails(client, db_session, monkeypatch):
+    record = _make_ncmr(db_session, description='更新前')
+    _, headers = _all_ncmr_headers(db_session, 'ncmr_update_atomic')
+    monkeypatch.setattr(
+        AuditService,
+        'record',
+        staticmethod(lambda **_: (_ for _ in ()).throw(RuntimeError('secret audit down'))),
+    )
+
+    response = client.post(
+        '/api/ncmr/update',
+        headers=headers,
+        json={'識別碼': record.id, '不良描述': '不應保存'},
+    )
+
+    _assert_internal_error(response)
+    db_session.expire_all()
+    assert db_session.get(NCMR, record.id).description == '更新前'
+    assert AuditLog.query.count() == 0
+
+
+def test_delete_ncmr_rolls_back_when_audit_fails(client, db_session, monkeypatch):
+    record = _make_ncmr(db_session)
+    _, headers = _all_ncmr_headers(db_session, 'ncmr_delete_atomic')
+    monkeypatch.setattr(
+        AuditService,
+        'record',
+        staticmethod(lambda **_: (_ for _ in ()).throw(RuntimeError('secret audit down'))),
+    )
+
+    response = client.post('/api/ncmr/delete', headers=headers, json={'id': record.id})
+
+    _assert_internal_error(response)
+    db_session.expire_all()
+    assert db_session.get(NCMR, record.id).deleted_at is None
+    assert AuditLog.query.count() == 0
 
 
 def _assert_validation_error(response, status, field=None):
@@ -126,6 +216,9 @@ def test_ncmr_create_loads_dates_and_accepts_existing_optional_payload(
     assert stored.quantity == 0
     assert stored.defect_quantity is None
     assert stored.inspector_id is None
+    logs = AuditLog.query.filter_by(module='NCMR', action='create').all()
+    assert len(logs) == 1
+    assert logs[0].record_id == stored.id
 
 
 def test_ncmr_create_rejects_unknown_inspector_without_writing(
@@ -190,6 +283,7 @@ def test_ncmr_update_rejects_invalid_contract_without_writing(
 
     expected_status = 400 if not isinstance(body, dict) else 422
     _assert_validation_error(response, expected_status, field)
+    assert db_session().in_transaction() is False
     db_session.expire_all()
     stored = db_session.get(NCMR, record.id)
     assert stored.description == '原始內容'
@@ -228,6 +322,66 @@ def test_ncmr_update_loads_date_object_and_keeps_partial_update_legal(
     assert stored.description == '更新內容'
     assert stored.quantity == 0
     assert stored.status == '矯正中'
+    logs = AuditLog.query.filter_by(module='NCMR', action='update').all()
+    assert len(logs) == 1
+    assert logs[0].record_id == record.id
+
+
+def test_delete_ncmr_writes_exactly_one_audit_in_successful_transaction(
+    client, db_session
+):
+    record = _make_ncmr(db_session)
+    user, headers = _all_ncmr_headers(db_session, 'ncmr_delete_success')
+
+    response = client.post('/api/ncmr/delete', headers=headers, json={'id': record.id})
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    assert db_session.get(NCMR, record.id).deleted_at is not None
+    logs = AuditLog.query.filter_by(module='NCMR', action='delete').all()
+    assert len(logs) == 1
+    assert logs[0].record_id == record.id
+    assert logs[0].user_id == user.id
+
+
+def test_update_ncmr_rolls_back_when_audit_flush_fails(
+    client, db_session, monkeypatch
+):
+    record = _make_ncmr(db_session, description='flush 前')
+    _, headers = _all_ncmr_headers(db_session, 'ncmr_flush_atomic')
+    monkeypatch.setattr(db_session, 'flush', lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError('flush down')))
+
+    response = client.post(
+        '/api/ncmr/update',
+        headers=headers,
+        json={'識別碼': record.id, '不良描述': 'flush 後'},
+    )
+
+    _assert_internal_error(response)
+    db_session.expire_all()
+    assert db_session.get(NCMR, record.id).description == 'flush 前'
+    assert AuditLog.query.count() == 0
+
+
+def test_delete_ncmr_rolls_back_when_commit_fails(
+    client, db_session, monkeypatch
+):
+    record = _make_ncmr(db_session)
+    _, headers = _all_ncmr_headers(db_session, 'ncmr_commit_atomic')
+    original_commit = db_session.commit
+    monkeypatch.setattr(
+        db_session,
+        'commit',
+        lambda: (_ for _ in ()).throw(RuntimeError('commit down')),
+    )
+
+    response = client.post('/api/ncmr/delete', headers=headers, json={'id': record.id})
+
+    _assert_internal_error(response)
+    monkeypatch.setattr(db_session, 'commit', original_commit)
+    db_session.expire_all()
+    assert db_session.get(NCMR, record.id).deleted_at is None
+    assert AuditLog.query.count() == 0
 
 
 @pytest.mark.parametrize('inspector_name', [None, ''])
@@ -303,6 +457,18 @@ def test_ncmr_update_rejects_unknown_inspector_without_writing(
     _assert_validation_error(response, 422, '發現人員姓名')
     db_session.expire_all()
     assert db_session.get(NCMR, record.id).inspector_id == original_inspector.id
+
+
+def test_ncmr_not_found_leaves_no_pending_transaction(app, db_session):
+    with app.app_context(), pytest.raises(ValueError, match='找不到'):
+        NCMRService.update_ncmr({'識別碼': 999999}, actor_id=None)
+    assert db_session().in_transaction() is False
+
+
+def test_idempotent_delete_ncmr_leaves_no_pending_transaction(app, db_session):
+    with app.app_context():
+        assert NCMRService.delete_ncmr(999999, actor_id=None) is True
+        assert db_session().in_transaction() is False
 
 
 def test_get_ncmr_list_pagination(app, db_session):

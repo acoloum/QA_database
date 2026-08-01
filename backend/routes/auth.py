@@ -8,7 +8,6 @@ from ..services.user_service import UserService
 from ..utils import (
     generate_token,
     generate_csrf_token,
-    hash_password,
     verify_password,
     handle_db_error,
     auth_required,
@@ -59,8 +58,7 @@ def login():
 
         # 將舊版 SHA256 雜湊在登入成功時升級為 bcrypt
         if not user.password.startswith('$2b$') and not user.password.startswith('$2a$'):
-            user.password = hash_password(password)
-            db.session.commit()
+            user = UserService.upgrade_password_hash(user.id, password)
 
         token = generate_token(
             user.id,
@@ -162,11 +160,9 @@ def update_role_permissions(current_user, role_code):
         return jsonify({"error": "permissions 必須為物件格式"}), 400
 
     try:
-        role = Role.query.filter_by(code=role_code).first()
+        role = UserService.set_role_permissions(role_code, permissions)
         if not role:
             return jsonify({"error": f"角色不存在：{role_code}"}), 404
-        role.permissions = permissions
-        db.session.commit()
         return jsonify({'code': role.code, 'name': role.name, 'permissions': role.permissions})
     except Exception as e:
         db.session.rollback()
@@ -277,15 +273,12 @@ def create_user(current_user):
         if User.query.filter_by(username=username).first():
             return jsonify({"error": "使用者名稱已存在"}), 400
 
-        new_user = User(
+        UserService.create(
             username=username,
-            password=hash_password(password),
+            password=password,
             role=new_role,
             inspector_id=inspector_id,
-            is_active=True
         )
-        db.session.add(new_user)
-        db.session.commit()
         return jsonify({"success": True, "message": "使用者建立成功"})
     except Exception as e:
         db.session.rollback()

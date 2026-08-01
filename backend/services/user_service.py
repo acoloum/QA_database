@@ -1,7 +1,7 @@
 """使用者安全狀態異動服務。"""
 
 from ..extensions import db
-from ..models import User
+from ..models import Role, User
 from ..utils import hash_password, log_audit
 
 
@@ -17,6 +17,65 @@ class UserService:
             .execution_options(populate_existing=True)
         )
         return db.session.execute(statement).scalar_one_or_none()
+
+    @staticmethod
+    def upgrade_password_hash(user_id: int, password: str) -> User | None:
+        """登入成功後以 service transaction 升級舊密碼雜湊。"""
+        try:
+            user = UserService._find(user_id)
+            if user is None:
+                return None
+            user.password = hash_password(password)
+            db.session.commit()
+            return user
+        except Exception:
+            db.session.rollback()
+            raise
+
+    @staticmethod
+    def set_role_permissions(role_code: str, permissions: dict) -> Role | None:
+        """更新角色權限；route 不直接擁有交易。"""
+        try:
+            statement = (
+                db.select(Role)
+                .where(Role.code == role_code)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            role = db.session.execute(statement).scalar_one_or_none()
+            if role is None:
+                db.session.rollback()
+                return None
+            role.permissions = permissions
+            db.session.commit()
+            return role
+        except Exception:
+            db.session.rollback()
+            raise
+
+    @staticmethod
+    def create(
+        *,
+        username: str,
+        password: str,
+        role: str,
+        inspector_id: int | None,
+    ) -> User:
+        """建立使用者；唯一性錯誤交由 route 的既有錯誤契約處理。"""
+        try:
+            user = User(
+                username=username,
+                password=hash_password(password),
+                role=role,
+                inspector_id=inspector_id,
+                is_active=True,
+            )
+            db.session.add(user)
+            db.session.commit()
+            return user
+        except Exception:
+            db.session.rollback()
+            raise
 
     @staticmethod
     def set_active(actor_user_id: int, user_id: int, is_active: bool) -> User | None:
