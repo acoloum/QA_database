@@ -1,28 +1,7 @@
 import { useMemo } from 'react';
 import { useDashboardTrends } from '../../hooks/useDashboard';
-import {
-    Chart as ChartJS,
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    Title,
-    Tooltip,
-    Legend,
-    Filler
-} from 'chart.js';
 import { Line } from 'react-chartjs-2';
-
-ChartJS.register(
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    Title,
-    Tooltip,
-    Legend,
-    Filler
-);
+import '../../utils/chartSetup';
 
 const TrendChart = () => {
     const { trends, loading, error } = useDashboardTrends();

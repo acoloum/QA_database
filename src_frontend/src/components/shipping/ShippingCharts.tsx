@@ -1,17 +1,5 @@
 
 import { useState, useMemo } from 'react';
-import {
-    Chart as ChartJS,
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    BarElement,
-    Title,
-    Tooltip,
-    Legend,
-    Filler
-} from 'chart.js';
 import { buildSpcChartModel, mergeOngoingStudyForDisplay } from '../../utils/spcChartModel';
 import SpcDashboardPanel from '../spc/SpcDashboardPanel';
 import SpcStudyPanel from '../spc/SpcStudyPanel';
@@ -21,9 +9,9 @@ import OutlierManagerModal from '../spc/OutlierManagerModal';
 import type { SpcStudyResult } from '../../types';
 import { Button, Form } from 'react-bootstrap';
 import { useShippingStats, useExportSpcReport } from '../../hooks/useShipping';
+import '../../utils/chartSetup';
 
 // Register ChartJS components
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
 
 interface ShippingChartsProps {
     vendor: string;

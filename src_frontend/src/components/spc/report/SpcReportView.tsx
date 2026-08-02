@@ -1,19 +1,11 @@
 // AIAG-VDA SPC 2026 §11.2 Figure 11-1 一頁式製程能力研究報告版面。
 import { Chart, Line, Scatter } from 'react-chartjs-2';
-import {
-  Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement,
-  BarElement, BarController, LineController, ScatterController,
-  Title, Tooltip, Legend, Filler,
-} from 'chart.js';
 import type { ChartData, ChartOptions } from 'chart.js';
 
 import type { SpcReportModel } from './spcReportModel';
+import '../../../utils/chartSetup';
 
 // 報告可從任一頁開啟，確保其圖表所需的軸/元素/控制器已註冊（register 為冪等）。
-ChartJS.register(
-  CategoryScale, LinearScale, PointElement, LineElement, BarElement,
-  BarController, LineController, ScatterController, Title, Tooltip, Legend, Filler,
-);
 
 interface SpcReportViewProps {
   model: SpcReportModel;

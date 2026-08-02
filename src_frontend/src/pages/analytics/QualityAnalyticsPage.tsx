@@ -1,16 +1,5 @@
 import { useMemo, useState } from 'react';
 import { Badge, Button, Card, Col, Container, Form, Row, Spinner, Table } from 'react-bootstrap';
-import {
-    Chart as ChartJS,
-    CategoryScale,
-    LinearScale,
-    BarElement,
-    PointElement,
-    LineElement,
-    Title,
-    Tooltip,
-    Legend,
-} from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
 import {
     useCapaAging,
@@ -20,8 +9,7 @@ import {
     useVendorRanking,
 } from '../../hooks/useQualityAnalytics';
 import { formatLocalMonth } from '../../utils/dateUtils';
-
-ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend);
+import '../../utils/chartSetup';
 
 const COLORS = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed', '#0891b2'];
 

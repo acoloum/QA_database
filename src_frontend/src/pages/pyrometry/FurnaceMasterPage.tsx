@@ -4,21 +4,10 @@ import toast from 'react-hot-toast';
 import type { Furnace } from '../../types';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import { useDeleteFurnace, useFurnaces, useFurnaceTusTrend, useSaveFurnace } from '../../hooks/usePyrometry';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-} from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import { buildFurnacePayload, type FurnaceFormState } from './furnaceFormPayload';
 import PermissionAction from '../../components/PermissionAction';
-
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
+import '../../utils/chartSetup';
 
 const PROCESS_TYPES = ['T6時效', 'T4', '退火'];
 

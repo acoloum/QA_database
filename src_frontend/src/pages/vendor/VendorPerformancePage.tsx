@@ -1,19 +1,13 @@
 import { useState } from 'react';
 import { Container, Card, Table, Badge, Form, Row, Col, Spinner, Button } from 'react-bootstrap';
 import { Line } from 'react-chartjs-2';
-import {
-  Chart as ChartJS,
-  CategoryScale, LinearScale, PointElement, LineElement,
-  Title, Tooltip, Legend, Filler,
-} from 'chart.js';
 import { useAuth } from '../../context/useAuth';
+import '../../utils/chartSetup';
 import {
   useVendorPerformanceList,
   useVendorPerformanceHistory,
   useRefreshVendorPerformance,
 } from '../../hooks/useVendorPerformance';
-
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
 // 根據分數回傳 Badge 顏色
 const scoreVariant = (score: number) =>

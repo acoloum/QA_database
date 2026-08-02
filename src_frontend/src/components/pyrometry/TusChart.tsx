@@ -1,22 +1,7 @@
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-} from 'chart.js';
-import annotationPlugin from 'chartjs-plugin-annotation';
 import { Line } from 'react-chartjs-2';
 import { sortChannels } from './channelSort';
 import { channelLineColor } from './tusChartColors';
-
-ChartJS.register(
-  CategoryScale, LinearScale, PointElement, LineElement,
-  Title, Tooltip, Legend, annotationPlugin,
-);
+import '../../utils/chartSetup';
 
 interface TusChartProps {
   時間: string[];
