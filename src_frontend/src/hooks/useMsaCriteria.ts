@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import api from '../services/api';
+import api, { unwrap, type ApiEnvelope } from '../services/api';
 import type {
   ApproveMsaCriteriaVersionInput,
   CreateMsaCriteriaProfileInput,
@@ -12,12 +12,6 @@ import type {
   MsaPage,
 } from '../types/msa';
 import { msaKeys } from './useMsaEquipment';
-
-interface ApiEnvelope<T> {
-  data: T;
-}
-
-const unwrap = <T,>(response: { data: ApiEnvelope<T> }): T => response.data.data;
 
 const criteriaListKey = (params: MsaCriteriaListParams) => [
   ...msaKeys.criteria(), 'list', params,

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import api from '../services/api';
+import api, { unwrap, type ApiEnvelope } from '../services/api';
 import type {
   CalibrationDecisionInput,
   CalibrationListParams,
@@ -15,12 +15,6 @@ import { downloadBlob } from '../utils/downloadFile';
 import { calibrationKeys } from './useCalibrationTemplates';
 
 export { calibrationKeys } from './useCalibrationTemplates';
-
-interface ApiEnvelope<T> {
-  data: T;
-}
-
-const unwrap = <T,>(response: { data: ApiEnvelope<T> }): T => response.data.data;
 
 export const isCalibrationRecordListQuery = (
   query: { queryKey: readonly unknown[] },

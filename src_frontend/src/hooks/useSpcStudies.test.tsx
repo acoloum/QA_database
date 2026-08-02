@@ -14,6 +14,7 @@ vi.mock('../services/api', () => ({
     post: vi.fn(),
     patch: vi.fn(),
   },
+  unwrap: (response: { data: { data: unknown } }) => response.data.data,
 }));
 
 const createWrapper = (queryClient: QueryClient) =>

@@ -18,6 +18,7 @@ import {
 
 vi.mock('../services/api', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
+  unwrap: (response: { data: { data: unknown } }) => response.data.data,
 }));
 
 const downloadSpy = vi.hoisted(() => vi.fn());

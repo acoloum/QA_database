@@ -14,6 +14,7 @@ import {
 
 vi.mock('../services/api', () => ({
   default: { get: vi.fn(), put: vi.fn() },
+  unwrap: (response: { data: { data: unknown } }) => response.data.data,
 }));
 vi.mock('../utils/downloadFile', () => ({ downloadBlob: vi.fn() }));
 

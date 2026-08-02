@@ -4,6 +4,15 @@ import { ApiError } from './apiError';
 
 export { ApiError } from './apiError';
 
+// --- 後端回應 envelope 解包工具 ---
+
+export interface ApiEnvelope<T> {
+    data: T;
+}
+
+/** 解包後端統一 envelope（{ data: T }），回傳真正的 payload。 */
+export const unwrap = <T,>(response: { data: ApiEnvelope<T> }): T => response.data.data;
+
 // 建立 axios 實例
 const api = axios.create({
     baseURL: '/api',

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import api from '../services/api';
+import api, { unwrap, type ApiEnvelope } from '../services/api';
 import { downloadResponseBlob } from '../utils/downloadFile';
 import type {
   CorrectMsaObservationInput,
@@ -21,12 +21,6 @@ import type {
   UpdateMsaStudyInput,
 } from '../types/msa';
 import { msaKeys } from './useMsaEquipment';
-
-interface ApiEnvelope<T> {
-  data: T;
-}
-
-const unwrap = <T,>(response: { data: ApiEnvelope<T> }): T => response.data.data;
 
 export const msaStudyKeys = {
   list: (params: MsaStudyListParams) =>

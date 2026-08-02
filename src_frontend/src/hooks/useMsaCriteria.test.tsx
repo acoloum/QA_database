@@ -11,7 +11,10 @@ import {
   useMsaCriteria,
 } from './useMsaCriteria';
 
-vi.mock('../services/api', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
+vi.mock('../services/api', () => ({
+  default: { get: vi.fn(), post: vi.fn() },
+  unwrap: (response: { data: { data: unknown } }) => response.data.data,
+}));
 
 const createWrapper = (queryClient: QueryClient) => ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

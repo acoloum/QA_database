@@ -13,6 +13,7 @@ import {
 
 vi.mock('../services/api', () => ({
   default: { get: vi.fn(), patch: vi.fn() },
+  unwrap: (response: { data: { data: unknown } }) => response.data.data,
 }));
 
 const createWrapper = (queryClient: QueryClient) => (

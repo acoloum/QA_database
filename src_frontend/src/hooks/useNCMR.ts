@@ -177,10 +177,10 @@ export const useCreateCAPA = () => {
             const res = await api.post(`/ncmr/${ncmrId}/open-capa`, {});
             return res.data;
         },
-        onSuccess: () => {
+        onSuccess: (_, ncmrId) => {
             toast.success('已成功建立 CAPA 單');
             queryClient.invalidateQueries({ queryKey: ['ncmrList'], exact: false });
-            queryClient.invalidateQueries({ queryKey: ['ncmrDetail'], exact: false });
+            queryClient.invalidateQueries({ queryKey: ['ncmrDetail', ncmrId], exact: false });
         },
     });
 };

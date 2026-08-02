@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import api from '../services/api';
+import api, { unwrap, type ApiEnvelope } from '../services/api';
 import type {
   CalibrationPage,
   CalibrationTemplate,
@@ -10,12 +10,6 @@ import type {
   CreateCalibrationTemplateInput,
   UpdateCalibrationTemplateVersionInput,
 } from '../types/calibration';
-
-interface ApiEnvelope<T> {
-  data: T;
-}
-
-const unwrap = <T,>(response: { data: ApiEnvelope<T> }): T => response.data.data;
 
 export const calibrationKeys = {
   all: ['calibration'] as const,

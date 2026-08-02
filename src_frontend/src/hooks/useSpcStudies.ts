@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import api from '../services/api';
+import api, { unwrap } from '../services/api';
 import type {
   SpcAssignee, SpcEventSummary, SpcLimitVersionSummary, SpcOcapRecord,
   SpcAnalysisFamily, SpcOcapStatus, SpcStudyHistoryPage, SpcStudyResult, SpcStudySummary,
@@ -79,8 +79,6 @@ export interface SpcOcapInput {
     owner_id?: number | null;
   };
 }
-
-const unwrap = <T,>(response: { data: ApiSuccess<T> }): T => response.data.data;
 
 const invalidateStudy = (
   queryClient: ReturnType<typeof useQueryClient>,
