@@ -1,14 +1,37 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import type { ReworkExecutionDetail, ReworkInspectionDetail, ReworkCostDetail } from '../../types';
-import type { ConfirmActionState } from '../../components/common/ConfirmActionModal';
+import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import ReworkStatisticsDashboard from '../../components/rework/ReworkStatisticsDashboard';
+import ApplyModal from '../../components/rework/ApplyModal';
+import ApproveModal from '../../components/rework/ApproveModal';
+import CostModal from '../../components/rework/CostModal';
+import EditBasicInfoModal from '../../components/rework/EditBasicInfoModal';
+import EditCostModal from '../../components/rework/EditCostModal';
+import EditExecutionModal from '../../components/rework/EditExecutionModal';
+import EditInspectionModal from '../../components/rework/EditInspectionModal';
+import ExecutionModal from '../../components/rework/ExecutionModal';
+import InspectionModal from '../../components/rework/InspectionModal';
+import ReworkFollowUpModal from '../../components/rework/ReworkFollowUpModal';
 import ReworkListTable from './ReworkListTable';
-import ReworkModalHost from './ReworkModalHost';
+import ReworkDetailModal from './ReworkDetailModal';
 import { useReworkActions } from './useReworkActions';
 import { useReworkDetail } from './useReworkDetail';
 import { useReworkPageData } from './useReworkPageData';
 import { useAuth } from '../../context/useAuth';
+
+// 目前開啟的 Modal（互斥，一次只開一個）
+type ReworkModalType =
+    | 'apply'
+    | 'approve'
+    | 'execution'
+    | 'inspection'
+    | 'cost'
+    | 'editExecution'
+    | 'editInspection'
+    | 'editCost'
+    | 'editBasic'
+    | null;
 
 const ReworkPage = () => {
     const { hasPermission } = useAuth();
@@ -16,15 +39,7 @@ const ReworkPage = () => {
     const [searchParams] = useSearchParams();
 
     // Modals
-    const [showApplyModal, setShowApplyModal] = useState(false);
-    const [showApproveModal, setShowApproveModal] = useState(false);
-    const [showExecutionModal, setShowExecutionModal] = useState(false);
-    const [showInspectionModal, setShowInspectionModal] = useState(false);
-    const [showCostModal, setShowCostModal] = useState(false);
-    const [showEditExecutionModal, setShowEditExecutionModal] = useState(false);
-    const [showEditInspectionModal, setShowEditInspectionModal] = useState(false);
-    const [showEditCostModal, setShowEditCostModal] = useState(false);
-    const [showEditBasicModal, setShowEditBasicModal] = useState(false);
+    const [activeModal, setActiveModal] = useState<ReworkModalType>(null);
     const [selectedReworkId, setSelectedReworkId] = useState<number | null>(null);
     const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
     const [selectedExecution, setSelectedExecution] = useState<ReworkExecutionDetail | null>(null);
@@ -81,7 +96,7 @@ const ReworkPage = () => {
                 if (cancelled) return;
                 setInitialNcmrId(ncmrId);
                 setInitialNcmrNo(ncmrNo || '');
-                setShowApplyModal(true);
+                setActiveModal('apply');
             });
             return () => {
                 cancelled = true;
@@ -90,7 +105,7 @@ const ReworkPage = () => {
     }, [searchParams, hasPermission]);
 
     const handleCloseApplyModal = () => {
-        setShowApplyModal(false);
+        setActiveModal(null);
         setInitialNcmrId('');
         setInitialNcmrNo('');
         navigate('/rework', { replace: true });
@@ -98,12 +113,12 @@ const ReworkPage = () => {
 
     const handleApproveClick = (id: number) => {
         setSelectedReworkId(id);
-        setShowApproveModal(true);
+        setActiveModal('approve');
     };
 
     const handleEditExecution = (execution: ReworkExecutionDetail) => {
         setSelectedExecution(execution);
-        setShowEditExecutionModal(true);
+        setActiveModal('editExecution');
     };
 
     const handleDeleteExecution = async (executionId: number) => {
@@ -118,7 +133,7 @@ const ReworkPage = () => {
 
     const handleEditInspection = (inspection: ReworkInspectionDetail) => {
         setSelectedInspection(inspection);
-        setShowEditInspectionModal(true);
+        setActiveModal('editInspection');
     };
 
     const handleDeleteInspection = async (inspectionId: number) => {
@@ -133,7 +148,7 @@ const ReworkPage = () => {
 
     const handleEditCost = (cost: ReworkCostDetail) => {
         setSelectedCost(cost);
-        setShowEditCostModal(true);
+        setActiveModal('editCost');
     };
 
     const handleDeleteCost = async (costId: number) => {
@@ -242,65 +257,91 @@ const ReworkPage = () => {
                 onDelete={handleDeleteRework}
             />
 
-            <ReworkModalHost
-                showApplyModal={showApplyModal && hasPermission('rework.create')}
-                onCloseApplyModal={handleCloseApplyModal}
-                onApplySuccess={loadData}
+            <ApplyModal
+                show={activeModal === 'apply' && hasPermission('rework.create')}
+                handleClose={handleCloseApplyModal}
+                onSuccess={loadData}
                 initialNcmrId={initialNcmrId}
                 initialNcmrNo={initialNcmrNo}
-                showApproveModal={showApproveModal && hasPermission('rework.approve')}
-                onCloseApproveModal={() => setShowApproveModal(false)}
-                onApproveSuccess={loadData}
-                selectedReworkId={selectedReworkId}
-                showDetailModal={showDetailModal}
-                onHideDetailModal={() => setShowDetailModal(false)}
+            />
+            <ApproveModal
+                show={activeModal === 'approve' && hasPermission('rework.approve')}
+                handleClose={() => setActiveModal(null)}
+                onSuccess={loadData}
+                reworkId={selectedReworkId}
+            />
+            <ReworkDetailModal
+                show={showDetailModal}
+                onHide={() => setShowDetailModal(false)}
                 detail={selectedReworkDetail}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
                 executions={executions}
                 inspections={inspections}
                 costs={costs}
-                onEditBasic={() => setShowEditBasicModal(true)}
+                onEditBasic={() => setActiveModal('editBasic')}
                 onCloseRework={handleCloseRework}
-                onAddExecution={() => setShowExecutionModal(true)}
+                onAddExecution={() => setActiveModal('execution')}
                 onEditExecution={handleEditExecution}
                 onDeleteExecution={handleDeleteExecution}
-                onAddInspection={() => setShowInspectionModal(true)}
+                onAddInspection={() => setActiveModal('inspection')}
                 onEditInspection={handleEditInspection}
                 onDeleteInspection={handleDeleteInspection}
-                onAddCost={() => setShowCostModal(true)}
+                onAddCost={() => setActiveModal('cost')}
                 onEditCost={handleEditCost}
                 onDeleteCost={handleDeleteCost}
-                showExecutionModal={showExecutionModal && hasPermission('rework.create')}
-                onCloseExecutionModal={() => setShowExecutionModal(false)}
-                onExecutionSuccess={() => reloadDetailData()}
-                reworkNumber={selectedReworkDetail?.申請單號 || ''}
-                showInspectionModal={showInspectionModal && hasPermission('rework.create')}
-                onCloseInspectionModal={() => setShowInspectionModal(false)}
-                onInspectionSuccess={() => reloadDetailData()}
-                showCostModal={showCostModal && hasPermission('rework.create')}
-                onCloseCostModal={() => setShowCostModal(false)}
-                onCostSuccess={() => { reloadDetailData(); loadData(); }}
-                showEditExecutionModal={showEditExecutionModal && hasPermission('rework.create')}
-                onCloseEditExecutionModal={() => setShowEditExecutionModal(false)}
-                onEditExecutionSuccess={() => reloadDetailData()}
-                selectedExecution={selectedExecution}
-                showEditInspectionModal={showEditInspectionModal && hasPermission('rework.create')}
-                onCloseEditInspectionModal={() => setShowEditInspectionModal(false)}
-                onEditInspectionSuccess={() => reloadDetailData()}
-                selectedInspection={selectedInspection}
-                showEditCostModal={showEditCostModal && hasPermission('rework.create')}
-                onCloseEditCostModal={() => setShowEditCostModal(false)}
-                onEditCostSuccess={() => { reloadDetailData(); loadData(); }}
-                selectedCost={selectedCost}
-                showEditBasicModal={showEditBasicModal && hasPermission('rework.create')}
-                onCloseEditBasicModal={() => setShowEditBasicModal(false)}
-                onEditBasicSuccess={() => reloadDetailData()}
-                followUpModal={followUpModal}
-                onHideFollowUpModal={() => setFollowUpModal(null)}
-                confirmAction={confirmAction}
-                onHideConfirmAction={() => setConfirmAction(null)}
             />
+            <ExecutionModal
+                show={activeModal === 'execution' && hasPermission('rework.create')}
+                handleClose={() => setActiveModal(null)}
+                onSuccess={() => reloadDetailData()}
+                reworkNumber={selectedReworkDetail?.申請單號 || ''}
+            />
+            <InspectionModal
+                show={activeModal === 'inspection' && hasPermission('rework.create')}
+                handleClose={() => setActiveModal(null)}
+                onSuccess={() => reloadDetailData()}
+                reworkNumber={selectedReworkDetail?.申請單號 || ''}
+            />
+            <CostModal
+                show={activeModal === 'cost' && hasPermission('rework.create')}
+                handleClose={() => setActiveModal(null)}
+                onSuccess={() => { reloadDetailData(); loadData(); }}
+                reworkNumber={selectedReworkDetail?.申請單號 || ''}
+            />
+            <EditExecutionModal
+                show={activeModal === 'editExecution' && hasPermission('rework.create')}
+                handleClose={() => setActiveModal(null)}
+                onSuccess={() => reloadDetailData()}
+                execution={selectedExecution}
+            />
+            <EditInspectionModal
+                show={activeModal === 'editInspection' && hasPermission('rework.create')}
+                handleClose={() => setActiveModal(null)}
+                onSuccess={() => reloadDetailData()}
+                inspection={selectedInspection}
+            />
+            <EditCostModal
+                show={activeModal === 'editCost' && hasPermission('rework.create')}
+                handleClose={() => setActiveModal(null)}
+                onSuccess={() => { reloadDetailData(); loadData(); }}
+                cost={selectedCost}
+            />
+            <EditBasicInfoModal
+                show={activeModal === 'editBasic' && hasPermission('rework.create')}
+                handleClose={() => setActiveModal(null)}
+                onSuccess={() => reloadDetailData()}
+                application={selectedReworkDetail}
+            />
+            {followUpModal && (
+                <ReworkFollowUpModal
+                    show={followUpModal.show}
+                    onHide={() => setFollowUpModal(null)}
+                    ncmrId={followUpModal.ncmrId}
+                    ncmrNumber={followUpModal.ncmrNumber}
+                />
+            )}
+            <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
         </div>
     );
 };
