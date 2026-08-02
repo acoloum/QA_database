@@ -115,13 +115,13 @@ class Operator(db.Model):
 class PatrolMain(db.Model):
     __tablename__ = '巡檢主檔'
     id = db.Column('識別碼', db.Integer, primary_key=True)
-    date = db.Column('檢驗日期', db.Date)
-    machine_id = db.Column('機台', db.Integer, db.ForeignKey('擠壓機台.識別碼'))
-    operator_id = db.Column('主機手', db.Integer, db.ForeignKey('擠壓人員.識別碼'))
-    inspector_id = db.Column('檢驗人員', db.Integer, db.ForeignKey('品管人員.識別碼'))
-    material = db.Column('材質', db.String)
-    spec = db.Column('擠壓規格', db.String)
-    customer_id = db.Column('客戶名稱', db.Integer, db.ForeignKey('廠商資料.識別碼'))
+    date = db.Column('檢驗日期', db.Date, index=True)
+    machine_id = db.Column('機台', db.Integer, db.ForeignKey('擠壓機台.識別碼'), index=True)
+    operator_id = db.Column('主機手', db.Integer, db.ForeignKey('擠壓人員.識別碼'), index=True)
+    inspector_id = db.Column('檢驗人員', db.Integer, db.ForeignKey('品管人員.識別碼'), index=True)
+    material = db.Column('材質', db.String, index=True)
+    spec = db.Column('擠壓規格', db.String, index=True)
+    customer_id = db.Column('客戶名稱', db.Integer, db.ForeignKey('廠商資料.識別碼'), index=True)
     batch_num = db.Column('原料批號', db.String)
     is_ng = db.Column('是否超差', db.Boolean, default=False, nullable=True, index=True)
 
@@ -130,7 +130,7 @@ class PatrolMain(db.Model):
 class PatrolDetail(db.Model):
     __tablename__ = '巡檢子檔'
     id = db.Column('識別碼', db.Integer, primary_key=True)
-    main_id = db.Column('主檔ID', db.Integer, db.ForeignKey('巡檢主檔.識別碼'))
+    main_id = db.Column('主檔ID', db.Integer, db.ForeignKey('巡檢主檔.識別碼'), index=True)
     group = db.Column('組別', db.Integer)
     item = db.Column('測量項目', db.String)
     position = db.Column('測量位置', db.String)
@@ -149,10 +149,10 @@ class ShippingData(db.Model):
     id = db.Column('識別碼', db.Integer, primary_key=True)
     date = db.Column('檢驗日期', db.Date, index=True)
     material = db.Column('材質', db.String, index=True)
-    spec = db.Column('檢驗規格', db.String)
+    spec = db.Column('檢驗規格', db.String, index=True)
     order_num = db.Column('訂單號碼', db.String)
-    inspector_id = db.Column('檢驗人員', db.Integer, db.ForeignKey('品管人員.識別碼'))
-    vendor_id = db.Column('廠商名稱', db.Integer, db.ForeignKey('廠商資料.識別碼'))
+    inspector_id = db.Column('檢驗人員', db.Integer, db.ForeignKey('品管人員.識別碼'), index=True)
+    vendor_id = db.Column('廠商名稱', db.Integer, db.ForeignKey('廠商資料.識別碼'), index=True)
     group_count = db.Column('組數', db.Integer, default=5)
 
     # 量測值已全面改存子表 ShippingMeasurement（出貨巡檢量測明細），
@@ -514,10 +514,10 @@ class SpcEvent(db.Model):
         '界限版本ID', db.Integer, db.ForeignKey('SPC界限版本.識別碼'), nullable=False
     )
     study_version_id = db.Column(
-        '研究版本ID', db.Integer, db.ForeignKey('SPC研究版本.識別碼'), nullable=False
+        '研究版本ID', db.Integer, db.ForeignKey('SPC研究版本.識別碼'), nullable=False, index=True
     )
     sample_id = db.Column(
-        '研究樣本ID', db.Integer, db.ForeignKey('SPC研究樣本.識別碼'), nullable=True
+        '研究樣本ID', db.Integer, db.ForeignKey('SPC研究樣本.識別碼'), nullable=True, index=True
     )
     chart_kind = db.Column('圖別', db.String(20), nullable=False)
     rule_code = db.Column('規則代碼', db.String(50), nullable=False)
@@ -3070,9 +3070,9 @@ event.listen(MsaValidationRun, 'before_delete', _block_validation_run_change)
 class VendorToleranceMain(db.Model):
     __tablename__ = '廠商公差主檔'
     id = db.Column('識別碼', db.Integer, primary_key=True)
-    vendor_id = db.Column('廠商ID', db.Integer, db.ForeignKey('廠商資料.識別碼'))
-    material = db.Column('材質', db.String)
-    spec = db.Column('規格', db.String)
+    vendor_id = db.Column('廠商ID', db.Integer, db.ForeignKey('廠商資料.識別碼'), index=True)
+    material = db.Column('材質', db.String, index=True)
+    spec = db.Column('規格', db.String, index=True)
     note = db.Column('備註', db.String)
     created_at = db.Column('建立日期', db.DateTime)
 
@@ -3082,7 +3082,7 @@ class VendorToleranceMain(db.Model):
 class VendorToleranceDetail(db.Model):
     __tablename__ = '廠商公差明細檔'
     id = db.Column('識別碼', db.Integer, primary_key=True)
-    main_id = db.Column('主檔ID', db.Integer, db.ForeignKey('廠商公差主檔.識別碼'))
+    main_id = db.Column('主檔ID', db.Integer, db.ForeignKey('廠商公差主檔.識別碼'), index=True)
     item = db.Column('測量項目', db.String)
     position = db.Column('測量位置', db.String)
 
@@ -3100,9 +3100,9 @@ class ExtrusionToleranceMain(db.Model):
     """擠壓公差主檔"""
     __tablename__ = '擠壓公差主檔'
     id = db.Column('識別碼', db.Integer, primary_key=True)
-    material = db.Column('材質', db.String, nullable=False)
-    spec = db.Column('規格', db.String)
-    vendor = db.Column('廠商', db.String)
+    material = db.Column('材質', db.String, nullable=False, index=True)
+    spec = db.Column('規格', db.String, index=True)
+    vendor = db.Column('廠商', db.String, index=True)
     note = db.Column('備註', db.String)
     created_at = db.Column('建立日期', db.Date, default=date.today)
 
@@ -3113,7 +3113,7 @@ class ExtrusionToleranceDetail(db.Model):
     """擠壓公差明細檔"""
     __tablename__ = '擠壓公差明細檔'
     id = db.Column('識別碼', db.Integer, primary_key=True)
-    main_id = db.Column('主檔ID', db.Integer, db.ForeignKey('擠壓公差主檔.識別碼'), nullable=False)
+    main_id = db.Column('主檔ID', db.Integer, db.ForeignKey('擠壓公差主檔.識別碼'), nullable=False, index=True)
     item = db.Column('測量項目', db.String, nullable=False)
     position = db.Column('測量位置', db.String)
     tolerance_min = db.Column('公差下限', db.Numeric)
@@ -3131,12 +3131,12 @@ class NCMR(SoftDeleteMixin, db.Model):
     source = db.Column('來源', db.String)
     product_info = db.Column('產品資訊', db.String)
     quantity = db.Column('產品數量', db.Integer)
-    material = db.Column('材質', db.String)
+    material = db.Column('材質', db.String, index=True)
     vendor = db.Column('廠商', db.String)
     batch_num = db.Column('批號', db.String)
     description = db.Column('不良描述', db.String)
     defect_quantity = db.Column('不良數量', db.Integer)
-    inspector_id = db.Column('發現人員', db.Integer, db.ForeignKey('品管人員.識別碼'))
+    inspector_id = db.Column('發現人員', db.Integer, db.ForeignKey('品管人員.識別碼'), index=True)
     result = db.Column('判定結果', db.String)
     status = db.Column('狀態', db.String, index=True)
     defect_category = db.Column('不良原因大類', db.String)
@@ -3175,7 +3175,7 @@ class NcmrDisposition(db.Model):
     note        = db.Column('備註',     db.Text, nullable=True)
 
     # 矯正重工專屬
-    rework_id   = db.Column('關聯重工單ID', db.Integer, db.ForeignKey('重工申請單.識別碼'), nullable=True)
+    rework_id   = db.Column('關聯重工單ID', db.Integer, db.ForeignKey('重工申請單.識別碼'), nullable=True, index=True)
 
     # 挑選全檢專屬
     pass_qty    = db.Column('合格數',   db.Integer, nullable=True)
@@ -3300,7 +3300,7 @@ class CorrectiveAction(SoftDeleteMixin, db.Model):
 class ReworkRequest(SoftDeleteMixin, db.Model):
     __tablename__ = '重工申請單'
     id = db.Column('識別碼', db.Integer, primary_key=True)
-    ncmr_id = db.Column('NCMR_ID', db.Integer, db.ForeignKey('不合格品單.識別碼'))
+    ncmr_id = db.Column('NCMR_ID', db.Integer, db.ForeignKey('不合格品單.識別碼'), index=True)
     rework_number = db.Column('申請單號', db.String, unique=True)
     applicant_id = db.Column('申請人員', db.Integer, db.ForeignKey('品管人員.識別碼'))
     department = db.Column('部門', db.String)
@@ -3321,7 +3321,7 @@ class ReworkRequest(SoftDeleteMixin, db.Model):
     actual_finish_date = db.Column('實際完成日期', db.DateTime)
     complaint_id = db.Column('客訴_ID', db.Integer, nullable=True)
     vendor = db.Column('廠商', db.String, nullable=True)
-    material = db.Column('材質', db.String, nullable=True)
+    material = db.Column('材質', db.String, nullable=True, index=True)
 
     __table_args__ = (
         db.Index('idx_rework_status_created', '狀態', '申請日期'),

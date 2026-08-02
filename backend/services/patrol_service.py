@@ -797,30 +797,33 @@ class PatrolService:
 
         success_count = 0
         try:
-            # We can use ORM for lookups but bulk insert might be faster if purely adding.
-            # However, for consistency and relationship management, let's use ORM session.
-            # Speed is usually acceptable for Excel imports of moderate size.
-            
+            # 預先載入全部機台/員工/廠商/檢驗人員對照表，避免逐列查詢資料庫（N+1）
+            # 同名紀錄以最後一筆覆蓋（與 .first() 的任意順序差異極小，可忽略）
+            machines = {m.name.strip(): m for m in Machine.query.all()}
+            operators = {o.name.strip(): o for o in Operator.query.all()}
+            vendors = {v.name.strip(): v for v in Vendor.query.all()}
+            inspectors = {i.name.strip(): i for i in Inspector.query.all()}
+
             for row_num, row in enumerate(df.iterrows()):
                 main_data = row[1].to_dict()
                 display_row_num = row_num + 2
 
-                # Lookups
+                # Lookups（改用記憶體對照表，迴圈內不再查詢資料庫）
                 machine_name = str(main_data.get('擠壓機編號', '')).strip()
-                machine = Machine.query.filter_by(name=machine_name).first() if machine_name else None
+                machine = machines.get(machine_name) if machine_name else None
                 if not machine and machine_name:
                     raise ValueError(f"第 {display_row_num} 行: 找不到機台 '{machine_name}'")
                 
                 operator_name = str(main_data.get('員工姓名', '')).strip()
-                operator = Operator.query.filter_by(name=operator_name).first() if operator_name else None
+                operator = operators.get(operator_name) if operator_name else None
                 if not operator and operator_name:
                     raise ValueError(f"第 {display_row_num} 行: 找不到員工 '{operator_name}'")
 
                 customer_name = str(main_data.get('客戶名稱', '')).strip()
-                customer = Vendor.query.filter_by(name=customer_name).first() if customer_name else None
+                customer = vendors.get(customer_name) if customer_name else None
                 
                 inspector_name = str(main_data.get('檢驗人員', '')).strip()
-                inspector = Inspector.query.filter_by(name=inspector_name).first() if inspector_name else None
+                inspector = inspectors.get(inspector_name) if inspector_name else None
                 if not inspector and inspector_name:
                     raise ValueError(f"第 {display_row_num} 行: 找不到檢驗人員 '{inspector_name}'")
 

@@ -346,11 +346,20 @@ class NCMRService:
                         f'處置數量加總（{total_disp}）與不良總數（{defect_total}）不符，無法結案'
                     )
 
+                # 預先載入全部關聯重工單，避免迴圈內逐筆查詢（N+1）
+                # 與 db.session.get 一致：不過濾軟刪除（已刪除的重工單亦視為未結案）
+                rework_ids = [d.rework_id for d in dispositions
+                              if d.disposition_type == '矯正重工' and d.rework_id]
+                reworks = {
+                    rw.id: rw
+                    for rw in ReworkRequest.query.filter(ReworkRequest.id.in_(rework_ids)).all()
+                } if rework_ids else {}
+
                 for d in dispositions:
                     if d.disposition_type == '矯正重工':
                         if not d.rework_id:
                             raise ValueError('矯正重工處置須關聯重工單')
-                        rw = db.session.get(ReworkRequest, d.rework_id)
+                        rw = reworks.get(d.rework_id)
                         if not rw or rw.status != '已結案':
                             raise ValueError('關聯重工單尚未結案，無法將 NCMR 結案')
                     elif d.disposition_type == '挑選全檢':

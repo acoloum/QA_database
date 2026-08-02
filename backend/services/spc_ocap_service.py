@@ -1,6 +1,6 @@
 """持續 SPC 失控事件同步與 OCAP 處置服務。"""
 
-from typing import Any, Mapping, Sequence
+from typing import Any, Dict, Mapping, Sequence
 
 from sqlalchemy.exc import IntegrityError
 
@@ -137,6 +137,11 @@ class SpcOcapService:
             )
 
         events: list[SpcEvent] = []
+        # 一次查出此界限版本下所有既有事件，避免迴圈內逐筆查詢（N+1）
+        existing_events: Dict[tuple, SpcEvent] = {
+            (e.source_point_key, e.chart_kind, e.rule_code): e
+            for e in SpcEvent.query.filter(SpcEvent.limit_version_id == limit.id).all()
+        }
         for violation in violations:
             chart_kind = str(violation.get("chart_kind") or violation.get("chart") or "")
             rule_code = str(violation.get("rule_code") or violation.get("rule") or "")
@@ -149,12 +154,8 @@ class SpcOcapService:
                 violation.get("source_point_key")
                 or f"version:{version.id}:point:{int(point_index)}"
             )
-            event = SpcEvent.query.filter_by(
-                limit_version_id=limit.id,
-                source_point_key=source_point_key,
-                chart_kind=chart_kind,
-                rule_code=rule_code,
-            ).first()
+            event_key = (source_point_key, chart_kind, rule_code)
+            event = existing_events.get(event_key)
             if event is None:
                 event = SpcEvent(
                     limit_version_id=limit.id,
@@ -168,7 +169,7 @@ class SpcOcapService:
                     status="open",
                 )
                 db.session.add(event)
-                db.session.flush()
+                existing_events[event_key] = event
             events.append(event)
         # 事件、研究版本與 audit 必須由最外層應用服務在同一交易提交。
         db.session.flush()

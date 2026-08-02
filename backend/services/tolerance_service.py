@@ -2,7 +2,7 @@
 from typing import List, Dict, Any, Optional
 import pandas as pd
 from io import BytesIO
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 from ..extensions import db
 from ..models import VendorToleranceMain, VendorToleranceDetail, Vendor
 from ..utils import bounded_int, format_value
@@ -274,9 +274,11 @@ class ToleranceService:
         input_spec = normalize_spec(spec)
 
         try:
-            # Fetch candidates (使用模糊材質匹配)
+            # Fetch candidates (使用模糊材質匹配；selectinload 預先載入明細避免 N+1)
             candidates = VendorToleranceMain.query.filter(
                 VendorToleranceMain.material.like(f"%{material}%")
+            ).options(
+                selectinload(VendorToleranceMain.details)
             ).all()
             
             # Classification logic (Same as legacy)

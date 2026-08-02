@@ -1,4 +1,5 @@
 from typing import Dict, Any
+from sqlalchemy import or_, func
 from sqlalchemy.orm import selectinload, joinedload
 from ..extensions import db
 from ..models import ExtrusionToleranceMain, ExtrusionToleranceDetail, VendorToleranceMain, Vendor
@@ -248,7 +249,19 @@ class ExtrusionToleranceService:
 
         candidates = ExtrusionToleranceMain.query.options(
             selectinload(ExtrusionToleranceMain.details)
-        ).all()
+        )
+        # SQL 層初步過濾材質（與 _match_material 的雙向包含語意一致：
+        # DB 材質包含查詢值 或 查詢值包含 DB 材質），避免載入無關紀錄
+        mat_key = (material or '').strip().lower()
+        if mat_key:
+            mat_col = func.lower(func.trim(ExtrusionToleranceMain.material))
+            candidates = candidates.filter(
+                or_(
+                    mat_col.like(f"%{mat_key}%"),
+                    func.lower(mat_key).like(func.concat('%', mat_col, '%')),
+                )
+            )
+        candidates = candidates.all()
 
         extrusion_buckets: Dict[int, list] = {1: [], 2: [], 3: []}
 

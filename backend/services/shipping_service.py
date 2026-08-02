@@ -354,9 +354,10 @@ class ShippingService:
 
         from .tolerance_service import ToleranceService
 
-        # 同批匯入常有重複的人員/廠商/規格，以快取避免逐列重複查詢
-        inspector_cache: Dict[str, Any] = {}
-        vendor_cache: Dict[str, Any] = {}
+        # 預先載入全部檢驗人員/廠商對照表，避免逐列查詢資料庫（N+1）
+        # 同名紀錄以最後一筆覆蓋（與 .first() 的任意順序差異極小，可忽略）
+        inspector_cache: Dict[str, Any] = {i.name.strip(): i for i in Inspector.query.all()}
+        vendor_cache: Dict[str, Any] = {v.name.strip(): v for v in Vendor.query.all()}
         tol_cache: Dict[tuple, Any] = {}
 
         success_count = 0
@@ -370,18 +371,14 @@ class ShippingService:
 
                 display_row_num = row_num + 2
 
-                # 人員 / 廠商查詢（快取）
+                # 人員 / 廠商查詢（記憶體對照表）
                 inspector_name = str(main_data.get('檢驗人員', '')).strip()
-                if inspector_name not in inspector_cache:
-                    inspector_cache[inspector_name] = Inspector.query.filter_by(name=inspector_name).first()
-                inspector = inspector_cache[inspector_name]
+                inspector = inspector_cache.get(inspector_name) if inspector_name else None
                 if not inspector:
                     raise ValueError(f"第 {display_row_num} 行: 找不到檢驗人員 '{inspector_name}'")
 
                 vendor_name = str(main_data.get('廠商名稱', '')).strip()
-                if vendor_name not in vendor_cache:
-                    vendor_cache[vendor_name] = Vendor.query.filter_by(name=vendor_name).first()
-                vendor = vendor_cache[vendor_name]
+                vendor = vendor_cache.get(vendor_name) if vendor_name else None
                 if not vendor:
                     raise ValueError(f"第 {display_row_num} 行: 廠商不存在")
 
