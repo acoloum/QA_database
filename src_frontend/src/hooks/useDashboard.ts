@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
+import { dashboardKeys } from './queryKeys';
 
 export interface DashboardStats {
     shipping: { current: number; previous: number; pending: number; trend: string; change_pct: number; ng_count?: number; ng_rate?: number | null };
@@ -37,7 +38,7 @@ export type DatePeriod = 'this_week' | 'this_month' | 'last_month' | 'custom';
 
 export function useDashboardStats(period: DatePeriod = 'this_month', customDateRange?: { start: string; end: string }) {
     const query = useQuery({
-        queryKey: ['dashboardStats', period, customDateRange],
+        queryKey: dashboardKeys.stats(period, customDateRange),
         queryFn: async () => {
             const params: Record<string, string> = { period };
             if (period === 'custom' && customDateRange) {
@@ -60,7 +61,7 @@ export function useDashboardStats(period: DatePeriod = 'this_month', customDateR
 
 export function useDashboardTodos() {
     const query = useQuery({
-        queryKey: ['dashboardTodos'],
+        queryKey: dashboardKeys.todos,
         queryFn: async () => {
             const { data } = await api.get('/dashboard/todos');
             return data as TodoItem[];
@@ -77,7 +78,7 @@ export function useDashboardTodos() {
 
 export function useDashboardTrends() {
     const query = useQuery({
-        queryKey: ['dashboardTrends'],
+        queryKey: dashboardKeys.trends,
         queryFn: async () => {
             const { data } = await api.get('/dashboard/trends');
             return data as DashboardTrends;

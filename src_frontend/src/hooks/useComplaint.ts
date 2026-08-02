@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import type { CustomerComplaint, PaginatedResponse } from '../types';
+import { complaintKeys, capaKeys } from './queryKeys';
 
 export interface ComplaintListParams {
     customer?: string;
@@ -19,7 +20,7 @@ export interface ComplaintListParams {
 // ── 客訴列表 ─────────────────────────────────────────────────
 export const useComplaintList = (params: ComplaintListParams = {}) => {
     return useQuery({
-        queryKey: ['complaintList', params],
+        queryKey: complaintKeys.list(params),
         queryFn: async () => {
             const res = await api.get<PaginatedResponse<CustomerComplaint>>(
                 '/complaints', { params }
@@ -32,7 +33,7 @@ export const useComplaintList = (params: ComplaintListParams = {}) => {
 // ── 客訴明細 ─────────────────────────────────────────────────
 export const useComplaintDetail = (id: number | null) => {
     return useQuery({
-        queryKey: ['complaintDetail', id],
+        queryKey: complaintKeys.detail(id),
         queryFn: async () => {
             const res = await api.get<CustomerComplaint>(`/complaints/${id}`);
             return res.data;
@@ -44,7 +45,7 @@ export const useComplaintDetail = (id: number | null) => {
 // ── 逾期客訴（Dashboard）─────────────────────────────────────
 export const useOverdueComplaints = () => {
     return useQuery({
-        queryKey: ['overdueComplaints'],
+        queryKey: complaintKeys.overdue,
         queryFn: async () => {
             const res = await api.get<CustomerComplaint[]>('/complaints/overdue');
             return res.data;
@@ -56,7 +57,7 @@ export const useOverdueComplaints = () => {
 // ── 重複客訴（Dashboard）─────────────────────────────────────
 export const useRecentRepeats = (days = 30) => {
     return useQuery({
-        queryKey: ['recentRepeats', days],
+        queryKey: complaintKeys.recentRepeats(days),
         queryFn: async () => {
             const res = await api.get<CustomerComplaint[]>('/complaints/recent-repeats', {
                 params: { days },
@@ -77,7 +78,7 @@ export const useCreateComplaint = () => {
         },
         onSuccess: () => {
             toast.success('客訴建立成功');
-            qc.invalidateQueries({ queryKey: ['complaintList'] });
+            qc.invalidateQueries({ queryKey: complaintKeys.root });
         },
         onError: (err: Error) => {
             toast.error(`建立失敗：${err.message}`);
@@ -95,8 +96,8 @@ export const useUpdateComplaint = () => {
         },
         onSuccess: (_data, vars) => {
             toast.success('客訴已更新');
-            qc.invalidateQueries({ queryKey: ['complaintList'] });
-            qc.invalidateQueries({ queryKey: ['complaintDetail', vars.id] });
+            qc.invalidateQueries({ queryKey: complaintKeys.root });
+            qc.invalidateQueries({ queryKey: complaintKeys.detail(vars.id) });
         },
         onError: (err: Error) => {
             toast.error(`更新失敗：${err.message}`);
@@ -113,7 +114,7 @@ export const useDeleteComplaint = () => {
         },
         onSuccess: () => {
             toast.success('客訴已刪除');
-            qc.invalidateQueries({ queryKey: ['complaintList'] });
+            qc.invalidateQueries({ queryKey: complaintKeys.root });
         },
     });
 };
@@ -128,8 +129,8 @@ export const useOpenCapaFromComplaint = () => {
         },
         onSuccess: () => {
             toast.success('CAPA 已開立');
-            qc.invalidateQueries({ queryKey: ['complaintList'] });
-            qc.invalidateQueries({ queryKey: ['capaList'] });
+            qc.invalidateQueries({ queryKey: complaintKeys.root });
+            qc.invalidateQueries({ queryKey: capaKeys.root });
         },
         onError: (err: Error) => {
             toast.error(`開立失敗：${err.message}`);
@@ -148,7 +149,7 @@ export const useOpenReworkFromComplaint = () => {
         },
         onSuccess: () => {
             toast.success('重工申請單已開立');
-            qc.invalidateQueries({ queryKey: ['complaintList'] });
+            qc.invalidateQueries({ queryKey: complaintKeys.root });
         },
         onError: (err: Error) => {
             toast.error(`開立失敗：${err.message}`);
@@ -159,7 +160,7 @@ export const useOpenReworkFromComplaint = () => {
 // ── 統計查詢 ─────────────────────────────────────────────────
 export const useComplaintStatsByCustomer = (params?: { date_from?: string; date_to?: string }) =>
     useQuery({
-        queryKey: ['complaintStats', 'customer', params],
+        queryKey: complaintKeys.stats('customer', params),
         queryFn: async () => {
             const res = await api.get('/complaints/stats/by-customer', { params });
             return res.data as { customer: string; total: number; repeat_count: number; repeat_rate: number }[];
@@ -168,7 +169,7 @@ export const useComplaintStatsByCustomer = (params?: { date_from?: string; date_
 
 export const useComplaintStatsByProduct = (params?: { date_from?: string; date_to?: string }) =>
     useQuery({
-        queryKey: ['complaintStats', 'product', params],
+        queryKey: complaintKeys.stats('product', params),
         queryFn: async () => {
             const res = await api.get('/complaints/stats/by-product', { params });
             return res.data as { material: string; spec: string; total: number; repeat_count: number; repeat_rate: number }[];
@@ -177,7 +178,7 @@ export const useComplaintStatsByProduct = (params?: { date_from?: string; date_t
 
 export const useComplaintStatsByMonth = (params?: { date_from?: string; date_to?: string }) =>
     useQuery({
-        queryKey: ['complaintStats', 'month', params],
+        queryKey: complaintKeys.stats('month', params),
         queryFn: async () => {
             const res = await api.get('/complaints/stats/by-month', { params });
             return res.data as { year_month: string; total: number }[];
@@ -186,7 +187,7 @@ export const useComplaintStatsByMonth = (params?: { date_from?: string; date_to?
 
 export const useComplaintStatsWarranty = (params?: { date_from?: string; date_to?: string }) =>
     useQuery({
-        queryKey: ['complaintStats', 'warranty', params],
+        queryKey: complaintKeys.stats('warranty', params),
         queryFn: async () => {
             const res = await api.get('/complaints/stats/warranty', { params });
             return res.data as {

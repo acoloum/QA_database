@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import api from '../services/api';
 import type { Inspector } from '../types';
+import { masterDataKeys } from './queryKeys';
 
 export interface UseInspectorsOptions {
     group?: string;
@@ -12,7 +13,7 @@ export const useInspectors = (options: UseInspectorsOptions = {}) => {
     const { group, enabled = true } = options;
 
     return useQuery({
-        queryKey: ['inspectors', group ?? 'all'],
+        queryKey: masterDataKeys.inspectors(group),
         queryFn: async () => {
             const res = await api.get<Inspector[]>('/inspectors', { params: group ? { group } : undefined });
             return res.data;

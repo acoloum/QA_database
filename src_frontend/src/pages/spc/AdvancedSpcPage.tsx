@@ -24,6 +24,7 @@ import SpcStudyHistoryOffcanvas from '../../components/spc/SpcStudyHistoryOffcan
 import SpcStudyWorkflowBar from '../../components/spc/SpcStudyWorkflowBar';
 import SpcReportModal from '../../components/spc/report/SpcReportModal';
 import { reportModelFromVersion } from '../../components/spc/report/spcReportModel';
+import { spcKeys } from '../../hooks/queryKeys';
 
 type Source = 'shipping' | 'patrol' | 'mechanical';
 type Family = 'variable' | 'attribute' | 'machine';
@@ -249,13 +250,13 @@ const AdvancedSpcPage = () => {
 
   const refreshWorkflowQueries = async (studyId: number) => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['spcStudies'] }),
-      queryClient.invalidateQueries({ queryKey: ['spcStudy', studyId] }),
-      queryClient.invalidateQueries({ queryKey: ['spcStudyHistory', studyId] }),
+      queryClient.invalidateQueries({ queryKey: spcKeys.studiesRoot }),
+      queryClient.invalidateQueries({ queryKey: spcKeys.study(studyId) }),
+      queryClient.invalidateQueries({ queryKey: spcKeys.history(studyId) }),
     ]);
     await Promise.all([
-      queryClient.refetchQueries({ queryKey: ['spcStudy', studyId] }),
-      queryClient.refetchQueries({ queryKey: ['spcStudyHistory', studyId] }),
+      queryClient.refetchQueries({ queryKey: spcKeys.study(studyId) }),
+      queryClient.refetchQueries({ queryKey: spcKeys.history(studyId) }),
     ]);
   };
 

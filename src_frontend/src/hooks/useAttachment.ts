@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import type { Attachment } from '../types';
+import { attachmentKeys } from './queryKeys';
 
 // ── 查詢附件清單 ─────────────────────────────────────────────
 export const useAttachments = (
@@ -10,7 +11,7 @@ export const useAttachments = (
     dStep?: string,
 ) => {
     return useQuery({
-        queryKey: ['attachments', entityType, entityId, dStep],
+        queryKey: attachmentKeys.list(entityType, entityId, dStep),
         queryFn: async () => {
             const params: Record<string, string | number> = {
                 entity_type: entityType,
@@ -49,7 +50,7 @@ export const useUploadAttachment = () => {
         onSuccess: (_data, vars) => {
             toast.success('附件上傳成功');
             qc.invalidateQueries({
-                queryKey: ['attachments', vars.entity_type, vars.entity_id],
+                queryKey: attachmentKeys.list(vars.entity_type, vars.entity_id),
             });
         },
         onError: (err: Error) => {
@@ -68,7 +69,7 @@ export const useDeleteAttachment = (entityType: string, entityId: number) => {
         onSuccess: () => {
             toast.success('附件已刪除');
             qc.invalidateQueries({
-                queryKey: ['attachments', entityType, entityId],
+                queryKey: attachmentKeys.list(entityType, entityId),
             });
         },
         onError: (err: Error) => {

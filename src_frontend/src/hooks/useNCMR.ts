@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import type { NCMR, NCMRCreateInput, NCMRUpdateInput, NcmrDisposition, RiskRelease } from '../types';
+import { ncmrKeys, capaKeys } from './queryKeys';
 
 // --- Queries ---
 
@@ -33,7 +34,7 @@ export interface CAPAListParams {
 
 export const useNCMRList = (params: NCMRListParams = {}) => {
     return useQuery({
-        queryKey: ['ncmrList', params],
+        queryKey: ncmrKeys.list(params),
         queryFn: async () => {
             const res = await api.get<{
                 data: NCMR[];
@@ -76,7 +77,7 @@ export const useNCMRList = (params: NCMRListParams = {}) => {
 
 export const useCAPAList = (params: CAPAListParams = {}) => {
     return useQuery({
-        queryKey: ['capaList', params],
+        queryKey: capaKeys.list(params),
         queryFn: async () => {
             const res = await api.get<{
                 data: Record<string, unknown>[];
@@ -110,7 +111,7 @@ export const useCAPAList = (params: CAPAListParams = {}) => {
 
 export const useNCMRDetail = (id: number | null) => {
     return useQuery({
-        queryKey: ['ncmrDetail', id],
+        queryKey: ncmrKeys.detail(id),
         queryFn: async () => {
             if (!id) return null;
             const res = await api.get(`/ncmr/${id}`);
@@ -132,7 +133,7 @@ export const useCreateNCMR = () => {
         },
         onSuccess: () => {
             toast.success('新增成功');
-            queryClient.invalidateQueries({ queryKey: ['ncmrList'], exact: false });
+            queryClient.invalidateQueries({ queryKey: ncmrKeys.root, exact: false });
         },
     });
 };
@@ -147,9 +148,9 @@ export const useUpdateNCMR = () => {
         },
         onSuccess: (_, variables) => {
             toast.success('更新成功');
-            queryClient.invalidateQueries({ queryKey: ['ncmrList'], exact: false });
+            queryClient.invalidateQueries({ queryKey: ncmrKeys.root, exact: false });
             if (variables.識別碼) {
-                queryClient.invalidateQueries({ queryKey: ['ncmrDetail', variables.識別碼], exact: false });
+                queryClient.invalidateQueries({ queryKey: ncmrKeys.detail(variables.識別碼), exact: false });
             }
         },
     });
@@ -164,7 +165,7 @@ export const useDeleteNCMR = () => {
         },
         onSuccess: () => {
             toast.success('刪除成功');
-            queryClient.invalidateQueries({ queryKey: ['ncmrList'], exact: false });
+            queryClient.invalidateQueries({ queryKey: ncmrKeys.root, exact: false });
         },
     });
 };
@@ -179,8 +180,8 @@ export const useCreateCAPA = () => {
         },
         onSuccess: (_, ncmrId) => {
             toast.success('已成功建立 CAPA 單');
-            queryClient.invalidateQueries({ queryKey: ['ncmrList'], exact: false });
-            queryClient.invalidateQueries({ queryKey: ['ncmrDetail', ncmrId], exact: false });
+            queryClient.invalidateQueries({ queryKey: ncmrKeys.root, exact: false });
+            queryClient.invalidateQueries({ queryKey: ncmrKeys.detail(ncmrId), exact: false });
         },
     });
 };
@@ -189,7 +190,7 @@ export const useCreateCAPA = () => {
 
 export const useDispositions = (ncmrId: number | null) => {
     return useQuery({
-        queryKey: ['ncmrDispositions', ncmrId],
+        queryKey: ncmrKeys.dispositions(ncmrId),
         queryFn: async () => {
             if (!ncmrId) return [];
             const res = await api.get<NcmrDisposition[]>(`/ncmr/${ncmrId}/dispositions`);
@@ -209,7 +210,7 @@ export const useCreateDisposition = () => {
         },
         onSuccess: (_, variables) => {
             toast.success('已新增處置');
-            queryClient.invalidateQueries({ queryKey: ['ncmrDispositions', variables.ncmrId], exact: false });
+            queryClient.invalidateQueries({ queryKey: ncmrKeys.dispositions(variables.ncmrId), exact: false });
         },
     });
 };
@@ -223,7 +224,7 @@ export const useUpdateDisposition = () => {
         },
         onSuccess: () => {
             toast.success('已更新處置');
-            queryClient.invalidateQueries({ queryKey: ['ncmrDispositions'], exact: false });
+            queryClient.invalidateQueries({ queryKey: ncmrKeys.dispositionsRoot, exact: false });
         },
     });
 };
@@ -237,14 +238,14 @@ export const useDeleteDisposition = () => {
         },
         onSuccess: () => {
             toast.success('已刪除處置');
-            queryClient.invalidateQueries({ queryKey: ['ncmrDispositions'], exact: false });
+            queryClient.invalidateQueries({ queryKey: ncmrKeys.dispositionsRoot, exact: false });
         },
     });
 };
 
 export const useNcmrReworks = (ncmrId: number | null) => {
     return useQuery({
-        queryKey: ['ncmrReworks', ncmrId],
+        queryKey: ncmrKeys.reworks(ncmrId),
         queryFn: async () => {
             if (!ncmrId) return [];
             const res = await api.get<{ 識別碼: number; 申請單號: string; 狀態: string }[]>(`/ncmr/${ncmrId}/reworks`);
@@ -257,7 +258,7 @@ export const useNcmrReworks = (ncmrId: number | null) => {
 
 export const useRiskReleases = () => {
     return useQuery({
-        queryKey: ['riskReleases'],
+        queryKey: ncmrKeys.riskReleases,
         queryFn: async () => {
             const res = await api.get<RiskRelease[]>('/ncmr/risk-releases');
             return res.data;

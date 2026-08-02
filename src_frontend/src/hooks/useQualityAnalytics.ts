@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
+import { qualityAnalyticsKeys } from './queryKeys';
 
 export interface AnalyticsDateParams {
     date_from?: string;
@@ -85,7 +86,7 @@ const cleanParams = (params: Record<string, string | number | undefined>) =>
 
 export const usePareto = (source: 'ncmr' | 'complaint', params: AnalyticsDateParams) =>
     useQuery({
-        queryKey: ['qualityAnalytics', 'pareto', source, params],
+        queryKey: qualityAnalyticsKeys.pareto(source, params),
         queryFn: async () => {
             const res = await api.get<{ data: ParetoResult }>('/quality-analytics/pareto', {
                 params: cleanParams({ ...params, source, field: 'category', limit: 10 }),
@@ -96,7 +97,7 @@ export const usePareto = (source: 'ncmr' | 'complaint', params: AnalyticsDatePar
 
 export const useDefectTrends = (source: 'ncmr' | 'complaint', params: AnalyticsDateParams) =>
     useQuery({
-        queryKey: ['qualityAnalytics', 'defectTrends', source, params],
+        queryKey: qualityAnalyticsKeys.defectTrends(source, params),
         queryFn: async () => {
             const res = await api.get<{ data: DefectTrendResult }>('/quality-analytics/defect-trends', {
                 params: cleanParams({ ...params, source, top_n: 5 }),
@@ -107,7 +108,7 @@ export const useDefectTrends = (source: 'ncmr' | 'complaint', params: AnalyticsD
 
 export const useCapaAging = () =>
     useQuery({
-        queryKey: ['qualityAnalytics', 'capaAging'],
+        queryKey: qualityAnalyticsKeys.capaAging,
         queryFn: async () => {
             const res = await api.get<{ data: CapaAgingResult }>('/quality-analytics/capa-aging');
             return res.data.data;
@@ -116,7 +117,7 @@ export const useCapaAging = () =>
 
 export const useRepeatIssues = (params: AnalyticsDateParams) =>
     useQuery({
-        queryKey: ['qualityAnalytics', 'repeatIssues', params],
+        queryKey: qualityAnalyticsKeys.repeatIssues(params),
         queryFn: async () => {
             const res = await api.get<{ data: RepeatIssuesResult }>('/quality-analytics/repeat-issues', {
                 params: cleanParams({ ...params, limit: 10 }),
@@ -127,7 +128,7 @@ export const useRepeatIssues = (params: AnalyticsDateParams) =>
 
 export const useVendorRanking = (period: string) =>
     useQuery({
-        queryKey: ['qualityAnalytics', 'vendorRanking', period],
+        queryKey: qualityAnalyticsKeys.vendorRanking(period),
         queryFn: async () => {
             const res = await api.get<{ data: VendorRankingItem[] }>('/quality-analytics/vendor-ranking', {
                 params: { period, limit: 10 },

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { unwrap } from '../services/api';
+import { spcKeys } from './queryKeys';
 import type {
   SpcAssignee, SpcEventSummary, SpcLimitVersionSummary, SpcOcapRecord,
   SpcAnalysisFamily, SpcOcapStatus, SpcStudyHistoryPage, SpcStudyResult, SpcStudySummary,

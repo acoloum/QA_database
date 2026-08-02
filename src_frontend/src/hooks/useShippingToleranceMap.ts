@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
 import type { ShippingInspection, ToleranceItem, ToleranceResult, Vendor } from '../types';
 import { parseSpec } from '../utils/parseSpec';
+import { shippingKeys } from './queryKeys';
 
 export type ShippingToleranceMap = Record<string, Record<string, { lsl: number; usl: number }> | null>;
 
@@ -73,7 +74,7 @@ export const useShippingToleranceMap = (inspections: ShippingInspection[]) => {
   );
 
   return useQuery({
-    queryKey: ['shippingToleranceMap', combos],
+    queryKey: shippingKeys.toleranceMap(combos),
     queryFn: async () => {
       if (!combos.length) return {};
 

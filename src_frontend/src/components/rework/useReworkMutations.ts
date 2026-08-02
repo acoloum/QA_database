@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 
 import api from '../../services/api';
 import { getReworkErrorMessage } from './reworkError';
+import { reworkKeys } from '../../hooks/queryKeys';
 import type {
   ReworkApplicationPayload,
   ReworkApplicationUpdatePayload,
@@ -27,8 +28,8 @@ const handleError = (error: unknown, fallback: string) => {
 
 // 只讓 rework 列表與統計快取失效（精確 key），不用寬 prefix 清掉整個 rework 快取
 const invalidateReworkListQueries = (queryClient: QueryClient) => {
-  void queryClient.invalidateQueries({ queryKey: ['rework', 'applications'] });
-  void queryClient.invalidateQueries({ queryKey: ['rework', 'statistics'] });
+  void queryClient.invalidateQueries({ queryKey: reworkKeys.applicationsRoot });
+  void queryClient.invalidateQueries({ queryKey: reworkKeys.statistics });
 };
 
 export const useCreateReworkApplication = ({ onSuccess }: ReworkMutationOptions = {}) => {
