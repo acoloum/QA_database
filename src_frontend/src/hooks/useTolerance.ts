@@ -1,9 +1,11 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
+import { compactParams } from '../utils/queryParams';
 import toast from 'react-hot-toast';
 import { downloadResponseBlob } from '../utils/downloadFile';
 import type { ToleranceCreateInput, ToleranceUpdateInput } from '../types';
+import { toleranceKeys } from './queryKeys';
 
 // Types
 export interface ToleranceData {
@@ -55,7 +57,7 @@ export interface ToleranceSearchParams {
 // 1. Fetch Options (Vendors)
 export const useToleranceOptions = () => {
     return useQuery({
-        queryKey: ['toleranceOptions'],
+        queryKey: toleranceKeys.options,
         queryFn: async () => {
             const res = await api.get('/tolerance/options');
             return res.data.vendors || [];
@@ -67,16 +69,19 @@ export const useToleranceOptions = () => {
 // 2. Fetch List (Search)
 export const useToleranceSearch = (params: ToleranceSearchParams) => {
     return useQuery({
-        queryKey: ['toleranceList', params],
+        queryKey: toleranceKeys.list(params),
         queryFn: async () => {
-            const queryParams = new URLSearchParams();
-            if (params.material) queryParams.append('material', params.material);
-            if (params.vendor_id) queryParams.append('vendor_id', params.vendor_id);
-            if (params.spec) queryParams.append('spec', params.spec);
-            queryParams.append('page', params.page.toString());
-            queryParams.append('page_size', params.page_size.toString());
-
-            const res = await api.get(`/tolerance/search?${queryParams.toString()}`);
+            const res = await api.get('/tolerance/search', {
+                params: {
+                    page: params.page,
+                    page_size: params.page_size,
+                    ...compactParams({
+                        material: params.material,
+                        vendor_id: params.vendor_id,
+                        spec: params.spec,
+                    }),
+                },
+            });
             return res.data;
         },
         placeholderData: (previousData) => previousData, // Keep previous data while fetching new page
@@ -87,7 +92,7 @@ export const useToleranceSearch = (params: ToleranceSearchParams) => {
 // 3. Fetch Detail
 export const useToleranceDetail = (id: number | null, enabled = true) => {
     return useQuery({
-        queryKey: ['toleranceDetail', id],
+        queryKey: toleranceKeys.detail(id),
         queryFn: async () => {
             if (!id) return null;
             const res = await api.get(`/tolerance/${id}`);
@@ -108,7 +113,7 @@ export const useCreateTolerance = () => {
         },
         onSuccess: () => {
             toast.success('新增成功');
-            queryClient.invalidateQueries({ queryKey: ['toleranceList'] });
+            queryClient.invalidateQueries({ queryKey: toleranceKeys.root });
         },
     });
 };
@@ -123,8 +128,8 @@ export const useUpdateTolerance = () => {
         },
         onSuccess: (_data, variables) => {
             toast.success('更新成功');
-            queryClient.invalidateQueries({ queryKey: ['toleranceList'] });
-            queryClient.invalidateQueries({ queryKey: ['toleranceDetail', variables.id] });
+            queryClient.invalidateQueries({ queryKey: toleranceKeys.root });
+            queryClient.invalidateQueries({ queryKey: toleranceKeys.detail(variables.id) });
         },
     });
 };
@@ -139,7 +144,7 @@ export const useDeleteTolerance = () => {
         },
         onSuccess: () => {
             toast.success('刪除成功');
-            queryClient.invalidateQueries({ queryKey: ['toleranceList'] });
+            queryClient.invalidateQueries({ queryKey: toleranceKeys.root });
         },
     });
 };
@@ -158,7 +163,7 @@ export const useImportTolerance = () => {
         },
         onSuccess: (data) => {
             toast.success(data.message || '匯入成功');
-            queryClient.invalidateQueries({ queryKey: ['toleranceList'] });
+            queryClient.invalidateQueries({ queryKey: toleranceKeys.root });
         },
     });
 };
@@ -166,13 +171,14 @@ export const useImportTolerance = () => {
 export const useExportToleranceData = () => {
     return useMutation({
         mutationFn: async (params: ToleranceSearchParams) => {
-            const queryParams = new URLSearchParams();
-            if (params.material) queryParams.append('material', params.material);
-            if (params.vendor_id) queryParams.append('vendor_id', params.vendor_id);
-            if (params.spec) queryParams.append('spec', params.spec);
-
-            const query = queryParams.toString();
-            const res = await api.get(`/tolerance/export${query ? `?${query}` : ''}`, { responseType: 'blob' });
+            const res = await api.get('/tolerance/export', {
+                params: compactParams({
+                    material: params.material,
+                    vendor_id: params.vendor_id,
+                    spec: params.spec,
+                }),
+                responseType: 'blob',
+            });
             downloadResponseBlob(res.data as BlobPart, '廠商公差資料.xlsx');
         },
         onSuccess: () => {

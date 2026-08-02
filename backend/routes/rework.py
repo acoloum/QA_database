@@ -3,7 +3,8 @@ from functools import wraps
 from flask import Blueprint, jsonify, request, current_app
 from ..services.rework_service import ReworkService
 from ..errors import APIError
-from ..utils import auth_required, require_permission
+from ..utils import auth_required
+from ..authorization import require_permission
 
 rework_bp = Blueprint('rework', __name__)
 
@@ -16,6 +17,17 @@ def rework_error_response(error, context):
         return jsonify({"error": str(error)}), 400
     current_app.logger.exception("%s error: %s", context, str(error))
     return jsonify({"error": "伺服器內部錯誤"}), 500
+
+
+def require_rework_id():
+    """子表清單一律限縮在單張重工單，缺少 rework_id 時直接回 400。
+
+    未指定時舊行為是整表掃描並回傳所有重工單的子紀錄，既無意義也不安全。
+    """
+    rework_id = request.args.get('rework_id')
+    if not rework_id:
+        raise ValueError("缺少必要參數 rework_id")
+    return rework_id
 
 
 def rework_route_errors(context, *, propagate_unexpected=False):
@@ -88,8 +100,9 @@ def approve_rework(current_user):
 @require_permission('rework.view')
 @rework_route_errors('Rework executions')
 def get_rework_executions():
-    """獲取重工執行記錄"""
-    data = ReworkService.get_execution_list(request.args.get('rework_id'))
+    """獲取指定重工單的執行記錄"""
+    rework_id = require_rework_id()
+    data = ReworkService.get_execution_list(rework_id)
     return jsonify(data)
 
 @rework_bp.route('/api/rework/execute', methods=['POST'])
@@ -139,8 +152,8 @@ def delete_execution(current_user, execution_id):
 @require_permission('rework.view')
 @rework_route_errors('Rework inspections')
 def get_rework_inspections():
-    """獲取重工品檢記錄"""
-    rework_id = request.args.get('rework_id')
+    """獲取指定重工單的品檢記錄"""
+    rework_id = require_rework_id()
     data = ReworkService.get_inspection_list(rework_id)
     return jsonify(data)
 
@@ -149,8 +162,8 @@ def get_rework_inspections():
 @require_permission('rework.view')
 @rework_route_errors('Rework costs')
 def get_rework_costs():
-    """獲取重工成本記錄"""
-    rework_id = request.args.get('rework_id')
+    """獲取指定重工單的成本記錄"""
+    rework_id = require_rework_id()
     data = ReworkService.get_cost_list(rework_id)
     return jsonify(data)
 

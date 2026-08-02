@@ -7,7 +7,8 @@ from flask import jsonify
 from ..authorization import require_permissions
 from ..errors import AuthorizationError
 from ..services.msa_errors import MsaServiceError
-from ..utils import auth_required, role_grants_permission
+from ..utils import auth_required
+from ..authorization import role_grants_permission
 
 
 def handle_msa_errors(function):
@@ -123,6 +124,24 @@ def require_msa_permission(permission: str):
     return decorator
 
 
+# 認證失敗一律以底層帶出的穩定 reason 對應 MSA 錯誤碼；
+# 不比對訊息文字，改文案才不會靜默破壞錯誤碼契約。
+MSA_AUTH_CODE_BY_REASON = {
+    "missing_token": "MSA_AUTH_REQUIRED",
+    "invalid_token": "MSA_AUTH_INVALID_TOKEN",
+    "legacy_or_invalid_claims": "MSA_AUTH_INVALID_TOKEN",
+    "token_revoked": "MSA_AUTH_INVALID_TOKEN",
+    "user_not_found": "MSA_USER_NOT_FOUND",
+    "user_inactive": "MSA_USER_INACTIVE",
+}
+
+# 少數 reason 需覆寫對外訊息，其餘沿用底層訊息
+MSA_AUTH_MESSAGE_BY_REASON = {
+    "user_not_found": "使用者不存在",
+    "user_inactive": "使用者帳號已停用",
+}
+
+
 def msa_auth_required(function):
     """將共用 JWT 401 轉為穩定 MSA auth envelope。"""
     guarded = auth_required(function)
@@ -142,70 +161,29 @@ def msa_auth_required(function):
                 else None
             )
             raw_error = body.get("error") if isinstance(body, dict) else None
-            legacy_message = raw_error if isinstance(raw_error, str) else None
-            formal_message = (
-                raw_error.get("message")
-                if isinstance(raw_error, dict)
-                else None
-            )
-            formal_details = (
+            if not isinstance(raw_error, dict):
+                return result
+            message = raw_error.get("message")
+            details = (
                 raw_error.get("details")
-                if isinstance(raw_error, dict)
-                and isinstance(raw_error.get("details"), dict)
+                if isinstance(raw_error.get("details"), dict)
                 else {}
             )
-            code_by_message = {
-                "缺少認證 Token": "MSA_AUTH_REQUIRED",
-                "無效或過期的 Token": "MSA_AUTH_INVALID_TOKEN",
-            }
-            if (
-                isinstance(legacy_message, str)
-                and legacy_message in code_by_message
-            ):
-                return (
-                    jsonify(
-                        {
-                            "error": {
-                                "code": code_by_message[legacy_message],
-                                "message": legacy_message,
-                                "details": {},
-                            }
+            reason = details.get("reason")
+            if not isinstance(message, str) or reason not in MSA_AUTH_CODE_BY_REASON:
+                return result
+            return (
+                jsonify(
+                    {
+                        "error": {
+                            "code": MSA_AUTH_CODE_BY_REASON[reason],
+                            "message": MSA_AUTH_MESSAGE_BY_REASON.get(reason, message),
+                            "details": {},
                         }
-                    ),
-                    401,
-                )
-            reason = formal_details.get("reason")
-            code_by_reason = {
-                "invalid_token": "MSA_AUTH_INVALID_TOKEN",
-                "legacy_or_invalid_claims": "MSA_AUTH_INVALID_TOKEN",
-                "token_revoked": "MSA_AUTH_INVALID_TOKEN",
-                "user_not_found": "MSA_USER_NOT_FOUND",
-                "user_inactive": "MSA_USER_INACTIVE",
-            }
-            if (
-                isinstance(formal_message, str)
-                and isinstance(reason, str)
-                and reason in code_by_reason
-            ):
-                message_by_reason = {
-                    "user_not_found": "使用者不存在",
-                    "user_inactive": "使用者帳號已停用",
-                }
-                return (
-                    jsonify(
-                        {
-                            "error": {
-                                "code": code_by_reason[reason],
-                                "message": message_by_reason.get(
-                                    reason,
-                                    formal_message,
-                                ),
-                                "details": {},
-                            }
-                        }
-                    ),
-                    401,
-                )
+                    }
+                ),
+                401,
+            )
         return result
 
     return wrapped

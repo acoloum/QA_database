@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
+import { masterDataKeys } from '../hooks/queryKeys';
 
 export interface RoleOption {
     code: string;
@@ -9,7 +10,7 @@ export interface RoleOption {
 
 export function useRoles() {
     return useQuery<RoleOption[]>({
-        queryKey: ['roles'],
+        queryKey: masterDataKeys.roles,
         queryFn: async () => {
             const res = await api.get<RoleOption[]>('/roles');
             return res.data;

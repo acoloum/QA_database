@@ -616,9 +616,9 @@ class MechanicalService:
             except ValueError:
                 query = query.filter(db.false())
         if args.get("product_size"):
-            query = query.filter(MechanicalTest.product_size.like(f"%{args['product_size']}%"))
+            query = query.filter(MechanicalTest.product_size.ilike(f"%{args['product_size']}%"))
         if args.get("material"):
-            query = query.filter(MechanicalTest.material.like(f"%{args['material']}%"))
+            query = query.filter(MechanicalTest.material.ilike(f"%{args['material']}%"))
         if args.get("vendor_id"):
             vendor_id = parse_vendor_id(args.get("vendor_id"))
             if vendor_id is not None:

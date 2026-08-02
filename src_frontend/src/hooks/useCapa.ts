@@ -3,6 +3,7 @@ import api from '../services/api';
 import toast from 'react-hot-toast';
 import { downloadResponseBlob } from '../utils/downloadFile';
 import type { CAPADetail, CAPAListItem, PaginatedResponse } from '../types';
+import { capaKeys, ncmrKeys } from './queryKeys';
 
 export interface CapaListParams {
     source_type?: string;
@@ -17,7 +18,7 @@ export interface CapaListParams {
 // ── CAPA 列表 ─────────────────────────────────────────────────
 export const useCapaList = (params: CapaListParams = {}) => {
     return useQuery({
-        queryKey: ['capaList', params],
+        queryKey: capaKeys.list(params),
         queryFn: async () => {
             const res = await api.get<PaginatedResponse<CAPAListItem>>('/capas', { params });
             return res.data;
@@ -30,7 +31,7 @@ export const useCapaList = (params: CapaListParams = {}) => {
 // ── CAPA 明細 ─────────────────────────────────────────────────
 export const useCapaDetail = (id: number | null) => {
     return useQuery({
-        queryKey: ['capaDetail', id],
+        queryKey: capaKeys.detail(id),
         queryFn: async () => {
             const res = await api.get<CAPADetail>(`/capas/${id}`);
             return res.data;
@@ -43,7 +44,7 @@ export const useCapaDetail = (id: number | null) => {
 // ── 逾期 CAPA（Dashboard）────────────────────────────────────
 export const useOverdueCapas = () => {
     return useQuery({
-        queryKey: ['overdueCapas'],
+        queryKey: capaKeys.overdue,
         queryFn: async () => {
             const res = await api.get<CAPAListItem[]>('/capas/overdue');
             return res.data;
@@ -62,11 +63,11 @@ export const useUpdateCapaStep = () => {
         },
         onSuccess: (_data, vars) => {
             toast.success('儲存成功');
-            qc.invalidateQueries({ queryKey: ['capaDetail', vars.id] });
-            qc.invalidateQueries({ queryKey: ['capaList'] });
+            qc.invalidateQueries({ queryKey: capaKeys.detail(vars.id) });
+            qc.invalidateQueries({ queryKey: capaKeys.root });
             // D6 驗證通過 / D7 任務變動會影響 D8 結案條件，須一併重新查詢
-            qc.invalidateQueries({ queryKey: ['capaCloseGate', vars.id] });
-            qc.invalidateQueries({ queryKey: ['d6Gate', vars.id] });
+            qc.invalidateQueries({ queryKey: capaKeys.closeGate(vars.id) });
+            qc.invalidateQueries({ queryKey: capaKeys.d6Gate(vars.id) });
         },
         onError: (err: Error) => {
             toast.error(`儲存失敗：${err.message}`);
@@ -77,7 +78,7 @@ export const useUpdateCapaStep = () => {
 // ── D6 Gate 查詢 ─────────────────────────────────────────────
 export const useD6Gate = (capaId: number | null) => {
     return useQuery({
-        queryKey: ['d6Gate', capaId],
+        queryKey: capaKeys.d6Gate(capaId),
         queryFn: async () => {
             const res = await api.get<{ d6_passed: boolean }>(`/capas/${capaId}/d6-gate`);
             return res.data;
@@ -89,7 +90,7 @@ export const useD6Gate = (capaId: number | null) => {
 // ── 結案 Gate 查詢 ─────────────────────────────────────────────
 export const useCapaCloseGate = (capaId: number | null) => {
     return useQuery({
-        queryKey: ['capaCloseGate', capaId],
+        queryKey: capaKeys.closeGate(capaId),
         queryFn: async () => {
             const res = await api.get<{
                 can_close: boolean;
@@ -124,9 +125,9 @@ export const useCloseCapa = () => {
         },
         onSuccess: (_data, vars) => {
             toast.success('CAPA 已結案');
-            qc.invalidateQueries({ queryKey: ['capaDetail', vars.id] });
-            qc.invalidateQueries({ queryKey: ['capaList'] });
-            qc.invalidateQueries({ queryKey: ['overdueCapas'] });
+            qc.invalidateQueries({ queryKey: capaKeys.detail(vars.id) });
+            qc.invalidateQueries({ queryKey: capaKeys.root });
+            qc.invalidateQueries({ queryKey: capaKeys.overdue });
         },
         onError: (err: Error) => {
             toast.error(`結案失敗：${err.message}`);
@@ -143,7 +144,7 @@ export const useDeleteCapa = () => {
         },
         onSuccess: () => {
             toast.success('CAPA 已刪除');
-            qc.invalidateQueries({ queryKey: ['capaList'] });
+            qc.invalidateQueries({ queryKey: capaKeys.root });
         },
     });
 };
@@ -164,8 +165,8 @@ export const useOpenCapaFromNcmr = () => {
         },
         onSuccess: () => {
             toast.success('CAPA 已開立');
-            qc.invalidateQueries({ queryKey: ['capaList'] });
-            qc.invalidateQueries({ queryKey: ['ncmrList'] });
+            qc.invalidateQueries({ queryKey: capaKeys.root });
+            qc.invalidateQueries({ queryKey: ncmrKeys.root });
         },
         onError: (err: Error) => {
             toast.error(`開立失敗：${err.message}`);

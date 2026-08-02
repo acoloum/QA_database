@@ -5,7 +5,8 @@ from ..extensions import db
 from ..models import Inspector, Vendor, Machine, Operator, AuditLog
 from ..services.date_range import DateWindow, parse_date_window
 from ..services.dashboard_service import DashboardService
-from ..utils import auth_required, require_permission
+from ..utils import auth_required
+from ..authorization import require_permission
 
 admin_bp = Blueprint('admin', __name__)
 

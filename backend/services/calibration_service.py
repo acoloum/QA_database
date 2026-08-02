@@ -38,6 +38,7 @@ from .calibration_calculation import (
 )
 from .calibration_eligibility import CalibrationEligibilityService
 from .calibration_errors import (
+    require_object,
     CalibrationConflict,
     CalibrationForbidden,
     CalibrationNotFound,
@@ -272,7 +273,7 @@ class CalibrationService:
         - 存入模板快照
         - 建立 EquipmentCalibrationPoint 與預設讀值列
         """
-        data = CalibrationService._object(payload)
+        data = require_object(payload)
         CalibrationService._reject_unknown(
             data,
             {
@@ -494,7 +495,7 @@ class CalibrationService:
     @_rollback_on_error
     def update(calibration_id: int, payload: dict, actor_id: int) -> dict:
         """更新草稿一般欄位（環境條件、外校資訊等）。不允許修改已送審/核准紀錄。"""
-        data = CalibrationService._object(payload)
+        data = require_object(payload)
         CalibrationService._reject_unknown(
             data,
             {
@@ -660,7 +661,7 @@ class CalibrationService:
         - 全部成功後才更新 ORM rows、摘要、結果、計算版本、row version
         - 建立 SHA-256 資料雜湊
         """
-        data = CalibrationService._object(payload)
+        data = require_object(payload)
         CalibrationService._reject_unknown(
             data,
             {"expected_version", "points"},
@@ -1042,7 +1043,7 @@ class CalibrationService:
     @_rollback_on_error
     def validate(calibration_id: int, payload: dict, actor_id: int) -> dict:
         """驗證校正紀錄是否可送審，回傳 blockers。"""
-        data = CalibrationService._object(payload)
+        data = require_object(payload)
         CalibrationService._reject_unknown(data, {"expected_version"})
         expected_version = CalibrationService._required_int(
             data, "expected_version", "CALIBRATION_FIELD_INVALID"
@@ -1173,7 +1174,7 @@ class CalibrationService:
     @_rollback_on_error
     def submit(calibration_id: int, payload: dict, actor_id: int) -> dict:
         """送審：驗證完整性、重新驗證標準器、保存快照、鎖定證據。"""
-        data = CalibrationService._object(payload)
+        data = require_object(payload)
         CalibrationService._reject_unknown(data, {"expected_version", "reason"})
 
         expected_version = CalibrationService._required_int(
@@ -1281,7 +1282,7 @@ class CalibrationService:
     @_rollback_on_error
     def approve(calibration_id: int, payload: dict, actor_id: int) -> dict:
         """核准：職責分離、列鎖、版本檢查、建立標準器快照。"""
-        data = CalibrationService._object(payload)
+        data = require_object(payload)
         CalibrationService._reject_unknown(
             data,
             {"expected_version", "reason", "confirmations"},
@@ -1429,7 +1430,7 @@ class CalibrationService:
     @_rollback_on_error
     def reject(calibration_id: int, payload: dict, actor_id: int) -> dict:
         """退回：保存送審證據、建立後繼草稿。"""
-        data = CalibrationService._object(payload)
+        data = require_object(payload)
         CalibrationService._reject_unknown(data, {"expected_version", "reason"})
 
         expected_version = CalibrationService._required_int(
@@ -1546,7 +1547,7 @@ class CalibrationService:
     @_rollback_on_error
     def void(calibration_id: int, payload: dict, actor_id: int) -> dict:
         """作廢：需填寫理由，狀態轉為 voided。"""
-        data = CalibrationService._object(payload)
+        data = require_object(payload)
         CalibrationService._reject_unknown(data, {"expected_version", "reason"})
 
         expected_version = CalibrationService._required_int(
@@ -2220,16 +2221,6 @@ class CalibrationService:
             ]
 
         return result
-
-    @staticmethod
-    def _object(payload) -> dict:
-        if not isinstance(payload, dict):
-            raise CalibrationValidationError(
-                "CALIBRATION_PAYLOAD_INVALID",
-                "請求內容必須是 JSON 物件",
-                details={},
-            )
-        return payload
 
     @staticmethod
     def _reject_unknown(payload: dict, allowed: set[str]) -> None:

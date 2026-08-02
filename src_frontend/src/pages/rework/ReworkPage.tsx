@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import type { ReworkExecutionDetail, ReworkInspectionDetail, ReworkCostDetail } from '../../types';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
+import PaginationBar from '../../components/common/PaginationBar';
 import ReworkStatisticsDashboard from '../../components/rework/ReworkStatisticsDashboard';
 import ApplyModal from '../../components/rework/ApplyModal';
 import ApproveModal from '../../components/rework/ApproveModal';
@@ -60,11 +61,13 @@ const ReworkPage = () => {
     const [statusFilter, setStatusFilter] = useState('');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    const [page, setPage] = useState(1);
 
-    const { applications, stats, loading, loadData } = useReworkPageData({
+    const { applications, totalPages, stats, loading, loadData } = useReworkPageData({
         statusFilter,
         startDate,
         endDate,
+        page,
     });
     const {
         showDetailModal,
@@ -206,7 +209,7 @@ const ReworkPage = () => {
                             <select
                                 className="form-select"
                                 value={statusFilter}
-                                onChange={(e) => setStatusFilter(e.target.value)}
+                                onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
                             >
                                 <option value="">全部狀態</option>
                                 <option value="申請中">申請中</option>
@@ -222,7 +225,7 @@ const ReworkPage = () => {
                                 type="date"
                                 className="form-control"
                                 value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
+                                onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
                             />
                         </div>
                         <div className="col-md-3">
@@ -231,7 +234,7 @@ const ReworkPage = () => {
                                 type="date"
                                 className="form-control"
                                 value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
+                                onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
                             />
                         </div>
                         <div className="col-md-3 d-flex align-items-end">
@@ -241,6 +244,7 @@ const ReworkPage = () => {
                                     setStatusFilter('');
                                     setStartDate('');
                                     setEndDate('');
+                                    setPage(1);
                                 }}
                             >
                                 <i className="bi bi-x-lg"></i> 清除篩選
@@ -257,6 +261,8 @@ const ReworkPage = () => {
                 onApprove={handleApproveClick}
                 onDelete={handleDeleteRework}
             />
+
+            <PaginationBar page={page} totalPages={totalPages} onPageChange={setPage} />
 
             <ApplyModal
                 show={activeModal === 'apply' && hasPermission('rework.create')}

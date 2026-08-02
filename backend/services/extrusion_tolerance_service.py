@@ -62,11 +62,11 @@ class ExtrusionToleranceService:
         """列表查詢（分頁）"""
         query = ExtrusionToleranceMain.query
         if args.get('material'):
-            query = query.filter(ExtrusionToleranceMain.material.like(f"%{args['material']}%"))
+            query = query.filter(ExtrusionToleranceMain.material.ilike(f"%{args['material']}%"))
         if args.get('spec'):
-            query = query.filter(ExtrusionToleranceMain.spec.like(f"%{args['spec']}%"))
+            query = query.filter(ExtrusionToleranceMain.spec.ilike(f"%{args['spec']}%"))
         if args.get('vendor'):
-            query = query.filter(ExtrusionToleranceMain.vendor.like(f"%{args['vendor']}%"))
+            query = query.filter(ExtrusionToleranceMain.vendor.ilike(f"%{args['vendor']}%"))
 
         page = bounded_int(args.get('page'), 1, 1, 1000000)
         page_size = bounded_int(args.get('page_size'), 20, 1, 100)
@@ -152,7 +152,7 @@ class ExtrusionToleranceService:
             return main.id
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def update(tolerance_id: int, data: Dict[str, Any]) -> bool:
@@ -184,7 +184,7 @@ class ExtrusionToleranceService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def delete(tolerance_id: int) -> bool:
@@ -200,7 +200,7 @@ class ExtrusionToleranceService:
             raise
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def get_options() -> Dict[str, Any]:
@@ -257,7 +257,7 @@ class ExtrusionToleranceService:
             mat_col = func.lower(func.trim(ExtrusionToleranceMain.material))
             candidates = candidates.filter(
                 or_(
-                    mat_col.like(f"%{mat_key}%"),
+                    mat_col.ilike(f"%{mat_key}%"),
                     func.lower(mat_key).like(func.concat('%', mat_col, '%')),
                 )
             )

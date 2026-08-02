@@ -25,9 +25,19 @@ from .msa_errors import MsaConflict, MsaNotFound, MsaValidationError
 from .msa_method_registry import MsaMethodRegistry, _STUDY_TYPE_METHODS
 from .msa_numeric import canonical_hash
 from .msa_payload import (
+    bounded_int as _bounded_int,
+    decimal_text as _decimal_text,
+    optional_text as _shared_optional_text,
     reject_unknown_fields as _reject_unknown_fields,
     require_object as _require_object,
 )
+
+
+def _optional_text(value, *, field: str, max_length: int = 2000):
+    """本模組的可選文字欄位；規則共用，僅綁定設計階段的錯誤碼。"""
+    return _shared_optional_text(
+        value, field=field, max_length=max_length, code="MSA_DESIGN_TEXT_INVALID",
+    )
 
 
 _PLAN_FIELDS = {
@@ -779,27 +789,6 @@ def _blind_code(prefix: str, index: int) -> str:
     return f"{prefix}{index:02d}"
 
 
-def _optional_text(value, *, field: str, max_length: int = 2000):
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise MsaValidationError(
-            "MSA_DESIGN_TEXT_INVALID",
-            f"{field} 必須是文字",
-            details={"field": field},
-        )
-    normalized = value.strip()
-    if not normalized:
-        return None
-    if len(normalized) > max_length:
-        raise MsaValidationError(
-            "MSA_DESIGN_TEXT_INVALID",
-            f"{field} 超過允許長度",
-            details={"field": field, "max_length": max_length},
-        )
-    return normalized
-
-
 def _optional_decimal(value, *, field: str):
     if value is None:
         return None
@@ -827,25 +816,3 @@ def _to_decimal(value):
     return parsed if parsed.is_finite() else None
 
 
-def _bounded_int(value, *, field: str, minimum: int, maximum: int, code: str):
-    if isinstance(value, bool) or value is None:
-        raise MsaValidationError(
-            code, f"{field} 必須是整數", details={"field": field},
-        )
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError) as error:
-        raise MsaValidationError(
-            code, f"{field} 必須是整數", details={"field": field},
-        ) from error
-    if parsed < minimum or parsed > maximum:
-        raise MsaValidationError(
-            code,
-            f"{field} 超出允許範圍",
-            details={"field": field, "minimum": minimum, "maximum": maximum},
-        )
-    return parsed
-
-
-def _decimal_text(value):
-    return str(value) if value is not None else None

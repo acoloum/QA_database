@@ -47,7 +47,10 @@ describe('匯出 hooks', () => {
     result.current.mutate({ page: 1, s_date: '2026-06-01', m_id: 'M1' });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(api.get).toHaveBeenCalledWith('/patrol/export?s_date=2026-06-01&m_id=M1', { responseType: 'blob' });
+    expect(api.get).toHaveBeenCalledWith('/patrol/export', {
+      params: { s_date: '2026-06-01', m_id: 'M1' },
+      responseType: 'blob',
+    });
     expect(downloadResponseBlob).toHaveBeenCalledWith(expect.any(Blob), '巡檢數據.xlsx');
   });
 
@@ -57,7 +60,10 @@ describe('匯出 hooks', () => {
     result.current.mutate({ page: 1, page_size: 20, material: '6061', vendor_id: '3' });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(api.get).toHaveBeenCalledWith('/tolerance/export?material=6061&vendor_id=3', { responseType: 'blob' });
+    expect(api.get).toHaveBeenCalledWith('/tolerance/export', {
+      params: { material: '6061', vendor_id: '3' },
+      responseType: 'blob',
+    });
     expect(downloadResponseBlob).toHaveBeenCalledWith(expect.any(Blob), '廠商公差資料.xlsx');
   });
 

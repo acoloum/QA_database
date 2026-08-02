@@ -2,7 +2,8 @@ import io as _io
 from functools import wraps
 from flask import Blueprint, jsonify, request, send_file
 from ..services.pyrometry_service import PyrometryService, PyrometryValidationError
-from ..utils import auth_required, require_perm, handle_db_error, parse_optional_int, validate_upload_file
+from ..utils import auth_required, handle_db_error, parse_optional_int, validate_upload_file
+from ..authorization import require_permission
 from ..services.pyrometry_parser import parse_temperature_file
 
 pyrometry_bp = Blueprint('pyrometry', __name__)
@@ -32,7 +33,7 @@ def pyrometry_route_errors(value_error_status=400):
 # ---------- 設備主檔 ----------
 @pyrometry_bp.route('/api/pyrometry/furnaces', methods=['GET'])
 @auth_required
-@require_perm('pyrometry.view')
+@require_permission('pyrometry.view')
 def list_furnaces():
     active_only = request.args.get('active_only') == '1'
     return jsonify({"success": True, "data": PyrometryService.list_furnaces(active_only)})
@@ -40,7 +41,7 @@ def list_furnaces():
 
 @pyrometry_bp.route('/api/pyrometry/furnaces/<int:fid>', methods=['GET'])
 @auth_required
-@require_perm('pyrometry.view')
+@require_permission('pyrometry.view')
 @pyrometry_route_errors(value_error_status=404)
 def get_furnace(fid):
     return jsonify({"success": True, "data": PyrometryService.get_furnace(fid)})
@@ -48,7 +49,7 @@ def get_furnace(fid):
 
 @pyrometry_bp.route('/api/pyrometry/furnaces', methods=['POST'])
 @auth_required
-@require_perm('pyrometry.edit')
+@require_permission('pyrometry.edit')
 @pyrometry_route_errors()
 def add_furnace():
     new_id = PyrometryService.add_furnace(request.json)
@@ -57,7 +58,7 @@ def add_furnace():
 
 @pyrometry_bp.route('/api/pyrometry/furnaces/<int:fid>', methods=['PUT'])
 @auth_required
-@require_perm('pyrometry.edit')
+@require_permission('pyrometry.edit')
 @pyrometry_route_errors(value_error_status=404)
 def update_furnace(fid):
     PyrometryService.update_furnace(fid, request.json)
@@ -66,7 +67,7 @@ def update_furnace(fid):
 
 @pyrometry_bp.route('/api/pyrometry/furnaces/<int:fid>', methods=['DELETE'])
 @auth_required
-@require_perm('pyrometry.delete')
+@require_permission('pyrometry.delete')
 @pyrometry_route_errors(value_error_status=404)
 def delete_furnace(fid):
     PyrometryService.delete_furnace(fid)
@@ -76,14 +77,14 @@ def delete_furnace(fid):
 # ---------- 測試紀錄 ----------
 @pyrometry_bp.route('/api/pyrometry/tests', methods=['GET'])
 @auth_required
-@require_perm('pyrometry.view')
+@require_permission('pyrometry.view')
 def search_tests():
     return jsonify(PyrometryService.search_tests(request.args))
 
 
 @pyrometry_bp.route('/api/pyrometry/tests/<int:tid>', methods=['GET'])
 @auth_required
-@require_perm('pyrometry.view')
+@require_permission('pyrometry.view')
 @pyrometry_route_errors(value_error_status=404)
 def get_test(tid):
     return jsonify(PyrometryService.get_test(tid))
@@ -91,7 +92,7 @@ def get_test(tid):
 
 @pyrometry_bp.route('/api/pyrometry/tests', methods=['POST'])
 @auth_required
-@require_perm('pyrometry.edit')
+@require_permission('pyrometry.edit')
 @pyrometry_route_errors()
 def create_test():
     new_id = PyrometryService.create_test(request.get_json(silent=True))
@@ -100,7 +101,7 @@ def create_test():
 
 @pyrometry_bp.route('/api/pyrometry/tests/<int:tid>', methods=['PUT'])
 @auth_required
-@require_perm('pyrometry.edit')
+@require_permission('pyrometry.edit')
 @pyrometry_route_errors(value_error_status=404)
 def update_test(tid):
     PyrometryService.update_test(tid, request.get_json(silent=True))
@@ -109,7 +110,7 @@ def update_test(tid):
 
 @pyrometry_bp.route('/api/pyrometry/tests/<int:tid>', methods=['DELETE'])
 @auth_required
-@require_perm('pyrometry.delete')
+@require_permission('pyrometry.delete')
 @pyrometry_route_errors(value_error_status=404)
 def delete_test(tid):
     PyrometryService.delete_test(tid)
@@ -119,7 +120,7 @@ def delete_test(tid):
 # ---------- 溫度記錄器校正 ----------
 @pyrometry_bp.route('/api/pyrometry/recorders', methods=['GET'])
 @auth_required
-@require_perm('pyrometry.view')
+@require_permission('pyrometry.view')
 def list_recorders():
     active_only = request.args.get('active_only') == '1'
     return jsonify({"success": True, "data": PyrometryService.list_recorders(active_only)})
@@ -127,7 +128,7 @@ def list_recorders():
 
 @pyrometry_bp.route('/api/pyrometry/recorders/<int:rid>', methods=['GET'])
 @auth_required
-@require_perm('pyrometry.view')
+@require_permission('pyrometry.view')
 @pyrometry_route_errors(value_error_status=404)
 def get_recorder(rid):
     return jsonify({"success": True, "data": PyrometryService.get_recorder(rid)})
@@ -135,7 +136,7 @@ def get_recorder(rid):
 
 @pyrometry_bp.route('/api/pyrometry/recorders', methods=['POST'])
 @auth_required
-@require_perm('pyrometry.edit')
+@require_permission('pyrometry.edit')
 @pyrometry_route_errors()
 def add_recorder():
     new_id = PyrometryService.add_recorder(request.json)
@@ -144,7 +145,7 @@ def add_recorder():
 
 @pyrometry_bp.route('/api/pyrometry/recorders/<int:rid>', methods=['PUT'])
 @auth_required
-@require_perm('pyrometry.edit')
+@require_permission('pyrometry.edit')
 @pyrometry_route_errors(value_error_status=404)
 def update_recorder(rid):
     PyrometryService.update_recorder(rid, request.json)
@@ -153,7 +154,7 @@ def update_recorder(rid):
 
 @pyrometry_bp.route('/api/pyrometry/recorders/<int:rid>', methods=['DELETE'])
 @auth_required
-@require_perm('pyrometry.delete')
+@require_permission('pyrometry.delete')
 @pyrometry_route_errors(value_error_status=404)
 def delete_recorder(rid):
     PyrometryService.delete_recorder(rid)
@@ -163,7 +164,7 @@ def delete_recorder(rid):
 # ---------- 熱電偶校正 ----------
 @pyrometry_bp.route('/api/pyrometry/thermocouples', methods=['GET'])
 @auth_required
-@require_perm('pyrometry.view')
+@require_permission('pyrometry.view')
 def list_thermocouples():
     active_only = request.args.get('active_only') == '1'
     return jsonify({"success": True, "data": PyrometryService.list_thermocouples(active_only)})
@@ -171,7 +172,7 @@ def list_thermocouples():
 
 @pyrometry_bp.route('/api/pyrometry/thermocouples/<int:tcid>', methods=['GET'])
 @auth_required
-@require_perm('pyrometry.view')
+@require_permission('pyrometry.view')
 @pyrometry_route_errors(value_error_status=404)
 def get_thermocouple(tcid):
     return jsonify({"success": True, "data": PyrometryService.get_thermocouple(tcid)})
@@ -179,7 +180,7 @@ def get_thermocouple(tcid):
 
 @pyrometry_bp.route('/api/pyrometry/thermocouples', methods=['POST'])
 @auth_required
-@require_perm('pyrometry.edit')
+@require_permission('pyrometry.edit')
 @pyrometry_route_errors()
 def add_thermocouple():
     new_id = PyrometryService.add_thermocouple(request.json)
@@ -188,7 +189,7 @@ def add_thermocouple():
 
 @pyrometry_bp.route('/api/pyrometry/thermocouples/<int:tcid>', methods=['PUT'])
 @auth_required
-@require_perm('pyrometry.edit')
+@require_permission('pyrometry.edit')
 @pyrometry_route_errors(value_error_status=404)
 def update_thermocouple(tcid):
     PyrometryService.update_thermocouple(tcid, request.json)
@@ -197,7 +198,7 @@ def update_thermocouple(tcid):
 
 @pyrometry_bp.route('/api/pyrometry/thermocouples/<int:tcid>', methods=['DELETE'])
 @auth_required
-@require_perm('pyrometry.delete')
+@require_permission('pyrometry.delete')
 @pyrometry_route_errors(value_error_status=404)
 def delete_thermocouple(tcid):
     PyrometryService.delete_thermocouple(tcid)
@@ -206,7 +207,7 @@ def delete_thermocouple(tcid):
 
 @pyrometry_bp.route('/api/pyrometry/corrections', methods=['GET'])
 @auth_required
-@require_perm('pyrometry.view')
+@require_permission('pyrometry.view')
 @pyrometry_route_errors()
 def corrections():
     """依設定溫度回傳各量測點的修正值（熱電偶+記錄器補正）"""
@@ -228,7 +229,7 @@ def corrections():
 # ---------- 資料解析 ----------
 @pyrometry_bp.route('/api/pyrometry/parse-data', methods=['POST'])
 @auth_required
-@require_perm('pyrometry.edit')
+@require_permission('pyrometry.edit')
 @pyrometry_route_errors()
 def parse_data():
     """上傳時間序列資料檔，回傳通道摘要與繪圖資料（不落地，僅解析）"""
@@ -245,14 +246,14 @@ def parse_data():
 # ---------- 看板與趨勢 ----------
 @pyrometry_bp.route('/api/pyrometry/dashboard', methods=['GET'])
 @auth_required
-@require_perm('pyrometry.view')
+@require_permission('pyrometry.view')
 def dashboard():
     return jsonify({"success": True, "data": PyrometryService.dashboard()})
 
 
 @pyrometry_bp.route('/api/pyrometry/furnaces/<int:fid>/tus-trend', methods=['GET'])
 @auth_required
-@require_perm('pyrometry.view')
+@require_permission('pyrometry.view')
 def tus_trend(fid):
     return jsonify({"success": True, "data": PyrometryService.tus_trend(fid)})
 
@@ -260,7 +261,7 @@ def tus_trend(fid):
 # ---------- 報告匯出 ----------
 @pyrometry_bp.route('/api/pyrometry/tests/<int:tid>/export', methods=['GET'])
 @auth_required
-@require_perm('pyrometry.view')
+@require_permission('pyrometry.view')
 @pyrometry_route_errors(value_error_status=404)
 def export_test(tid):
     content = PyrometryService.export_test_xlsx(tid)

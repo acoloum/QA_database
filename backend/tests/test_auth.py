@@ -518,7 +518,7 @@ def test_protected_route_exposes_current_database_user_model_on_g(
 
 
 def test_require_perm_uses_current_database_role(client, db_session, normal_user):
-    """舊式 require_perm 若仍信任 JWT role，降權後會進入 mutation handler。"""
+    """舊式 require_permission 若仍信任 JWT role，降權後會進入 mutation handler。"""
     allowed = Role(
         code='mechanical_writer',
         name='機械寫入者',

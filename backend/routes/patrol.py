@@ -1,12 +1,13 @@
 from flask import Blueprint, jsonify, request, send_file
 from ..services.patrol_service import PatrolService
-from ..utils import auth_required, require_perm, handle_db_error, validate_upload_file
+from ..utils import auth_required, handle_db_error, validate_upload_file
+from ..authorization import require_permission
 
 patrol_bp = Blueprint('patrol', __name__)
 
 @patrol_bp.route('/api/patrol/options')
 @auth_required
-@require_perm('patrol.view')
+@require_permission('patrol.view')
 def patrol_options():
     try:
         options = PatrolService.get_options()
@@ -16,7 +17,7 @@ def patrol_options():
 
 @patrol_bp.route('/api/patrol/spc')
 @auth_required
-@require_perm('patrol.view')
+@require_permission('patrol.view')
 def patrol_spc():
     try:
         data = PatrolService.get_spc(request.args)
@@ -26,7 +27,7 @@ def patrol_spc():
 
 @patrol_bp.route('/api/patrol/live-limits')
 @auth_required
-@require_perm('spc.view')
+@require_permission('spc.view')
 def patrol_live_limits():
     """巡檢即時模式：查詢生效中的 SPC 管制界限與最近歷史值（唯讀，供前端即時提示）"""
     try:
@@ -37,7 +38,7 @@ def patrol_live_limits():
 
 @patrol_bp.route('/api/patrol/detail/<int:id>')
 @auth_required
-@require_perm('patrol.view')
+@require_permission('patrol.view')
 def patrol_detail(id):
     try:
         data = PatrolService.get_detail(id)
@@ -49,7 +50,7 @@ def patrol_detail(id):
 
 @patrol_bp.route('/api/patrol/<int:main_id>/details', methods=['GET'])
 @auth_required
-@require_perm('patrol.view')
+@require_permission('patrol.view')
 def get_patrol_details_route(main_id):
     """取得單筆巡檢記錄的量測明細（含離群標記）"""
     try:
@@ -60,8 +61,8 @@ def get_patrol_details_route(main_id):
 
 @patrol_bp.route('/api/patrol-details/<int:detail_id>/exclusion', methods=['PATCH'])
 @auth_required
-@require_perm('patrol.edit')
-@require_perm('spc.manage')
+@require_permission('patrol.edit')
+@require_permission('spc.manage')
 def set_patrol_detail_exclusion_route(detail_id):
     """標示/解除巡檢量測明細離群排除（AIAG-VDA SPC 2026 §6.6）"""
     try:
@@ -81,7 +82,7 @@ def set_patrol_detail_exclusion_route(detail_id):
 
 @patrol_bp.route('/api/patrol/control-limits', methods=['GET'])
 @auth_required
-@require_perm('patrol.view')
+@require_permission('patrol.view')
 def get_patrol_control_limits_route():
     """查詢巡檢管制界限凍結狀態（AIAG-VDA SPC 2026 §9.4）"""
     try:
@@ -101,7 +102,7 @@ def get_patrol_control_limits_route():
 
 @patrol_bp.route('/api/patrol/control-limits', methods=['POST'])
 @auth_required
-@require_perm('patrol.view')
+@require_permission('patrol.view')
 def freeze_patrol_control_limits_route():
     """舊凍結流程已停用；正式界限必須走研究送審與核准。"""
     return jsonify({
@@ -113,7 +114,7 @@ def freeze_patrol_control_limits_route():
 
 @patrol_bp.route('/api/patrol/control-limits', methods=['DELETE'])
 @auth_required
-@require_perm('patrol.view')
+@require_permission('patrol.view')
 def unfreeze_patrol_control_limits_route():
     """舊凍結流程已停用；正式界限必須走研究送審與核准。"""
     return jsonify({
@@ -125,7 +126,7 @@ def unfreeze_patrol_control_limits_route():
 
 @patrol_bp.route('/api/patrol/add', methods=['POST', 'OPTIONS'])
 @auth_required
-@require_perm('patrol.create')
+@require_permission('patrol.create')
 def patrol_add():
     if request.method == 'OPTIONS':
         return '', 200
@@ -139,7 +140,7 @@ def patrol_add():
 
 @patrol_bp.route('/api/patrol/update', methods=['POST'])
 @auth_required
-@require_perm('patrol.edit')
+@require_permission('patrol.edit')
 def patrol_update():
     try:
         PatrolService.update_patrol(request.json)
@@ -151,7 +152,7 @@ def patrol_update():
 
 @patrol_bp.route('/api/patrol/delete', methods=['POST'])
 @auth_required
-@require_perm('patrol.delete')
+@require_permission('patrol.delete')
 def patrol_delete():
     try:
         record_id = request.json.get('id')
@@ -164,7 +165,7 @@ def patrol_delete():
 
 @patrol_bp.route('/api/patrol/history')
 @auth_required
-@require_perm('patrol.view')
+@require_permission('patrol.view')
 def patrol_history():
     try:
         result = PatrolService.get_history(request.args)
@@ -174,7 +175,7 @@ def patrol_history():
 
 @patrol_bp.route('/api/patrol/export')
 @auth_required
-@require_perm('patrol.view')
+@require_permission('patrol.view')
 def patrol_export():
     try:
         # 動態檔名：包含測量項目與位置資訊
@@ -226,7 +227,7 @@ def patrol_export():
 
 @patrol_bp.route('/api/patrol/import', methods=['POST', 'OPTIONS'])
 @auth_required
-@require_perm('patrol.create')
+@require_permission('patrol.create')
 def patrol_import():
     if request.method == 'OPTIONS':
         return '', 200

@@ -10,7 +10,7 @@ from backend.models import Role, User
 def test_require_permission_allows_when_has_perm(app):
     """有權限時裝飾器允許通過"""
     with app.app_context():
-        from backend.utils import require_permission
+        from backend.authorization import require_permission
 
         mock_role = MagicMock()
         mock_role.has_permission.return_value = True
@@ -34,7 +34,7 @@ def test_require_permission_allows_when_has_perm(app):
 def test_require_permission_blocks_when_no_perm(app):
     """無權限時回傳 403"""
     with app.app_context():
-        from backend.utils import require_permission
+        from backend.authorization import require_permission
 
         mock_role = MagicMock()
         mock_role.has_permission.return_value = False
@@ -60,7 +60,7 @@ def test_require_permission_blocks_when_no_perm(app):
 def test_require_permission_blocks_when_no_role(app):
     """角色不存在時回傳 403"""
     with app.app_context():
-        from backend.utils import require_permission
+        from backend.authorization import require_permission
 
         mock_user = MagicMock()
         mock_user.role = 'nonexistent'

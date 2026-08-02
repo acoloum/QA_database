@@ -38,6 +38,7 @@ import {
   type MechWaivedState,
 } from './mechanicalPayload';
 import MechanicalTraceNumberPanel from './MechanicalTraceNumberPanel';
+import { mechanicalKeys, masterDataKeys } from '../../hooks/queryKeys';
 
 interface MechanicalTestFormProps {
   testId: number | null;
@@ -149,18 +150,18 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
     isError: isDetailError,
     refetch: refetchDetail,
   } = useQuery({
-    queryKey: ['mechanical-test', testId],
+    queryKey: mechanicalKeys.detail(testId),
     queryFn: () => mechanicalApi.getDetail(testId as number),
     enabled: testId !== null,
   });
 
   const { data: vendors = [], isError: isVendorsError } = useQuery({
-    queryKey: ['vendors'],
+    queryKey: masterDataKeys.vendors,
     queryFn: mechanicalApi.getVendors,
   });
 
   const { data: options } = useQuery({
-    queryKey: ['mechanical-options', vendorId],
+    queryKey: mechanicalKeys.options(vendorId),
     queryFn: () => mechanicalApi.getOptions(vendorId as number),
     enabled: vendorId !== null,
   });
@@ -195,7 +196,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
     data: limits,
     isError: isSpecError,
   } = useQuery({
-    queryKey: ['mechanical-spec', basic.材質, basic.產品尺寸, vendorId],
+    queryKey: mechanicalKeys.spec(basic.材質, basic.產品尺寸, vendorId),
     queryFn: () => mechanicalApi.getSpec(basic.材質, basic.產品尺寸, vendorId ?? undefined),
     enabled: Boolean(isEditReady && vendorId !== null && basic.材質 && basic.產品尺寸),
   });
@@ -316,7 +317,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
       } else {
         await mechanicalApi.update(testId, payload);
         // 更新後讓該筆詳情快取失效，避免 30 秒 staleTime 內重開編輯仍讀到舊資料
-        await queryClient.invalidateQueries({ queryKey: ['mechanical-test', testId] });
+        await queryClient.invalidateQueries({ queryKey: mechanicalKeys.detail(testId) });
       }
       toast.success('已儲存');
       onSaved();

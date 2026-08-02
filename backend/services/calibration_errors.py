@@ -35,3 +35,14 @@ class CalibrationValidationError(CalibrationServiceError):
     """校正輸入或資格證據未符合受控要求。"""
 
     status_code = 422
+
+
+def require_object(payload) -> dict:
+    """校正家族共用的請求形狀驗證：非 JSON 物件一律以穩定錯誤碼拒絕。"""
+    if not isinstance(payload, dict):
+        raise CalibrationValidationError(
+            "CALIBRATION_PAYLOAD_INVALID",
+            "請求內容必須是 JSON 物件",
+            details={},
+        )
+    return payload

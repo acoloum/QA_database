@@ -1,8 +1,10 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
+import { compactParams } from '../utils/queryParams';
 import toast from 'react-hot-toast';
 import { downloadResponseBlob } from '../utils/downloadFile';
+import { shippingKeys, masterDataKeys } from './queryKeys';
 import type {
     ShippingInspection, Vendor, ToleranceResult, ShippingCreateInput,
     ShippingUpdateInput, SpcChartData,
@@ -31,17 +33,20 @@ export interface ShippingStatsParams {
 // 1. Fetch Lists
 export const useShippingList = (params: ShippingSearchParams) => {
     return useQuery({
-        queryKey: ['shippingList', params],
+        queryKey: shippingKeys.list(params),
         queryFn: async () => {
-            const queryParams = new URLSearchParams();
-            queryParams.append('page', params.page.toString());
-            if (params.start_date) queryParams.append('start_date', params.start_date);
-            if (params.end_date) queryParams.append('end_date', params.end_date);
-            if (params.vendor) queryParams.append('vendor', params.vendor);
-            if (params.material) queryParams.append('material', params.material);
-            if (params.spec) queryParams.append('spec', params.spec);
-
-            const res = await api.get<{ data: ShippingInspection[], total_pages: number }>(`/data?${queryParams.toString()}`);
+            const res = await api.get<{ data: ShippingInspection[], total_pages: number }>('/data', {
+                params: {
+                    page: params.page,
+                    ...compactParams({
+                        start_date: params.start_date,
+                        end_date: params.end_date,
+                        vendor: params.vendor,
+                        material: params.material,
+                        spec: params.spec,
+                    }),
+                },
+            });
             return res.data;
         },
         placeholderData: (previousData) => previousData,
@@ -51,20 +56,24 @@ export const useShippingList = (params: ShippingSearchParams) => {
 
 export const useShippingStats = (params: ShippingStatsParams) => {
     return useQuery({
-        queryKey: ['shippingStats', params],
+        queryKey: shippingKeys.stats(params),
         queryFn: async () => {
             if (!params.vendor && !params.material && !params.spec) return null;
 
-            const queryParams = new URLSearchParams();
-            queryParams.append('field', params.field);
-            if (params.vendor) queryParams.append('vendor', params.vendor);
-            if (params.material) queryParams.append('material', params.material);
-            if (params.spec) queryParams.append('spec', params.spec);
-            if (params.start_date) queryParams.append('start_date', params.start_date);
-            if (params.end_date) queryParams.append('end_date', params.end_date);
-            if (params.limit) queryParams.append('limit', params.limit.toString());
-
-            const res = await api.get<SpcChartData>(`/stats?${queryParams.toString()}`);
+            const res = await api.get<SpcChartData>('/stats', {
+                params: {
+                    field: params.field,
+                    ...compactParams({
+                        vendor: params.vendor,
+                        material: params.material,
+                        spec: params.spec,
+                        start_date: params.start_date,
+                        end_date: params.end_date,
+                        // limit=0 無意義，沿用原本的 truthy 判斷
+                        limit: params.limit || undefined,
+                    }),
+                },
+            });
             return res.data;
         },
         enabled: !!(params.vendor || params.material || params.spec),
@@ -77,7 +86,7 @@ export const useShippingStats = (params: ShippingStatsParams) => {
 // 避免此處重複定義與其他頁面共用 cache key 造成資料互相污染。
 export const useVendors = () => {
     return useQuery({
-        queryKey: ['vendors'],
+        queryKey: masterDataKeys.vendors,
         queryFn: async () => {
             const res = await api.get<Vendor[]>('/vendors');
             return res.data;
@@ -89,7 +98,7 @@ export const useVendors = () => {
 // 3. Detail
 export const useShippingDetail = (id: number | null) => {
     return useQuery({
-        queryKey: ['shippingDetail', id],
+        queryKey: shippingKeys.detail(id),
         queryFn: async () => {
             if (!id) return null;
             const res = await api.get<ShippingInspection>(`/data/${id}`);
@@ -110,8 +119,8 @@ export const useCreateShipping = () => {
         },
         onSuccess: () => {
             toast.success('新增成功');
-            queryClient.invalidateQueries({ queryKey: ['shippingList'] });
-            queryClient.invalidateQueries({ queryKey: ['shippingStats'] });
+            queryClient.invalidateQueries({ queryKey: shippingKeys.root });
+            queryClient.invalidateQueries({ queryKey: shippingKeys.statsRoot });
         },
     });
 };
@@ -125,9 +134,9 @@ export const useUpdateShipping = () => {
         },
         onSuccess: (_data, variables) => {
             toast.success('更新成功');
-            queryClient.invalidateQueries({ queryKey: ['shippingList'] });
-            queryClient.invalidateQueries({ queryKey: ['shippingDetail', variables.id] });
-            queryClient.invalidateQueries({ queryKey: ['shippingStats'] });
+            queryClient.invalidateQueries({ queryKey: shippingKeys.root });
+            queryClient.invalidateQueries({ queryKey: shippingKeys.detail(variables.id) });
+            queryClient.invalidateQueries({ queryKey: shippingKeys.statsRoot });
         },
     });
 };
@@ -141,8 +150,8 @@ export const useDeleteShipping = () => {
         },
         onSuccess: () => {
             toast.success('刪除成功');
-            queryClient.invalidateQueries({ queryKey: ['shippingList'] });
-            queryClient.invalidateQueries({ queryKey: ['shippingStats'] });
+            queryClient.invalidateQueries({ queryKey: shippingKeys.root });
+            queryClient.invalidateQueries({ queryKey: shippingKeys.statsRoot });
         },
     });
 };
@@ -160,7 +169,7 @@ export const useImportShipping = () => {
         },
         onSuccess: (data) => {
             toast.success(data.message || '匯入成功');
-            queryClient.invalidateQueries({ queryKey: ['shippingList'] });
+            queryClient.invalidateQueries({ queryKey: shippingKeys.root });
         },
     });
 };
@@ -179,17 +188,19 @@ export const useCheckTolerance = () => {
 export const useExportSpcReport = () => {
     return useMutation({
         mutationFn: async (params: ShippingStatsParams & { vendor?: string; material?: string; spec?: string }) => {
-            const queryParams = new URLSearchParams();
-            queryParams.append('field', params.field);
-            if (params.vendor) queryParams.append('vendor', params.vendor);
-            if (params.material) queryParams.append('material', params.material);
-            if (params.spec) queryParams.append('spec', params.spec);
-            if (params.start_date) queryParams.append('start_date', params.start_date);
-            if (params.end_date) queryParams.append('end_date', params.end_date);
-            if (params.study_version_id) queryParams.append('study_version_id', params.study_version_id.toString());
-
-            const res = await api.get(`/spc-report?${queryParams.toString()}`, {
-                responseType: 'blob'
+            const res = await api.get('/spc-report', {
+                params: {
+                    field: params.field,
+                    ...compactParams({
+                        vendor: params.vendor,
+                        material: params.material,
+                        spec: params.spec,
+                        start_date: params.start_date,
+                        end_date: params.end_date,
+                        study_version_id: params.study_version_id || undefined,
+                    }),
+                },
+                responseType: 'blob',
             });
 
             downloadResponseBlob(res.data as BlobPart, `SPC報告_${params.field}.xlsx`);
@@ -220,7 +231,7 @@ export interface ShippingMeasurementItem {
 
 export const useShippingMeasurements = (shippingId: number | null) =>
     useQuery<ShippingMeasurementItem[]>({
-        queryKey: ['shipping-measurements', shippingId],
+        queryKey: shippingKeys.measurements(shippingId),
         queryFn: async () => (await api.get(`/data/${shippingId}/measurements`)).data,
         enabled: shippingId != null,
     });
@@ -232,8 +243,8 @@ export const useSetMeasurementExclusion = () => {
             (await api.patch(`/measurements/${p.id}/exclusion`, { 排除統計: p.excluded, 排除原因: p.reason })).data,
         onSuccess: (_data, variables) => {
             toast.success(variables.excluded ? '已標示為離群值' : '已恢復計入統計');
-            queryClient.invalidateQueries({ queryKey: ['shipping-measurements'] });
-            queryClient.invalidateQueries({ queryKey: ['shippingStats'] });
+            queryClient.invalidateQueries({ queryKey: shippingKeys.measurementsRoot });
+            queryClient.invalidateQueries({ queryKey: shippingKeys.statsRoot });
         },
         onError: (err: Error) => {
             toast.error(`操作失敗：${err.message}`);

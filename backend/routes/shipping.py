@@ -1,13 +1,14 @@
 from flask import Blueprint, jsonify, request, send_file
 from ..services.shipping_service import ShippingService
 from ..services.spc_report import SpcReportService
-from ..utils import api_error, auth_required, require_perm, handle_db_error, validate_upload_file
+from ..utils import api_error, auth_required, handle_db_error, validate_upload_file
+from ..authorization import require_permission
 
 shipping_bp = Blueprint('shipping', __name__)
 
 @shipping_bp.route('/api/data', methods=['GET'])
 @auth_required
-@require_perm('shipping.view')
+@require_permission('shipping.view')
 def get_data():
     try:
         result = ShippingService.get_list(request.args)
@@ -17,7 +18,7 @@ def get_data():
 
 @shipping_bp.route('/api/data/<int:data_id>', methods=['GET'])
 @auth_required
-@require_perm('shipping.view')
+@require_permission('shipping.view')
 def get_shipping_data(data_id):
     """根據 ID 獲取單筆出貨檢驗資料"""
     try:
@@ -30,7 +31,7 @@ def get_shipping_data(data_id):
 
 @shipping_bp.route('/api/stats', methods=['GET'])
 @auth_required
-@require_perm('shipping.view')
+@require_permission('shipping.view')
 def get_shipping_stats():
     """獲取出貨檢驗的 SPC 統計數據"""
     try:
@@ -41,7 +42,7 @@ def get_shipping_stats():
 
 @shipping_bp.route('/api/data/<int:data_id>/measurements', methods=['GET'])
 @auth_required
-@require_perm('shipping.view')
+@require_permission('shipping.view')
 def get_shipping_measurements(data_id):
     """取得單筆出貨記錄的量測明細（含離群標記）"""
     try:
@@ -52,8 +53,8 @@ def get_shipping_measurements(data_id):
 
 @shipping_bp.route('/api/measurements/<int:measurement_id>/exclusion', methods=['PATCH'])
 @auth_required
-@require_perm('shipping.edit')
-@require_perm('spc.manage')
+@require_permission('shipping.edit')
+@require_permission('spc.manage')
 def set_measurement_exclusion(measurement_id):
     """標示/解除量測值離群排除（AIAG-VDA SPC 2026 §6.6）"""
     try:
@@ -73,7 +74,7 @@ def set_measurement_exclusion(measurement_id):
 
 @shipping_bp.route('/api/control-limits', methods=['GET'])
 @auth_required
-@require_perm('spc.view')
+@require_permission('spc.view')
 def get_control_limits_route():
     """查詢管制界限凍結狀態（AIAG-VDA SPC 2026 §9.4）"""
     try:
@@ -93,7 +94,7 @@ def get_control_limits_route():
 
 @shipping_bp.route('/api/control-limits', methods=['POST'])
 @auth_required
-@require_perm('spc.view')
+@require_permission('spc.view')
 def freeze_control_limits_route():
     """舊凍結流程已停用；正式界限必須走研究送審與核准。"""
     return jsonify({
@@ -105,7 +106,7 @@ def freeze_control_limits_route():
 
 @shipping_bp.route('/api/control-limits', methods=['DELETE'])
 @auth_required
-@require_perm('spc.view')
+@require_permission('spc.view')
 def unfreeze_control_limits_route():
     """舊凍結流程已停用；正式界限必須走研究送審與核准。"""
     return jsonify({
@@ -117,8 +118,8 @@ def unfreeze_control_limits_route():
 
 @shipping_bp.route('/api/spc-report', methods=['GET'])
 @auth_required
-@require_perm('shipping.view')
-@require_perm('spc.view')
+@require_permission('shipping.view')
+@require_permission('spc.view')
 def export_spc_report():
     """只由不可變研究版本匯出 SPC 報告，避免混入目前來源資料。"""
     try:
@@ -159,7 +160,7 @@ def export_spc_report():
 
 @shipping_bp.route('/api/add', methods=['POST'])
 @auth_required
-@require_perm('shipping.create')
+@require_permission('shipping.create')
 def save_data():
     try:
         ShippingService.save_data(request.json, is_update=False)
@@ -173,7 +174,7 @@ def save_data():
 
 @shipping_bp.route('/api/update', methods=['POST'])
 @auth_required
-@require_perm('shipping.edit')
+@require_permission('shipping.edit')
 def update_data():
     try:
         ShippingService.save_data(request.json, is_update=True)
@@ -186,7 +187,7 @@ def update_data():
 
 @shipping_bp.route('/api/delete', methods=['POST'])
 @auth_required
-@require_perm('shipping.delete')
+@require_permission('shipping.delete')
 def delete_data():
     try:
         record_id = request.json.get('id')
@@ -200,7 +201,7 @@ def delete_data():
 
 @shipping_bp.route('/api/import', methods=['POST', 'OPTIONS'])
 @auth_required
-@require_perm('shipping.create')
+@require_permission('shipping.create')
 def shipping_import():
     if request.method == 'OPTIONS':
         return '', 200
@@ -226,7 +227,7 @@ def shipping_import():
 
 @shipping_bp.route('/api/export/excel')
 @auth_required
-@require_perm('shipping.view')
+@require_permission('shipping.view')
 def export_excel():
     try:
         output = ShippingService.export_excel(request.args)

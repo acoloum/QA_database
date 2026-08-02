@@ -1,16 +1,4 @@
 import { useMemo, useState } from 'react';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler,
-} from 'chart.js';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Form } from 'react-bootstrap';
 
@@ -21,8 +9,8 @@ import SpcStudyPanel from '../spc/SpcStudyPanel';
 import SpcReportModal from '../spc/report/SpcReportModal';
 import { reportModelFromStats } from '../spc/report/spcReportModel';
 import type { SpcStudyResult } from '../../types';
-
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
+import { mechanicalKeys, masterDataKeys } from '../../hooks/queryKeys';
+import '../../utils/chartSetup';
 
 // 力學特性（EC 值不納入 SPC）與量測位置（爐門/爐頂分開監控）
 const MECHANICAL_ITEMS = ['硬度', '抗拉強度', '降伏強度', '伸長率'];
@@ -56,12 +44,12 @@ export default function MechanicalCharts({
   }), [item, position, vendorId, material, productSize, startDate, endDate]);
 
   const { data: statsData } = useQuery({
-    queryKey: ['mechanical-stats', params],
+    queryKey: mechanicalKeys.stats(params),
     queryFn: () => mechanicalApi.stats(params),
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: vendors } = useQuery({ queryKey: ['vendors'], queryFn: mechanicalApi.getVendors });
+  const { data: vendors } = useQuery({ queryKey: masterDataKeys.vendors, queryFn: mechanicalApi.getVendors });
   const vendorName = vendors?.find((v) => String(v.id) === String(vendorId))?.name;
 
   const studyFilters = useMemo(() => ({

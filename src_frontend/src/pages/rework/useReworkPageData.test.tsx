@@ -19,8 +19,8 @@ describe('useReworkPageData', () => {
   it('以 useQuery 註冊列表與統計快取並回傳 isSuccess', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     vi.mocked(api.get).mockImplementation((url: string) => {
-      if (url.startsWith('/rework/applications?')) {
-        return Promise.resolve({ data: [{ 重工單號: 'RW-1' }] });
+      if (url === '/rework/applications') {
+        return Promise.resolve({ data: { data: [{ 重工單號: 'RW-1' }], total: 1, total_pages: 1 } });
       }
       if (url === '/rework/statistics') {
         return Promise.resolve({ data: { 申請件數: 1 } });
@@ -34,20 +34,22 @@ describe('useReworkPageData', () => {
     );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(api.get).toHaveBeenCalledWith(`/rework/applications?status=${encodeURIComponent('待審核')}`);
+    expect(api.get).toHaveBeenCalledWith('/rework/applications', {
+      params: { status: '待審核', page: 1 },
+    });
     expect(api.get).toHaveBeenCalledWith('/rework/statistics');
     expect(queryClient.getQueryState([
       'rework',
       'applications',
-      { statusFilter: '待審核', startDate: '', endDate: '' },
+      { statusFilter: '待審核', startDate: '', endDate: '', page: 1 },
     ])).toBeTruthy();
   });
 
   it('篩選條件變更後以新條件重新載入列表', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     vi.mocked(api.get).mockImplementation((url: string) => {
-      if (url.startsWith('/rework/applications?')) {
-        return Promise.resolve({ data: [] });
+      if (url === '/rework/applications') {
+        return Promise.resolve({ data: { data: [], total: 0, total_pages: 1 } });
       }
       if (url === '/rework/statistics') {
         return Promise.resolve({ data: { 申請件數: 0 } });
@@ -63,6 +65,8 @@ describe('useReworkPageData', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     rerender({ statusFilter: '已完成' });
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith(`/rework/applications?status=${encodeURIComponent('已完成')}`));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rework/applications', {
+      params: { status: '已完成', page: 1 },
+    }));
   });
 });

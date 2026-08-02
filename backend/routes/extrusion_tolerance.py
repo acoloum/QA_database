@@ -1,14 +1,15 @@
 
 from flask import Blueprint, jsonify, request
 from ..services.extrusion_tolerance_service import ExtrusionToleranceService
-from ..utils import auth_required, require_perm, handle_db_error
+from ..utils import auth_required, handle_db_error
+from ..authorization import require_permission
 
 extrusion_tolerance_bp = Blueprint('extrusion_tolerance', __name__)
 
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/search', methods=['GET'])
 @auth_required
-@require_perm('tolerance.view')
+@require_permission('tolerance.view')
 def search():
     """查詢擠壓公差列表"""
     try:
@@ -19,7 +20,7 @@ def search():
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/<int:id>', methods=['GET'])
 @auth_required
-@require_perm('tolerance.view')
+@require_permission('tolerance.view')
 def get_detail(id):
     """取得單筆擠壓公差詳細"""
     try:
@@ -30,7 +31,7 @@ def get_detail(id):
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/add', methods=['POST'])
 @auth_required
-@require_perm('tolerance.manage')
+@require_permission('tolerance.manage')
 def add():
     """新增擠壓公差"""
     try:
@@ -42,7 +43,7 @@ def add():
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/update/<int:id>', methods=['POST'])
 @auth_required
-@require_perm('tolerance.manage')
+@require_permission('tolerance.manage')
 def update(id):
     """更新擠壓公差"""
     try:
@@ -56,7 +57,7 @@ def update(id):
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/delete/<int:id>', methods=['POST'])
 @auth_required
-@require_perm('tolerance.manage')
+@require_permission('tolerance.manage')
 def delete(id):
     """刪除擠壓公差"""
     try:
@@ -70,7 +71,7 @@ def delete(id):
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/options', methods=['GET'])
 @auth_required
-@require_perm('tolerance.view')
+@require_permission('tolerance.view')
 def get_options():
     """取得材質、規格選項"""
     try:
@@ -81,7 +82,7 @@ def get_options():
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/check', methods=['GET'])
 @auth_required
-@require_perm('tolerance.view')
+@require_permission('tolerance.view')
 def check():
     """依材質+規格查詢對應公差（供巡檢 NG 比對用）"""
     try:

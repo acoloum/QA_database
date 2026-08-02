@@ -11,6 +11,7 @@ import MechanicalImportModal from '../../components/mechanical/MechanicalImportM
 import MechanicalCharts from '../../components/mechanical/MechanicalCharts';
 import PermissionAction from '../../components/PermissionAction';
 import { useAuth } from '../../context/useAuth';
+import { mechanicalKeys, masterDataKeys } from '../../hooks/queryKeys';
 
 const judgementDisplay: Record<MechanicalJudgementStatus, { label: string; variant: string }> = {
   NG: { label: 'NG', variant: 'danger' },
@@ -54,7 +55,7 @@ export default function MechanicalTestListPage() {
   );
 
   const { data: vendors = [] } = useQuery({
-    queryKey: ['vendors'],
+    queryKey: masterDataKeys.vendors,
     queryFn: mechanicalApi.getVendors,
   });
 
@@ -74,7 +75,7 @@ export default function MechanicalTestListPage() {
   );
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['mechanical-tests', params],
+    queryKey: mechanicalKeys.list(params),
     queryFn: () => mechanicalApi.list(params),
   });
 
@@ -82,7 +83,7 @@ export default function MechanicalTestListPage() {
     mutationFn: (id: number) => mechanicalApi.remove(id),
     onSuccess: () => {
       toast.success('已刪除');
-      queryClient.invalidateQueries({ queryKey: ['mechanical-tests'] });
+      queryClient.invalidateQueries({ queryKey: mechanicalKeys.root });
     },
     onError: (error) => {
       const message = apiErrorMessage(error, '刪除失敗，請稍後再試');
@@ -335,7 +336,7 @@ export default function MechanicalTestListPage() {
           onClose={() => setEditingId(null)}
           onSaved={() => {
             setEditingId(null);
-            queryClient.invalidateQueries({ queryKey: ['mechanical-tests'] });
+            queryClient.invalidateQueries({ queryKey: mechanicalKeys.root });
           }}
         />
       )}
@@ -343,7 +344,7 @@ export default function MechanicalTestListPage() {
       <MechanicalImportModal
         show={showImport}
         handleClose={() => setShowImport(false)}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['mechanical-tests'] })}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: mechanicalKeys.root })}
       />
     </div>
   );

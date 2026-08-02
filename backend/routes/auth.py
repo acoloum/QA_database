@@ -5,13 +5,13 @@ from ..models import User, Role
 from ..authentication import authenticate_request_token
 from ..errors import AuthenticationError
 from ..services.user_service import UserService
+from ..authorization import require_permission
 from ..utils import (
     generate_token,
     generate_csrf_token,
     verify_password,
     handle_db_error,
     auth_required,
-    require_permission
 )
 
 _VALID_ROLES = ('user', 'admin')

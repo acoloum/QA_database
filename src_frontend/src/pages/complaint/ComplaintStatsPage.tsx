@@ -1,23 +1,14 @@
 import { useState } from 'react';
 import { Container, Card, Row, Col, Form, Button, Spinner } from 'react-bootstrap';
 import { useNavigate } from 'react-router';
-import {
-    Chart as ChartJS,
-    CategoryScale, LinearScale, BarElement, ArcElement,
-    PointElement, LineElement, Title, Tooltip, Legend, Filler,
-} from 'chart.js';
 import { Bar, Line } from 'react-chartjs-2';
+import '../../utils/chartSetup';
 import {
     useComplaintStatsByCustomer,
     useComplaintStatsByProduct,
     useComplaintStatsByMonth,
     useComplaintStatsWarranty,
 } from '../../hooks/useComplaint';
-
-ChartJS.register(
-    CategoryScale, LinearScale, BarElement, ArcElement,
-    PointElement, LineElement, Title, Tooltip, Legend, Filler,
-);
 
 const CHART_COLORS = ['#2B579A', '#4472C4', '#5B9BD5', '#9DC3E6', '#BDD7EE', '#DDEBF7'];
 

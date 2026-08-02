@@ -167,7 +167,7 @@ def test_role_has_permission_false(app, db_session, setup_roles):
 def test_require_permission_blocks_wrong_role(app, db_session, setup_roles):
     """require_permission 應攔截無此權限的角色，回傳 403"""
     with app.app_context():
-        from backend.utils import require_permission
+        from backend.authorization import require_permission
 
         mock_user = MagicMock()
         mock_user.role = 'inspector_test'
@@ -185,7 +185,7 @@ def test_require_permission_blocks_wrong_role(app, db_session, setup_roles):
 def test_require_permission_allows_correct_role(app, db_session, setup_roles):
     """require_permission 應允許有此權限的角色"""
     with app.app_context():
-        from backend.utils import require_permission
+        from backend.authorization import require_permission
 
         mock_user = MagicMock()
         mock_user.role = 'qc_manager_test'

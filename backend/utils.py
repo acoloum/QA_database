@@ -193,7 +193,14 @@ def auth_required(f: Any) -> Any:
         # （URL token 會被記錄至 Nginx log、瀏覽器歷史及 Referer header）
         token = request.headers.get('Authorization')
         if not token:
-            return jsonify({'error': '缺少認證 Token'}), 401
+            # 與其他 401 一致地帶出穩定 reason，讓各模組 adapter 依 reason 而非
+            # 訊息文字對應自己的錯誤碼（改文案不應破壞錯誤碼契約）。
+            return api_error(
+                '缺少認證 Token',
+                401,
+                code='AUTH_ERROR',
+                details={'reason': 'missing_token'},
+            )
         if token.startswith('Bearer '):
             token = token[7:]
         from .authentication import authenticate_request_token
@@ -217,27 +224,6 @@ def auth_required(f: Any) -> Any:
 
         return f(*args, **kwargs)
     return decorated
-
-
-# ==================================================
-# 細粒度權限控制
-# ==================================================
-def role_grants_permission(current_user, perm: str) -> bool:
-    """舊 import path 相容 alias；實作集中於 authorization。"""
-    from .authorization import role_grants_permission as grants
-    return grants(current_user, perm)
-
-
-def require_permission(perm: str):
-    """單一權限相容 alias，不再依賴 route 函式參數。"""
-    from .authorization import require_permission as centralized
-    return centralized(perm)
-
-
-def require_perm(perm: str):
-    """舊式名稱相容 alias，與 require_permission 共用同一實作。"""
-    from .authorization import require_perm as centralized
-    return centralized(perm)
 
 
 # ==================================================
@@ -433,7 +419,7 @@ def generate_number(prefix: str, table_name: Optional[str] = None, number_field:
             new_seq = str(max_seq + 1).zfill(3)
             return f"{prefix}-{year_month}-{new_seq}"
         except Exception as e:
-            raise e
+            raise
     else:
         return f"{prefix}-{year_month}-001"
 

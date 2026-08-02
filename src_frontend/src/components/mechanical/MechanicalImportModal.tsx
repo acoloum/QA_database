@@ -5,6 +5,7 @@ import { Alert, Button, Form, ListGroup, Modal } from 'react-bootstrap';
 import { mechanicalApi } from '../../services/mechanicalApi';
 import type { MechanicalImportResult } from '../../services/mechanicalApi';
 import { apiErrorMessage } from '../../services/apiError';
+import { masterDataKeys } from '../../hooks/queryKeys';
 
 interface MechanicalImportModalProps {
   show: boolean;
@@ -21,7 +22,7 @@ export default function MechanicalImportModal({ show, handleClose, onSuccess }: 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: vendors = [] } = useQuery({
-    queryKey: ['vendors'],
+    queryKey: masterDataKeys.vendors,
     queryFn: mechanicalApi.getVendors,
   });
 

@@ -1,17 +1,5 @@
 
 import { useMemo, useState } from 'react';
-import {
-    Chart as ChartJS,
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    BarElement,
-    Title,
-    Tooltip,
-    Legend,
-    Filler
-} from 'chart.js';
 import { buildSpcChartModel, mergeOngoingStudyForDisplay } from '../../utils/spcChartModel';
 import SpcDashboardPanel from '../spc/SpcDashboardPanel';
 import SpcStudyPanel from '../spc/SpcStudyPanel';
@@ -21,9 +9,9 @@ import {
     useExportPatrolSpcReport, usePatrolStats,
 } from '../../hooks/usePatrol';
 import type { SpcStudyResult } from '../../types';
+import '../../utils/chartSetup';
 
 // 註冊 ChartJS 元件
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
 
 interface PatrolChartsProps {
     machine: string;

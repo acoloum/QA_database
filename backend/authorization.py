@@ -111,12 +111,7 @@ def require_permissions(
 
 
 def require_permission(permission: str):
-    """單一權限的相容 alias。"""
-    return require_permissions(permission)
-
-
-def require_perm(permission: str):
-    """舊式 route 名稱的相容 alias。"""
+    """單一權限的常用寫法；多權限或 any 模式請直接用 require_permissions。"""
     return require_permissions(permission)
 
 

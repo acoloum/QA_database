@@ -3,6 +3,7 @@ import api from '../services/api';
 import toast from 'react-hot-toast';
 import type { ActionTask, TaskStatus, PaginatedResponse } from '../types';
 import { normalizeTaskListResponse } from './taskResponseUtils';
+import { taskKeys } from './queryKeys';
 
 export interface TaskListParams {
     source_type?: string;
@@ -19,7 +20,7 @@ export interface TaskListParams {
 // ── 任務列表 ─────────────────────────────────────────────────
 export const useTaskList = (params: TaskListParams = {}) => {
     return useQuery({
-        queryKey: ['taskList', params],
+        queryKey: taskKeys.list(params),
         queryFn: async () => {
             const res = await api.get<PaginatedResponse<ActionTask>>('/tasks', { params });
             return res.data;
@@ -30,7 +31,7 @@ export const useTaskList = (params: TaskListParams = {}) => {
 // ── 我的待辦 ─────────────────────────────────────────────────
 export const useMyTasks = () => {
     return useQuery({
-        queryKey: ['myTasks'],
+        queryKey: taskKeys.myTasks,
         queryFn: async () => {
             const res = await api.get<ActionTask[]>('/tasks/my');
             return res.data;
@@ -42,7 +43,7 @@ export const useMyTasks = () => {
 // ── 依來源查詢任務（CAPA 明細頁）────────────────────────────
 export const useTasksBySource = (sourceType: string, sourceId: number | null) => {
     return useQuery({
-        queryKey: ['tasks', sourceType, sourceId],
+        queryKey: taskKeys.bySource(sourceType, sourceId),
         queryFn: async () => {
             const res = await api.get<ActionTask[]>('/tasks', {
                 params: { source_type: sourceType, source_id: sourceId },
@@ -70,8 +71,8 @@ export const useCreateTask = () => {
         },
         onSuccess: () => {
             toast.success('任務建立成功');
-            qc.invalidateQueries({ queryKey: ['taskList'] });
-            qc.invalidateQueries({ queryKey: ['myTasks'] });
+            qc.invalidateQueries({ queryKey: taskKeys.root });
+            qc.invalidateQueries({ queryKey: taskKeys.myTasks });
         },
     });
 };
@@ -92,9 +93,9 @@ export const useUpdateTaskStatus = () => {
         },
         onSuccess: () => {
             toast.success('任務狀態已更新');
-            qc.invalidateQueries({ queryKey: ['taskList'] });
-            qc.invalidateQueries({ queryKey: ['myTasks'] });
-            qc.invalidateQueries({ queryKey: ['tasks'] });
+            qc.invalidateQueries({ queryKey: taskKeys.root });
+            qc.invalidateQueries({ queryKey: taskKeys.myTasks });
+            qc.invalidateQueries({ queryKey: taskKeys.bySourceRoot });
         },
         onError: (err: Error) => {
             toast.error(`更新失敗：${err.message}`);
@@ -111,8 +112,8 @@ export const useDeleteTask = () => {
         },
         onSuccess: () => {
             toast.success('任務已刪除');
-            qc.invalidateQueries({ queryKey: ['taskList'] });
-            qc.invalidateQueries({ queryKey: ['myTasks'] });
+            qc.invalidateQueries({ queryKey: taskKeys.root });
+            qc.invalidateQueries({ queryKey: taskKeys.myTasks });
         },
     });
 };
@@ -120,7 +121,7 @@ export const useDeleteTask = () => {
 // ── 結案 gate 檢查 ────────────────────────────────────────────
 export const useCloseGate = (sourceType: string, sourceId: number | null) => {
     return useQuery({
-        queryKey: ['closeGate', sourceType, sourceId],
+        queryKey: taskKeys.closeGate(sourceType, sourceId),
         queryFn: async () => {
             const res = await api.get<{
                 can_close: boolean;

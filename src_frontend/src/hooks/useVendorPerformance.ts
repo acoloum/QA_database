@@ -3,10 +3,11 @@ import toast from 'react-hot-toast';
 
 import api from '../services/api';
 import type { VendorPerformance } from '../types';
+import { vendorPerformanceKeys } from './queryKeys';
 
 export const useVendorPerformanceList = (period: string) =>
   useQuery({
-    queryKey: ['vendorPerformance', period],
+    queryKey: vendorPerformanceKeys.byPeriod(period),
     queryFn: async () => {
       const res = await api.get<{ success: boolean; data: VendorPerformance[] }>(
         '/vendor-performance', { params: { period } }
@@ -17,7 +18,7 @@ export const useVendorPerformanceList = (period: string) =>
 
 export const useVendorPerformanceHistory = (vendorId: number, months = 6) =>
   useQuery({
-    queryKey: ['vendorPerformanceHistory', vendorId, months],
+    queryKey: vendorPerformanceKeys.history(vendorId, months),
     queryFn: async () => {
       const res = await api.get<{ success: boolean; data: VendorPerformance[] }>(
         `/vendor-performance/${vendorId}/history`, { params: { months } }
@@ -47,8 +48,8 @@ export const useRefreshVendorPerformance = () => {
     onSuccess: (_data, period) => {
       toast.success('績效快照已重新計算');
       // 精確失效：只清掉該期間的評比清單，並刷新走勢（歷史可能涵蓋該期間）
-      queryClient.invalidateQueries({ queryKey: ['vendorPerformance', period] });
-      queryClient.invalidateQueries({ queryKey: ['vendorPerformanceHistory'] });
+      queryClient.invalidateQueries({ queryKey: vendorPerformanceKeys.byPeriod(period) });
+      queryClient.invalidateQueries({ queryKey: vendorPerformanceKeys.historyRoot });
     },
     onError: err => toast.error(getRefreshErrorMessage(err)),
   });

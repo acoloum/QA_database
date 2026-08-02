@@ -20,6 +20,9 @@ from .msa_errors import (
     MsaValidationError,
 )
 from .msa_payload import (
+    canonical_json as _shared_canonical_json,
+    optional_text as _shared_optional_text,
+    required_text as _shared_required_text,
     reject_unknown_fields as _reject_unknown_fields,
     require_object as _require_object,
 )
@@ -103,14 +106,14 @@ class MsaCriteriaService:
         """建立適用範圍 profile，並在同一交易保存稽核紀錄。"""
         data = _require_object(payload)
         _reject_unknown_fields(data, _PROFILE_FIELDS)
-        name = MsaCriteriaService._required_text(
-            data,
-            "name",
+        name = _shared_required_text(
+            data.get("name"),
+            field="name",
             max_length=_PROFILE_TEXT_LIMITS["name"],
             code="MSA_CRITERIA_PROFILE_INVALID",
         )
         scopes = {
-            field: MsaCriteriaService._optional_text(
+            field: _shared_optional_text(
                 data.get(field),
                 field=field,
                 max_length=limit,
@@ -170,7 +173,7 @@ class MsaCriteriaService:
         data = _require_object(payload)
         _reject_unknown_fields(data, _VERSION_FIELDS)
         criteria_snapshot = MsaCriteriaService._criteria_snapshot(data)
-        method_version = MsaCriteriaService._optional_text(
+        method_version = _shared_optional_text(
             data.get("method_version", "MSA4-1.0"),
             field="method_version",
             max_length=80,
@@ -268,7 +271,7 @@ class MsaCriteriaService:
             )
             expected_status = approval_data.get("expected_status")
             # 核准理由為稽核證據；空白視為未填寫，型別或長度不合則拒絕
-            reason = MsaCriteriaService._optional_text(
+            reason = _shared_optional_text(
                 approval_data.get("reason"),
                 field="reason",
                 max_length=_REASON_MAX_LENGTH,
@@ -483,7 +486,7 @@ class MsaCriteriaService:
             "product_family_scope": profile.product_family_scope,
             "characteristic_scope": profile.characteristic_scope,
             "characteristic_importance": profile.characteristic_importance,
-            "applicable_study_types": MsaCriteriaService._canonical_json(
+            "applicable_study_types": _canonical_json(
                 profile.applicable_study_types or [],
                 field="applicable_study_types",
             ),
@@ -513,15 +516,15 @@ class MsaCriteriaService:
                 if version.effective_date
                 else None
             ),
-            "thresholds": MsaCriteriaService._canonical_json(
+            "thresholds": _canonical_json(
                 version.thresholds,
                 field="thresholds",
             ),
-            "stability_rules": MsaCriteriaService._canonical_json(
+            "stability_rules": _canonical_json(
                 version.stability_rules,
                 field="stability_rules",
             ),
-            "conditional_actions": MsaCriteriaService._canonical_json(
+            "conditional_actions": _canonical_json(
                 version.conditional_actions,
                 field="conditional_actions",
             ),
@@ -586,7 +589,7 @@ class MsaCriteriaService:
                 else DEFAULT_CONDITIONAL_ACTIONS
             )
         )
-        basis = MsaCriteriaService._optional_text(
+        basis = _shared_optional_text(
             payload.get("basis", DEFAULT_BASIS),
             field="basis",
             max_length=10000,
@@ -598,7 +601,7 @@ class MsaCriteriaService:
                 "basis 不可為空白",
                 details={"field": "basis"},
             )
-        return MsaCriteriaService._canonical_json(
+        return _canonical_json(
             {
                 "thresholds": thresholds,
                 "stability_rules": stability_rules,
@@ -800,74 +803,6 @@ class MsaCriteriaService:
         return normalized
 
     @staticmethod
-    def _canonical_json(value, *, field: str):
-        try:
-            encoded = json.dumps(
-                value,
-                allow_nan=False,
-                ensure_ascii=False,
-                separators=(",", ":"),
-                sort_keys=True,
-            )
-            return json.loads(encoded)
-        except (OverflowError, TypeError, ValueError) as error:
-            raise MsaValidationError(
-                "MSA_CRITERIA_JSON_INVALID",
-                f"{field} 必須是可重現且僅含有限數值的 JSON",
-                details={"field": field},
-            ) from error
-
-    @staticmethod
-    def _required_text(
-        payload: dict,
-        field: str,
-        *,
-        max_length: int,
-        code: str,
-    ) -> str:
-        value = payload.get(field)
-        normalized = MsaCriteriaService._optional_text(
-            value,
-            field=field,
-            max_length=max_length,
-            code=code,
-        )
-        if normalized is None:
-            raise MsaValidationError(
-                code,
-                f"{field} 為必填欄位",
-                details={"field": field},
-            )
-        return normalized
-
-    @staticmethod
-    def _optional_text(
-        value,
-        *,
-        field: str,
-        max_length: int,
-        code: str,
-    ) -> str | None:
-        if value is None:
-            return None
-        if not isinstance(value, str):
-            raise MsaValidationError(
-                code,
-                f"{field} 必須是文字",
-                details={"field": field},
-            )
-        normalized = value.strip()
-        if not normalized:
-            return None
-        if len(normalized) > max_length:
-            raise MsaValidationError(
-                code,
-                f"{field} 超過允許長度",
-                details={"field": field, "max_length": max_length},
-            )
-        return normalized
-
-    @staticmethod
     def _parse_iso_date(value, *, field: str) -> date:
         if isinstance(value, datetime):
             raise MsaValidationError(
@@ -960,3 +895,8 @@ class MsaCriteriaService:
                 },
             )
         return parsed
+
+
+def _canonical_json(value, *, field: str):
+    """本模組的正規化 JSON；規則共用，僅綁定判定基準的錯誤碼。"""
+    return _shared_canonical_json(value, field=field, code="MSA_CRITERIA_JSON_INVALID")
