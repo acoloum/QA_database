@@ -72,6 +72,8 @@ from .spc_transformations import inverse_values, transform_values
 SPC_METHOD_VERSION = "2026.2"
 SPC_CODE_VERSION = os.environ.get("SPC_CODE_VERSION", "2026.2")
 ANALYSIS_FAMILIES = {"variable", "attribute", "machine"}
+# 研究清單的硬上限；清單序列化會展開 versions/limit_versions/events，需避免無界限查詢
+SPC_STUDY_LIST_LIMIT = 200
 ADAPTERS: dict[str, Callable[[Mapping[str, Any]], SpcStudyInput]] = {
     "shipping": build_shipping_study_input,
     "patrol": build_patrol_study_input,
@@ -1344,11 +1346,34 @@ class SpcStudyService:
         return version
 
     @staticmethod
-    def list_studies() -> list[SpcStudy]:
-        return SpcStudy.query.options(
+    def list_studies(
+        *,
+        source: str | None = None,
+        study_type: str | None = None,
+        process_stream_key: str | None = None,
+        limit: int = SPC_STUDY_LIST_LIMIT,
+    ) -> list[SpcStudy]:
+        """SPC 研究清單。
+
+        序列化需要展開 versions → limit_versions → events，展開量與研究數成正比，
+        因此提供 source / study_type / process_stream_key 篩選，並保留上限避免無界限查詢。
+        """
+        query = SpcStudy.query.options(
             selectinload(SpcStudy.versions).selectinload(SpcStudyVersion.limit_versions)
             .selectinload(SpcLimitVersion.events),
-        ).order_by(SpcStudy.created_at.desc(), SpcStudy.id.desc()).all()
+        )
+        if source:
+            query = query.filter(SpcStudy.source == source)
+        if study_type:
+            query = query.filter(SpcStudy.study_type == study_type)
+        if process_stream_key:
+            query = query.filter(SpcStudy.process_stream_key == process_stream_key)
+        return (
+            query
+            .order_by(SpcStudy.created_at.desc(), SpcStudy.id.desc())
+            .limit(limit)
+            .all()
+        )
 
     @staticmethod
     def get_study(study_id: int) -> SpcStudy:

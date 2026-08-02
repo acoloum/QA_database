@@ -43,11 +43,14 @@ const SpcStudyPanel = ({
   const approveResearch = useApproveSpcResearch();
   const reject = useRejectSpcStudy();
   const retire = useRetireSpcLimit();
-  const { data: studies = [] } = useSpcStudies();
-  const matchingStudy = studies.find(study =>
-    study.source === source
-    && study.study_type === studyType
-    && study.process_stream_key === preview?.process_stream_key);
+  // 篩選交給後端：本面板只需要對應當前製程串流的那一筆研究，
+  // 不需要把全部研究（連同其 versions/events）都抓下來再於前端 find。
+  // 尚未有 process_stream_key 時不發查詢——三個條件缺一就不構成唯一比對。
+  const { data: studies = [] } = useSpcStudies(
+    { source, study_type: studyType, process_stream_key: preview?.process_stream_key },
+    { enabled: Boolean(preview?.process_stream_key) },
+  );
+  const matchingStudy = studies[0] ?? null;
   const versionMatchesPreview = !selectedVersion || Boolean(
     preview?.process_stream_key
     && selectedVersion.process_stream_key === preview.process_stream_key

@@ -336,7 +336,12 @@ def analyze_study(current_user):
 @require_permission("spc.view")
 @_handle_spc_errors
 def list_studies(current_user):
-    studies = SpcStudyService.list_studies()
+    # 呼叫端只需要符合當前製程串流的研究；未帶篩選時仍受服務層上限保護
+    studies = SpcStudyService.list_studies(
+        source=request.args.get("source"),
+        study_type=request.args.get("study_type"),
+        process_stream_key=request.args.get("process_stream_key"),
+    )
     limits = _prefetch_monitoring_limits([
         version for study in studies for version in study.versions
     ])

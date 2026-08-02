@@ -55,7 +55,18 @@ vi.mock('../../hooks/useSpcStudies', () => ({
   useSpcAssignees: () => ({
     data: assigneesState.data, isLoading: false, isError: false,
   }),
-  useSpcStudies: () => ({ data: studiesState.value }),
+  // 研究篩選已下放到後端，mock 需比照套用 filter，
+  // 否則「ongoing 不得遮蔽 retrospective」這類斷言會失去意義。
+  useSpcStudies: (filter: {
+    source?: string; study_type?: string; process_stream_key?: string;
+  } = {}) => ({
+    data: studiesState.value.filter((study: Record<string, unknown>) => (
+      (!filter.source || study.source === filter.source)
+      && (!filter.study_type || study.study_type === filter.study_type)
+      && (!filter.process_stream_key
+        || study.process_stream_key === filter.process_stream_key)
+    )),
+  }),
   useSpcStudy: (id: number | null) => useSpcStudyMock(id),
 }));
 

@@ -84,20 +84,31 @@ const invalidateStudy = (
   queryClient: ReturnType<typeof useQueryClient>,
   studyId: number,
 ) => {
-  queryClient.invalidateQueries({ queryKey: ['spcStudies'] });
-  queryClient.invalidateQueries({ queryKey: ['spcStudy', studyId] });
-  queryClient.invalidateQueries({ queryKey: ['spcStudyHistory', studyId] });
+  queryClient.invalidateQueries({ queryKey: spcKeys.studiesRoot });
+  queryClient.invalidateQueries({ queryKey: spcKeys.study(studyId) });
+  queryClient.invalidateQueries({ queryKey: spcKeys.history(studyId) });
 };
 
-export const useSpcStudies = () => useQuery({
-  queryKey: ['spcStudies'],
+export interface SpcStudiesFilter {
+  source?: string;
+  study_type?: string;
+  process_stream_key?: string;
+}
+
+/** SPC 研究清單。帶入篩選可讓後端只展開需要的研究（清單序列化含 versions/events）。 */
+export const useSpcStudies = (
+  filter: SpcStudiesFilter = {},
+  options: { enabled?: boolean } = {},
+) => useQuery({
+  queryKey: spcKeys.studies(filter),
   queryFn: async () => unwrap(
-    await api.get<ApiSuccess<SpcStudySummary[]>>('/spc/studies'),
+    await api.get<ApiSuccess<SpcStudySummary[]>>('/spc/studies', { params: filter }),
   ),
+  enabled: options.enabled ?? true,
 });
 
 export const useSpcStudy = (studyId: number | null) => useQuery({
-  queryKey: ['spcStudy', studyId],
+  queryKey: spcKeys.study(studyId),
   queryFn: async () => unwrap(
     await api.get<ApiSuccess<SpcStudySummary>>(`/spc/studies/${studyId}`),
   ),
@@ -107,7 +118,7 @@ export const useSpcStudy = (studyId: number | null) => useQuery({
 export const useSpcStudyHistory = (
   studyId: number | null, page = 1, perPage = 20,
 ) => useQuery({
-  queryKey: ['spcStudyHistory', studyId, page, perPage],
+  queryKey: spcKeys.history(studyId, page, perPage),
   queryFn: async () => unwrap(
     await api.get<ApiSuccess<SpcStudyHistoryPage>>(`/spc/studies/${studyId}/history`, {
       params: { page, per_page: perPage },
@@ -121,7 +132,7 @@ export const fetchSpcEvent = async (eventId: number): Promise<SpcEventSummary> =
 );
 
 export const useSpcAssignees = (enabled = true) => useQuery({
-  queryKey: ['spcAssignees'],
+  queryKey: spcKeys.assignees,
   queryFn: async () => unwrap(
     await api.get<ApiSuccess<SpcAssignee[]>>('/spc/assignees'),
   ),
