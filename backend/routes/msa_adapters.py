@@ -7,7 +7,8 @@ from flask import jsonify
 from ..authorization import require_permissions
 from ..errors import AuthorizationError
 from ..services.msa_errors import MsaServiceError
-from ..utils import auth_required, role_grants_permission
+from ..utils import auth_required
+from ..authorization import role_grants_permission
 
 
 def handle_msa_errors(function):

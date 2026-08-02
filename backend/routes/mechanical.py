@@ -9,7 +9,8 @@ from ..services.mechanical_service import (
 )
 from ..extensions import db
 from ..models import Vendor
-from ..utils import auth_required, require_perm, handle_db_error, validate_upload_file
+from ..utils import auth_required, handle_db_error, validate_upload_file
+from ..authorization import require_permission
 
 mechanical_bp = Blueprint('mechanical', __name__)
 
@@ -40,7 +41,7 @@ def _json_object():
 
 @mechanical_bp.route('/api/mechanical/tests', methods=['GET'])
 @auth_required
-@require_perm('mechanical.view')
+@require_permission('mechanical.view')
 def list_tests():
     """機械性質檢驗清單查詢"""
     try:
@@ -51,7 +52,7 @@ def list_tests():
 
 @mechanical_bp.route('/api/mechanical/tests/<int:test_id>', methods=['GET'])
 @auth_required
-@require_perm('mechanical.view')
+@require_permission('mechanical.view')
 def get_test(test_id):
     """取得單筆機械性質檢驗明細"""
     try:
@@ -62,7 +63,7 @@ def get_test(test_id):
 
 @mechanical_bp.route('/api/mechanical/tests', methods=['POST'])
 @auth_required
-@require_perm('mechanical.create')
+@require_permission('mechanical.create')
 def create_test():
     """新增機械性質檢驗"""
     try:
@@ -74,7 +75,7 @@ def create_test():
 
 @mechanical_bp.route('/api/mechanical/tests/<int:test_id>', methods=['PUT'])
 @auth_required
-@require_perm('mechanical.edit')
+@require_permission('mechanical.edit')
 def update_test(test_id):
     """更新機械性質檢驗"""
     try:
@@ -86,7 +87,7 @@ def update_test(test_id):
 
 @mechanical_bp.route('/api/mechanical/tests/<int:test_id>', methods=['DELETE'])
 @auth_required
-@require_perm('mechanical.delete')
+@require_permission('mechanical.delete')
 def delete_test(test_id):
     """刪除機械性質檢驗"""
     try:
@@ -98,7 +99,7 @@ def delete_test(test_id):
 
 @mechanical_bp.route('/api/mechanical/tests/import', methods=['POST'])
 @auth_required
-@require_perm('mechanical.create')
+@require_permission('mechanical.create')
 def import_tests():
     """匯入機械性質 Excel（必榮供應商轉置表格式）"""
     try:
@@ -136,7 +137,7 @@ def import_tests():
 
 @mechanical_bp.route('/api/mechanical/stats', methods=['GET'])
 @auth_required
-@require_perm('mechanical.view')
+@require_permission('mechanical.view')
 def get_stats():
     """機械性質即時 SPC 預覽（供頁面內嵌圖表使用）"""
     try:
@@ -147,7 +148,7 @@ def get_stats():
 
 @mechanical_bp.route('/api/mechanical/spec', methods=['GET'])
 @auth_required
-@require_perm('mechanical.view')
+@require_permission('mechanical.view')
 def get_spec():
     """依材質+尺寸查規格下限（供表單即時顯示）"""
     from ..services.mechanical_spec import lookup_lower_limits
@@ -165,7 +166,7 @@ def get_spec():
 
 @mechanical_bp.route('/api/mechanical/options', methods=['GET'])
 @auth_required
-@require_perm('mechanical.view')
+@require_permission('mechanical.view')
 def get_options():
     """取得指定廠商公差中受控且去重的材質與尺寸建議。"""
     try:

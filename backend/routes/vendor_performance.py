@@ -3,7 +3,8 @@ from flask import Blueprint, request
 from datetime import date
 
 from ..services.vendor_performance_service import VendorPerformanceService
-from ..utils import auth_required, api_success, api_error, bounded_int, require_permission
+from ..utils import auth_required, api_success, api_error, bounded_int
+from ..authorization import require_permission
 
 vendor_perf_bp = Blueprint('vendor_performance', __name__)
 

@@ -4,7 +4,8 @@ from ..services.ncmr_service import NCMRService, NCMRValidationError
 from ..authorization import require_permissions
 from ..errors import APIError
 from ..schemas import NCMRCreateSchema, NCMRUpdateIdentifierSchema, NCMRUpdateSchema
-from ..utils import auth_required, bounded_int, parse_optional_date, require_permission
+from ..utils import auth_required, bounded_int, parse_optional_date
+from ..authorization import require_permission
 from ..extensions import db
 
 ncmr_bp = Blueprint('ncmr', __name__)

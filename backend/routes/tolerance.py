@@ -1,7 +1,8 @@
 
 from flask import Blueprint, jsonify, request, send_file
 from ..services.tolerance_service import ToleranceService
-from ..utils import auth_required, handle_db_error, require_permission
+from ..utils import auth_required, handle_db_error
+from ..authorization import require_permission
 
 tolerance_bp = Blueprint('tolerance', __name__)
 

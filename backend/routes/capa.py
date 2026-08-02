@@ -3,7 +3,8 @@ from flask import Blueprint, jsonify, request
 from ..services.capa_service import CAPAService
 from ..services.task_service import TaskService
 from ..errors import APIError
-from ..utils import auth_required, bounded_int, parse_optional_date, require_permission
+from ..utils import auth_required, bounded_int, parse_optional_date
+from ..authorization import require_permission
 
 capa_bp = Blueprint('capa', __name__)
 

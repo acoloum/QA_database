@@ -3,7 +3,8 @@ from functools import wraps
 from flask import Blueprint, jsonify, request, current_app
 from ..services.rework_service import ReworkService
 from ..errors import APIError
-from ..utils import auth_required, require_permission
+from ..utils import auth_required
+from ..authorization import require_permission
 
 rework_bp = Blueprint('rework', __name__)
 

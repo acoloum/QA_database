@@ -4,12 +4,12 @@ from datetime import date
 from flask import Blueprint, request
 
 from ..services.quality_analytics_service import QualityAnalyticsService
+from ..authorization import require_permission
 from ..utils import (
     api_success,
     auth_required,
     bounded_int,
     parse_optional_date,
-    require_permission,
 )
 
 quality_analytics_bp = Blueprint('quality_analytics', __name__)

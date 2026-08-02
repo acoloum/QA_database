@@ -1,4 +1,4 @@
-"""權限閘門（require_perm）回歸測試。
+"""權限閘門（require_permission）回歸測試。
 
 驗證 pyrometry 等模組的寫入/刪除路由確實受權限保護：
 - 無權限角色 → 403

@@ -1,12 +1,12 @@
 """任務路由 — 橫展任務 CRUD 與我的待辦"""
 from flask import Blueprint, jsonify, request
 from ..services.task_service import TaskService
+from ..authorization import require_permission
 from ..utils import (
     auth_required,
     bounded_int,
     parse_optional_date,
     parse_optional_int,
-    require_permission,
 )
 
 task_bp = Blueprint('task', __name__)

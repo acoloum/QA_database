@@ -4,7 +4,8 @@ from ..services.complaint_service import ComplaintService
 from ..services.complaint_stats_service import ComplaintStatsService
 from ..errors import APIError
 from ..authorization import require_permissions
-from ..utils import auth_required, bounded_int, parse_optional_date, require_permission
+from ..utils import auth_required, bounded_int, parse_optional_date
+from ..authorization import require_permission
 
 complaint_bp = Blueprint('complaint', __name__)
 

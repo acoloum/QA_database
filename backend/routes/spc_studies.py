@@ -15,7 +15,8 @@ from ..models import (
 from ..services.spc_errors import SpcServiceError, SpcValidationError
 from ..services.spc_ocap_service import SpcOcapService
 from ..services.spc_study_service import SpcStudyService, _validate_monitoring_limit_ownership
-from ..utils import auth_required, require_permission
+from ..utils import auth_required
+from ..authorization import require_permission
 
 
 spc_studies_bp = Blueprint("spc_studies", __name__)

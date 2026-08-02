@@ -220,27 +220,6 @@ def auth_required(f: Any) -> Any:
 
 
 # ==================================================
-# 細粒度權限控制
-# ==================================================
-def role_grants_permission(current_user, perm: str) -> bool:
-    """舊 import path 相容 alias；實作集中於 authorization。"""
-    from .authorization import role_grants_permission as grants
-    return grants(current_user, perm)
-
-
-def require_permission(perm: str):
-    """單一權限相容 alias，不再依賴 route 函式參數。"""
-    from .authorization import require_permission as centralized
-    return centralized(perm)
-
-
-def require_perm(perm: str):
-    """舊式名稱相容 alias，與 require_permission 共用同一實作。"""
-    from .authorization import require_perm as centralized
-    return centralized(perm)
-
-
-# ==================================================
 # 操作審計日誌
 # ==================================================
 def log_audit(user_id, action: str, module: str,
