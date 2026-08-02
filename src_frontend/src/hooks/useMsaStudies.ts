@@ -38,6 +38,21 @@ export const msaStudyKeys = {
   restudy: () => [...msaKeys.all, 'restudy-requests'] as const,
 };
 
+/**
+ * 研究領域 mutation 後統一刷新「研究」相關快取。
+ * 刻意以子樹 prefix 取代 msaKeys.all（['msa']），排除 equipment / criteria /
+ * import 等獨立資料域——那些由各自 mutation 負責刷新，
+ * 避免一次研究操作連帶觸發全部 MSA 資料重新抓取。
+ * v5 invalidateQueries 只會重新抓取目前 active 的 query。
+ */
+const invalidateMsaStudyDomain = (queryClient: ReturnType<typeof useQueryClient>) => {
+  queryClient.invalidateQueries({ queryKey: ['msa', 'studies'] });
+  queryClient.invalidateQueries({ queryKey: ['msa', 'study'] });
+  queryClient.invalidateQueries({ queryKey: ['msa', 'plan-tasks'] });
+  queryClient.invalidateQueries({ queryKey: ['msa', 'plan-observations'] });
+  queryClient.invalidateQueries({ queryKey: ['msa', 'restudy-requests'] });
+};
+
 // ---------------------------------------------------------------------------
 // 研究
 // ---------------------------------------------------------------------------
@@ -63,7 +78,7 @@ export const useCreateMsaStudy = () => {
     mutationFn: async (payload) => unwrap(
       await api.post<ApiEnvelope<MsaStudy>>('/msa/studies', payload),
     ),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: msaKeys.all }),
+    onSuccess: () => invalidateMsaStudyDomain(queryClient),
   });
 };
 
@@ -75,7 +90,7 @@ export const useUpdateMsaStudy = () => {
         `/msa/studies/${studyId}`, payload,
       ),
     ),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: msaKeys.all }),
+    onSuccess: () => invalidateMsaStudyDomain(queryClient),
   });
 };
 
@@ -91,7 +106,7 @@ export const useCreateMsaPlan = () => {
         `/msa/studies/${studyId}/plans`, payload,
       ),
     ),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: msaKeys.all }),
+    onSuccess: () => invalidateMsaStudyDomain(queryClient),
   });
 };
 
@@ -105,7 +120,7 @@ export const useFreezeMsaPlan = () => {
         `/msa/plans/${planId}/freeze`, payload,
       ),
     ),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: msaKeys.all }),
+    onSuccess: () => invalidateMsaStudyDomain(queryClient),
   });
 };
 
@@ -157,7 +172,7 @@ export const useCorrectMsaObservation = () => {
         `/msa/observations/${observationId}/corrections`, payload,
       ),
     ),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: msaKeys.all }),
+    onSuccess: () => invalidateMsaStudyDomain(queryClient),
   });
 };
 
@@ -169,7 +184,7 @@ export const useValidateMsaPlan = () => {
         `/msa/plans/${planId}/validate`, {},
       ),
     ),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: msaKeys.all }),
+    onSuccess: () => invalidateMsaStudyDomain(queryClient),
   });
 };
 
@@ -197,7 +212,7 @@ export const useConfirmMsaObservationImport = () => {
         `/msa/plans/${planId}/imports/${batchId}/confirm`, {},
       ),
     ),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: msaKeys.all }),
+    onSuccess: () => invalidateMsaStudyDomain(queryClient),
   });
 };
 
@@ -215,7 +230,7 @@ export const useAnalyzeMsaPlan = () => {
         `/msa/plans/${planId}/analyze`, payload,
       ),
     ),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: msaKeys.all }),
+    onSuccess: () => invalidateMsaStudyDomain(queryClient),
   });
 };
 
@@ -232,7 +247,7 @@ export const useSubmitMsaResult = () => {
   const queryClient = useQueryClient();
   return useMutation<MsaResultVersion, unknown, MsaWorkflowActionInput>({
     mutationFn: workflowRequest('submit'),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: msaKeys.all }),
+    onSuccess: () => invalidateMsaStudyDomain(queryClient),
   });
 };
 
@@ -240,7 +255,7 @@ export const useApproveMsaResult = () => {
   const queryClient = useQueryClient();
   return useMutation<MsaResultVersion, unknown, MsaWorkflowActionInput>({
     mutationFn: workflowRequest('approve'),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: msaKeys.all }),
+    onSuccess: () => invalidateMsaStudyDomain(queryClient),
   });
 };
 
@@ -248,7 +263,7 @@ export const useRejectMsaResult = () => {
   const queryClient = useQueryClient();
   return useMutation<MsaResultVersion, unknown, MsaWorkflowActionInput>({
     mutationFn: workflowRequest('reject'),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: msaKeys.all }),
+    onSuccess: () => invalidateMsaStudyDomain(queryClient),
   });
 };
 
@@ -256,7 +271,7 @@ export const useVoidMsaResult = () => {
   const queryClient = useQueryClient();
   return useMutation<MsaResultVersion, unknown, MsaWorkflowActionInput>({
     mutationFn: workflowRequest('void'),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: msaKeys.all }),
+    onSuccess: () => invalidateMsaStudyDomain(queryClient),
   });
 };
 
@@ -285,7 +300,7 @@ export const useStartMsaRestudy = () => {
         `/msa/restudy-requests/${requestId}/start`, {},
       ),
     ),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: msaKeys.all }),
+    onSuccess: () => invalidateMsaStudyDomain(queryClient),
   });
 };
 
