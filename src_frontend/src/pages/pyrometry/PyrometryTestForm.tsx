@@ -157,9 +157,8 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
     };
   }, [editId, editData]);
 
-  useEffect(() => {
-    if (isEditLoadError) setError('載入爐溫測試資料失敗');
-  }, [isEditLoadError]);
+  // 編輯資料載入失敗時顯示錯誤（render 派生，避免在 effect 中 setState）
+  const displayedError = error || (isEditLoadError ? '載入爐溫測試資料失敗' : '');
 
   // TUS 量測點更新
   const updateTus = (i: number, k: keyof TusPoint, v: string) =>
@@ -363,7 +362,7 @@ const PyrometryTestForm = ({ editId, onClose, onSaved }: Props) => {
         <Modal.Title>{editId ? '編輯爐溫測試' : '新增爐溫測試'}</Modal.Title>
       </Modal.Header>
       <Modal.Body>
-        {error && <div className="alert alert-danger py-1">{error}</div>}
+        {displayedError && <div className="alert alert-danger py-1">{displayedError}</div>}
         <Form>
           <PyrometryBasicSection
             furnaces={furnaces || []}

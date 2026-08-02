@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 
-import { SEVERITY_META, type MsaSeverity } from './MsaRiskCard';
+import { SEVERITY_META, type MsaSeverity } from './msaRiskMeta';
 
 /**
  * 工作類別決定佇列優先序：設備阻擋讓研究完全無法放行，排最前；
@@ -27,7 +27,7 @@ export interface MsaWorkItem {
 }
 
 // 先看類別，同類別再看期限先後；沒有期限的排在有期限之後
-export const sortWorkItems = (items: MsaWorkItem[]): MsaWorkItem[] =>
+const sortWorkItems = (items: MsaWorkItem[]): MsaWorkItem[] =>
   [...items].sort((left, right) => {
     const byCategory =
       CATEGORY_ORDER[left.category] - CATEGORY_ORDER[right.category];

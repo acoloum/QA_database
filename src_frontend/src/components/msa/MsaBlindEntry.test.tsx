@@ -12,9 +12,14 @@ const baseTask: MsaBlindTask = {
   recorded: false,
 };
 
+// 與父層（MsaDataCollectionPage）相同的 key 契約：requested_order + 評價人盲碼
+const entryKey = (task: MsaBlindTask) =>
+  `${task.requested_order}-${task.appraiser_blind_code}`;
+
 const renderEntry = (task: MsaBlindTask, completed = 0) =>
   render(
     <MsaBlindEntry
+      key={entryKey(task)}
       task={task}
       position={task.requested_order}
       total={5}
@@ -29,13 +34,15 @@ const renderEntry = (task: MsaBlindTask, completed = 0) =>
 
 describe('MsaBlindEntry', () => {
   it('切換到不同任務時清空輸入並把焦點帶回輸入欄', () => {
+    const nextTask = { ...baseTask, requested_order: 2 };
     const { rerender } = renderEntry(baseTask);
     fireEvent.change(screen.getByLabelText('量測讀值（mm）'), { target: { value: '10.2' } });
     expect(screen.getByDisplayValue('10.2')).toBeInTheDocument();
 
     rerender(
       <MsaBlindEntry
-        task={{ ...baseTask, requested_order: 2 }}
+        key={entryKey(nextTask)}
+        task={nextTask}
         position={2}
         total={5}
         completed={0}
@@ -58,6 +65,7 @@ describe('MsaBlindEntry', () => {
 
     rerender(
       <MsaBlindEntry
+        key={entryKey(baseTask)}
         task={baseTask}
         position={1}
         total={5}
@@ -74,13 +82,15 @@ describe('MsaBlindEntry', () => {
   });
 
   it('requested_order 相同但評價人不同時視為不同任務，避免殘留前一評價人的輸入', () => {
+    const nextTask = { ...baseTask, appraiser_blind_code: '乙' };
     const { rerender } = renderEntry(baseTask);
     fireEvent.change(screen.getByLabelText('量測讀值（mm）'), { target: { value: '10.2' } });
     expect(screen.getByDisplayValue('10.2')).toBeInTheDocument();
 
     rerender(
       <MsaBlindEntry
-        task={{ ...baseTask, appraiser_blind_code: '乙' }}
+        key={entryKey(nextTask)}
+        task={nextTask}
         position={1}
         total={5}
         completed={0}

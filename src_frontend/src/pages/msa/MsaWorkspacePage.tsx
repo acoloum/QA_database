@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router';
 
-import MsaRiskCard, { type MsaSeverity } from '../../components/msa/MsaRiskCard';
+import MsaRiskCard from '../../components/msa/MsaRiskCard';
+import type { MsaSeverity } from '../../components/msa/msaRiskMeta';
 import MsaWorkQueue, {
   type MsaWorkItem,
 } from '../../components/msa/MsaWorkQueue';

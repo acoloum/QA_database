@@ -3,10 +3,11 @@ import { useParams } from 'react-router';
 
 import MsaBlindEntry from '../../components/msa/MsaBlindEntry';
 import MsaObservationImportReview from '../../components/msa/MsaObservationImportReview';
-import MsaObservationMatrix, {
+import MsaObservationMatrix from '../../components/msa/MsaObservationMatrix';
+import {
   buildMatrixCells,
   type MsaMatrixCell,
-} from '../../components/msa/MsaObservationMatrix';
+} from '../../components/msa/msaObservationMatrixCells';
 import { useAuth } from '../../context/useAuth';
 import {
   useConfirmMsaObservationImport,
@@ -140,6 +141,7 @@ export default function MsaDataCollectionPage() {
           {mode === 'blind' && (
             currentTask ? (
               <MsaBlindEntry
+                key={`${currentTask.requested_order}-${currentTask.appraiser_blind_code}`}
                 task={currentTask}
                 position={currentTask.requested_order}
                 total={items.length}

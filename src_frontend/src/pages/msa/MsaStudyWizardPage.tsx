@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 
-import MsaMethodSelector, {
+import MsaMethodSelector from '../../components/msa/MsaMethodSelector';
+import {
   findMethod,
   type MsaMethodOption,
-} from '../../components/msa/MsaMethodSelector';
+} from '../../components/msa/msaMethods';
 import MsaPlanReview, {
   type MsaPlanBlocker,
 } from '../../components/msa/MsaPlanReview';

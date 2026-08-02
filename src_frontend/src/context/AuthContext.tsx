@@ -66,6 +66,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, [user]);
 
     useEffect(() => {
+        // mount 時驗證 token：這是「從外部系統（伺服器）同步初始化」的合法模式，
+        // checkAuth 內部會以非同步方式 setState，故停用 set-state-in-effect 檢查
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         checkAuth();
     }, [checkAuth]);
 

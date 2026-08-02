@@ -5,11 +5,6 @@ import { useCalibrations } from '../../hooks/useCalibrations';
 import type { CalibrationListParams, CalibrationRecord } from '../../types/calibration';
 import './calibration.css';
 
-export const WORK_QUEUE_ORDER = [
-  'submitted', 'rejected', 'fail', 'limited_use', 'ready_for_submission',
-  'in_progress', 'draft',
-] as const;
-
 const resultLabel = (result: CalibrationRecord['result']) => ({
   pending: '待判定', pass: '合格', fail: '不合格', limited_use: '限制使用',
 }[result]);

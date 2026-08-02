@@ -138,12 +138,10 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
   const hasDuplicateTraceNumbers =
     extrusionDuplicateIndexes.size > 0 || t4FurnaceDuplicateIndexes.size > 0;
 
-  useEffect(() => {
-    if (hasDuplicateTraceNumbers) return;
-    setValidationError((current) => (
-      current === DUPLICATE_TRACE_ERROR ? '' : current
-    ));
-  }, [hasDuplicateTraceNumbers]);
+  // 重複序號已修正時就不顯示 DUPLICATE 錯誤（render 派生，避免在 effect 中 setState）
+  const displayedValidationError =
+    validationError === DUPLICATE_TRACE_ERROR && !hasDuplicateTraceNumbers
+      ? '' : validationError;
 
   const {
     data: detail,
@@ -168,22 +166,6 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
   });
 
   useEffect(() => {
-    if (testId === null) {
-      setBasic(EMPTY_BASIC);
-      setVendorId(null);
-      setExtrusionNumbers([emptyTraceNumber(1)]);
-      setT4FurnaceNumbers([emptyTraceNumber(1)]);
-      setGrid(emptyGrid());
-      setWaived(emptyWaived());
-      setShowSecond(false);
-      setShowEc(false);
-      setValidationError('');
-      setSaveError('');
-      setHydratedTestId(null);
-      hydratedTestIdRef.current = null;
-      return;
-    }
-
     if (!detail) return;
     // 同一筆資料再次載入（refetch／快取更新）時不重跑 hydrate，避免覆寫使用者輸入
     if (hydratedTestIdRef.current === testId) return;
@@ -398,8 +380,8 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
         {isVendorsError && (
           <Alert variant="danger" role="alert">載入廠商清單失敗，請稍後再試</Alert>
         )}
-        {validationError && (
-          <Alert variant="danger" role="alert">{validationError}</Alert>
+        {displayedValidationError && (
+          <Alert variant="danger" role="alert">{displayedValidationError}</Alert>
         )}
         {saveError && (
           <Alert variant="danger" role="alert">{saveError}</Alert>
@@ -415,7 +397,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                   maxLength={50}
                   list="mechanical-product-size-options"
                   value={basic.產品尺寸}
-                  isInvalid={Boolean(validationError && !basic.產品尺寸.trim())}
+                  isInvalid={Boolean(displayedValidationError && !basic.產品尺寸.trim())}
                   onChange={(event) => setBasicField('產品尺寸', event.target.value)}
                 />
                 <datalist id="mechanical-product-size-options">
@@ -433,7 +415,7 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                   maxLength={50}
                   list="mechanical-material-options"
                   value={basic.材質}
-                  isInvalid={Boolean(validationError && !basic.材質.trim())}
+                  isInvalid={Boolean(displayedValidationError && !basic.材質.trim())}
                   onChange={(event) => setBasicField('材質', event.target.value)}
                 />
                 <datalist id="mechanical-material-options">

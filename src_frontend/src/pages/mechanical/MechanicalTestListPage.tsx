@@ -330,6 +330,7 @@ export default function MechanicalTestListPage() {
 
       {editingId !== null && (
         <MechanicalTestForm
+          key={editingId}
           testId={editingId === 'new' ? null : editingId}
           onClose={() => setEditingId(null)}
           onSaved={() => {

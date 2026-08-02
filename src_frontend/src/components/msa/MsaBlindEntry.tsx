@@ -27,12 +27,11 @@ export default function MsaBlindEntry({
   const [value, setValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // 換到下一個任務（requested_order 或評價人不同）時清空並把焦點帶回輸入欄，
-  // 讓連續量測不必動滑鼠；同一任務重渲染（例如已記錄數更新）時保留輸入
+  // 換任務時由父層以 key 重掛載本元件，輸入欄狀態因此自動清空；
+  // 這裡只在掛載後把焦點帶回輸入欄，讓連續量測不必動滑鼠
   useEffect(() => {
-    setValue('');
     inputRef.current?.focus();
-  }, [task.requested_order, task.appraiser_blind_code]);
+  }, []);
 
   const isAttribute = categories.length > 0;
 

@@ -9,9 +9,9 @@ import MsaStabilityCharts from '../../components/msa/charts/MsaStabilityCharts';
 import MsaDecisionModal from '../../components/msa/MsaDecisionModal';
 import MsaEvidenceLayers, {
   MsaMethodEvidence,
-  flattenStatistics,
   type MsaEvidenceLayer,
 } from '../../components/msa/MsaEvidenceLayers';
+import { flattenStatistics } from '../../components/msa/msaEvidenceLayersUtils';
 import MsaResultHero from '../../components/msa/MsaResultHero';
 import MsaWorkflowBar, {
   type MsaWorkflowAction,

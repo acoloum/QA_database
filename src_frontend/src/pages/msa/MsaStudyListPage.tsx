@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 
-import { MSA_METHODS } from '../../components/msa/MsaMethodSelector';
+import { MSA_METHODS } from '../../components/msa/msaMethods';
 import { useAuth } from '../../context/useAuth';
 import { useMsaStudies } from '../../hooks/useMsaStudies';
 import { isOverdue, sortStudies } from './msaStudySorting';
