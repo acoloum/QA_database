@@ -121,17 +121,6 @@ export const useNCMRDetail = (id: number | null) => {
     });
 };
 
-export const useInspectors = () => {
-    return useQuery({
-        queryKey: ['inspectors'],
-        queryFn: async () => {
-            const res = await api.get<{ name: string }[]>('/inspectors');
-            return res.data;
-        },
-        staleTime: 1000 * 60 * 10, // 10 分鐘
-    });
-};
-
 // --- Mutations ---
 
 export const useCreateNCMR = () => {

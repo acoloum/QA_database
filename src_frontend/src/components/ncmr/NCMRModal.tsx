@@ -1,8 +1,8 @@
 
 import { useState, useEffect } from 'react';
 import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
+import { useInspectors } from '../../hooks/useInspectors';
 import {
-    useInspectors,
     useNCMRDetail,
     useCreateNCMR,
     useUpdateNCMR

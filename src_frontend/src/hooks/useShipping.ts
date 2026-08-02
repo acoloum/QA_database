@@ -4,7 +4,7 @@ import api from '../services/api';
 import toast from 'react-hot-toast';
 import { downloadResponseBlob } from '../utils/downloadFile';
 import type {
-    ShippingInspection, Inspector, Vendor, ToleranceResult, ShippingCreateInput,
+    ShippingInspection, Vendor, ToleranceResult, ShippingCreateInput,
     ShippingUpdateInput, SpcChartData,
 } from '../types';
 
@@ -73,17 +73,8 @@ export const useShippingStats = (params: ShippingStatsParams) => {
 };
 
 // 2. Options
-export const useInspectors = () => {
-    return useQuery({
-        queryKey: ['inspectors'],
-        queryFn: async () => {
-            const res = await api.get<Inspector[]>('/inspectors', { params: { group: '品保' } });
-            return res.data;
-        },
-        staleTime: 60 * 60 * 1000,
-    });
-};
-
+// 檢驗人員選項統一由 hooks/useInspectors 提供（key 含 group 參數），
+// 避免此處重複定義與其他頁面共用 cache key 造成資料互相污染。
 export const useVendors = () => {
     return useQuery({
         queryKey: ['vendors'],

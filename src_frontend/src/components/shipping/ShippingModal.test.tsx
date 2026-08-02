@@ -28,8 +28,12 @@ vi.mock('react-hot-toast', () => ({
   },
 }));
 
-vi.mock('../../hooks/useShipping', () => ({
+// ShippingModal 改走統一 useInspectors hook（內部使用 useQuery），測試直接 mock 該 hook 資料
+vi.mock('../../hooks/useInspectors', () => ({
   useInspectors: () => ({ data: [{ id: 1, name: '檢驗員A' }] }),
+}));
+
+vi.mock('../../hooks/useShipping', () => ({
   useVendors: () => ({ data: [{ id: 10, name: '廠商A' }] }),
   useShippingDetail: () => ({ data: shippingDetail, isLoading: false }),
   useCreateShipping: () => ({ mutateAsync: vi.fn(), isPending: false }),

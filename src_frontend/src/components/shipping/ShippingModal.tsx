@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Modal, Button, Form, Alert } from 'react-bootstrap';
 import toast from 'react-hot-toast';
 import type { ToleranceResult, ShippingMeasurementItem } from '../../types';
+import { useInspectors } from '../../hooks/useInspectors';
 import {
-    useInspectors,
     useVendors,
     useShippingDetail,
     useCreateShipping,
@@ -50,8 +50,8 @@ const DEFAULT_GROUP_COUNT = 5;
 type GroupMeas = ShippingGroupMeasurements;
 
 const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalProps) => {
-    // Hooks
-    const { data: inspectors = [] } = useInspectors();
+    // Hooks（品保組檢驗人員；走統一 useInspectors hook，避免與其他頁共用 cache key）
+    const { data: inspectors = [] } = useInspectors({ group: '品保' });
     const { data: vendors = [] } = useVendors();
     const { data: detailData, isLoading: isLoadingDetail } = useShippingDetail(editId);
 
