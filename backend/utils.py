@@ -193,7 +193,14 @@ def auth_required(f: Any) -> Any:
         # （URL token 會被記錄至 Nginx log、瀏覽器歷史及 Referer header）
         token = request.headers.get('Authorization')
         if not token:
-            return jsonify({'error': '缺少認證 Token'}), 401
+            # 與其他 401 一致地帶出穩定 reason，讓各模組 adapter 依 reason 而非
+            # 訊息文字對應自己的錯誤碼（改文案不應破壞錯誤碼契約）。
+            return api_error(
+                '缺少認證 Token',
+                401,
+                code='AUTH_ERROR',
+                details={'reason': 'missing_token'},
+            )
         if token.startswith('Bearer '):
             token = token[7:]
         from .authentication import authenticate_request_token

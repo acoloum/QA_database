@@ -190,6 +190,24 @@ def require_calibration_any_permission(*permissions: str):
     return decorator
 
 
+# 認證失敗一律以底層帶出的穩定 reason 對應校正錯誤碼；
+# 不比對訊息文字，改文案才不會靜默破壞錯誤碼契約。
+CALIBRATION_AUTH_CODE_BY_REASON = {
+    "missing_token": "CALIBRATION_AUTH_REQUIRED",
+    "invalid_token": "CALIBRATION_AUTH_INVALID_TOKEN",
+    "legacy_or_invalid_claims": "CALIBRATION_AUTH_INVALID_TOKEN",
+    "token_revoked": "CALIBRATION_AUTH_INVALID_TOKEN",
+    "user_not_found": "CALIBRATION_USER_NOT_FOUND",
+    "user_inactive": "CALIBRATION_USER_INACTIVE",
+}
+
+# 少數 reason 需覆寫對外訊息，其餘沿用底層訊息
+CALIBRATION_AUTH_MESSAGE_BY_REASON = {
+    "user_not_found": "使用者不存在",
+    "user_inactive": "使用者帳號已停用",
+}
+
+
 def calibration_auth_required(function):
     """將共用 JWT 401 轉為穩定校正認證 envelope。"""
     guarded = auth_required(function)
@@ -209,70 +227,29 @@ def calibration_auth_required(function):
                 else None
             )
             raw_error = body.get("error") if isinstance(body, dict) else None
-            legacy_message = raw_error if isinstance(raw_error, str) else None
-            formal_message = (
-                raw_error.get("message")
-                if isinstance(raw_error, dict)
-                else None
-            )
-            formal_details = (
+            if not isinstance(raw_error, dict):
+                return result
+            message = raw_error.get("message")
+            details = (
                 raw_error.get("details")
-                if isinstance(raw_error, dict)
-                and isinstance(raw_error.get("details"), dict)
+                if isinstance(raw_error.get("details"), dict)
                 else {}
             )
-            code_by_message = {
-                "缺少認證 Token": "CALIBRATION_AUTH_REQUIRED",
-                "無效或過期的 Token": "CALIBRATION_AUTH_INVALID_TOKEN",
-            }
-            code_by_reason = {
-                "invalid_token": "CALIBRATION_AUTH_INVALID_TOKEN",
-                "legacy_or_invalid_claims": "CALIBRATION_AUTH_INVALID_TOKEN",
-                "token_revoked": "CALIBRATION_AUTH_INVALID_TOKEN",
-                "user_not_found": "CALIBRATION_USER_NOT_FOUND",
-                "user_inactive": "CALIBRATION_USER_INACTIVE",
-            }
-            if (
-                isinstance(legacy_message, str)
-                and legacy_message in code_by_message
-            ):
-                return (
-                    jsonify(
-                        {
-                            "error": {
-                                "code": code_by_message[legacy_message],
-                                "message": legacy_message,
-                                "details": {},
-                            }
+            reason = details.get("reason")
+            if not isinstance(message, str) or reason not in CALIBRATION_AUTH_CODE_BY_REASON:
+                return result
+            return (
+                jsonify(
+                    {
+                        "error": {
+                            "code": CALIBRATION_AUTH_CODE_BY_REASON[reason],
+                            "message": CALIBRATION_AUTH_MESSAGE_BY_REASON.get(reason, message),
+                            "details": {},
                         }
-                    ),
-                    401,
-                )
-            reason = formal_details.get("reason")
-            if (
-                isinstance(formal_message, str)
-                and isinstance(reason, str)
-                and reason in code_by_reason
-            ):
-                message_by_reason = {
-                    "user_not_found": "使用者不存在",
-                    "user_inactive": "使用者帳號已停用",
-                }
-                return (
-                    jsonify(
-                        {
-                            "error": {
-                                "code": code_by_reason[reason],
-                                "message": message_by_reason.get(
-                                    reason,
-                                    formal_message,
-                                ),
-                                "details": {},
-                            }
-                        }
-                    ),
-                    401,
-                )
+                    }
+                ),
+                401,
+            )
         return result
 
     return wrapped
