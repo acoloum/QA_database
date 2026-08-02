@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 
 import api from '../services/api';
+import { compactParams } from '../utils/queryParams';
 import { downloadBlob } from '../utils/downloadFile';
 import type { Furnace, PyrometryDashboardRow, PyrometryTestRow, Recorder, Thermocouple } from '../types';
 import type { PyrometryPayload } from '../pages/pyrometry/pyrometryPayload';
@@ -166,12 +167,15 @@ export const usePyrometryTests = (params: PyrometryTestListParams) =>
   useQuery({
     queryKey: pyrometryKeys.testList(params),
     queryFn: () => {
-      const queryParams = new URLSearchParams({ page: String(params.page), page_size: String(params.pageSize ?? 20) });
-      Object.entries(params.filters).forEach(([key, value]) => {
-        if (value) queryParams.set(key, value);
-      });
       return api.get<{ data: PyrometryTestRow[]; total: number; total_pages: number }>(
-        `/pyrometry/tests?${queryParams.toString()}`,
+        '/pyrometry/tests',
+        {
+          params: {
+            page: params.page,
+            page_size: params.pageSize ?? 20,
+            ...compactParams(params.filters),
+          },
+        },
       ).then(r => r.data);
     },
   });
@@ -227,9 +231,9 @@ export const useExportPyrometryTest = () =>
 export const usePyrometryCorrections = () =>
   useMutation({
     mutationFn: ({ setpoint, type, count, channels }: { setpoint: number; type: 'TUS' | 'SAT'; count: number; channels?: string }) => {
-      const params = new URLSearchParams({ setpoint: String(setpoint), type, count: String(count) });
-      if (channels) params.set('channels', channels);
-      return api.get<{ success: boolean; data: number[] }>(`/pyrometry/corrections?${params.toString()}`).then(r => r.data);
+      return api.get<{ success: boolean; data: number[] }>('/pyrometry/corrections', {
+        params: { setpoint, type, count, ...compactParams({ channels }) },
+      }).then(r => r.data);
     },
     onError: error => toast.error(getPyrometryErrorMessage(error, '補正值載入失敗')),
   });

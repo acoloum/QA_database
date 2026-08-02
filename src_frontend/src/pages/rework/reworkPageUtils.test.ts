@@ -21,12 +21,12 @@ const baseRework: ReworkApplication = {
 };
 
 describe('reworkPageUtils', () => {
-  it('只把有值的篩選條件加入重工列表查詢字串', () => {
+  it('只把有值的篩選條件加入重工列表查詢參數', () => {
     expect(buildReworkListQuery({
       statusFilter: '執行中',
       startDate: '',
       endDate: '2026-06-30',
-    })).toBe('status=%E5%9F%B7%E8%A1%8C%E4%B8%AD&end_date=2026-06-30');
+    })).toEqual({ status: '執行中', end_date: '2026-06-30' });
   });
 
   it('從 API error 取出後端訊息，沒有訊息時回傳預設文案', () => {

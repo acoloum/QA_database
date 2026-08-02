@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
+import { compactParams } from '../utils/queryParams';
 import toast from 'react-hot-toast';
+import { extrusionToleranceKeys } from './queryKeys';
 
 // ---- 型別定義 ----
 
@@ -58,15 +60,19 @@ export const useExtrusionToleranceList = (params: {
     vendor?: string;
 }) =>
     useQuery({
-        queryKey: ['extrusionToleranceList', params],
+        queryKey: extrusionToleranceKeys.list(params),
         queryFn: async () => {
-            const p = new URLSearchParams();
-            if (params.material) p.append('material', params.material);
-            if (params.spec) p.append('spec', params.spec);
-            if (params.vendor) p.append('vendor', params.vendor);
-            p.append('page', params.page.toString());
-            p.append('page_size', params.page_size.toString());
-            const res = await api.get(`/extrusion-tolerance/search?${p}`);
+            const res = await api.get('/extrusion-tolerance/search', {
+                params: {
+                    page: params.page,
+                    page_size: params.page_size,
+                    ...compactParams({
+                        material: params.material,
+                        spec: params.spec,
+                        vendor: params.vendor,
+                    }),
+                },
+            });
             return res.data;
         },
         placeholderData: (prev) => prev,
@@ -74,7 +80,7 @@ export const useExtrusionToleranceList = (params: {
 
 export const useExtrusionToleranceDetail = (id: number | null) =>
     useQuery({
-        queryKey: ['extrusionToleranceDetail', id],
+        queryKey: extrusionToleranceKeys.detail(id),
         queryFn: async () => {
             if (!id) return null;
             const res = await api.get(`/extrusion-tolerance/${id}`);
@@ -85,7 +91,7 @@ export const useExtrusionToleranceDetail = (id: number | null) =>
 
 export const useExtrusionToleranceOptions = () =>
     useQuery({
-        queryKey: ['extrusionToleranceOptions'],
+        queryKey: extrusionToleranceKeys.options,
         queryFn: async () => {
             const res = await api.get('/extrusion-tolerance/options');
             return res.data as { materials: string[]; specs: string[]; vendors: string[] };
@@ -102,8 +108,8 @@ export const useAddExtrusionTolerance = () => {
         },
         onSuccess: () => {
             toast.success('新增成功');
-            qc.invalidateQueries({ queryKey: ['extrusionToleranceList'] });
-            qc.invalidateQueries({ queryKey: ['extrusionToleranceOptions'] });
+            qc.invalidateQueries({ queryKey: extrusionToleranceKeys.root });
+            qc.invalidateQueries({ queryKey: extrusionToleranceKeys.options });
         },
         onError: () => {
             toast.error('新增失敗，請稍後再試');
@@ -120,8 +126,8 @@ export const useUpdateExtrusionTolerance = () => {
         },
         onSuccess: (_d, vars) => {
             toast.success('更新成功');
-            qc.invalidateQueries({ queryKey: ['extrusionToleranceList'] });
-            qc.invalidateQueries({ queryKey: ['extrusionToleranceDetail', vars.id] });
+            qc.invalidateQueries({ queryKey: extrusionToleranceKeys.root });
+            qc.invalidateQueries({ queryKey: extrusionToleranceKeys.detail(vars.id) });
         },
         onError: () => {
             toast.error('更新失敗，請稍後再試');
@@ -138,7 +144,7 @@ export const useDeleteExtrusionTolerance = () => {
         },
         onSuccess: () => {
             toast.success('刪除成功');
-            qc.invalidateQueries({ queryKey: ['extrusionToleranceList'] });
+            qc.invalidateQueries({ queryKey: extrusionToleranceKeys.root });
         },
         onError: () => {
             toast.error('刪除失敗，請稍後再試');
@@ -148,13 +154,12 @@ export const useDeleteExtrusionTolerance = () => {
 
 export const useExtrusionToleranceCheck = (material: string, spec: string, vendorId?: number) =>
     useQuery({
-        queryKey: ['extrusionToleranceCheck', material, spec, vendorId],
+        queryKey: extrusionToleranceKeys.check(material, spec, vendorId),
         queryFn: async () => {
-            const p = new URLSearchParams({ material, spec });
-            if (vendorId !== undefined) {
-                p.append('vendor_id', vendorId.toString());
-            }
-            const res = await api.get(`/extrusion-tolerance/check?${p}`);
+            const res = await api.get('/extrusion-tolerance/check', {
+                // material/spec 一律送出（後端以空值代表未指定），vendor_id 有給才帶
+                params: { material, spec, ...(vendorId !== undefined ? { vendor_id: vendorId } : {}) },
+            });
             return res.data as { success: boolean } & ExtrusionToleranceCheckResult;
         },
         enabled: !!material,

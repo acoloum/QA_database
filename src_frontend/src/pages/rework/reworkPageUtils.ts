@@ -1,4 +1,5 @@
 import type { ReworkApplication } from '../../types';
+import { compactParams } from '../../utils/queryParams';
 import { getReworkErrorMessage } from '../../components/rework/reworkError';
 
 export interface ReworkListFilters {
@@ -13,13 +14,14 @@ export interface ReworkFollowUpState {
   ncmrNumber: string;
 }
 
-export const buildReworkListQuery = ({ statusFilter, startDate, endDate }: ReworkListFilters) => {
-  const params = new URLSearchParams();
-  if (statusFilter) params.append('status', statusFilter);
-  if (startDate) params.append('start_date', startDate);
-  if (endDate) params.append('end_date', endDate);
-  return params.toString();
-};
+/** 重工清單的查詢參數（供 axios `params` 使用）；空白篩選不送出。 */
+export const buildReworkListQuery = ({ statusFilter, startDate, endDate }: ReworkListFilters) => (
+  compactParams({
+    status: statusFilter,
+    start_date: startDate,
+    end_date: endDate,
+  })
+);
 
 export { getReworkErrorMessage };
 
