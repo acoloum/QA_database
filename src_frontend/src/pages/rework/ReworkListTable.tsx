@@ -1,5 +1,7 @@
 import type { ReworkApplication } from '../../types';
 import PermissionAction from '../../components/PermissionAction';
+// 狀態徽章樣式與明細頁共用同一份映射（reworkDetailUtils.getReworkStatusBadge）
+import { getReworkStatusBadge } from './reworkDetailUtils';
 
 interface ReworkListTableProps {
   loading: boolean;
@@ -8,16 +10,6 @@ interface ReworkListTableProps {
   onApprove: (id: number) => void;
   onDelete: (id: number) => void;
 }
-
-const getStatusBadge = (status: string) => {
-  switch (status) {
-    case '已完成': return 'bg-info text-dark';
-    case '已核准': return 'bg-success';
-    case '已拒絕': return 'bg-danger';
-    case '執行中': return 'bg-primary';
-    default: return 'bg-warning text-dark';
-  }
-};
 
 const getUrgencyBadge = (urgency: string) => {
   switch (urgency) {
@@ -75,7 +67,7 @@ const ReworkListTable = ({ loading, applications, onOpenDetail, onApprove, onDel
                     <span className={`badge ${getUrgencyBadge(item.緊急程度)}`}>{item.緊急程度}</span>
                   </td>
                   <td>
-                    <span className={`badge ${getStatusBadge(item.狀態)}`}>{item.狀態}</span>
+                    <span className={`badge ${getReworkStatusBadge(item.狀態)}`}>{item.狀態}</span>
                   </td>
                   <td>
                     <div className="btn-group btn-group-sm">
