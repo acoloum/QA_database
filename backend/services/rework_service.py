@@ -10,13 +10,37 @@ from ..models import (
     NCMR, Inspector, CorrectiveAction, CustomerComplaint, ReworkCost
 )
 from ..utils import (
+    bounded_int,
     format_value,
     generate_number,
     validate_status_transition,
 )
 from .audit_service import AuditService
 
+# 子表清單（執行/品檢/成本）皆為單張重工單的附屬記錄，一律要求指定重工單，
+# 避免未帶條件時整表掃描。
+REWORK_CHILD_PAGE_SIZE = 200
+
+
 class ReworkService:
+    @staticmethod
+    def _resolve_rework_id(rework_id: Any) -> Optional[int]:
+        """將重工單識別碼（數值 ID 或 RW 開頭單號）解析為主鍵。
+
+        解析不出對應單據時回傳 None，由呼叫端決定要回空清單或報錯。
+        """
+        if rework_id in (None, ""):
+            return None
+        try:
+            return int(rework_id)
+        except (ValueError, TypeError):
+            pass
+        if str(rework_id).startswith('RW'):
+            req = ReworkRequest.query.filter_by(rework_number=rework_id).first()
+            if req:
+                return req.id
+        return None
+
     @staticmethod
     def _locked_active_request(rework_id: int) -> Optional[ReworkRequest]:
         return db.session.execute(

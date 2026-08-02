@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api';
+import { reworkKeys } from '../../hooks/queryKeys';
 import type {
   ReworkApplication,
   ReworkCostDetail,
@@ -22,19 +23,19 @@ export const useReworkDetail = (afterReload: () => Promise<void>) => {
   const enabled = showDetailModal && selectedReworkDetailId != null;
 
   const { data: selectedReworkDetail } = useQuery({
-    queryKey: ['reworkApplication', selectedReworkDetailId],
+    queryKey: reworkKeys.application(selectedReworkDetailId),
     queryFn: async () => {
       if (selectedReworkDetailId == null) return null;
-      const res = await api.get<ReworkApplication[]>(
+      const res = await api.get<{ data: ReworkApplication[] }>(
         `/rework/applications?rework_id=${selectedReworkDetailId}`,
       );
-      return res.data?.[0] ?? null;
+      return res.data?.data?.[0] ?? null;
     },
     enabled,
   });
 
   const executionsQuery = useQuery({
-    queryKey: ['reworkExecutions', selectedReworkDetailId],
+    queryKey: reworkKeys.executions(selectedReworkDetailId),
     queryFn: async () => {
       if (selectedReworkDetailId == null) return [] as ReworkExecutionDetail[];
       const res = await api.get<ReworkExecutionDetail[]>(
@@ -46,7 +47,7 @@ export const useReworkDetail = (afterReload: () => Promise<void>) => {
   });
 
   const inspectionsQuery = useQuery({
-    queryKey: ['reworkInspections', selectedReworkDetailId],
+    queryKey: reworkKeys.inspections(selectedReworkDetailId),
     queryFn: async () => {
       if (selectedReworkDetailId == null) return [] as ReworkInspectionDetail[];
       const res = await api.get<ReworkInspectionDetail[]>(
@@ -58,7 +59,7 @@ export const useReworkDetail = (afterReload: () => Promise<void>) => {
   });
 
   const costsQuery = useQuery({
-    queryKey: ['reworkCosts', selectedReworkDetailId],
+    queryKey: reworkKeys.costs(selectedReworkDetailId),
     queryFn: async () => {
       if (selectedReworkDetailId == null) return [] as ReworkCostDetail[];
       const res = await api.get<ReworkCostDetail[]>(
@@ -73,7 +74,7 @@ export const useReworkDetail = (afterReload: () => Promise<void>) => {
     // 以列表頁既有的 item 預填 application 快取，詳情 Modal 開啟時立即顯示（不閃 loading），
     // 同時背景重新抓取以取得最新資料。
     setSelectedReworkDetailId(item.識別碼);
-    queryClient.setQueryData(['reworkApplication', item.識別碼], item);
+    queryClient.setQueryData(reworkKeys.application(item.識別碼), item);
     setShowDetailModal(true);
     setActiveTab('basic');
   }, [queryClient]);
@@ -82,10 +83,10 @@ export const useReworkDetail = (afterReload: () => Promise<void>) => {
     if (selectedReworkDetailId == null) return;
     // invalidateQueries 於 v5 會等待 active query 重新抓取完成後 resolve
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['reworkApplication', selectedReworkDetailId] }),
-      queryClient.invalidateQueries({ queryKey: ['reworkExecutions', selectedReworkDetailId] }),
-      queryClient.invalidateQueries({ queryKey: ['reworkInspections', selectedReworkDetailId] }),
-      queryClient.invalidateQueries({ queryKey: ['reworkCosts', selectedReworkDetailId] }),
+      queryClient.invalidateQueries({ queryKey: reworkKeys.application(selectedReworkDetailId) }),
+      queryClient.invalidateQueries({ queryKey: reworkKeys.executions(selectedReworkDetailId) }),
+      queryClient.invalidateQueries({ queryKey: reworkKeys.inspections(selectedReworkDetailId) }),
+      queryClient.invalidateQueries({ queryKey: reworkKeys.costs(selectedReworkDetailId) }),
     ]);
     await afterReload();
   }, [afterReload, queryClient, selectedReworkDetailId]);
