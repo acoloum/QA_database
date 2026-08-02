@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import '../../utils/chartSetup';
 import type { ReworkStatistics } from '../../types';
@@ -6,7 +7,8 @@ interface Props {
     stats: ReworkStatistics | null;
 }
 
-const ReworkStatisticsDashboard = ({ stats }: Props) => {
+// memo：ReworkPage 開關 modal 重繪時，stats 引用不變（來自 useQuery 快取）則不重繪圖表
+const ReworkStatisticsDashboard = memo(function ReworkStatisticsDashboard({ stats }: Props) {
     if (!stats) return null;
 
     const { application_stats, department_stats, cost_stats } = stats;
@@ -129,6 +131,6 @@ const ReworkStatisticsDashboard = ({ stats }: Props) => {
             </div>
         </div>
     );
-};
+});
 
 export default ReworkStatisticsDashboard;

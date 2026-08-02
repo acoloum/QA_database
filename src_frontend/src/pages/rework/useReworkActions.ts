@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import toast from 'react-hot-toast';
 
 import api from '../../services/api';
@@ -21,7 +22,8 @@ export const useReworkActions = ({
   setFollowUpModal,
   hasPermission,
 }: UseReworkActionsOptions) => {
-  const deleteExecution = async (executionId: number) => {
+  // 各 action 用 useCallback 穩定引用：ReworkPage 傳給 memo 化表格/彈窗的 callback 才不會每次重繪都重建
+  const deleteExecution = useCallback(async (executionId: number) => {
     if (!hasPermission('rework.delete')) {
       toast.error('需要 rework.delete 權限');
       return;
@@ -33,9 +35,9 @@ export const useReworkActions = ({
     } catch (error: unknown) {
       toast.error(getReworkErrorMessage(error, '刪除失敗'));
     }
-  };
+  }, [hasPermission, reloadDetailData]);
 
-  const deleteInspection = async (inspectionId: number) => {
+  const deleteInspection = useCallback(async (inspectionId: number) => {
     if (!hasPermission('rework.delete')) {
       toast.error('需要 rework.delete 權限');
       return;
@@ -47,9 +49,9 @@ export const useReworkActions = ({
     } catch (error: unknown) {
       toast.error(getReworkErrorMessage(error, '刪除失敗'));
     }
-  };
+  }, [hasPermission, reloadDetailData]);
 
-  const deleteCost = async (costId: number) => {
+  const deleteCost = useCallback(async (costId: number) => {
     if (!hasPermission('rework.delete')) {
       toast.error('需要 rework.delete 權限');
       return;
@@ -62,9 +64,9 @@ export const useReworkActions = ({
     } catch (error: unknown) {
       toast.error(getReworkErrorMessage(error, '刪除失敗'));
     }
-  };
+  }, [hasPermission, reloadDetailData, loadData]);
 
-  const closeRework = async (reworkId: number) => {
+  const closeRework = useCallback(async (reworkId: number) => {
     if (!hasPermission('rework.approve')) {
       toast.error('需要 rework.approve 權限');
       return;
@@ -90,9 +92,9 @@ export const useReworkActions = ({
     } catch (error: unknown) {
       toast.error(getReworkErrorMessage(error, '結案失敗'));
     }
-  };
+  }, [hasPermission, applications, selectedReworkDetail, setFollowUpModal, reloadDetailData]);
 
-  const deleteRework = async (reworkId: number) => {
+  const deleteRework = useCallback(async (reworkId: number) => {
     if (!hasPermission('rework.delete')) {
       toast.error('需要 rework.delete 權限');
       return;
@@ -104,7 +106,7 @@ export const useReworkActions = ({
     } catch (error: unknown) {
       toast.error(getReworkErrorMessage(error, '刪除失敗'));
     }
-  };
+  }, [hasPermission, loadData]);
 
   return {
     closeRework,

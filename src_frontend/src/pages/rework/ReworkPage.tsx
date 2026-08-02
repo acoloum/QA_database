@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import type { ReworkExecutionDetail, ReworkInspectionDetail, ReworkCostDetail } from '../../types';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
@@ -78,7 +78,7 @@ const ReworkPage = () => {
         openDetail,
         reloadDetailData,
     } = useReworkDetail(loadData);
-    const reworkActions = useReworkActions({
+    const { closeRework, deleteCost, deleteExecution, deleteInspection, deleteRework } = useReworkActions({
         applications,
         selectedReworkDetail,
         reloadDetailData,
@@ -111,10 +111,11 @@ const ReworkPage = () => {
         navigate('/rework', { replace: true });
     };
 
-    const handleApproveClick = (id: number) => {
+    // useCallback：handler 傳給 memo 化表格，引用穩定才不會使 memo 失效
+    const handleApproveClick = useCallback((id: number) => {
         setSelectedReworkId(id);
         setActiveModal('approve');
-    };
+    }, []);
 
     const handleEditExecution = (execution: ReworkExecutionDetail) => {
         setSelectedExecution(execution);
@@ -127,7 +128,7 @@ const ReworkPage = () => {
             message: '確定要刪除此執行記錄嗎？',
             confirmLabel: '刪除',
             confirmVariant: 'danger',
-            onConfirm: () => reworkActions.deleteExecution(executionId),
+            onConfirm: () => deleteExecution(executionId),
         });
     };
 
@@ -142,7 +143,7 @@ const ReworkPage = () => {
             message: '確定要刪除此品檢記錄嗎？',
             confirmLabel: '刪除',
             confirmVariant: 'danger',
-            onConfirm: () => reworkActions.deleteInspection(inspectionId),
+            onConfirm: () => deleteInspection(inspectionId),
         });
     };
 
@@ -157,29 +158,29 @@ const ReworkPage = () => {
             message: '確定要刪除此成本記錄嗎？',
             confirmLabel: '刪除',
             confirmVariant: 'danger',
-            onConfirm: () => reworkActions.deleteCost(costId),
+            onConfirm: () => deleteCost(costId),
         });
     };
 
-    const handleCloseRework = async (reworkId: number) => {
+    const handleCloseRework = useCallback(async (reworkId: number) => {
         setConfirmAction({
             title: '重工結案',
             message: '確定要結案此重工申請嗎？',
             confirmLabel: '結案',
             confirmVariant: 'success',
-            onConfirm: () => reworkActions.closeRework(reworkId),
+            onConfirm: () => closeRework(reworkId),
         });
-    };
+    }, [closeRework]);
 
-    const handleDeleteRework = async (reworkId: number) => {
+    const handleDeleteRework = useCallback(async (reworkId: number) => {
         setConfirmAction({
             title: '刪除重工申請',
             message: '確定要刪除此重工申請嗎？此動作無法復原。',
             confirmLabel: '刪除',
             confirmVariant: 'danger',
-            onConfirm: () => reworkActions.deleteRework(reworkId),
+            onConfirm: () => deleteRework(reworkId),
         });
-    };
+    }, [deleteRework]);
 
     return (
         <div className="container-fluid">

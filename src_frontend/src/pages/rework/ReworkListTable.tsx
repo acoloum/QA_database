@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { ReworkApplication } from '../../types';
 import PermissionAction from '../../components/PermissionAction';
 // 狀態徽章樣式與明細頁共用同一份映射（reworkDetailUtils.getReworkStatusBadge）
@@ -19,7 +20,8 @@ const getUrgencyBadge = (urgency: string) => {
   }
 };
 
-const ReworkListTable = ({ loading, applications, onOpenDetail, onApprove, onDelete }: ReworkListTableProps) => (
+// memo：ReworkPage 開關 modal 重繪時，若 props 引用不變（loading/applications/callback 皆穩定）則不重繪表格
+const ReworkListTable = memo(({ loading, applications, onOpenDetail, onApprove, onDelete }: ReworkListTableProps) => (
   <div className="card shadow-sm">
     <div className="card-body">
       <div className="table-responsive">
@@ -90,6 +92,6 @@ const ReworkListTable = ({ loading, applications, onOpenDetail, onApprove, onDel
       </div>
     </div>
   </div>
-);
+));
 
 export default ReworkListTable;

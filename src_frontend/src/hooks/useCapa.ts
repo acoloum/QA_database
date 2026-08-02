@@ -22,6 +22,8 @@ export const useCapaList = (params: CapaListParams = {}) => {
             const res = await api.get<PaginatedResponse<CAPAListItem>>('/capas', { params });
             return res.data;
         },
+        // 列表短期內不重抓，避免切頁/聚焦視窗時重複請求
+        staleTime: 60 * 1000,
     });
 };
 
@@ -34,6 +36,7 @@ export const useCapaDetail = (id: number | null) => {
             return res.data;
         },
         enabled: !!id,
+        staleTime: 60 * 1000,
     });
 };
 

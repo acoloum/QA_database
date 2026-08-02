@@ -80,6 +80,7 @@ export const useToleranceSearch = (params: ToleranceSearchParams) => {
             return res.data;
         },
         placeholderData: (previousData) => previousData, // Keep previous data while fetching new page
+        staleTime: 5 * 60 * 1000, // 公差標準不常變動，5 分鐘內不重抓
     });
 };
 
@@ -93,6 +94,7 @@ export const useToleranceDetail = (id: number | null, enabled = true) => {
             return res.data as ToleranceDetailResponse;
         },
         enabled: enabled && !!id, // Only run if id is present
+        staleTime: 5 * 60 * 1000, // 公差標準不常變動，5 分鐘內不重抓
     });
 };
 

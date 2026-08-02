@@ -58,11 +58,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     }, []);
 
-    const hasPermission = (perm: string): boolean => {
+    // useCallback 確保引用穩定：hasPermission 傳入 memo 化子元件/action 時不因 Provider 重繪而失效
+    const hasPermission = useCallback((perm: string): boolean => {
         if (!user) return false;
         if (user.role === 'admin') return true;
         return user.permissions?.[perm] === true;
-    };
+    }, [user]);
 
     useEffect(() => {
         checkAuth();
