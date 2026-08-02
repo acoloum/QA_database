@@ -106,60 +106,54 @@ class ShippingService:
     @staticmethod
     def get_list(args: Dict[str, Any]) -> Dict[str, Any]:
         """獲取出貨檢驗數據列表"""
-        try:
-            query = ShippingData.query
+        query = ShippingData.query
 
-            # Joins for filtering/display
-            query = query.outerjoin(Vendor, ShippingData.vendor_id == Vendor.id)
-            query = query.outerjoin(Inspector, ShippingData.inspector_id == Inspector.id)
+        # Joins for filtering/display
+        query = query.outerjoin(Vendor, ShippingData.vendor_id == Vendor.id)
+        query = query.outerjoin(Inspector, ShippingData.inspector_id == Inspector.id)
 
-            # Use contains_eager to reuse the JOINs above for eager loading
-            query = query.options(
-                contains_eager(ShippingData.inspector),
-                contains_eager(ShippingData.vendor),
-                selectinload(ShippingData.measurements),
-            )
+        # Use contains_eager to reuse the JOINs above for eager loading
+        query = query.options(
+            contains_eager(ShippingData.inspector),
+            contains_eager(ShippingData.vendor),
+            selectinload(ShippingData.measurements),
+        )
 
-            if args.get('id'):
-                query = query.filter(ShippingData.id == args['id'])
-            else:
-                if args.get('vendor'):   query = query.filter(Vendor.name.like(f"%{args['vendor']}%"))
-                if args.get('material'): query = query.filter(ShippingData.material.like(f"%{args['material']}%"))
-                if args.get('spec'):     query = query.filter(ShippingData.spec.like(f"%{args['spec']}%"))
-                if args.get('start_date'): query = query.filter(ShippingData.date >= args['start_date'])
-                if args.get('end_date'):   query = query.filter(ShippingData.date <= args['end_date'])
+        if args.get('id'):
+            query = query.filter(ShippingData.id == args['id'])
+        else:
+            if args.get('vendor'):   query = query.filter(Vendor.name.ilike(f"%{args['vendor']}%"))
+            if args.get('material'): query = query.filter(ShippingData.material.ilike(f"%{args['material']}%"))
+            if args.get('spec'):     query = query.filter(ShippingData.spec.ilike(f"%{args['spec']}%"))
+            if args.get('start_date'): query = query.filter(ShippingData.date >= args['start_date'])
+            if args.get('end_date'):   query = query.filter(ShippingData.date <= args['end_date'])
 
-            query = query.order_by(ShippingData.id.desc())
+        query = query.order_by(ShippingData.id.desc())
 
-            # Pagination
-            page = bounded_int(args.get('page'), 1, 1, 1000000)
-            per_page = 10
-            pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        # Pagination
+        page = bounded_int(args.get('page'), 1, 1, 1000000)
+        per_page = 10
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
-            all_data = [ShippingService._map_row_to_dict(item) for item in pagination.items]
-            
-            return {
-                "data": all_data,
-                "total": pagination.total,
-                "total_pages": pagination.pages
-            }
-        except Exception as e:
-            raise e
+        all_data = [ShippingService._map_row_to_dict(item) for item in pagination.items]
+        
+        return {
+            "data": all_data,
+            "total": pagination.total,
+            "total_pages": pagination.pages
+        }
 
     @staticmethod
     def get_by_id(data_id: int) -> Optional[Dict[str, Any]]:
         """根據 ID 獲取單筆出貨檢驗資料"""
-        try:
-            item = ShippingData.query.options(
-                joinedload(ShippingData.inspector),
-                joinedload(ShippingData.vendor),
-                selectinload(ShippingData.measurements),
-            ).filter_by(id=data_id).first()
-            if not item:
-                return None
-            return ShippingService._map_row_to_dict(item)
-        except Exception as e:
-            raise e
+        item = ShippingData.query.options(
+            joinedload(ShippingData.inspector),
+            joinedload(ShippingData.vendor),
+            selectinload(ShippingData.measurements),
+        ).filter_by(id=data_id).first()
+        if not item:
+            return None
+        return ShippingService._map_row_to_dict(item)
 
     @staticmethod
     def get_stats(args: Dict[str, Any], skip_frozen_limits: bool = False) -> Dict[str, Any]:
@@ -263,7 +257,7 @@ class ShippingService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def set_measurement_exclusion(
@@ -341,7 +335,7 @@ class ShippingService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def import_data(file: Any) -> int:
@@ -422,44 +416,41 @@ class ShippingService:
             return success_count
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def export_excel(args: Dict[str, Any]) -> BytesIO:
         """匯出 Excel"""
-        try:
-            query = ShippingData.query.outerjoin(Vendor, ShippingData.vendor_id == Vendor.id)
+        query = ShippingData.query.outerjoin(Vendor, ShippingData.vendor_id == Vendor.id)
 
-            # eager load 避免 _map_row_to_dict 逐列存取 measurements/inspector/vendor 造成 N+1
-            query = query.options(
-                contains_eager(ShippingData.vendor),
-                joinedload(ShippingData.inspector),
-                selectinload(ShippingData.measurements),
-            )
+        # eager load 避免 _map_row_to_dict 逐列存取 measurements/inspector/vendor 造成 N+1
+        query = query.options(
+            contains_eager(ShippingData.vendor),
+            joinedload(ShippingData.inspector),
+            selectinload(ShippingData.measurements),
+        )
 
-            if args.get('vendor'):   query = query.filter(Vendor.name.like(f"%{args['vendor']}%"))
-            if args.get('material'): query = query.filter(ShippingData.material.like(f"%{args['material']}%"))
-            if args.get('spec'):     query = query.filter(ShippingData.spec.like(f"%{args['spec']}%"))
-            if args.get('start_date'): query = query.filter(ShippingData.date >= args['start_date'])
-            if args.get('end_date'):   query = query.filter(ShippingData.date <= args['end_date'])
+        if args.get('vendor'):   query = query.filter(Vendor.name.ilike(f"%{args['vendor']}%"))
+        if args.get('material'): query = query.filter(ShippingData.material.ilike(f"%{args['material']}%"))
+        if args.get('spec'):     query = query.filter(ShippingData.spec.ilike(f"%{args['spec']}%"))
+        if args.get('start_date'): query = query.filter(ShippingData.date >= args['start_date'])
+        if args.get('end_date'):   query = query.filter(ShippingData.date <= args['end_date'])
 
-            query = query.order_by(ShippingData.date.asc())
+        query = query.order_by(ShippingData.date.asc())
 
-            items = query.all()
+        items = query.all()
+        
+        if not items:
+            df = pd.DataFrame(columns=build_shipping_export_columns())
+        else:
+            export_data = [
+                build_shipping_export_row(ShippingService._map_row_to_dict(item))
+                for item in items
+            ]
             
-            if not items:
-                df = pd.DataFrame(columns=build_shipping_export_columns())
-            else:
-                export_data = [
-                    build_shipping_export_row(ShippingService._map_row_to_dict(item))
-                    for item in items
-                ]
-                
-                df = pd.DataFrame(export_data)
+            df = pd.DataFrame(export_data)
 
-            output = BytesIO()
-            df.to_excel(output, index=False, engine='openpyxl')
-            output.seek(0)
-            return output
-        except Exception as e:
-            raise e
+        output = BytesIO()
+        df.to_excel(output, index=False, engine='openpyxl')
+        output.seek(0)
+        return output

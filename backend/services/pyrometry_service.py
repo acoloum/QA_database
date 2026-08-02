@@ -101,7 +101,7 @@ class PyrometryService:
             return f.id
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def update_furnace(furnace_id: int, data: Dict[str, Any]) -> bool:
@@ -127,7 +127,7 @@ class PyrometryService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def delete_furnace(furnace_id: int) -> bool:
@@ -142,7 +142,7 @@ class PyrometryService:
             raise
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     # ---------- 溫度記錄器校正 ----------
     @staticmethod
@@ -181,7 +181,7 @@ class PyrometryService:
             return r.id
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def update_recorder(recorder_id: int, data: Dict[str, Any]) -> bool:
@@ -208,7 +208,7 @@ class PyrometryService:
             raise
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def delete_recorder(recorder_id: int) -> bool:
@@ -223,7 +223,7 @@ class PyrometryService:
             raise
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     # ---------- 熱電偶校正 ----------
     @staticmethod
@@ -260,7 +260,7 @@ class PyrometryService:
             return t.id
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def update_thermocouple(tc_id: int, data: Dict[str, Any]) -> bool:
@@ -286,7 +286,7 @@ class PyrometryService:
             raise
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def delete_thermocouple(tc_id: int) -> bool:
@@ -301,7 +301,7 @@ class PyrometryService:
             raise
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def thermocouple_correction(setpoint: float) -> float:
@@ -410,7 +410,7 @@ class PyrometryService:
             return t.id
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def get_test(test_id: int) -> Dict[str, Any]:
@@ -512,7 +512,7 @@ class PyrometryService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def delete_test(test_id: int) -> bool:
@@ -528,7 +528,7 @@ class PyrometryService:
             raise
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def search_tests(args: Dict[str, Any]) -> Dict[str, Any]:

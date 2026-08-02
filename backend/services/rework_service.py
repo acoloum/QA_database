@@ -118,163 +118,169 @@ class ReworkService:
     @staticmethod
     def get_statistics(args: Dict[str, Any]) -> Dict[str, Any]:
         """獲取重工統計數據"""
-        try:
-            query = ReworkRequest.active_query()
+        query = ReworkRequest.active_query()
 
-            if args.get('start_date'):
-                query = query.filter(ReworkRequest.created_at >= args['start_date'])
-            if args.get('end_date'):
-                query = query.filter(ReworkRequest.created_at <= args['end_date'])
+        if args.get('start_date'):
+            query = query.filter(ReworkRequest.created_at >= args['start_date'])
+        if args.get('end_date'):
+            query = query.filter(ReworkRequest.created_at <= args['end_date'])
 
-            # Application stats
-            total = query.count()
-            completed = query.filter(ReworkRequest.status.in_(['已結案', '已完成'])).count()
-            in_progress = query.filter(ReworkRequest.status == '執行中').count()
-            approved = query.filter(ReworkRequest.status == '已核准').count()
-            rejected = query.filter(ReworkRequest.review_status == '已拒絕').count()
+        # Application stats
+        total = query.count()
+        completed = query.filter(ReworkRequest.status.in_(['已結案', '已完成'])).count()
+        in_progress = query.filter(ReworkRequest.status == '執行中').count()
+        approved = query.filter(ReworkRequest.status == '已核准').count()
+        rejected = query.filter(ReworkRequest.review_status == '已拒絕').count()
 
-            qty_query = db.session.query(func.sum(ReworkRequest.quantity)).filter(
-                ReworkRequest.deleted_at.is_(None)
-            )
-            if args.get('start_date'):
-                qty_query = qty_query.filter(ReworkRequest.created_at >= args['start_date'])
-            if args.get('end_date'):
-                qty_query = qty_query.filter(ReworkRequest.created_at <= args['end_date'])
-            total_qty = qty_query.scalar() or 0
+        qty_query = db.session.query(func.sum(ReworkRequest.quantity)).filter(
+            ReworkRequest.deleted_at.is_(None)
+        )
+        if args.get('start_date'):
+            qty_query = qty_query.filter(ReworkRequest.created_at >= args['start_date'])
+        if args.get('end_date'):
+            qty_query = qty_query.filter(ReworkRequest.created_at <= args['end_date'])
+        total_qty = qty_query.scalar() or 0
 
-            # Department stats
-            dept_query = db.session.query(
-                ReworkRequest.department,
-                func.count(ReworkRequest.id).label('count'),
-                func.sum(ReworkRequest.quantity).label('quantity')
-            ).filter(ReworkRequest.deleted_at.is_(None))
-            if args.get('start_date'):
-                dept_query = dept_query.filter(ReworkRequest.created_at >= args['start_date'])
-            if args.get('end_date'):
-                dept_query = dept_query.filter(ReworkRequest.created_at <= args['end_date'])
+        # Department stats
+        dept_query = db.session.query(
+            ReworkRequest.department,
+            func.count(ReworkRequest.id).label('count'),
+            func.sum(ReworkRequest.quantity).label('quantity')
+        ).filter(ReworkRequest.deleted_at.is_(None))
+        if args.get('start_date'):
+            dept_query = dept_query.filter(ReworkRequest.created_at >= args['start_date'])
+        if args.get('end_date'):
+            dept_query = dept_query.filter(ReworkRequest.created_at <= args['end_date'])
 
-            dept_results = dept_query.group_by(ReworkRequest.department).all()
+        dept_results = dept_query.group_by(ReworkRequest.department).all()
 
-            dept_stats = []
-            for row in dept_results:
-                dept_stats.append({
-                    'department': row[0] or '',
-                    'count': row[1],
-                    'quantity': float(row[2]) if row[2] else 0
-                })
+        dept_stats = []
+        for row in dept_results:
+            dept_stats.append({
+                'department': row[0] or '',
+                'count': row[1],
+                'quantity': float(row[2]) if row[2] else 0
+            })
 
-            # Cost stats
-            cost_query = db.session.query(
-                func.count(ReworkCost.id).label('total_records'),
-                func.sum(ReworkCost.total_cost).label('total_cost')
-            )
-            
-            labor_query = cost_query
-            material_query = cost_query
-            equipment_query = cost_query
-            
-            cost_result = cost_query.first()
-            labor_result = labor_query.filter(ReworkCost.cost_type == '人工成本').first()
-            material_result = material_query.filter(ReworkCost.cost_type == '材料成本').first()
-            equipment_result = equipment_query.filter(ReworkCost.cost_type == '設備成本').first()
+        # Cost stats
+        cost_query = db.session.query(
+            func.count(ReworkCost.id).label('total_records'),
+            func.sum(ReworkCost.total_cost).label('total_cost')
+        )
+        
+        labor_query = cost_query
+        material_query = cost_query
+        equipment_query = cost_query
+        
+        cost_result = cost_query.first()
+        labor_result = labor_query.filter(ReworkCost.cost_type == '人工成本').first()
+        material_result = material_query.filter(ReworkCost.cost_type == '材料成本').first()
+        equipment_result = equipment_query.filter(ReworkCost.cost_type == '設備成本').first()
 
-            return {
-                'application_stats': {
-                    'total_applications': total,
-                    'completed': completed,
-                    'in_progress': in_progress,
-                    'approved': approved,
-                    'rejected': rejected,
-                    'total_rework_quantity': float(total_qty) if total_qty else 0
-                },
-                'cost_stats': {
-                    'total_records': cost_result[0] if cost_result and cost_result[0] else 0,
-                    'total_cost': float(cost_result[1]) if cost_result and cost_result[1] else 0,
-                    'labor_cost': float(labor_result[1]) if labor_result and labor_result[1] else 0,
-                    'material_cost': float(material_result[1]) if material_result and material_result[1] else 0,
-                    'equipment_cost': float(equipment_result[1]) if equipment_result and equipment_result[1] else 0
-                },
-                'department_stats': dept_stats
-            }
-        except Exception as e:
-            raise e
+        return {
+            'application_stats': {
+                'total_applications': total,
+                'completed': completed,
+                'in_progress': in_progress,
+                'approved': approved,
+                'rejected': rejected,
+                'total_rework_quantity': float(total_qty) if total_qty else 0
+            },
+            'cost_stats': {
+                'total_records': cost_result[0] if cost_result and cost_result[0] else 0,
+                'total_cost': float(cost_result[1]) if cost_result and cost_result[1] else 0,
+                'labor_cost': float(labor_result[1]) if labor_result and labor_result[1] else 0,
+                'material_cost': float(material_result[1]) if material_result and material_result[1] else 0,
+                'equipment_cost': float(equipment_result[1]) if equipment_result and equipment_result[1] else 0
+            },
+            'department_stats': dept_stats
+        }
 
     @staticmethod
-    def get_application_list(args: Dict[str, Any]) -> List[Dict[str, Any]]:
-        try:
-            query = ReworkRequest.active_query().options(
-                joinedload(ReworkRequest.applicant),
-                joinedload(ReworkRequest.reviewer),
-                joinedload(ReworkRequest.ncmr)
-            )
+    def get_application_list(args: Dict[str, Any]) -> Dict[str, Any]:
+        """重工申請清單（分頁）。
 
-            if args.get('rework_id'):
-                query = query.filter(ReworkRequest.id == args['rework_id'])
-            if args.get('status'):
-                query = query.filter(ReworkRequest.status == args['status'])
-            if args.get('start_date'):
-                query = query.filter(ReworkRequest.created_at >= args['start_date'])
-            if args.get('end_date'):
-                query = query.filter(ReworkRequest.created_at <= args['end_date'])
+        回傳 {data, total, total_pages}，與出貨檢驗清單同一形狀。
+        """
+        query = ReworkRequest.active_query().options(
+            joinedload(ReworkRequest.applicant),
+            joinedload(ReworkRequest.reviewer),
+            joinedload(ReworkRequest.ncmr)
+        )
 
-            query = query.order_by(ReworkRequest.created_at.desc())
-            
-            requests = query.all()
-            data = []
-            for r in requests:
-                ncmr = r.ncmr
-                item = {
-                    "識別碼": r.id,
-                    "NCMR_ID": r.ncmr_id,
-                    "申請單號": r.rework_number,
-                    "申請人員": r.applicant_id,
-                    "部門": r.department,
-                    "緊急程度": r.urgency,
-                    "產品資訊": r.product_info,
-                    "批號": r.batch_num,
-                    "重工數量": r.quantity,
-                    "申請原因": r.reason,
-                    "預計完成日期": r.expected_date,
-                    "狀態": r.status,
-                    "審核狀態": r.review_status,
-                    "審核人員": r.reviewer_id,
-                    "審核時間": r.review_time,
-                    "審核意見": r.review_opinion,
-                    "申請日期": r.created_at,
-                    "實際完成日期": r.actual_finish_date,
-                    "申請人員姓名": r.applicant.name if r.applicant else "",
-                    "審核人員姓名": r.reviewer.name if r.reviewer else "",
-                    "ncmr_description": ncmr.description if ncmr else "",
-                    "ncmr_number": ncmr.ncmr_number if ncmr else "",
-                    "廠商": r.vendor if r.vendor else (ncmr.vendor if ncmr else ""),
-                    "材質": r.material if r.material else (ncmr.material if ncmr else ""),
-                    # "產品資訊" already in ReworkRequest, but also in NCMR.
-                    # Legacy query selected n."產品資訊" AS "產品資訊" but Rework also has "產品資訊" column.
-                    # Legacy code selected r.* then overwritten by n."產品資訊" if collision?
-                    # Actually `product_info` is in ReworkRequest too.
-                    "客訴_ID": r.complaint_id,
-                }
-                # Format
-                for k, v in item.items():
-                    item[k] = format_value(v)
-                data.append(item)
+        if args.get('rework_id'):
+            query = query.filter(ReworkRequest.id == args['rework_id'])
+        if args.get('status'):
+            query = query.filter(ReworkRequest.status == args['status'])
+        if args.get('start_date'):
+            query = query.filter(ReworkRequest.created_at >= args['start_date'])
+        if args.get('end_date'):
+            query = query.filter(ReworkRequest.created_at <= args['end_date'])
 
-            # 補上客訴單號（從 CustomerComplaint 反查，避免 N+1 改為批量查詢）
-            from ..models import CustomerComplaint
-            complaint_ids = [r.complaint_id for r in requests if r.complaint_id]
-            if complaint_ids:
-                complaints = {
-                    c.id: c.complaint_no
-                    for c in CustomerComplaint.query.filter(CustomerComplaint.id.in_(complaint_ids)).all()
-                }
-                for item in data:
-                    cid = item.get("客訴_ID")
-                    if cid:
-                        item["客訴單號"] = complaints.get(cid, "")
+        # created_at 可能同值，補 id 為決勝鍵，避免分頁邊界重複或遺漏紀錄
+        query = query.order_by(ReworkRequest.created_at.desc(), ReworkRequest.id.desc())
 
-            return data
-        except Exception as e:
-            raise e
+        page = bounded_int(args.get('page'), 1, 1, 1000000)
+        per_page = bounded_int(args.get('per_page'), 20, 1, 200)
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+        requests = pagination.items
+        data = []
+        for r in requests:
+            ncmr = r.ncmr
+            item = {
+                "識別碼": r.id,
+                "NCMR_ID": r.ncmr_id,
+                "申請單號": r.rework_number,
+                "申請人員": r.applicant_id,
+                "部門": r.department,
+                "緊急程度": r.urgency,
+                "產品資訊": r.product_info,
+                "批號": r.batch_num,
+                "重工數量": r.quantity,
+                "申請原因": r.reason,
+                "預計完成日期": r.expected_date,
+                "狀態": r.status,
+                "審核狀態": r.review_status,
+                "審核人員": r.reviewer_id,
+                "審核時間": r.review_time,
+                "審核意見": r.review_opinion,
+                "申請日期": r.created_at,
+                "實際完成日期": r.actual_finish_date,
+                "申請人員姓名": r.applicant.name if r.applicant else "",
+                "審核人員姓名": r.reviewer.name if r.reviewer else "",
+                "ncmr_description": ncmr.description if ncmr else "",
+                "ncmr_number": ncmr.ncmr_number if ncmr else "",
+                "廠商": r.vendor if r.vendor else (ncmr.vendor if ncmr else ""),
+                "材質": r.material if r.material else (ncmr.material if ncmr else ""),
+                # "產品資訊" already in ReworkRequest, but also in NCMR.
+                # Legacy query selected n."產品資訊" AS "產品資訊" but Rework also has "產品資訊" column.
+                # Legacy code selected r.* then overwritten by n."產品資訊" if collision?
+                # Actually `product_info` is in ReworkRequest too.
+                "客訴_ID": r.complaint_id,
+            }
+            # Format
+            for k, v in item.items():
+                item[k] = format_value(v)
+            data.append(item)
+
+        # 補上客訴單號（從 CustomerComplaint 反查，避免 N+1 改為批量查詢）
+        complaint_ids = [r.complaint_id for r in requests if r.complaint_id]
+        if complaint_ids:
+            complaints = {
+                c.id: c.complaint_no
+                for c in CustomerComplaint.query.filter(CustomerComplaint.id.in_(complaint_ids)).all()
+            }
+            for item in data:
+                cid = item.get("客訴_ID")
+                if cid:
+                    item["客訴單號"] = complaints.get(cid, "")
+
+        return {
+            "data": data,
+            "total": pagination.total,
+            "total_pages": pagination.pages,
+        }
 
     @staticmethod
     def create_application(data: Dict[str, Any], *, actor_id: Optional[int]) -> Dict[str, Any]:
@@ -420,7 +426,7 @@ class ReworkService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def approve_application(data: Dict[str, Any], *, actor_id: Optional[int]) -> bool:
@@ -461,58 +467,53 @@ class ReworkService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
-    def get_execution_list(rework_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        try:
-            query = ReworkExecution.query.options(
+    def get_execution_list(rework_id: str) -> List[Dict[str, Any]]:
+        """單張重工單的執行記錄。rework_id 為必填，解析不到單據時回傳空清單。"""
+        req_id = ReworkService._resolve_rework_id(rework_id)
+        if req_id is None:
+            return []
+
+        executions = (
+            ReworkExecution.query
+            .options(
                 joinedload(ReworkExecution.owner),
-                joinedload(ReworkExecution.executor)
+                joinedload(ReworkExecution.executor),
             )
-            
-            if rework_id:
-                try:
-                    req_id = int(rework_id)
-                    query = query.filter(ReworkExecution.rework_id == req_id)
-                except (ValueError, TypeError):
-                    if str(rework_id).startswith('RW'):
-                        req = ReworkRequest.query.filter_by(rework_number=rework_id).first()
-                        if req:
-                            query = query.filter(ReworkExecution.rework_id == req.id)
-            
-            query = query.order_by(ReworkExecution.id.desc())
-            
-            executions = query.all()
-            data = []
-            for e in executions:
-                item = {
-                    "識別碼": e.id,
-                    "重工單號": e.rework_id,
-                    "執行部門": e.dept,
-                    "負責人員": e.owner_id,
-                    "協同人員": e.participants,
-                    # 保留完整時間（format_value 只回傳日期會遺失時分，導致前端顯示為 UTC 午夜 08:00）
-                    "開始時間": e.start_time.strftime('%Y-%m-%d %H:%M:%S') if e.start_time else "",
-                    "預計完成時間": e.est_end_time.strftime('%Y-%m-%d %H:%M:%S') if e.est_end_time else "",
-                    "實際完成時間": e.real_end_time.strftime('%Y-%m-%d %H:%M:%S') if e.real_end_time else "",
-                    "使用設備": e.equipment,
-                    "重工方式": e.method,
-                    "SOP編號": e.sop_num,
-                    "耗材記錄": e.consumables,
-                    "完成數量": e.complete_qty,
-                    "不良數量": e.defect_qty,
-                    "良率": e.yield_rate,
-                    "執行狀況": e.status,
-                    "異常狀況": e.abnormal,
-                    "執行人員": e.executor_id,
-                    "負責人員姓名": e.owner.name if e.owner else "",
-                    "執行人員姓名": e.executor.name if e.executor else ""
-                }
-                data.append(item)
-            return data
-        except Exception as e:
-            raise e
+            .filter(ReworkExecution.rework_id == req_id)
+            .order_by(ReworkExecution.id.desc())
+            .limit(REWORK_CHILD_PAGE_SIZE)
+            .all()
+        )
+        data = []
+        for e in executions:
+            item = {
+                "識別碼": e.id,
+                "重工單號": e.rework_id,
+                "執行部門": e.dept,
+                "負責人員": e.owner_id,
+                "協同人員": e.participants,
+                # 保留完整時間（format_value 只回傳日期會遺失時分，導致前端顯示為 UTC 午夜 08:00）
+                "開始時間": e.start_time.strftime('%Y-%m-%d %H:%M:%S') if e.start_time else "",
+                "預計完成時間": e.est_end_time.strftime('%Y-%m-%d %H:%M:%S') if e.est_end_time else "",
+                "實際完成時間": e.real_end_time.strftime('%Y-%m-%d %H:%M:%S') if e.real_end_time else "",
+                "使用設備": e.equipment,
+                "重工方式": e.method,
+                "SOP編號": e.sop_num,
+                "耗材記錄": e.consumables,
+                "完成數量": e.complete_qty,
+                "不良數量": e.defect_qty,
+                "良率": e.yield_rate,
+                "執行狀況": e.status,
+                "異常狀況": e.abnormal,
+                "執行人員": e.executor_id,
+                "負責人員姓名": e.owner.name if e.owner else "",
+                "執行人員姓名": e.executor.name if e.executor else ""
+            }
+            data.append(item)
+        return data
 
     @staticmethod
     def create_execution(data: Dict[str, Any], *, actor_id: Optional[int]) -> bool:
@@ -585,37 +586,34 @@ class ReworkService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def get_execution(execution_id: int) -> Optional[Dict[str, Any]]:
-        try:
-            e = ReworkExecution.query.options(joinedload(ReworkExecution.owner), joinedload(ReworkExecution.executor)).get(execution_id)
-            if not e: return None
-            return {
-                "識別碼": e.id,
-                "重工單號": e.rework_id,
-                "執行部門": e.dept,
-                "負責人員": e.owner_id,
-                "協同人員": e.participants,
-                "開始時間": e.start_time, # DateTime
-                "預計完成時間": e.est_end_time,
-                "實際完成時間": e.real_end_time,
-                "使用設備": e.equipment,
-                "重工方式": e.method,
-                "SOP編號": e.sop_num,
-                "耗材記錄": e.consumables,
-                "完成數量": e.complete_qty,
-                "不良數量": e.defect_qty,
-                "良率": e.yield_rate,
-                "執行狀況": e.status,
-                "異常狀況": e.abnormal,
-                "執行人員": e.executor_id,
-                "負責人員姓名": e.owner.name if e.owner else "",
-                "執行人員姓名": e.executor.name if e.executor else ""
-            }
-        except Exception as e:
-            raise e
+        e = ReworkExecution.query.options(joinedload(ReworkExecution.owner), joinedload(ReworkExecution.executor)).get(execution_id)
+        if not e: return None
+        return {
+            "識別碼": e.id,
+            "重工單號": e.rework_id,
+            "執行部門": e.dept,
+            "負責人員": e.owner_id,
+            "協同人員": e.participants,
+            "開始時間": e.start_time, # DateTime
+            "預計完成時間": e.est_end_time,
+            "實際完成時間": e.real_end_time,
+            "使用設備": e.equipment,
+            "重工方式": e.method,
+            "SOP編號": e.sop_num,
+            "耗材記錄": e.consumables,
+            "完成數量": e.complete_qty,
+            "不良數量": e.defect_qty,
+            "良率": e.yield_rate,
+            "執行狀況": e.status,
+            "異常狀況": e.abnormal,
+            "執行人員": e.executor_id,
+            "負責人員姓名": e.owner.name if e.owner else "",
+            "執行人員姓名": e.executor.name if e.executor else ""
+        }
 
     @staticmethod
     def update_execution(execution_id: int, data: Dict[str, Any], *, actor_id: Optional[int]) -> bool:
@@ -664,7 +662,7 @@ class ReworkService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def delete_execution(execution_id: int, *, actor_id: Optional[int]) -> bool:
@@ -683,45 +681,42 @@ class ReworkService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
-    def get_inspection_list(rework_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        try:
-            query = ReworkInspection.query
-            
-            if rework_id:
-                try:
-                    req_id = int(rework_id)
-                    query = query.filter(ReworkInspection.rework_id == req_id)
-                except (ValueError, TypeError):
-                    if str(rework_id).startswith('RW'):
-                        req = ReworkRequest.query.filter_by(rework_number=rework_id).first()
-                        if req:
-                            query = query.filter(ReworkInspection.rework_id == req.id)
-            
-            query = query.order_by(ReworkInspection.id.desc())
-            
-            data = []
-            for i in query.all():
-                inspector = db.session.get(Inspector, i.inspector_id) if i.inspector_id else None
-                item = {
-                    "識別碼": i.id,
-                    "重工單號": i.rework_id,
-                    "檢驗日期": format_value(i.date),
-                    "檢驗人員": i.inspector_id,
-                    "檢驗項目": i.item,
-                    "檢驗標準": i.standard,
-                    "檢驗結果": i.result,
-                    "不良數量": i.defect_qty,
-                    "檢驗備註": i.remark,
-                    "建立時間": format_value(i.created_at),
-                    "檢驗人員姓名": inspector.name if inspector else ""
-                }
-                data.append(item)
-            return data
-        except Exception as e:
-            raise e
+    def get_inspection_list(rework_id: str) -> List[Dict[str, Any]]:
+        """單張重工單的品檢記錄。rework_id 為必填，解析不到單據時回傳空清單。"""
+        req_id = ReworkService._resolve_rework_id(rework_id)
+        if req_id is None:
+            return []
+
+        inspections = (
+            ReworkInspection.query
+            .options(joinedload(ReworkInspection.inspector))
+            .filter(ReworkInspection.rework_id == req_id)
+            .order_by(ReworkInspection.id.desc())
+            .limit(REWORK_CHILD_PAGE_SIZE)
+            .all()
+        )
+
+        data = []
+        for i in inspections:
+            inspector = i.inspector
+            item = {
+                "識別碼": i.id,
+                "重工單號": i.rework_id,
+                "檢驗日期": format_value(i.date),
+                "檢驗人員": i.inspector_id,
+                "檢驗項目": i.item,
+                "檢驗標準": i.standard,
+                "檢驗結果": i.result,
+                "不良數量": i.defect_qty,
+                "檢驗備註": i.remark,
+                "建立時間": format_value(i.created_at),
+                "檢驗人員姓名": inspector.name if inspector else ""
+            }
+            data.append(item)
+        return data
             
     @staticmethod
     def create_inspection(data: Dict[str, Any], *, actor_id: Optional[int]) -> bool:
@@ -756,28 +751,25 @@ class ReworkService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def get_inspection(inspection_id: int) -> Optional[Dict[str, Any]]:
-        try:
-            i = ReworkInspection.query.options(joinedload(ReworkInspection.inspector)).get(inspection_id)
-            if not i: return None
-            return {
-                "識別碼": i.id,
-                "重工單號": i.rework_id,
-                "檢驗日期": i.date.strftime('%Y-%m-%d') if i.date else None,
-                "檢驗人員": i.inspector_id,
-                "檢驗項目": i.item,
-                "檢驗標準": i.standard,
-                "檢驗結果": i.result,
-                "不良數量": i.defect_qty,
-                "檢驗備註": i.remark,
-                "建立時間": i.created_at.strftime('%Y-%m-%d %H:%M:%S') if i.created_at else None,
-                "檢驗人員姓名": i.inspector.name if i.inspector else ""
-            }
-        except Exception as e:
-            raise e
+        i = ReworkInspection.query.options(joinedload(ReworkInspection.inspector)).get(inspection_id)
+        if not i: return None
+        return {
+            "識別碼": i.id,
+            "重工單號": i.rework_id,
+            "檢驗日期": i.date.strftime('%Y-%m-%d') if i.date else None,
+            "檢驗人員": i.inspector_id,
+            "檢驗項目": i.item,
+            "檢驗標準": i.standard,
+            "檢驗結果": i.result,
+            "不良數量": i.defect_qty,
+            "檢驗備註": i.remark,
+            "建立時間": i.created_at.strftime('%Y-%m-%d %H:%M:%S') if i.created_at else None,
+            "檢驗人員姓名": i.inspector.name if i.inspector else ""
+        }
 
     @staticmethod
     def update_inspection(inspection_id: int, data: Dict[str, Any], *, actor_id: Optional[int]) -> bool:
@@ -809,7 +801,7 @@ class ReworkService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def delete_inspection(inspection_id: int, *, actor_id: Optional[int]) -> bool:
@@ -828,7 +820,7 @@ class ReworkService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def close_rework(data: Dict[str, Any], *, actor_id: Optional[int]) -> bool:
@@ -884,7 +876,7 @@ class ReworkService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def _has_passed_final_inspection(req: ReworkRequest) -> bool:
@@ -937,40 +929,42 @@ class ReworkService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
-    def get_cost_list(rework_number: Optional[str] = None) -> List[Dict[str, Any]]:
-        try:
-            query = ReworkCost.query.options(joinedload(ReworkCost.recorder))
-            
-            if rework_number:
-                req = ReworkRequest.query.filter_by(rework_number=rework_number).first()
-                if req:
-                    query = query.filter(ReworkCost.rework_id == req.id)
-            
-            query = query.order_by(ReworkCost.created_at.desc())
-            
-            data = []
-            for c in query.all():
-                item = {
-                    "識別碼": c.id,
-                    "重工單號": c.rework_id,
-                    "成本類型": c.cost_type,
-                    "成本項目": c.cost_item,
-                    "單位成本": c.unit_cost,
-                    "數量": c.quantity,
-                    "總成本": c.total_cost,
-                    "成本幣別": c.currency,
-                    "記錄人員": c.recorder_id,
-                    "記錄人員姓名": c.recorder.name if c.recorder else "",
-                    "備註": c.remark,
-                    "記錄日期": format_value(c.created_at)
-                }
-                data.append(item)
-            return data
-        except Exception as e:
-            raise e
+    def get_cost_list(rework_number: str) -> List[Dict[str, Any]]:
+        """單張重工單的成本記錄。rework_number 為必填，解析不到單據時回傳空清單。"""
+        req_id = ReworkService._resolve_rework_id(rework_number)
+        if req_id is None:
+            return []
+
+        costs = (
+            ReworkCost.query
+            .options(joinedload(ReworkCost.recorder))
+            .filter(ReworkCost.rework_id == req_id)
+            .order_by(ReworkCost.created_at.desc())
+            .limit(REWORK_CHILD_PAGE_SIZE)
+            .all()
+        )
+
+        data = []
+        for c in costs:
+            item = {
+                "識別碼": c.id,
+                "重工單號": c.rework_id,
+                "成本類型": c.cost_type,
+                "成本項目": c.cost_item,
+                "單位成本": c.unit_cost,
+                "數量": c.quantity,
+                "總成本": c.total_cost,
+                "成本幣別": c.currency,
+                "記錄人員": c.recorder_id,
+                "記錄人員姓名": c.recorder.name if c.recorder else "",
+                "備註": c.remark,
+                "記錄日期": format_value(c.created_at)
+            }
+            data.append(item)
+        return data
 
     @staticmethod
     def create_cost(data: Dict[str, Any], *, actor_id: Optional[int]) -> bool:
@@ -1011,29 +1005,26 @@ class ReworkService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def get_cost(cost_id: int) -> Optional[Dict[str, Any]]:
-        try:
-            c = ReworkCost.query.options(joinedload(ReworkCost.recorder)).get(cost_id)
-            if not c: return None
-            return {
-                "識別碼": c.id,
-                "重工單號": c.rework_id,
-                "成本類型": c.cost_type,
-                "成本項目": c.cost_item,
-                "單位成本": c.unit_cost,
-                "數量": c.quantity,
-                "總成本": c.total_cost,
-                "成本幣別": c.currency,
-                "記錄人員": c.recorder_id,
-                "記錄人員姓名": c.recorder.name if c.recorder else "",
-                "備註": c.remark,
-                "記錄日期": format_value(c.record_date)
-            }
-        except Exception as e:
-            raise e
+        c = ReworkCost.query.options(joinedload(ReworkCost.recorder)).get(cost_id)
+        if not c: return None
+        return {
+            "識別碼": c.id,
+            "重工單號": c.rework_id,
+            "成本類型": c.cost_type,
+            "成本項目": c.cost_item,
+            "單位成本": c.unit_cost,
+            "數量": c.quantity,
+            "總成本": c.total_cost,
+            "成本幣別": c.currency,
+            "記錄人員": c.recorder_id,
+            "記錄人員姓名": c.recorder.name if c.recorder else "",
+            "備註": c.remark,
+            "記錄日期": format_value(c.record_date)
+        }
 
     @staticmethod
     def update_cost(cost_id: int, data: Dict[str, Any], *, actor_id: Optional[int]) -> bool:
@@ -1066,7 +1057,7 @@ class ReworkService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def delete_cost(cost_id: int, *, actor_id: Optional[int]) -> bool:
@@ -1085,4 +1076,4 @@ class ReworkService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise

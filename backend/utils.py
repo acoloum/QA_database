@@ -433,7 +433,7 @@ def generate_number(prefix: str, table_name: Optional[str] = None, number_field:
             new_seq = str(max_seq + 1).zfill(3)
             return f"{prefix}-{year_month}-{new_seq}"
         except Exception as e:
-            raise e
+            raise
     else:
         return f"{prefix}-{year_month}-001"
 

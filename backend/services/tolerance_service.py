@@ -11,64 +11,27 @@ from ..utils import bounded_int, format_value
 class ToleranceService:
     @staticmethod
     def search_tolerance(args: Dict[str, Any]) -> Dict[str, Any]:
-        try:
-            query = VendorToleranceMain.query.options(joinedload(VendorToleranceMain.vendor))
-            
-            if args.get('material'):
-                query = query.filter(VendorToleranceMain.material.like(f"%{args['material']}%"))
-            if args.get('vendor_id'):
-                query = query.filter(VendorToleranceMain.vendor_id == args['vendor_id'])
-            if args.get('spec'):
-                query = query.filter(VendorToleranceMain.spec.like(f"%{args['spec']}%"))
-            
-            # Pagination
-            page = bounded_int(args.get('page'), 1, 1, 1000000)
-            page_size = bounded_int(args.get('page_size'), 20, 1, 100)
-            
-            total = query.count()
-            
-            query = query.order_by(VendorToleranceMain.id.desc())
-            pagination = query.paginate(page=page, per_page=page_size, error_out=False)
-            
-            data = []
-            for t in pagination.items:
-                item = {
-                    "識別碼": t.id,
-                    "材質": t.material,
-                    "規格": t.spec,
-                    "廠商ID": t.vendor_id,
-                    "廠商名稱": t.vendor.name if t.vendor else "",
-                    "備註": t.note,
-                    "建立日期": format_value(t.created_at)
-                }
-                data.append(item)
-            
-            return {
-                "success": True,
-                "data": data,
-                "total": total,
-                "page": page,
-                "page_size": page_size,
-                "total_pages": pagination.pages
-            }
-        except Exception as e:
-            raise e
-
-    @staticmethod
-    def get_tolerance_detail(tolerance_id: int) -> Dict[str, Any]:
-        try:
-            t = db.session.get(
-                VendorToleranceMain,
-                tolerance_id,
-                options=[
-                    joinedload(VendorToleranceMain.vendor),
-                    joinedload(VendorToleranceMain.details),
-                ],
-            )
-            
-            if not t: raise ValueError("找不到該筆公差資料")
-
-            main_data = {
+        query = VendorToleranceMain.query.options(joinedload(VendorToleranceMain.vendor))
+        
+        if args.get('material'):
+            query = query.filter(VendorToleranceMain.material.ilike(f"%{args['material']}%"))
+        if args.get('vendor_id'):
+            query = query.filter(VendorToleranceMain.vendor_id == args['vendor_id'])
+        if args.get('spec'):
+            query = query.filter(VendorToleranceMain.spec.ilike(f"%{args['spec']}%"))
+        
+        # Pagination
+        page = bounded_int(args.get('page'), 1, 1, 1000000)
+        page_size = bounded_int(args.get('page_size'), 20, 1, 100)
+        
+        total = query.count()
+        
+        query = query.order_by(VendorToleranceMain.id.desc())
+        pagination = query.paginate(page=page, per_page=page_size, error_out=False)
+        
+        data = []
+        for t in pagination.items:
+            item = {
                 "識別碼": t.id,
                 "材質": t.material,
                 "規格": t.spec,
@@ -77,29 +40,60 @@ class ToleranceService:
                 "備註": t.note,
                 "建立日期": format_value(t.created_at)
             }
-            
-            details = []
-            # Sort details by ID as per legacy code order
-            sorted_details = sorted(t.details, key=lambda d: d.id)
-            for d in sorted_details:
-                item = {
-                    "識別碼": d.id,
-                    "測量項目": d.item,
-                    "測量位置": d.position,
-                    "尺寸下限": format_value(d.dim_min),
-                    "尺寸上限": format_value(d.dim_max),
-                    "公差下限": format_value(d.tolerance_min),
-                    "公差上限": format_value(d.tolerance_max),
-                    "標準值": format_value(d.std_val),
-                    "單位": d.unit,
-                    "備註": d.note,
-                    "特性重要度": d.characteristic_class or '其他'
-                }
-                details.append(item)
-            
-            return {"success": True, "main": main_data, "details": details}
-        except Exception as e:
-            raise e
+            data.append(item)
+        
+        return {
+            "success": True,
+            "data": data,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": pagination.pages
+        }
+
+    @staticmethod
+    def get_tolerance_detail(tolerance_id: int) -> Dict[str, Any]:
+        t = db.session.get(
+            VendorToleranceMain,
+            tolerance_id,
+            options=[
+                joinedload(VendorToleranceMain.vendor),
+                joinedload(VendorToleranceMain.details),
+            ],
+        )
+        
+        if not t: raise ValueError("找不到該筆公差資料")
+
+        main_data = {
+            "識別碼": t.id,
+            "材質": t.material,
+            "規格": t.spec,
+            "廠商ID": t.vendor_id,
+            "廠商名稱": t.vendor.name if t.vendor else "",
+            "備註": t.note,
+            "建立日期": format_value(t.created_at)
+        }
+        
+        details = []
+        # Sort details by ID as per legacy code order
+        sorted_details = sorted(t.details, key=lambda d: d.id)
+        for d in sorted_details:
+            item = {
+                "識別碼": d.id,
+                "測量項目": d.item,
+                "測量位置": d.position,
+                "尺寸下限": format_value(d.dim_min),
+                "尺寸上限": format_value(d.dim_max),
+                "公差下限": format_value(d.tolerance_min),
+                "公差上限": format_value(d.tolerance_max),
+                "標準值": format_value(d.std_val),
+                "單位": d.unit,
+                "備註": d.note,
+                "特性重要度": d.characteristic_class or '其他'
+            }
+            details.append(item)
+        
+        return {"success": True, "main": main_data, "details": details}
 
     @staticmethod
     def add_tolerance(data: Dict[str, Any]) -> int:
@@ -134,7 +128,7 @@ class ToleranceService:
             return main.id
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def update_tolerance(tolerance_id: int, data: Dict[str, Any]) -> bool:
@@ -171,7 +165,7 @@ class ToleranceService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def delete_tolerance(tolerance_id: int) -> bool:
@@ -183,73 +177,67 @@ class ToleranceService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def get_options() -> Dict[str, Any]:
-        try:
-            materials = [r[0] for r in db.session.query(VendorToleranceMain.material).distinct().order_by(VendorToleranceMain.material).all() if r[0]]
-            specs = [r[0] for r in db.session.query(VendorToleranceMain.spec).distinct().filter(VendorToleranceMain.spec != None, VendorToleranceMain.spec != '').order_by(VendorToleranceMain.spec).all()]
-            vendor_rows = Vendor.query.order_by(Vendor.name).all()
-            vendors = [{"id": v.id, "name": v.name.strip()} for v in vendor_rows]
-            
-            items = [r[0] for r in db.session.query(VendorToleranceDetail.item).distinct().order_by(VendorToleranceDetail.item).all() if r[0]]
-            
-            return {
-                "materials": materials,
-                "specs": specs,
-                "vendors": vendors,
-                "measureItems": items
-            }
-        except Exception as e:
-            raise e
+        materials = [r[0] for r in db.session.query(VendorToleranceMain.material).distinct().order_by(VendorToleranceMain.material).all() if r[0]]
+        specs = [r[0] for r in db.session.query(VendorToleranceMain.spec).distinct().filter(VendorToleranceMain.spec != None, VendorToleranceMain.spec != '').order_by(VendorToleranceMain.spec).all()]
+        vendor_rows = Vendor.query.order_by(Vendor.name).all()
+        vendors = [{"id": v.id, "name": v.name.strip()} for v in vendor_rows]
+        
+        items = [r[0] for r in db.session.query(VendorToleranceDetail.item).distinct().order_by(VendorToleranceDetail.item).all() if r[0]]
+        
+        return {
+            "materials": materials,
+            "specs": specs,
+            "vendors": vendors,
+            "measureItems": items
+        }
 
     @staticmethod
     def export_excel(args: Dict[str, Any]) -> BytesIO:
-        try:
-            query = VendorToleranceMain.query.options(
-                joinedload(VendorToleranceMain.vendor),
-                joinedload(VendorToleranceMain.details)
-            )
-            
-            if args.get('material'):
-                query = query.filter(VendorToleranceMain.material.like(f"%{args['material']}%"))
-            if args.get('vendor_id'):
-                query = query.filter(VendorToleranceMain.vendor_id == args['vendor_id'])
-            if args.get('spec'):
-                query = query.filter(VendorToleranceMain.spec.like(f"%{args['spec']}%"))
-            
-            data_rows = []
-            
-            # To mimic SQL LEFT JOIN behavior where each detail is a row
-            # We iterate mains and then their details
-            mains = query.order_by(VendorToleranceMain.id).all()
-            
-            for m in mains:
-                details = sorted(m.details, key=lambda d: d.id)
-                if not details:
-                     # Add row with main info only? Legacy left join would produce one row with null details.
-                     row = [m.id, m.material, m.spec, m.vendor.name if m.vendor else None, 
-                            None, None, None, None, None, None, None, None, None]
-                     data_rows.append(row)
-                else:
-                    for d in details:
-                        row = [m.id, m.material, m.spec, m.vendor.name if m.vendor else None,
-                               d.item, d.position, d.dim_min, d.dim_max, 
-                               d.tolerance_min, d.tolerance_max, d.std_val, d.unit, d.note]
-                        data_rows.append(row)
-            
-            cols = ['識別碼', '材質', '規格', '廠商名稱', '測量項目', '測量位置', 
-                    '尺寸下限', '尺寸上限', '公差下限', '公差上限', '標準值', '單位', '備註']
-            
-            df = pd.DataFrame(data_rows, columns=cols)
-            
-            output = BytesIO()
-            df.to_excel(output, index=False, engine='openpyxl')
-            output.seek(0)
-            return output
-        except Exception as e:
-            raise e
+        query = VendorToleranceMain.query.options(
+            joinedload(VendorToleranceMain.vendor),
+            joinedload(VendorToleranceMain.details)
+        )
+        
+        if args.get('material'):
+            query = query.filter(VendorToleranceMain.material.ilike(f"%{args['material']}%"))
+        if args.get('vendor_id'):
+            query = query.filter(VendorToleranceMain.vendor_id == args['vendor_id'])
+        if args.get('spec'):
+            query = query.filter(VendorToleranceMain.spec.ilike(f"%{args['spec']}%"))
+        
+        data_rows = []
+        
+        # To mimic SQL LEFT JOIN behavior where each detail is a row
+        # We iterate mains and then their details
+        mains = query.order_by(VendorToleranceMain.id).all()
+        
+        for m in mains:
+            details = sorted(m.details, key=lambda d: d.id)
+            if not details:
+                 # Add row with main info only? Legacy left join would produce one row with null details.
+                 row = [m.id, m.material, m.spec, m.vendor.name if m.vendor else None, 
+                        None, None, None, None, None, None, None, None, None]
+                 data_rows.append(row)
+            else:
+                for d in details:
+                    row = [m.id, m.material, m.spec, m.vendor.name if m.vendor else None,
+                           d.item, d.position, d.dim_min, d.dim_max, 
+                           d.tolerance_min, d.tolerance_max, d.std_val, d.unit, d.note]
+                    data_rows.append(row)
+        
+        cols = ['識別碼', '材質', '規格', '廠商名稱', '測量項目', '測量位置', 
+                '尺寸下限', '尺寸上限', '公差下限', '公差上限', '標準值', '單位', '備註']
+        
+        df = pd.DataFrame(data_rows, columns=cols)
+        
+        output = BytesIO()
+        df.to_excel(output, index=False, engine='openpyxl')
+        output.seek(0)
+        return output
 
     @staticmethod
     def parse_spec_values(spec_str: str) -> Dict[str, float]:
@@ -276,7 +264,7 @@ class ToleranceService:
         try:
             # Fetch candidates (使用模糊材質匹配；selectinload 預先載入明細避免 N+1)
             candidates = VendorToleranceMain.query.filter(
-                VendorToleranceMain.material.like(f"%{material}%")
+                VendorToleranceMain.material.ilike(f"%{material}%")
             ).options(
                 selectinload(VendorToleranceMain.details)
             ).all()
@@ -396,4 +384,4 @@ class ToleranceService:
             }
 
         except Exception as e:
-            raise e
+            raise

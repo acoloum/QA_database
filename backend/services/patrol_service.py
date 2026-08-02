@@ -61,20 +61,17 @@ class PatrolService:
     @staticmethod
     def get_options() -> Dict[str, List[Dict[str, Any]]]:
         """獲取下拉選單選項"""
-        try:
-            machines = [{"id": r.id, "name": r.name.strip()} for r in Machine.query.all()]
-            operators = [{"id": r.id, "name": r.name.strip()} for r in Operator.query.all()]
-            inspectors = [{"id": r.id, "name": r.name.strip()} for r in Inspector.query.filter_by(group='品保').order_by(Inspector.name).all()]
-            customers = [{"id": r.id, "name": r.name.strip()} for r in Vendor.query.all()]
-            
-            return {
-                "machines": machines,
-                "operators": operators,
-                "inspectors": inspectors,
-                "customers": customers
-            }
-        except Exception as e:
-            raise e
+        machines = [{"id": r.id, "name": r.name.strip()} for r in Machine.query.all()]
+        operators = [{"id": r.id, "name": r.name.strip()} for r in Operator.query.all()]
+        inspectors = [{"id": r.id, "name": r.name.strip()} for r in Inspector.query.filter_by(group='品保').order_by(Inspector.name).all()]
+        customers = [{"id": r.id, "name": r.name.strip()} for r in Vendor.query.all()]
+        
+        return {
+            "machines": machines,
+            "operators": operators,
+            "inspectors": inspectors,
+            "customers": customers
+        }
 
     @staticmethod
     def get_spc(args: Dict[str, Any], skip_frozen_limits: bool = False) -> Dict[str, Any]:
@@ -136,9 +133,9 @@ class PatrolService:
         if stream.filters['cust_id'] is not None:
             query = query.filter(PatrolMain.customer_id == stream.filters['cust_id'])
         if stream.filters['mat']:
-            query = query.filter(PatrolMain.material.contains(stream.filters['mat']))
+            query = query.filter(PatrolMain.material.icontains(stream.filters['mat']))
         if stream.filters['spec']:
-            query = query.filter(PatrolMain.spec.contains(stream.filters['spec']))
+            query = query.filter(PatrolMain.spec.icontains(stream.filters['spec']))
         exclude_main_id = args.get('exclude_main_id')
         if exclude_main_id:
             query = query.filter(PatrolMain.id != int(exclude_main_id))
@@ -435,7 +432,7 @@ class PatrolService:
             except:
                 pass
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def update_patrol(data: Dict[str, Any]) -> bool:
@@ -498,7 +495,7 @@ class PatrolService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def delete_patrol(record_id: int) -> bool:
@@ -516,166 +513,163 @@ class PatrolService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def get_history(args: Dict[str, Any]) -> Dict[str, Any]:
         """獲取巡檢歷史列表（分頁）"""
-        try:
-            query = db.session.query(
-                PatrolMain,
-                Machine.name.label('m_name'),
-                Operator.name.label('op_name'),
-                Vendor.name.label('cust_name')
-            )\
-                .outerjoin(Machine, PatrolMain.machine_id == Machine.id)\
-                .outerjoin(Operator, PatrolMain.operator_id == Operator.id)\
-                .outerjoin(Vendor, PatrolMain.customer_id == Vendor.id)\
-                .options(selectinload(PatrolMain.details))
+        query = db.session.query(
+            PatrolMain,
+            Machine.name.label('m_name'),
+            Operator.name.label('op_name'),
+            Vendor.name.label('cust_name')
+        )\
+            .outerjoin(Machine, PatrolMain.machine_id == Machine.id)\
+            .outerjoin(Operator, PatrolMain.operator_id == Operator.id)\
+            .outerjoin(Vendor, PatrolMain.customer_id == Vendor.id)\
+            .options(selectinload(PatrolMain.details))
 
-            if args.get('s_date'): query = query.filter(PatrolMain.date >= args['s_date'])
-            if args.get('e_date'): query = query.filter(PatrolMain.date <= args['e_date'])
-            if args.get('m_id'):   query = query.filter(PatrolMain.machine_id == args['m_id'])
-            if args.get('op_id'):  query = query.filter(PatrolMain.operator_id == args['op_id'])
-            if args.get('cust_id'): query = query.filter(PatrolMain.customer_id == args['cust_id'])
-            if args.get('mat'):    query = query.filter(PatrolMain.material.like(f"%{args['mat']}%"))
-            if args.get('spec'):   query = query.filter(PatrolMain.spec.like(f"%{args['spec']}%"))
+        if args.get('s_date'): query = query.filter(PatrolMain.date >= args['s_date'])
+        if args.get('e_date'): query = query.filter(PatrolMain.date <= args['e_date'])
+        if args.get('m_id'):   query = query.filter(PatrolMain.machine_id == args['m_id'])
+        if args.get('op_id'):  query = query.filter(PatrolMain.operator_id == args['op_id'])
+        if args.get('cust_id'): query = query.filter(PatrolMain.customer_id == args['cust_id'])
+        if args.get('mat'):    query = query.filter(PatrolMain.material.ilike(f"%{args['mat']}%"))
+        if args.get('spec'):   query = query.filter(PatrolMain.spec.ilike(f"%{args['spec']}%"))
 
-            query = query.order_by(PatrolMain.id.desc())
+        query = query.order_by(PatrolMain.id.desc())
 
-            page = bounded_int(args.get('page'), 1, 1, 1000000)
-            per_page = bounded_int(args.get('per_page'), 20, 1, 100)
+        page = bounded_int(args.get('page'), 1, 1, 1000000)
+        per_page = bounded_int(args.get('per_page'), 20, 1, 100)
 
-            pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
-            # --- 批次查詢押出公差（以避免 N+1） ---
-            # 延遲匯入以避免循環依賴（patrol_service ↔ extrusion_tolerance_service）
-            from ..services.extrusion_tolerance_service import ExtrusionToleranceService
+        # --- 批次查詢押出公差（以避免 N+1） ---
+        # 延遲匯入以避免循環依賴（patrol_service ↔ extrusion_tolerance_service）
+        from ..services.extrusion_tolerance_service import ExtrusionToleranceService
 
-            unique_combos = {
-                (patrol_item.material or '', patrol_item.spec or '', patrol_item.customer_id)
-                for patrol_item, *_ in pagination.items
-                if patrol_item.material
-            }
+        unique_combos = {
+            (patrol_item.material or '', patrol_item.spec or '', patrol_item.customer_id)
+            for patrol_item, *_ in pagination.items
+            if patrol_item.material
+        }
 
-            tol_cache: dict = {}
-            for mat, sp, vid in unique_combos:
-                result = ExtrusionToleranceService.check({'material': mat, 'spec': sp, 'vendor_id': vid})
-                if result.get('found'):
-                    tol_cache[(mat, sp, vid)] = {t['項目']: t for t in result.get('tolerances', [])}
-                else:
-                    tol_cache[(mat, sp, vid)] = None
+        tol_cache: dict = {}
+        for mat, sp, vid in unique_combos:
+            result = ExtrusionToleranceService.check({'material': mat, 'spec': sp, 'vendor_id': vid})
+            if result.get('found'):
+                tol_cache[(mat, sp, vid)] = {t['項目']: t for t in result.get('tolerances', [])}
+            else:
+                tol_cache[(mat, sp, vid)] = None
 
-            data = []
-            for item in pagination.items:
-                patrol, m_name, op_name, cust_name = item
+        data = []
+        for item in pagination.items:
+            patrol, m_name, op_name, cust_name = item
 
-                # --- NG 計算 ---
-                mat = patrol.material or ''
-                sp = patrol.spec or ''
-                tol_map = tol_cache.get((mat, sp, patrol.customer_id)) if mat else None
-                tol_found = tol_map is not None
-                is_ng = False
+            # --- NG 計算 ---
+            mat = patrol.material or ''
+            sp = patrol.spec or ''
+            tol_map = tol_cache.get((mat, sp, patrol.customer_id)) if mat else None
+            tol_found = tol_map is not None
+            is_ng = False
 
-                if tol_found:
-                    # 從規格字串解析標準值（如 "85*2.8" → {'外徑': 85.0, '厚度': 2.8}）
-                    # 供無標準值的相對公差記錄使用
-                    spec_nominal: dict = {}
-                    if sp:
-                        parts = sp.replace('×', '*').replace('x', '*').replace('X', '*').split('*')
-                        try:
-                            if len(parts) >= 1:
-                                spec_nominal['外徑'] = float(parts[0])
-                            if len(parts) >= 2:
-                                spec_nominal['厚度'] = float(parts[1])
-                        except ValueError:
-                            pass
+            if tol_found:
+                # 從規格字串解析標準值（如 "85*2.8" → {'外徑': 85.0, '厚度': 2.8}）
+                # 供無標準值的相對公差記錄使用
+                spec_nominal: dict = {}
+                if sp:
+                    parts = sp.replace('×', '*').replace('x', '*').replace('X', '*').split('*')
+                    try:
+                        if len(parts) >= 1:
+                            spec_nominal['外徑'] = float(parts[0])
+                        if len(parts) >= 2:
+                            spec_nominal['厚度'] = float(parts[1])
+                    except ValueError:
+                        pass
 
-                    for d in patrol.details:
-                        tol = tol_map.get(d.item)
-                        if tol:
-                            # 優先使用尺寸下限/尺寸上限（絕對限制），其次使用公差下限/公差上限（相對限制）
-                            dim_min = tol.get('尺寸下限')
-                            dim_max = tol.get('尺寸上限')
+                for d in patrol.details:
+                    tol = tol_map.get(d.item)
+                    if tol:
+                        # 優先使用尺寸下限/尺寸上限（絕對限制），其次使用公差下限/公差上限（相對限制）
+                        dim_min = tol.get('尺寸下限')
+                        dim_max = tol.get('尺寸上限')
 
-                            # 如果沒有尺寸下限/上限，則從標準值和公差計算
-                            # 標準值優先使用公差記錄本身，否則 fallback 到規格解析值
-                            if dim_min is None and dim_max is None:
-                                std_val = tol.get('標準值') or spec_nominal.get(d.item)
-                                tol_min = tol.get('公差下限')
-                                tol_max = tol.get('公差上限')
+                        # 如果沒有尺寸下限/上限，則從標準值和公差計算
+                        # 標準值優先使用公差記錄本身，否則 fallback 到規格解析值
+                        if dim_min is None and dim_max is None:
+                            std_val = tol.get('標準值') or spec_nominal.get(d.item)
+                            tol_min = tol.get('公差下限')
+                            tol_max = tol.get('公差上限')
+                            if std_val is not None:
+                                if tol_min is not None:
+                                    dim_min = std_val - abs(tol_min)
+                                if tol_max is not None:
+                                    dim_max = std_val + abs(tol_max)
+
+                        # 進行 NG 判斷
+                        for val in [
+                            float(d.min_val) if d.min_val is not None else None,
+                            float(d.max_val) if d.max_val is not None else None,
+                        ]:
+                            if val is None:
+                                continue
+                            if dim_min is not None and val < dim_min:
+                                is_ng = True
+                            if dim_max is not None and val > dim_max:
+                                is_ng = True
+
+                    # 同心度：厚度行的 max_val - min_val 與同心度公差比對
+                    if d.item == '厚度' and d.min_val is not None and d.max_val is not None:
+                        conc_tol = tol_map.get('同心度')
+                        if conc_tol:
+                            # 優先使用尺寸下限/尺寸上限
+                            conc_dim_min = conc_tol.get('尺寸下限')
+                            conc_dim_max = conc_tol.get('尺寸上限')
+
+                            if conc_dim_min is None and conc_dim_max is None:
+                                std_val = conc_tol.get('標準值')
+                                tol_min = conc_tol.get('公差下限')
+                                tol_max = conc_tol.get('公差上限')
                                 if std_val is not None:
                                     if tol_min is not None:
-                                        dim_min = std_val - abs(tol_min)
+                                        conc_dim_min = std_val - abs(tol_min)
                                     if tol_max is not None:
-                                        dim_max = std_val + abs(tol_max)
+                                        conc_dim_max = std_val + abs(tol_max)
+                                elif tol_min == 0.0 and tol_max is not None:
+                                    # 同心度：tolerance_min=0 表示「最小值=0」，tolerance_max 為絕對上限
+                                    conc_dim_min = 0.0
+                                    conc_dim_max = float(tol_max)
+                                elif tol_max is not None:
+                                    # 同心度：僅有公差上限時，直接作為絕對上限
+                                    conc_dim_max = float(tol_max)
+                            
+                            concentricity = float(d.max_val) - float(d.min_val)
+                            if conc_dim_min is not None and concentricity < conc_dim_min:
+                                is_ng = True
+                            if conc_dim_max is not None and concentricity > conc_dim_max:
+                                is_ng = True
 
-                            # 進行 NG 判斷
-                            for val in [
-                                float(d.min_val) if d.min_val is not None else None,
-                                float(d.max_val) if d.max_val is not None else None,
-                            ]:
-                                if val is None:
-                                    continue
-                                if dim_min is not None and val < dim_min:
-                                    is_ng = True
-                                if dim_max is not None and val > dim_max:
-                                    is_ng = True
+                    if is_ng:
+                        break
 
-                        # 同心度：厚度行的 max_val - min_val 與同心度公差比對
-                        if d.item == '厚度' and d.min_val is not None and d.max_val is not None:
-                            conc_tol = tol_map.get('同心度')
-                            if conc_tol:
-                                # 優先使用尺寸下限/尺寸上限
-                                conc_dim_min = conc_tol.get('尺寸下限')
-                                conc_dim_max = conc_tol.get('尺寸上限')
+            date_str = patrol.date.strftime('%Y-%m-%d') if patrol.date else ''
+            data.append({
+                'id': patrol.id,
+                'date': date_str,
+                'm_name': m_name.strip() if m_name else '',
+                'op_name': op_name.strip() if op_name else '',
+                'cust_name': cust_name.strip() if cust_name else '',
+                'mat': patrol.material,
+                'spec': patrol.spec,
+                'is_ng': is_ng,
+                'tol_found': tol_found,
+            })
 
-                                if conc_dim_min is None and conc_dim_max is None:
-                                    std_val = conc_tol.get('標準值')
-                                    tol_min = conc_tol.get('公差下限')
-                                    tol_max = conc_tol.get('公差上限')
-                                    if std_val is not None:
-                                        if tol_min is not None:
-                                            conc_dim_min = std_val - abs(tol_min)
-                                        if tol_max is not None:
-                                            conc_dim_max = std_val + abs(tol_max)
-                                    elif tol_min == 0.0 and tol_max is not None:
-                                        # 同心度：tolerance_min=0 表示「最小值=0」，tolerance_max 為絕對上限
-                                        conc_dim_min = 0.0
-                                        conc_dim_max = float(tol_max)
-                                    elif tol_max is not None:
-                                        # 同心度：僅有公差上限時，直接作為絕對上限
-                                        conc_dim_max = float(tol_max)
-                                
-                                concentricity = float(d.max_val) - float(d.min_val)
-                                if conc_dim_min is not None and concentricity < conc_dim_min:
-                                    is_ng = True
-                                if conc_dim_max is not None and concentricity > conc_dim_max:
-                                    is_ng = True
-
-                        if is_ng:
-                            break
-
-                date_str = patrol.date.strftime('%Y-%m-%d') if patrol.date else ''
-                data.append({
-                    'id': patrol.id,
-                    'date': date_str,
-                    'm_name': m_name.strip() if m_name else '',
-                    'op_name': op_name.strip() if op_name else '',
-                    'cust_name': cust_name.strip() if cust_name else '',
-                    'mat': patrol.material,
-                    'spec': patrol.spec,
-                    'is_ng': is_ng,
-                    'tol_found': tol_found,
-                })
-
-            return {
-                "data": data,
-                "pages": pagination.pages,
-                "total": pagination.total
-            }
-        except Exception as e:
-            raise e
+        return {
+            "data": data,
+            "pages": pagination.pages,
+            "total": pagination.total
+        }
 
     @staticmethod
     def export_excel(args: Dict[str, Any]) -> BytesIO:
@@ -703,8 +697,8 @@ class PatrolService:
             if args.get('m_id'):   query = query.filter(PatrolMain.machine_id == args['m_id'])
             if args.get('op_id'):  query = query.filter(PatrolMain.operator_id == args['op_id'])
             if args.get('cust_id'): query = query.filter(PatrolMain.customer_id == args['cust_id'])
-            if args.get('mat'):    query = query.filter(PatrolMain.material.like(f"%{args['mat']}%"))
-            if args.get('spec'):   query = query.filter(PatrolMain.spec.like(f"%{args['spec']}%"))
+            if args.get('mat'):    query = query.filter(PatrolMain.material.ilike(f"%{args['mat']}%"))
+            if args.get('spec'):   query = query.filter(PatrolMain.spec.ilike(f"%{args['spec']}%"))
 
             query = query.order_by(PatrolMain.id.desc())
             rows = query.all()
@@ -784,7 +778,7 @@ class PatrolService:
 
             return output
         except Exception as e:
-            raise e
+            raise
 
     @staticmethod
     def import_data(file: Any) -> int:
@@ -864,4 +858,4 @@ class PatrolService:
             return success_count
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise

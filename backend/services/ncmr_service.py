@@ -166,78 +166,75 @@ class NCMRService:
         material: Optional[str] = None,
         product_info: Optional[str] = None,
     ) -> Dict[str, Any]:
-        try:
-            query = NCMR.active_query().options(
-                joinedload(NCMR.inspector),
-                subqueryload(NCMR.corrective_actions),
-                subqueryload(NCMR.rework_requests).subqueryload(ReworkRequest.executions)
-            )
+        query = NCMR.active_query().options(
+            joinedload(NCMR.inspector),
+            subqueryload(NCMR.corrective_actions),
+            subqueryload(NCMR.rework_requests).subqueryload(ReworkRequest.executions)
+        )
 
-            if status:
-                query = query.filter(NCMR.status == status)
-            if date_from:
-                query = query.filter(NCMR.date >= _coerce_date(date_from))
-            if date_to:
-                query = query.filter(NCMR.date <= _coerce_date(date_to))
-            if source:
-                query = query.filter(NCMR.source == source)
-            if vendor:
-                query = query.filter(NCMR.vendor.ilike(f'%{vendor}%'))
-            if material:
-                query = query.filter(NCMR.material.ilike(f'%{material}%'))
-            if product_info:
-                query = query.filter(NCMR.product_info.ilike(f'%{product_info}%'))
+        if status:
+            query = query.filter(NCMR.status == status)
+        if date_from:
+            query = query.filter(NCMR.date >= _coerce_date(date_from))
+        if date_to:
+            query = query.filter(NCMR.date <= _coerce_date(date_to))
+        if source:
+            query = query.filter(NCMR.source == source)
+        if vendor:
+            query = query.filter(NCMR.vendor.ilike(f'%{vendor}%'))
+        if material:
+            query = query.filter(NCMR.material.ilike(f'%{material}%'))
+        if product_info:
+            query = query.filter(NCMR.product_info.ilike(f'%{product_info}%'))
 
-            total = query.count()
-            ncmrs = query.order_by(NCMR.id.desc())\
-                .offset((page - 1) * per_page)\
-                .limit(per_page)\
-                .all()
+        total = query.count()
+        ncmrs = query.order_by(NCMR.id.desc())\
+            .offset((page - 1) * per_page)\
+            .limit(per_page)\
+            .all()
 
-            data = []
-            for n in ncmrs:
-                capa_status = None
+        data = []
+        for n in ncmrs:
+            capa_status = None
 
-                capas = [ca for ca in n.corrective_actions if ca.eight_d_number]
-                if capas:
-                    latest_capa = sorted(capas, key=lambda x: x.id, reverse=True)[0]
-                    capa_status = latest_capa.status
+            capas = [ca for ca in n.corrective_actions if ca.eight_d_number]
+            if capas:
+                latest_capa = sorted(capas, key=lambda x: x.id, reverse=True)[0]
+                capa_status = latest_capa.status
 
-                rework_count = 0
-                rework_status = None
-                if n.rework_requests:
-                    rework_count = sum(len(req.executions) for req in n.rework_requests)
-                    latest_rework = sorted(n.rework_requests, key=lambda x: x.id, reverse=True)[0]
-                    rework_status = latest_rework.status
+            rework_count = 0
+            rework_status = None
+            if n.rework_requests:
+                rework_count = sum(len(req.executions) for req in n.rework_requests)
+                latest_rework = sorted(n.rework_requests, key=lambda x: x.id, reverse=True)[0]
+                rework_status = latest_rework.status
 
-                inspector_name = n.inspector.name if n.inspector else ""
+            inspector_name = n.inspector.name if n.inspector else ""
 
-                item = {
-                    "識別碼": n.id,
-                    "單號": n.ncmr_number,
-                    "日期": n.date.strftime('%Y-%m-%d') if n.date else "",
-                    "來源": n.source,
-                    "產品資訊": n.product_info,
-                    "產品數量": format_value(n.quantity),
-                    "材質": n.material,
-                    "廠商": n.vendor,
-                    "批號": n.batch_num,
-                    "不良描述": n.description,
-                    "不合格數量": format_value(n.defect_quantity),
-                    "判定結果": n.result,
-                    "狀態": n.status,
-                    "不良原因大類": n.defect_category,
-                    "不良原因細項": n.defect_detail,
-                    "發現人員姓名": inspector_name,
-                    "CAPA狀態": capa_status,
-                    "重工執行次數": rework_count,
-                    "重工狀態": rework_status
-                }
-                data.append(item)
+            item = {
+                "識別碼": n.id,
+                "單號": n.ncmr_number,
+                "日期": n.date.strftime('%Y-%m-%d') if n.date else "",
+                "來源": n.source,
+                "產品資訊": n.product_info,
+                "產品數量": format_value(n.quantity),
+                "材質": n.material,
+                "廠商": n.vendor,
+                "批號": n.batch_num,
+                "不良描述": n.description,
+                "不合格數量": format_value(n.defect_quantity),
+                "判定結果": n.result,
+                "狀態": n.status,
+                "不良原因大類": n.defect_category,
+                "不良原因細項": n.defect_detail,
+                "發現人員姓名": inspector_name,
+                "CAPA狀態": capa_status,
+                "重工執行次數": rework_count,
+                "重工狀態": rework_status
+            }
+            data.append(item)
 
-            return {"data": data, "total": total, "page": page, "per_page": per_page}
-        except Exception as e:
-            raise e
+        return {"data": data, "total": total, "page": page, "per_page": per_page}
 
     @staticmethod
     def add_ncmr(data: Dict[str, Any], *, actor_id: Optional[int] = None) -> str:
@@ -280,7 +277,7 @@ class NCMRService:
             return ncmr_number
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def update_ncmr(
@@ -404,7 +401,7 @@ class NCMRService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def delete_ncmr(ncmr_id: int, *, actor_id: Optional[int] = None) -> bool:
@@ -430,40 +427,37 @@ class NCMRService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def get_source_info(source_type: str, source_id: int) -> Dict[str, Any]:
-        try:
-            info = {}
-            if source_type == '巡檢':
-                patrol = db.session.get(PatrolMain, source_id)
-                if patrol:
-                    vendor_name = ""
-                    # Patrol has customer_id linked to Vendor table
-                    if patrol.customer_id:
-                        v = db.session.get(Vendor, patrol.customer_id)
-                        vendor_name = v.name if v else ""
-                    
-                    info = {
-                        "材質": patrol.material,
-                        "產品資訊": patrol.spec,
-                        "批號": patrol.batch_num,
-                        "廠商": vendor_name
-                    }
-            elif source_type == '出貨檢':
-                shipping = db.session.get(ShippingData, source_id)
-                if shipping:
-                    vendor_name = shipping.vendor.name if shipping.vendor else ""
-                    info = {
-                        "材質": shipping.material,
-                        "產品資訊": shipping.spec,
-                        "批號": shipping.order_num,
-                        "廠商": vendor_name
-                    }
-            return info
-        except Exception as e:
-            raise e
+        info = {}
+        if source_type == '巡檢':
+            patrol = db.session.get(PatrolMain, source_id)
+            if patrol:
+                vendor_name = ""
+                # Patrol has customer_id linked to Vendor table
+                if patrol.customer_id:
+                    v = db.session.get(Vendor, patrol.customer_id)
+                    vendor_name = v.name if v else ""
+                
+                info = {
+                    "材質": patrol.material,
+                    "產品資訊": patrol.spec,
+                    "批號": patrol.batch_num,
+                    "廠商": vendor_name
+                }
+        elif source_type == '出貨檢':
+            shipping = db.session.get(ShippingData, source_id)
+            if shipping:
+                vendor_name = shipping.vendor.name if shipping.vendor else ""
+                info = {
+                    "材質": shipping.material,
+                    "產品資訊": shipping.spec,
+                    "批號": shipping.order_num,
+                    "廠商": vendor_name
+                }
+        return info
 
     @staticmethod
     def get_ncmr_reworks(ncmr_id: int) -> List[Dict[str, Any]]:
@@ -697,74 +691,71 @@ class NCMRService:
 
     @staticmethod
     def get_ncmr_info(ncmr_id: int) -> Optional[Dict[str, Any]]:
-        try:
-            n = NCMR.active_query().options(joinedload(NCMR.inspector)).filter_by(id=ncmr_id).first()
-            if not n:
-                return None
-            
-            # Map to flat dict with specific keys expected by frontend
-            item = {
-                "識別碼": n.id,
-                "NCMR單號": n.ncmr_number,
-                "建立日期": n.create_date,
-                "發現日期": n.date, # DateTime object
-                "來源": n.source,
-                "產品資訊": n.product_info,
-                "產品數量": n.quantity,
-                "材質": n.material,
-                "廠商": n.vendor,
-                "批號": n.batch_num,
-                "不良描述": n.description,
-                "不良數量": n.defect_quantity,
-                "判定結果": n.result,
-                "狀態": n.status,
-                "不良原因大類": n.defect_category,
-                "不良原因細項": n.defect_detail,
-                "發現人員姓名": n.inspector.name if n.inspector else "",
-                "廠商中文名稱": n.vendor # n.vendor in NCMR is string or text (legacy was '廠商').
-                # Wait, in NCMR model 'vendor' is a String column, not ID. 
-                # But Shipping uses Vendor ID. 
-                # NCMR legacy code: "廠商" column.
-                # get_ncmr_info query: v."廠商名稱" AS "廠商中文名稱" FROM ... LEFT JOIN "廠商資料" v ON n."廠商" = v."廠商名稱"
-                # So NCMR stores the NAME string.
-            }
-            
-            # Additional lookup for '廠商中文名稱' if it was a join. 
-            # In legacy code, it joined on NAME. 
-            # So item['廠商中文名稱'] should be same as item['廠商'] if it exists in Vendor table.
-            # I'll just set it to item['廠商'] or lookup if needed.
-            # Let's mimic legacy behavior: left join vendor on name.
-            if n.vendor:
-                v = Vendor.query.filter_by(name=n.vendor).first()
-                item["廠商中文名稱"] = v.name if v else n.vendor
-            else:
-                item["廠商中文名稱"] = ""
+        n = NCMR.active_query().options(joinedload(NCMR.inspector)).filter_by(id=ncmr_id).first()
+        if not n:
+            return None
+        
+        # Map to flat dict with specific keys expected by frontend
+        item = {
+            "識別碼": n.id,
+            "NCMR單號": n.ncmr_number,
+            "建立日期": n.create_date,
+            "發現日期": n.date, # DateTime object
+            "來源": n.source,
+            "產品資訊": n.product_info,
+            "產品數量": n.quantity,
+            "材質": n.material,
+            "廠商": n.vendor,
+            "批號": n.batch_num,
+            "不良描述": n.description,
+            "不良數量": n.defect_quantity,
+            "判定結果": n.result,
+            "狀態": n.status,
+            "不良原因大類": n.defect_category,
+            "不良原因細項": n.defect_detail,
+            "發現人員姓名": n.inspector.name if n.inspector else "",
+            "廠商中文名稱": n.vendor # n.vendor in NCMR is string or text (legacy was '廠商').
+            # Wait, in NCMR model 'vendor' is a String column, not ID. 
+            # But Shipping uses Vendor ID. 
+            # NCMR legacy code: "廠商" column.
+            # get_ncmr_info query: v."廠商名稱" AS "廠商中文名稱" FROM ... LEFT JOIN "廠商資料" v ON n."廠商" = v."廠商名稱"
+            # So NCMR stores the NAME string.
+        }
+        
+        # Additional lookup for '廠商中文名稱' if it was a join. 
+        # In legacy code, it joined on NAME. 
+        # So item['廠商中文名稱'] should be same as item['廠商'] if it exists in Vendor table.
+        # I'll just set it to item['廠商'] or lookup if needed.
+        # Let's mimic legacy behavior: left join vendor on name.
+        if n.vendor:
+            v = Vendor.query.filter_by(name=n.vendor).first()
+            item["廠商中文名稱"] = v.name if v else n.vendor
+        else:
+            item["廠商中文名稱"] = ""
 
-            # Formatting
-            for key, val in item.items():
-                if val is None:
-                    item[key] = ""
-                elif isinstance(val, (datetime.date, datetime.datetime)):
-                    if '時間' in key:
-                         item[key] = val.strftime('%Y-%m-%d %H:%M:%S')
-                    else:
-                         item[key] = val.strftime('%Y-%m-%d')
+        # Formatting
+        for key, val in item.items():
+            if val is None:
+                item[key] = ""
+            elif isinstance(val, (datetime.date, datetime.datetime)):
+                if '時間' in key:
+                     item[key] = val.strftime('%Y-%m-%d %H:%M:%S')
                 else:
-                    if key == '發現日期' and isinstance(val, str):
-                        try:
-                            # Not reachable based on logic above unless val was str
-                             pass
-                        except: pass
-                    else:
-                        item[key] = str(val)
-            
-            # Map '發現日期' to '日期', '不良數量' to '不合格數量'
-            item['日期'] = item.get('發現日期')
-            item['不合格數量'] = item.get('不良數量')
+                     item[key] = val.strftime('%Y-%m-%d')
+            else:
+                if key == '發現日期' and isinstance(val, str):
+                    try:
+                        # Not reachable based on logic above unless val was str
+                         pass
+                    except: pass
+                else:
+                    item[key] = str(val)
+        
+        # Map '發現日期' to '日期', '不良數量' to '不合格數量'
+        item['日期'] = item.get('發現日期')
+        item['不合格數量'] = item.get('不良數量')
 
-            return item
-        except Exception as e:
-            raise e
+        return item
 
     # ==================================================
     # CAPA Logic
@@ -780,62 +771,59 @@ class NCMRService:
         product_info: Optional[str] = None,
         status: Optional[str] = None,
     ) -> Dict[str, Any]:
-        try:
-            query = CorrectiveAction.query\
-                .filter(CorrectiveAction.eight_d_number.isnot(None))\
-                .join(NCMR, CorrectiveAction.ncmr_id == NCMR.id)\
-                .options(joinedload(CorrectiveAction.ncmr), joinedload(CorrectiveAction.owner))
+        query = CorrectiveAction.query\
+            .filter(CorrectiveAction.eight_d_number.isnot(None))\
+            .join(NCMR, CorrectiveAction.ncmr_id == NCMR.id)\
+            .options(joinedload(CorrectiveAction.ncmr), joinedload(CorrectiveAction.owner))
 
-            if status:
-                query = query.filter(CorrectiveAction.status == status)
-            if date_from:
-                query = query.filter(CorrectiveAction.created_at >= datetime.datetime.combine(_coerce_date(date_from), datetime.time.min))
-            if date_to:
-                query = query.filter(CorrectiveAction.created_at <= datetime.datetime.combine(_coerce_date(date_to), datetime.time.max))
-            if vendor:
-                query = query.filter(NCMR.vendor.ilike(f'%{vendor}%'))
-            if material:
-                query = query.filter(NCMR.material.ilike(f'%{material}%'))
-            if product_info:
-                query = query.filter(NCMR.product_info.ilike(f'%{product_info}%'))
+        if status:
+            query = query.filter(CorrectiveAction.status == status)
+        if date_from:
+            query = query.filter(CorrectiveAction.created_at >= datetime.datetime.combine(_coerce_date(date_from), datetime.time.min))
+        if date_to:
+            query = query.filter(CorrectiveAction.created_at <= datetime.datetime.combine(_coerce_date(date_to), datetime.time.max))
+        if vendor:
+            query = query.filter(NCMR.vendor.ilike(f'%{vendor}%'))
+        if material:
+            query = query.filter(NCMR.material.ilike(f'%{material}%'))
+        if product_info:
+            query = query.filter(NCMR.product_info.ilike(f'%{product_info}%'))
 
-            total = query.count()
-            cas = query.order_by(CorrectiveAction.id.desc())\
-                .offset((page - 1) * per_page)\
-                .limit(per_page)\
-                .all()
+        total = query.count()
+        cas = query.order_by(CorrectiveAction.id.desc())\
+            .offset((page - 1) * per_page)\
+            .limit(per_page)\
+            .all()
 
-            data = []
-            for ca in cas:
-                ncmr = ca.ncmr
-                item = {
-                    "識別碼": ca.id,
-                    "NCMR_ID": ca.ncmr_id,
-                    "8D單號": ca.eight_d_number,
-                    "負責人員": ca.owner_id,
-                    "狀態": ca.status,
-                    "建立日期": format_value(ca.created_at),
-                    "結案日期": format_value(ca.closed_at),
-                    "負責人員姓名": ca.owner.name if ca.owner else "",
-                    "來源": ncmr.source if ncmr else "",
-                    "不良描述": ncmr.description if ncmr else "",
-                    "廠商": ncmr.vendor if ncmr else "",
-                    "材質": ncmr.material if ncmr else "",
-                    "規格": ncmr.product_info if ncmr else "",
-                    "NCMR單號": ncmr.ncmr_number if ncmr else "",
-                    "ncmr_date": format_value(ncmr.date) if ncmr else ""
-                }
-                item["問題描述"] = ca.d2 or ""
-                item["根本原因"] = ca.d4 or ""
-                item["矯正措施"] = ca.d5 or ""
-                item["預防措施"] = ca.d7 or ""
-                for k, v in item.items():
-                    item[k] = format_value(v)
-                data.append(item)
+        data = []
+        for ca in cas:
+            ncmr = ca.ncmr
+            item = {
+                "識別碼": ca.id,
+                "NCMR_ID": ca.ncmr_id,
+                "8D單號": ca.eight_d_number,
+                "負責人員": ca.owner_id,
+                "狀態": ca.status,
+                "建立日期": format_value(ca.created_at),
+                "結案日期": format_value(ca.closed_at),
+                "負責人員姓名": ca.owner.name if ca.owner else "",
+                "來源": ncmr.source if ncmr else "",
+                "不良描述": ncmr.description if ncmr else "",
+                "廠商": ncmr.vendor if ncmr else "",
+                "材質": ncmr.material if ncmr else "",
+                "規格": ncmr.product_info if ncmr else "",
+                "NCMR單號": ncmr.ncmr_number if ncmr else "",
+                "ncmr_date": format_value(ncmr.date) if ncmr else ""
+            }
+            item["問題描述"] = ca.d2 or ""
+            item["根本原因"] = ca.d4 or ""
+            item["矯正措施"] = ca.d5 or ""
+            item["預防措施"] = ca.d7 or ""
+            for k, v in item.items():
+                item[k] = format_value(v)
+            data.append(item)
 
-            return {"data": data, "total": total, "page": page, "per_page": per_page}
-        except Exception as e:
-            raise e
+        return {"data": data, "total": total, "page": page, "per_page": per_page}
 
     @staticmethod
     def create_capa(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -863,64 +851,61 @@ class NCMRService:
             return {"capa_number": capa_number, "ncmr_number": ncmr.ncmr_number, "id": ca.id}
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def get_capa_detail(capa_id: int) -> Optional[Dict[str, Any]]:
         """取得 CAPA（8D）詳細資料"""
-        try:
-            ca = CorrectiveAction.query.options(joinedload(CorrectiveAction.owner)).get(capa_id)
-            if not ca or not ca.eight_d_number:
-                return None
+        ca = CorrectiveAction.query.options(joinedload(CorrectiveAction.owner)).get(capa_id)
+        if not ca or not ca.eight_d_number:
+            return None
 
-            capa_data = {
-                "識別碼": ca.id,
-                "NCMR_ID": ca.ncmr_id,
-                "8D單號": ca.eight_d_number,
-                "單號": ca.eight_d_number,
-                "負責人員": ca.owner_id,
-                "狀態": ca.status,
-                "D1_小組成員": ca.d1,
-                "D2_問題描述": ca.d2,
-                "D3_暫時對策": ca.d3,
-                "D4_真因分析": ca.d4,
-                "D5_永久對策": ca.d5,
-                "D6_成效驗證": ca.d6,
-                "D7_預防再發": ca.d7,
-                "D8_結案確認": ca.d8_confirmation,
-                "建立時間": ca.created_at,
-                "完成時間": ca.closed_at,
-                "建立日期": ca.created_at.strftime('%Y-%m-%d') if ca.created_at else "",
-                "結案日期": ca.closed_at.strftime('%Y-%m-%d') if ca.closed_at else "",
-                "負責人員姓名": ca.owner.name if ca.owner else ""
-            }
+        capa_data = {
+            "識別碼": ca.id,
+            "NCMR_ID": ca.ncmr_id,
+            "8D單號": ca.eight_d_number,
+            "單號": ca.eight_d_number,
+            "負責人員": ca.owner_id,
+            "狀態": ca.status,
+            "D1_小組成員": ca.d1,
+            "D2_問題描述": ca.d2,
+            "D3_暫時對策": ca.d3,
+            "D4_真因分析": ca.d4,
+            "D5_永久對策": ca.d5,
+            "D6_成效驗證": ca.d6,
+            "D7_預防再發": ca.d7,
+            "D8_結案確認": ca.d8_confirmation,
+            "建立時間": ca.created_at,
+            "完成時間": ca.closed_at,
+            "建立日期": ca.created_at.strftime('%Y-%m-%d') if ca.created_at else "",
+            "結案日期": ca.closed_at.strftime('%Y-%m-%d') if ca.closed_at else "",
+            "負責人員姓名": ca.owner.name if ca.owner else ""
+        }
 
-            ncmr_data = {}
-            if ca.ncmr_id:
-                n = NCMR.active_query().options(joinedload(NCMR.inspector)).filter_by(id=ca.ncmr_id).first()
-                if n:
-                    ncmr_data = {
-                        "NCMR單號": n.ncmr_number,
-                        "發現日期": n.date.strftime('%Y-%m-%d') if n.date else "",
-                        "來源": n.source,
-                        "產品資訊": n.product_info,
-                        "產品數量": n.quantity,
-                        "材質": n.material,
-                        "廠商": n.vendor,
-                        "批號": n.batch_num,
-                        "不良描述": n.description,
-                        "不良數量": n.defect_quantity,
-                        "判定結果": n.result,
-                        "狀態": n.status,
-                        "發現人員姓名": n.inspector.name if n.inspector else "",
-                    }
-                    if n.vendor:
-                        v = Vendor.query.filter_by(name=n.vendor).first()
-                        ncmr_data["廠商中文名稱"] = v.name if v else n.vendor
+        ncmr_data = {}
+        if ca.ncmr_id:
+            n = NCMR.active_query().options(joinedload(NCMR.inspector)).filter_by(id=ca.ncmr_id).first()
+            if n:
+                ncmr_data = {
+                    "NCMR單號": n.ncmr_number,
+                    "發現日期": n.date.strftime('%Y-%m-%d') if n.date else "",
+                    "來源": n.source,
+                    "產品資訊": n.product_info,
+                    "產品數量": n.quantity,
+                    "材質": n.material,
+                    "廠商": n.vendor,
+                    "批號": n.batch_num,
+                    "不良描述": n.description,
+                    "不良數量": n.defect_quantity,
+                    "判定結果": n.result,
+                    "狀態": n.status,
+                    "發現人員姓名": n.inspector.name if n.inspector else "",
+                }
+                if n.vendor:
+                    v = Vendor.query.filter_by(name=n.vendor).first()
+                    ncmr_data["廠商中文名稱"] = v.name if v else n.vendor
 
-            return {"capa": capa_data, "ncmr": ncmr_data}
-        except Exception as e:
-            raise e
+        return {"capa": capa_data, "ncmr": ncmr_data}
 
     @staticmethod
     def update_capa(data: Dict[str, Any]) -> bool:
@@ -959,7 +944,7 @@ class NCMRService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
     @staticmethod
     def delete_capa(capa_id: int) -> bool:
@@ -971,7 +956,7 @@ class NCMRService:
             return True
         except Exception as e:
             db.session.rollback()
-            raise e
+            raise
 
 
 def _coerce_date(value: datetime.date | str) -> datetime.date:
