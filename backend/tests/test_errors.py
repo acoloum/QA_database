@@ -8,7 +8,8 @@ from backend.utils import generate_token
 
 @pytest.fixture
 def auth_headers(db_session):
-    user = User(username="testuser", password="pw", role="user", is_active=True)
+    # 測試目的為「錯誤處理」，非權限；admin 為內建全權限角色，不需 DB Role
+    user = User(username="testuser", password="pw", role="admin", is_active=True)
     db_session.add(user)
     db_session.commit()
     token = generate_token(

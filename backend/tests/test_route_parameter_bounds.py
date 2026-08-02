@@ -6,7 +6,8 @@ from backend.utils import generate_token, hash_password
 
 
 def _auth_headers(db_session, username="route_bounds_user"):
-    user = User(username=username, password="pw", role="viewer", is_active=True)
+    # 測試目的為「參數驗證」，非權限；admin 為內建全權限角色，不需 DB Role
+    user = User(username=username, password="pw", role="admin", is_active=True)
     db_session.add(user)
     db_session.commit()
     token = generate_token(user.id, user.username, user.role, user.token_version)
