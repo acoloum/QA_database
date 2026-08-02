@@ -15,6 +15,11 @@ from .msa_errors import (
     MsaValidationError,
 )
 from .msa_payload import (
+    bounded_int as _bounded_int,
+    decimal_text as _decimal_text,
+    optional_decimal as _optional_decimal,
+    optional_text as _optional_text,
+    required_text as _required_text,
     reject_unknown_fields as _reject_unknown_fields,
     require_object as _require_object,
 )
@@ -442,60 +447,6 @@ class MsaStudyService:
 # ----------------------------------------------------------------------
 
 
-def _optional_text(value, *, field: str, max_length: int, code: str):
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise MsaValidationError(
-            code, f"{field} 必須是文字", details={"field": field},
-        )
-    normalized = value.strip()
-    if not normalized:
-        return None
-    if len(normalized) > max_length:
-        raise MsaValidationError(
-            code,
-            f"{field} 超過允許長度",
-            details={"field": field, "max_length": max_length},
-        )
-    return normalized
-
-
-def _required_text(value, *, field: str, max_length: int, code: str) -> str:
-    normalized = _optional_text(
-        value, field=field, max_length=max_length, code=code,
-    )
-    if normalized is None:
-        raise MsaValidationError(
-            code, f"{field} 為必填欄位", details={"field": field},
-        )
-    return normalized
-
-
-def _optional_decimal(value, *, field: str, code: str):
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, (int, float, str, Decimal)):
-        raise MsaValidationError(
-            code, f"{field} 必須是數值", details={"field": field},
-        )
-    if isinstance(value, float) and not math.isfinite(value):
-        raise MsaValidationError(
-            code, f"{field} 必須是有限數值", details={"field": field},
-        )
-    try:
-        parsed = Decimal(str(value))
-    except (InvalidOperation, ValueError) as error:
-        raise MsaValidationError(
-            code, f"{field} 必須是數值", details={"field": field},
-        ) from error
-    if not parsed.is_finite():
-        raise MsaValidationError(
-            code, f"{field} 必須是有限數值", details={"field": field},
-        )
-    return parsed
-
-
 def _optional_int(value, *, field: str, code: str):
     if value is None:
         return None
@@ -508,26 +459,6 @@ def _optional_int(value, *, field: str, code: str):
             code, f"{field} 必須是正整數", details={"field": field},
         )
     return value
-
-
-def _bounded_int(value, *, field: str, minimum: int, maximum: int, code: str):
-    if isinstance(value, bool):
-        raise MsaValidationError(
-            code, f"{field} 必須是整數", details={"field": field},
-        )
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError) as error:
-        raise MsaValidationError(
-            code, f"{field} 必須是整數", details={"field": field},
-        ) from error
-    if parsed < minimum or parsed > maximum:
-        raise MsaValidationError(
-            code,
-            f"{field} 超出允許範圍",
-            details={"field": field, "minimum": minimum, "maximum": maximum},
-        )
-    return parsed
 
 
 def _next_study_no(now: datetime) -> str:
@@ -553,10 +484,6 @@ def _next_study_no(now: datetime) -> str:
 
 def _timestamp_text(value):
     return value.isoformat() if value is not None else None
-
-
-def _decimal_text(value):
-    return str(value) if value is not None else None
 
 
 def _plain(value):

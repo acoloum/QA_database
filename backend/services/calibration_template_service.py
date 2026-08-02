@@ -20,6 +20,7 @@ from ..models import (
 from ..utils import log_audit
 from .calibration_calculation import _MAX_DECIMAL_EXPONENT, _MAX_SIGNIFICANT_DIGITS
 from .calibration_errors import (
+    require_object,
     CalibrationConflict,
     CalibrationForbidden,
     CalibrationNotFound,
@@ -285,7 +286,7 @@ class CalibrationTemplateService:
     @staticmethod
     def create(payload: dict, actor_id: int) -> dict:
         """建立模板穩定識別，不允許呼叫端指定工作流欄位。"""
-        data = CalibrationTemplateService._object(payload)
+        data = require_object(payload)
         CalibrationTemplateService._reject_unknown(data, _TEMPLATE_FIELDS)
         normalized = {
             field: CalibrationTemplateService._text(
@@ -347,7 +348,7 @@ class CalibrationTemplateService:
         actor_id: int,
     ) -> dict:
         """鎖定模板後配置下一版號並原子保存逐點規則。"""
-        data = CalibrationTemplateService._object(payload)
+        data = require_object(payload)
         CalibrationTemplateService._reject_unknown(data, _VERSION_FIELDS)
         normalized = CalibrationTemplateService._normalize_version(
             data,
@@ -431,7 +432,7 @@ class CalibrationTemplateService:
         actor_id: int,
     ) -> dict:
         """以列鎖與 expected_version 原子更新 draft 版本。"""
-        data = CalibrationTemplateService._object(payload)
+        data = require_object(payload)
         CalibrationTemplateService._reject_unknown(
             data,
             _UPDATE_VERSION_FIELDS,
@@ -1301,7 +1302,7 @@ class CalibrationTemplateService:
 
     @staticmethod
     def _decision_payload(payload) -> tuple[int, str]:
-        data = CalibrationTemplateService._object(payload)
+        data = require_object(payload)
         CalibrationTemplateService._reject_unknown(data, _DECISION_FIELDS)
         return (
             CalibrationTemplateService._expected_version(data),
@@ -1322,16 +1323,6 @@ class CalibrationTemplateService:
             maximum=_MAX_INTEGER,
             code="CALIBRATION_FIELD_INVALID",
         )
-
-    @staticmethod
-    def _object(payload) -> dict:
-        if not isinstance(payload, dict):
-            raise CalibrationValidationError(
-                "CALIBRATION_PAYLOAD_INVALID",
-                "請求內容必須是 JSON 物件",
-                details={},
-            )
-        return payload
 
     @staticmethod
     def _reject_unknown(payload: dict, allowed: set[str]) -> None:

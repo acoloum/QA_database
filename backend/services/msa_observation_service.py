@@ -24,6 +24,8 @@ from .msa_errors import (
     MsaValidationError,
 )
 from .msa_payload import (
+    decimal_text as _decimal_text,
+    optional_text as _shared_optional_text,
     reject_unknown_fields as _reject_unknown_fields,
     require_object as _require_object,
 )
@@ -514,27 +516,6 @@ def _raise_observation_invalid(value):
     )
 
 
-def _optional_text(value, *, field: str, max_length: int):
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise MsaValidationError(
-            "MSA_OBSERVATION_INVALID",
-            f"{field} 必須是文字",
-            details={"field": field},
-        )
-    normalized = value.strip()
-    if not normalized:
-        return None
-    if len(normalized) > max_length:
-        raise MsaValidationError(
-            "MSA_OBSERVATION_INVALID",
-            f"{field} 超過允許長度",
-            details={"field": field, "max_length": max_length},
-        )
-    return normalized
-
-
 def _optional_timestamp(value):
     if value is None:
         return None
@@ -558,5 +539,8 @@ def _optional_timestamp(value):
     )
 
 
-def _decimal_text(value):
-    return str(value) if value is not None else None
+def _optional_text(value, *, field: str, max_length: int):
+    """本模組的可選文字欄位；規則共用，僅綁定觀測資料的錯誤碼。"""
+    return _shared_optional_text(
+        value, field=field, max_length=max_length, code="MSA_OBSERVATION_INVALID",
+    )
