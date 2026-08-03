@@ -105,7 +105,7 @@ export const ComplaintTable = ({
   onNavigateToRework,
 }: ComplaintTableProps) => (
   <div className="table-responsive">
-    <Table hover className="mb-0">
+    <Table hover className="dense-list-table mb-0">
       <thead className="table-light">
         <tr>
           <th>單號</th>

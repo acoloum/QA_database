@@ -172,9 +172,11 @@ const ComplaintPage = () => {
                         onNavigateToRework={id => navigate(`/rework?id=${id}`)}
                     />
 
-                    <div className="px-3 py-2 border-top">
-                        <PaginationBar page={page} perPage={PAGE_SIZE} total={data?.total ?? 0} totalPages={totalPages} onPageChange={setPage} />
-                    </div>
+                    {totalPages > 1 && (
+                        <div className="px-3 py-2 border-top">
+                            <PaginationBar page={page} perPage={PAGE_SIZE} total={data?.total ?? 0} totalPages={totalPages} onPageChange={setPage} />
+                        </div>
+                    )}
                 </Card.Body>
             </Card>
 

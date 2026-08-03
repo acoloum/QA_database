@@ -163,7 +163,7 @@ const NCMRPage = () => {
 
             <Card className="shadow-sm ncmr-list-card">
                 <Card.Body className="p-0">
-                    <Table responsive hover className="align-middle table-compact mb-0">
+                    <Table responsive hover className="align-middle table-compact dense-list-table mb-0">
                         <thead className="table-light">
                             <tr>
                                 <th>單號</th><th>日期</th><th>來源</th><th>廠商</th><th>材質</th>
@@ -192,7 +192,7 @@ const NCMRPage = () => {
                                             </div>
                                         </td>
                                         <td>{item.defect_reason ? <Badge bg="info">{item.defect_reason.split(':')[0]}</Badge> : item.defect_category ? <Badge bg="secondary">{item.defect_category}</Badge> : '-'}</td>
-                                        <td><PermissionAction permission="ncmr.view"><button type="button" className="btn btn-link p-0" onClick={() => { setDisposeItem(item); setShowDisposeModal(true); }}>{item.result || '-'}</button></PermissionAction></td>
+                                        <td><PermissionAction permission="ncmr.view"><button type="button" className="btn btn-link ncmr-result-link" onClick={() => { setDisposeItem(item); setShowDisposeModal(true); }}>{item.result || '-'}</button></PermissionAction></td>
                                         <td>{renderStatusBadge(item.status)}</td>
                                         <td>{renderProgress(item)}</td>
                                         <td>

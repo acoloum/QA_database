@@ -9,6 +9,7 @@ import {
 } from '../../hooks/useCapa';
 import CAPAModal from '../../components/capa/CAPAModal';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
+import PaginationBar from '../../components/common/PaginationBar';
 import type { CAPAListItem } from '../../types';
 import { parseCapaOpenId } from './capaPageUtils';
 import PermissionAction from '../../components/PermissionAction';
@@ -145,7 +146,7 @@ const CAPAPage = () => {
             <Card className="shadow-sm">
                 <Card.Body className="p-0">
                     <div className="table-responsive">
-                        <Table hover className="mb-0">
+                        <Table hover className="dense-list-table mb-0">
                             <thead className="table-light">
                                 <tr>
                                     <th>8D 單號</th>
@@ -244,16 +245,8 @@ const CAPAPage = () => {
                     </div>
 
                     {totalPages > 1 && (
-                        <div className="d-flex justify-content-between align-items-center px-3 py-2 border-top">
-                            <span className="small text-muted">
-                                共 {data?.total ?? 0} 筆，第 {page}/{totalPages} 頁
-                            </span>
-                            <div>
-                                <Button variant="outline-secondary" size="sm" className="me-1"
-                                    disabled={page <= 1} onClick={() => setPage(p => p - 1)}>上一頁</Button>
-                                <Button variant="outline-secondary" size="sm"
-                                    disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>下一頁</Button>
-                            </div>
+                        <div className="px-3 py-2 border-top">
+                            <PaginationBar page={page} perPage={PAGE_SIZE} total={data?.total ?? 0} totalPages={totalPages} onPageChange={setPage} />
                         </div>
                     )}
                 </Card.Body>

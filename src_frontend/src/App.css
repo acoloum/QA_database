@@ -253,6 +253,63 @@ h6 {
     transform: none !important;
 }
 
+/* ── 密集清單表格（NCMR、CAPA/8D、客訴等 10 欄以上的清單）─────────────
+   全域樣式對這種表格有三個副作用，疊起來就是「欄位的字全擠在一起」：
+   1) .table-compact 的 word-break: break-word 會把單號（NCMR-202606-001）、
+      規格（38.1*2.3(抽35.1*2.0)）這種沒有空白的字串逐字切斷；
+   2) .table tbody td 的 padding: 20px 16px，乘上欄位數就吃掉 300~400px 寬度，
+      每欄只剩最小寬度，內容被迫折成多行；
+   3) 全域 .btn 的 padding: 14px 28px !important 蓋掉 p-0 / btn-sm，
+      讓表格內的小按鈕撐成大按鈕，一格塞不下就換行、把整列拉高。
+   本 class 針對這三點收斂：內容整串不換行、內距收成 10px、字級收一階、
+   小按鈕還原成小按鈕。寬度不足時交給 .table-responsive 橫向捲動，不再壓縮文字。
+   自由文字欄位（不良描述之類）請自行加 text-truncate + maxWidth 並保留 title。 */
+.dense-list-table :is(th, td) {
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    font-size: 0.9rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.dense-list-table.table thead th,
+.dense-list-table.table tbody td {
+    padding: 12px 10px !important;
+}
+
+/* 「載入中…／無資料」的 colSpan 整列訊息不套不換行規則 */
+.dense-list-table td[colspan] {
+    width: auto;
+    white-space: normal !important;
+}
+
+/* 表格內的操作按鈕還原成小按鈕，避免一列被兩顆大按鈕撐高 */
+.dense-list-table .btn-sm {
+    padding: 4px 10px !important;
+    font-size: 0.8rem !important;
+    box-shadow: none;
+}
+
+/* 判定結果是表格內的文字連結，但全域 .btn 的 padding: 14px 28px !important
+   會把它撐成一顆大按鈕（「報廢」被擠成兩行），這裡還原成純文字連結。 */
+.btn.ncmr-result-link {
+    padding: 0 !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    overflow: visible;
+}
+
+.btn.ncmr-result-link:hover,
+.btn.ncmr-result-link:active {
+    transform: none;
+}
+
+.btn.ncmr-result-link::after {
+    content: none;
+}
+
 .action-buttons {
     display: flex;
     flex-wrap: wrap;
