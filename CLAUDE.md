@@ -48,11 +48,11 @@ Production is served at `http://localhost:8080` via Nginx.
 ### Database Migrations
 
 Schema changes are delivered as **hand-written, numbered SQL scripts** in `backend/migration/`
-(`04_…` through `53_…`). They are **not** applied automatically — after adding one you must run it
+(`04_…` through `54_…`). They are **not** applied automatically — after adding one you must run it
 against the target database yourself, or the app will fail at runtime against a stale schema.
 
 ```bash
-psql -U postgres -d qa_database -f backend/migration/53_add_trgm_search_indexes.sql
+psql -U postgres -d qa_database -f backend/migration/54_add_trgm_indexes_for_ncmr_complaint_equipment.sql
 ```
 
 Tests build their schema from `models.py` via `create_all()`, so **a green test suite does not prove
@@ -69,7 +69,7 @@ Each domain follows a three-layer pattern:
 ```
 routes/<domain>.py        # HTTP request handling, input validation, auth checks
 services/<domain>_service.py  # Business logic, DB queries via SQLAlchemy
-models.py                 # SQLAlchemy ORM models (all 14 tables in one file)
+models.py                 # SQLAlchemy ORM models (~74 models, all in one file)
 ```
 
 Blueprint registration is in `backend/app.py`. Business logic must stay in services, not routes.
@@ -108,6 +108,11 @@ Server state is managed with **TanStack React Query** (caching, refetching). Aut
 - **Query strings**: pass an object to axios's `params`, wrapping optional fields in `compactParams()`. Do not hand-build `URLSearchParams` for API calls (it is still correct for building router URLs).
 - **Chart.js**: `import '../../utils/chartSetup';`. All components/elements/controllers are registered there.
 - Every page route is `lazy()`-loaded; keep new pages that way so the initial bundle stays small.
+- **Dense list tables** (roughly 8+ columns) take `className="dense-list-table"` and must sit inside a
+  responsive wrapper (`<Table responsive>` or a `.table-responsive` div). The global `.table tbody td`
+  padding and `.btn` padding otherwise squeeze every column into a multi-line mess. Free-text columns
+  still need their own `text-truncate` + `maxWidth` + `title`. Do not use it on data-entry grids
+  (calibration/pyrometry input tables) or on columns holding a wrapping badge list.
 
 ### Authentication & Authorization Flow
 

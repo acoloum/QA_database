@@ -59,7 +59,7 @@ gunicorn -w 4 -b 0.0.0.0:5000 app_postgresql:app
 | `app_postgresql.py` | **主應用程式** (PostgreSQL 版本) |
 | `.env` | 資料庫密碼配置 |
 | `config.py` | 資料庫連線設定 |
-| `POSTGRESQL_MIGRATION_COMPLETE.md` | 完整遷移報告 |
+| `docs/POSTGRESQL_MIGRATION_COMPLETE.md` | 完整遷移報告 |
 
 ---
 

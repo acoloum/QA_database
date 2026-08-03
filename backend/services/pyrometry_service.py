@@ -63,13 +63,18 @@ def _thermocouple_to_dict(t: Thermocouple, with_points: bool = False) -> Dict[st
 
 class PyrometryService:
 
+    # 設備主檔（爐子／記錄器／熱電偶）的筆數上限：人工維護的小主檔，
+    # 但清單一律要有上界，避免資料量成長後整表倒出。
+    MASTER_LIST_LIMIT = 1000
+
     # ---------- 設備主檔 ----------
     @staticmethod
     def list_furnaces(active_only: bool = False) -> List[Dict[str, Any]]:
         q = Furnace.query
         if active_only:
             q = q.filter(Furnace.is_active.is_(True))
-        return [_furnace_to_dict(f) for f in q.order_by(Furnace.code).all()]
+        rows = q.order_by(Furnace.code).limit(PyrometryService.MASTER_LIST_LIMIT).all()
+        return [_furnace_to_dict(f) for f in rows]
 
     @staticmethod
     def get_furnace(furnace_id: int) -> Dict[str, Any]:
@@ -150,7 +155,8 @@ class PyrometryService:
         q = Recorder.query
         if active_only:
             q = q.filter(Recorder.is_active.is_(True))
-        return [_recorder_to_dict(r) for r in q.order_by(Recorder.serial).all()]
+        rows = q.order_by(Recorder.serial).limit(PyrometryService.MASTER_LIST_LIMIT).all()
+        return [_recorder_to_dict(r) for r in rows]
 
     @staticmethod
     def get_recorder(recorder_id: int) -> Dict[str, Any]:
@@ -231,7 +237,8 @@ class PyrometryService:
         q = Thermocouple.query
         if active_only:
             q = q.filter(Thermocouple.is_active.is_(True))
-        return [_thermocouple_to_dict(t) for t in q.order_by(Thermocouple.serial).all()]
+        rows = q.order_by(Thermocouple.serial).limit(PyrometryService.MASTER_LIST_LIMIT).all()
+        return [_thermocouple_to_dict(t) for t in rows]
 
     @staticmethod
     def get_thermocouple(tc_id: int) -> Dict[str, Any]:

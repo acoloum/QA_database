@@ -223,7 +223,7 @@ export default function MechanicalTestListPage() {
             <p role="alert" className="text-danger mb-0">載入機械性質檢驗資料失敗，請稍後再試</p>
           ) : (
             <>
-              <Table bordered hover size="sm">
+              <Table bordered hover responsive size="sm" className="dense-list-table">
               <thead className="table-secondary">
                 <tr>
                   <th>ID</th>

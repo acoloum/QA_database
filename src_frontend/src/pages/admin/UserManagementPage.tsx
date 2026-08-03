@@ -134,7 +134,7 @@ const UserManagementPage = () => {
                             <Alert variant="danger" className="m-3">載入使用者列表失敗，請重新整理頁面</Alert>
                         )}
                         {!isLoading && !isError && (
-                            <Table hover responsive className="mb-0">
+                            <Table hover responsive className="dense-list-table mb-0">
                                 <thead className="table-light">
                                     <tr>
                                         <th className="ps-4">#</th>

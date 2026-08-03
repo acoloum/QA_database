@@ -36,18 +36,20 @@ def list_capas(current_user):
 @require_permission('capa.view')
 def overdue_capas(current_user):
     """GET /api/capas/overdue — 依 D0 客戶要求結案日計算逾期 CAPA"""
-    try:
-        from datetime import date
-        from ..models import CorrectiveAction
-        today = date.today()
-        items = CorrectiveAction.query.filter(
-            CorrectiveAction.status.in_(['進行中']),
-            CorrectiveAction.d0_deadline.isnot(None),
-            CorrectiveAction.d0_deadline < today,
-        ).order_by(CorrectiveAction.d0_deadline.asc()).all()
-        return jsonify([CAPAService._to_list_dict(ca) for ca in items]), 200
-    except Exception:
-        raise
+    from datetime import date
+    from sqlalchemy.orm import joinedload
+    from ..models import CorrectiveAction
+    today = date.today()
+    limit = bounded_int(request.args.get('limit'), 100, 1, 500)
+    items = CorrectiveAction.query.options(
+        joinedload(CorrectiveAction.leader),
+        joinedload(CorrectiveAction.owner),
+    ).filter(
+        CorrectiveAction.status.in_(['進行中']),
+        CorrectiveAction.d0_deadline.isnot(None),
+        CorrectiveAction.d0_deadline < today,
+    ).order_by(CorrectiveAction.d0_deadline.asc()).limit(limit).all()
+    return jsonify(CAPAService._to_list_dicts(items)), 200
 
 
 # ── 單筆明細 ─────────────────────────────────────────────────

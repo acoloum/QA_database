@@ -216,10 +216,14 @@ class CAPAService:
             q = q.filter(CorrectiveAction.created_at <= datetime.combine(_coerce_date(date_to), datetime.max.time()))
 
         total = q.count()
-        items = q.order_by(CorrectiveAction.id.desc())\
+        items = q.options(
+                      joinedload(CorrectiveAction.leader),
+                      joinedload(CorrectiveAction.owner),
+                  )\
+                  .order_by(CorrectiveAction.id.desc())\
                   .offset((page - 1) * per_page).limit(per_page).all()
         return {
-            'data':     [CAPAService._to_list_dict(ca) for ca in items],
+            'data':     CAPAService._to_list_dicts(items),
             'total':    total,
             'page':     page,
             'per_page': per_page,
@@ -618,17 +622,58 @@ class CAPAService:
 
     # ── 序列化（列表用）─────────────────────────────────────
     @staticmethod
-    def _to_list_dict(ca: CorrectiveAction) -> Dict[str, Any]:
+    def _list_source_key(ca: CorrectiveAction) -> tuple[Optional[str], Optional[int]]:
+        """清單顯示要取哪一筆來源資料：(來源種類, 識別碼)。"""
+        if ca.source_type == 'ncmr' or ca.ncmr_id:
+            return 'ncmr', (ca.source_id or ca.ncmr_id)
+        if ca.source_type == 'complaint':
+            return 'complaint', ca.source_id
+        return None, None
+
+    @staticmethod
+    def _to_list_dicts(items: List[CorrectiveAction]) -> List[Dict[str, Any]]:
+        """整批序列化：來源（NCMR／客訴）一次撈完，避免每列各查一次。"""
+        ncmr_ids, complaint_ids = set(), set()
+        for ca in items:
+            kind, sid = CAPAService._list_source_key(ca)
+            if sid is None:
+                continue
+            (ncmr_ids if kind == 'ncmr' else complaint_ids).add(sid)
+
+        ncmr_map = {
+            n.id: n for n in NCMR.active_query().filter(NCMR.id.in_(ncmr_ids)).all()
+        } if ncmr_ids else {}
+        complaint_map = {
+            c.id: c for c in
+            CustomerComplaint.active_query().filter(CustomerComplaint.id.in_(complaint_ids)).all()
+        } if complaint_ids else {}
+
+        return [CAPAService._to_list_dict(ca, ncmr_map, complaint_map) for ca in items]
+
+    @staticmethod
+    def _to_list_dict(
+        ca: CorrectiveAction,
+        ncmr_map: Optional[Dict[int, NCMR]] = None,
+        complaint_map: Optional[Dict[int, CustomerComplaint]] = None,
+    ) -> Dict[str, Any]:
+        """單筆序列化。給了 *_map 就從批次結果取，否則自行查詢（單筆呼叫用）。"""
         # 依來源類型取得「廠商/客戶」與「不良描述」，供清單顯示
         vendor = None
         description = None
-        if ca.source_type == 'ncmr' or ca.ncmr_id:
-            ncmr = NCMR.active_query().filter_by(id=ca.source_id or ca.ncmr_id).first()
+        kind, source_id = CAPAService._list_source_key(ca)
+        if kind == 'ncmr' and source_id is not None:
+            ncmr = (
+                ncmr_map.get(source_id) if ncmr_map is not None
+                else NCMR.active_query().filter_by(id=source_id).first()
+            )
             if ncmr:
                 vendor      = ncmr.vendor
                 description = ncmr.description
-        elif ca.source_type == 'complaint':
-            c = CustomerComplaint.active_query().filter_by(id=ca.source_id).first()
+        elif kind == 'complaint' and source_id is not None:
+            c = (
+                complaint_map.get(source_id) if complaint_map is not None
+                else CustomerComplaint.active_query().filter_by(id=source_id).first()
+            )
             if c:
                 vendor      = c.customer       # 客訴以客戶名稱對應「廠商」欄
                 description = c.description

@@ -76,6 +76,11 @@ def get_dashboard_trends():
 
 # S-6：以下六個端點加上 @auth_required
 
+# 主檔下拉選單的筆數上限。這些表都是人工維護的主檔（數十～數百筆），
+# 但清單端點一律要有上界，避免資料量成長後把整張表倒給前端。
+MASTER_LIST_LIMIT = 1000
+
+
 @admin_bp.route('/api/inspectors')
 @auth_required
 def get_inspectors():
@@ -84,7 +89,7 @@ def get_inspectors():
         group_filter = request.args.get('group')
         if group_filter:
             q = q.filter(Inspector.group == group_filter)
-        inspectors = q.order_by(Inspector.group, Inspector.name).all()
+        inspectors = q.order_by(Inspector.group, Inspector.name).limit(MASTER_LIST_LIMIT).all()
         return jsonify([{
             "id":    i.id,
             "name":  i.name.strip() if i.name else "",
@@ -99,7 +104,7 @@ def get_inspectors():
 @auth_required
 def get_vendors():
     try:
-        vendors = Vendor.query.all()
+        vendors = Vendor.query.order_by(Vendor.name).limit(MASTER_LIST_LIMIT).all()
         return jsonify([{"id": v.id, "name": v.name.strip() if v.name else ""} for v in vendors])
     except Exception as e:
         current_app.logger.exception("查詢廠商清單時發生錯誤: %s", str(e))
@@ -110,7 +115,7 @@ def get_vendors():
 @auth_required
 def get_machines():
     try:
-        machines = Machine.query.all()
+        machines = Machine.query.order_by(Machine.name).limit(MASTER_LIST_LIMIT).all()
         return jsonify([{"id": m.id, "name": m.name.strip() if m.name else ""} for m in machines])
     except Exception as e:
         current_app.logger.exception("查詢機台清單時發生錯誤: %s", str(e))
@@ -121,7 +126,7 @@ def get_machines():
 @auth_required
 def get_operators():
     try:
-        operators = Operator.query.all()
+        operators = Operator.query.order_by(Operator.name).limit(MASTER_LIST_LIMIT).all()
         return jsonify([{"id": o.id, "name": o.name.strip() if o.name else ""} for o in operators])
     except Exception as e:
         current_app.logger.exception("查詢操作員清單時發生錯誤: %s", str(e))

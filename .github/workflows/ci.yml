@@ -1,0 +1,108 @@
+name: CI
+
+# 目的：讓「後端測試 + 前端測試」在每次推送與 PR 時自動跑，
+#       並且把原本因為缺環境變數而預設 skip 的 migration／整合測試也一起跑起來
+#       —— 那幾支正是唯一能擋下「migration 忘了套到正式庫」的守門員。
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: 後端測試（含 PostgreSQL 整合測試）
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # 應用程式本身：測試用假密鑰，不影響任何正式環境
+      SECRET_KEY: ci-test-secret-key-not-for-production
+      # 各整合測試各自使用獨立 database，彼此不互相汙染
+      TOKEN_VERSION_TEST_DATABASE_URL:   postgresql://postgres:postgres@localhost:5432/ci_token_version
+      ROUTE_PERMISSION_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ci_route_permission
+      CALIBRATION_TEST_DATABASE_URL:     postgresql://postgres:postgres@localhost:5432/ci_calibration
+      ATOMICITY_TEST_DATABASE_URL:       postgresql://postgres:postgres@localhost:5432/ci_atomicity
+      # SPC migration / 並發整合測試（走 psql CLI）
+      SPC_POSTGRES_INTEGRATION: '1'
+      SPC_PG_HOST: localhost
+      SPC_PG_PORT: '5432'
+      SPC_PG_USER: postgres
+      SPC_PG_PASSWORD: postgres
+      SPC_PSQL_PATH: /usr/bin/psql
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'   # 與開發機一致
+          cache: pip
+
+      - name: 安裝 psql 用戶端
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: 安裝 Python 依賴
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 建立整合測試用的 database
+        run: |
+          for db in ci_token_version ci_route_permission ci_calibration ci_atomicity; do
+            psql "postgresql://postgres:postgres@localhost:5432/postgres" -v ON_ERROR_STOP=1 -c "CREATE DATABASE $db"
+          done
+
+      - name: 執行 pytest（-rs 會列出所有被 skip 的原因）
+        # migration/整合測試在 CI 應該全部實際執行。若上面的環境變數名稱哪天改了，
+        # 測試會靜默變成 skip 而不是失敗，所以這裡把 skip 清單印出來並發 warning。
+        run: |
+          set -o pipefail
+          python -m pytest backend/tests -q -rs 2>&1 | tee pytest-out.txt
+          if grep -qE "^SKIPPED" pytest-out.txt; then
+            echo "::warning::有測試被 skip，請確認是否為預期（清單見上方 -rs 區塊）"
+          fi
+
+  frontend:
+    name: 前端測試與建置
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src_frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src_frontend/package-lock.json
+
+      - name: 安裝依賴
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: 型別檢查與建置
+        run: npm run build
+
+      - name: 執行 vitest
+        run: npx vitest run

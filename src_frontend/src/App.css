@@ -283,8 +283,8 @@ h6 {
     white-space: normal !important;
 }
 
-/* 表格內的操作按鈕還原成小按鈕，避免一列被兩顆大按鈕撐高 */
-.dense-list-table .btn-sm {
+/* 表格內的操作按鈕再收一階，避免一列被兩顆按鈕撐高 */
+.dense-list-table .btn.btn-sm {
     padding: 4px 10px !important;
     font-size: 0.8rem !important;
     box-shadow: none;
@@ -317,7 +317,7 @@ h6 {
     justify-content: flex-start;
 }
 
-.table-compact .btn-sm {
+.table-compact .btn.btn-sm {
     padding: 4px 10px !important;
     font-size: 0.85rem !important;
 }
@@ -514,6 +514,11 @@ h6 {
 }
 
 /* Buttons with Gradients & Animations */
+/* 注意：下方基底的 padding 帶 !important，Bootstrap 的 .btn-sm / .btn-lg 是透過
+   --bs-btn-padding-* 變數作用的，會被這裡的字面值蓋掉；p-0 之類的工具類也同樣
+   （同為 !important、同特異度，App.css 較晚載入而勝出）。
+   因此尺寸修飾字與內距工具類需要下面那組 .btn.xxx（特異度 0,2,0）明確還原，
+   否則整個系統的小按鈕都會被撐成 14px/28px 的大按鈕。 */
 .btn {
     font-weight: 700 !important;
     padding: 14px 28px !important;
@@ -527,6 +532,32 @@ h6 {
     gap: 10px;
     position: relative;
     overflow: hidden;
+}
+
+/* 尺寸修飾字與內距工具類：特異度 0,2,0，蓋得過上面的基底內距 */
+.btn.btn-sm {
+    padding: 6px 14px !important;
+    font-size: 0.875rem !important;
+    gap: 6px;
+}
+
+.btn.btn-lg {
+    padding: 18px 36px !important;
+    font-size: 1.125rem !important;
+}
+
+.btn.p-0 {
+    padding: 0 !important;
+}
+
+.btn.px-0 {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
+.btn.py-0 {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
 }
 
 .btn::after {

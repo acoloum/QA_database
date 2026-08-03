@@ -239,3 +239,69 @@ def test_capa_delete_audit_contains_complaint_unlink_without_secret(
     assert 'COMPLAINT-SOURCE-SECRET' not in json.dumps(
         {'old': log.old_value, 'new': log.new_value}, ensure_ascii=False
     )
+
+
+def test_capa_list_serializes_both_sources_with_bounded_query_count(app, db_session):
+    """清單序列化：NCMR／客訴兩種來源都要帶出廠商與不良描述，
+    且查詢次數不得隨筆數線性成長（避免退回 N+1）。"""
+    from sqlalchemy import event
+
+    from backend.extensions import db
+    from backend.models import Inspector
+
+    leaders = [Inspector(name=f'負責人{i}') for i in range(6)]
+    db_session.add_all(leaders)
+    db_session.flush()
+
+    for i in range(3):
+        ncmr = NCMR(
+            ncmr_number=f'NCMR-209902-{i:03d}', date=datetime.date(2099, 2, 1),
+            source='巡檢', vendor=f'廠商{i}', description=f'NCMR不良{i}', status='待處理',
+        )
+        db_session.add(ncmr)
+        db_session.flush()
+        db_session.add(CorrectiveAction(
+            eight_d_number=f'CAPA-N-209902-{i:03d}', source_type='ncmr',
+            source_id=ncmr.id, ncmr_id=ncmr.id, status='進行中',
+            d1_leader_id=leaders[i].id,
+        ))
+
+    for i in range(3):
+        complaint = CustomerComplaint(
+            complaint_no=f'CC-209902-{i:03d}', customer=f'客戶{i}',
+            complaint_date=datetime.date(2099, 2, 1), description=f'客訴不良{i}',
+            complaint_type='quality', status='處理中',
+        )
+        db_session.add(complaint)
+        db_session.flush()
+        db_session.add(CorrectiveAction(
+            eight_d_number=f'CAPA-C-209902-{i:03d}', source_type='complaint',
+            source_id=complaint.id, status='進行中',
+            d1_leader_id=leaders[3 + i].id,
+        ))
+    db_session.commit()
+    db_session.expire_all()
+    db_session.expunge_all()
+
+    statements = []
+
+    def _record(conn, cursor, statement, params, context, executemany):
+        statements.append(statement)
+
+    event.listen(db.engine, 'before_cursor_execute', _record)
+    try:
+        result = CAPAService.list_capas(per_page=20)
+    finally:
+        event.remove(db.engine, 'before_cursor_execute', _record)
+
+    rows = {row['no']: row for row in result['data']}
+    assert rows['CAPA-N-209902-000']['vendor'] == '廠商0'
+    assert rows['CAPA-N-209902-000']['ncmr_description'] == 'NCMR不良0'
+    assert rows['CAPA-N-209902-000']['owner'] == '負責人0'
+    assert rows['CAPA-C-209902-002']['vendor'] == '客戶2'          # 客訴以客戶名稱對應廠商欄
+    assert rows['CAPA-C-209902-002']['ncmr_description'] == '客訴不良2'
+    assert rows['CAPA-C-209902-002']['owner'] == '負責人5'
+
+    # count + 主查詢(含 joinedload) + NCMR 批次 + 客訴批次 = 4；放寬到 6 留餘裕，
+    # 但遠低於「每列各查一次」的 14 次。
+    assert len(statements) <= 6, f'查詢次數 {len(statements)} 過多，可能又退回 N+1：{statements}'

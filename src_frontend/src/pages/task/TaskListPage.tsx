@@ -124,7 +124,7 @@ const TaskListPage = () => {
             <Card className="shadow-sm">
                 <Card.Body className="p-0">
                     <div className="table-responsive">
-                        <Table hover className="mb-0">
+                        <Table hover className="dense-list-table mb-0">
                             <thead className="table-light">
                                 <tr>
                                     <th>任務編號</th>

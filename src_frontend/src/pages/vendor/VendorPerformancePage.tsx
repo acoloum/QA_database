@@ -59,7 +59,7 @@ const VendorPerformancePage = () => {
 
       <Card className="shadow-sm mb-4">
         <Card.Body className="p-0">
-          <Table hover className="mb-0">
+          <Table hover responsive className="dense-list-table mb-0">
             <thead className="table-light">
               <tr>
                 <th>廠商</th>

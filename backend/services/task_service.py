@@ -2,6 +2,7 @@
 from datetime import datetime, date, timezone
 from typing import List, Optional, Dict, Any
 from sqlalchemy import and_
+from sqlalchemy.orm import joinedload
 from ..extensions import db
 from ..models import ActionTask, Inspector, User
 from ..utils import acquire_number_lock
@@ -141,7 +142,9 @@ class TaskService:
             q = q.filter(ActionTask.due_date <= due_to)
 
         total = q.count()
-        tasks = q.order_by(ActionTask.due_date.asc().nullslast(), ActionTask.created_at.desc())\
+        # _to_dict 會讀 assignee.name，先 eager load 避免每列各查一次
+        tasks = q.options(joinedload(ActionTask.assignee))\
+                  .order_by(ActionTask.due_date.asc().nullslast(), ActionTask.created_at.desc())\
                   .offset((page - 1) * per_page).limit(per_page).all()
         return {
             'data': [TaskService._to_dict(t) for t in tasks],
@@ -154,7 +157,7 @@ class TaskService:
     @staticmethod
     def my_tasks(assignee_id: int) -> List[Dict[str, Any]]:
         """回傳指定人員的未完成任務，依期限排序，逾期優先"""
-        tasks = ActionTask.query.filter(
+        tasks = ActionTask.query.options(joinedload(ActionTask.assignee)).filter(
             ActionTask.assignee_id == assignee_id,
             ActionTask.status.in_(['pending', 'in_progress']),
         ).order_by(ActionTask.due_date.asc().nullslast()).all()
@@ -182,7 +185,7 @@ class TaskService:
     # ── 依來源查詢（用於 CAPA D7 顯示）────────────────────────
     @staticmethod
     def list_by_source(source_type: str, source_id: int) -> List[Dict[str, Any]]:
-        tasks = ActionTask.query.filter_by(
+        tasks = ActionTask.query.options(joinedload(ActionTask.assignee)).filter_by(
             source_type=source_type, source_id=source_id
         ).order_by(ActionTask.created_at.asc()).all()
         return [TaskService._to_dict(t) for t in tasks]

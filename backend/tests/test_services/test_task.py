@@ -63,3 +63,44 @@ def test_task_list_route_uses_default_for_invalid_page(client, db_session):
 
     assert response.status_code == 200
     assert response.get_json()['page'] == 1
+
+
+def test_list_tasks_eager_loads_assignee(app, db_session):
+    """清單序列化會讀 assignee.name；查詢次數不得隨承辦人數量成長。"""
+    from sqlalchemy import event
+
+    from backend.extensions import db
+
+    inspectors = [Inspector(name=f'承辦{i}') for i in range(8)]
+    db_session.add_all(inspectors)
+    db_session.flush()
+    for i, inspector in enumerate(inspectors):
+        db_session.add(ActionTask(
+            task_no=f'TASK-EAGER-{i:03d}',
+            source_type='capa',
+            source_id=i + 1,
+            category='pfmea',
+            title=f'任務{i}',
+            assignee_id=inspector.id,
+            status='pending',
+        ))
+    db_session.commit()
+    db_session.expire_all()
+    db_session.expunge_all()
+
+    statements = []
+
+    def _record(conn, cursor, statement, params, context, executemany):
+        statements.append(statement)
+
+    event.listen(db.engine, 'before_cursor_execute', _record)
+    try:
+        result = TaskService.list_tasks(per_page=20)
+    finally:
+        event.remove(db.engine, 'before_cursor_execute', _record)
+
+    names = {row['task_no']: row['assignee_name'] for row in result['data']}
+    assert names['TASK-EAGER-000'] == '承辦0'
+    assert names['TASK-EAGER-007'] == '承辦7'
+    # count + 主查詢(joinedload) = 2；放寬到 4，仍遠低於逐列查詢的 10 次。
+    assert len(statements) <= 4, f'查詢次數 {len(statements)} 過多，可能又退回 N+1：{statements}'

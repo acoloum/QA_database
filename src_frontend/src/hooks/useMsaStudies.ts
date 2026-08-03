@@ -22,14 +22,28 @@ import type {
 } from '../types/msa';
 import { msaKeys } from './useMsaEquipment';
 
+// 子樹 prefix：既給下面的 key 組合用，也給 invalidate 用，
+// 兩邊共用同一份定義才不會一邊改了另一邊失效。
+const studiesPrefix     = [...msaKeys.all, 'studies'] as const;
+const studyPrefix       = [...msaKeys.all, 'study'] as const;
+const tasksPrefix       = [...msaKeys.all, 'plan-tasks'] as const;
+const observationPrefix = [...msaKeys.all, 'plan-observations'] as const;
+const restudyPrefix     = [...msaKeys.all, 'restudy-requests'] as const;
+
 export const msaStudyKeys = {
+  lists: () => studiesPrefix,
   list: (params: MsaStudyListParams) =>
-    [...msaKeys.all, 'studies', params] as const,
+    [...studiesPrefix, params] as const,
+  details: () => studyPrefix,
   detail: (studyId: number) =>
-    [...msaKeys.all, 'study', studyId] as const,
+    [...studyPrefix, studyId] as const,
+  allTasks: () => tasksPrefix,
   tasks: (planId: number) =>
-    [...msaKeys.all, 'plan-tasks', planId] as const,
-  restudy: () => [...msaKeys.all, 'restudy-requests'] as const,
+    [...tasksPrefix, planId] as const,
+  allObservations: () => observationPrefix,
+  observations: (planId: number) =>
+    [...observationPrefix, planId] as const,
+  restudy: () => restudyPrefix,
 };
 
 /**
@@ -40,11 +54,11 @@ export const msaStudyKeys = {
  * v5 invalidateQueries 只會重新抓取目前 active 的 query。
  */
 const invalidateMsaStudyDomain = (queryClient: ReturnType<typeof useQueryClient>) => {
-  queryClient.invalidateQueries({ queryKey: ['msa', 'studies'] });
-  queryClient.invalidateQueries({ queryKey: ['msa', 'study'] });
-  queryClient.invalidateQueries({ queryKey: ['msa', 'plan-tasks'] });
-  queryClient.invalidateQueries({ queryKey: ['msa', 'plan-observations'] });
-  queryClient.invalidateQueries({ queryKey: ['msa', 'restudy-requests'] });
+  queryClient.invalidateQueries({ queryKey: msaStudyKeys.lists() });
+  queryClient.invalidateQueries({ queryKey: msaStudyKeys.details() });
+  queryClient.invalidateQueries({ queryKey: msaStudyKeys.allTasks() });
+  queryClient.invalidateQueries({ queryKey: msaStudyKeys.allObservations() });
+  queryClient.invalidateQueries({ queryKey: msaStudyKeys.restudy() });
 };
 
 // ---------------------------------------------------------------------------
@@ -135,7 +149,7 @@ export const useMsaPlanTasks = (planId: number | null) => useQuery({
 /** 管理用觀測視圖，含已作廢紀錄；需要 msa.manage。 */
 export const useMsaPlanObservations = (planId: number | null, enabled = true) =>
   useQuery({
-    queryKey: [...msaKeys.all, 'plan-observations', planId ?? 0] as const,
+    queryKey: msaStudyKeys.observations(planId ?? 0),
     enabled: planId != null && enabled,
     queryFn: async () => unwrap(
       await api.get<ApiEnvelope<{ items: MsaObservation[] }>>(

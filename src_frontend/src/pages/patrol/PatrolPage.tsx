@@ -189,7 +189,7 @@ const PatrolPage = () => {
             {/* Data Table */}
             <Card className="shadow-sm">
                 <Card.Body>
-                    <Table hover responsive className="align-middle">
+                    <Table hover responsive className="align-middle dense-list-table">
                         <thead className="table-dark">
                             <tr>
                                 <th>ID</th>
