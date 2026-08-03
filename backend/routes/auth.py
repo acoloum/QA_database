@@ -12,6 +12,7 @@ from ..utils import (
     verify_password,
     handle_db_error,
     auth_required,
+    api_error,
 )
 
 _VALID_ROLES = ('user', 'admin')
@@ -37,24 +38,24 @@ def _permissions_for_role(role_code: str) -> dict:
 def login():
     data = request.json
     if not data:
-        return jsonify({'error': '請求格式錯誤，需要 JSON 資料'}), 400
+        return api_error('請求格式錯誤，需要 JSON 資料', 400, code="VALIDATION_ERROR")
     username = data.get('username') or data.get('account')
     password = data.get('password')
 
     if not username or not password:
-        return jsonify({'error': '使用者名稱和密碼為必填欄位'}), 400
+        return api_error('使用者名稱和密碼為必填欄位', 400, code="VALIDATION_ERROR")
 
     try:
         user = User.query.filter_by(username=username).first()
 
         if not user:
-            return jsonify({"error": "使用者名稱或密碼錯誤"}), 401
+            return api_error("使用者名稱或密碼錯誤", 401, code="UNAUTHORIZED")
 
         if not verify_password(password, user.password):
-            return jsonify({"error": "使用者名稱或密碼錯誤"}), 401
+            return api_error("使用者名稱或密碼錯誤", 401, code="UNAUTHORIZED")
 
         if not user.is_active:
-            return jsonify({"error": "帳號已被停用"}), 401
+            return api_error("帳號已被停用", 401, code="UNAUTHORIZED")
 
         # 將舊版 SHA256 雜湊在登入成功時升級為 bcrypt
         if not user.password.startswith('$2b$') and not user.password.startswith('$2a$'):
@@ -76,7 +77,7 @@ def login():
         })
     except Exception as e:
         current_app.logger.exception("Login error: %s", str(e))
-        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
 
 @auth_bp.route('/api/verify-token', methods=['GET'])
 def verify_token_api():
@@ -120,7 +121,7 @@ def list_roles(current_user):
         ])
     except Exception as e:
         current_app.logger.exception("List roles error: %s", str(e))
-        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
 
 
 @auth_bp.route('/api/users', methods=['GET'])
@@ -143,7 +144,7 @@ def list_users(current_user):
         ])
     except Exception as e:
         current_app.logger.exception("List users error: %s", str(e))
-        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
 
 
 @auth_bp.route('/api/roles/<string:role_code>', methods=['PATCH'])
@@ -153,21 +154,21 @@ def update_role_permissions(current_user, role_code):
     """更新角色權限（需 user.manage 權限）"""
     data = request.json
     if not data or 'permissions' not in data:
-        return jsonify({"error": "請求格式錯誤，需要 permissions 欄位"}), 400
+        return api_error("請求格式錯誤，需要 permissions 欄位", 400, code="VALIDATION_ERROR")
 
     permissions = data['permissions']
     if not isinstance(permissions, dict):
-        return jsonify({"error": "permissions 必須為物件格式"}), 400
+        return api_error("permissions 必須為物件格式", 400, code="VALIDATION_ERROR")
 
     try:
         role = UserService.set_role_permissions(role_code, permissions)
         if not role:
-            return jsonify({"error": f"角色不存在：{role_code}"}), 404
+            return api_error(f"角色不存在：{role_code}", 404, code="NOT_FOUND")
         return jsonify({'code': role.code, 'name': role.name, 'permissions': role.permissions})
     except Exception as e:
         db.session.rollback()
         current_app.logger.exception("Update role permissions error: %s", str(e))
-        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
 
 
 @auth_bp.route('/api/users/<int:user_id>/role', methods=['PUT'])
@@ -177,25 +178,25 @@ def update_user_role(current_user, user_id):
     """修改使用者角色（需 user.manage 權限）"""
     data = request.json
     if not data:
-        return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
+        return api_error("請求格式錯誤，需要 JSON 資料", 400, code="VALIDATION_ERROR")
 
     new_role = data.get('role')
     if not _role_is_valid(new_role):
-        return jsonify({"error": f"角色代碼不存在：{new_role}"}), 400
+        return api_error(f"角色代碼不存在：{new_role}", 400, code="VALIDATION_ERROR")
 
     # 禁止管理員修改自己的角色，避免意外失去管理員權限
     if current_user.id == user_id:
-        return jsonify({"error": "無法修改自己的角色"}), 400
+        return api_error("無法修改自己的角色", 400, code="VALIDATION_ERROR")
 
     try:
         user = UserService.set_role(current_user.id, user_id, new_role)
         if not user:
-            return jsonify({"error": "找不到使用者"}), 404
+            return api_error("找不到使用者", 404, code="NOT_FOUND")
         return jsonify({"success": True, "message": f"角色已更新為 {new_role}"})
     except Exception as e:
         db.session.rollback()
         current_app.logger.exception("Update user role error: %s", str(e))
-        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
 
 
 @auth_bp.route('/api/users/<int:user_id>/active', methods=['PUT'])
@@ -205,21 +206,21 @@ def update_user_active(current_user, user_id):
     """啟用／停用使用者帳號（需 user.manage 權限）"""
     data = request.json
     if not data or 'is_active' not in data:
-        return jsonify({"error": "請求格式錯誤，需要 is_active 欄位"}), 400
+        return api_error("請求格式錯誤，需要 is_active 欄位", 400, code="VALIDATION_ERROR")
 
     if current_user.id == user_id:
-        return jsonify({"error": "無法停用自己的帳號"}), 400
+        return api_error("無法停用自己的帳號", 400, code="VALIDATION_ERROR")
 
     try:
         user = UserService.set_active(current_user.id, user_id, bool(data['is_active']))
         if not user:
-            return jsonify({"error": "找不到使用者"}), 404
+            return api_error("找不到使用者", 404, code="NOT_FOUND")
         status_text = '啟用' if user.is_active else '停用'
         return jsonify({"success": True, "message": f"帳號已{status_text}"})
     except Exception as e:
         db.session.rollback()
         current_app.logger.exception("Update user active error: %s", str(e))
-        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
 
 
 @auth_bp.route('/api/users/<int:user_id>/password', methods=['PUT'])
@@ -229,19 +230,19 @@ def reset_user_password(current_user, user_id):
     """由 user.manage 管理者重設指定帳號密碼。"""
     data = request.json
     if not data or not isinstance(data.get('password'), str):
-        return jsonify({"error": "請求格式錯誤，需要 password 欄位"}), 400
+        return api_error("請求格式錯誤，需要 password 欄位", 400, code="VALIDATION_ERROR")
     password = data['password']
     if len(password) < 8:
-        return jsonify({"error": "密碼長度至少需要 8 個字元"}), 400
+        return api_error("密碼長度至少需要 8 個字元", 400, code="VALIDATION_ERROR")
 
     try:
         user = UserService.reset_password(current_user.id, user_id, password)
         if not user:
-            return jsonify({"error": "找不到使用者"}), 404
+            return api_error("找不到使用者", 404, code="NOT_FOUND")
         return jsonify({"success": True, "message": "密碼已重設"})
     except Exception as e:
         current_app.logger.exception("Reset user password error: %s", str(e))
-        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
 
 
 @auth_bp.route('/api/users', methods=['POST'])
@@ -251,27 +252,27 @@ def create_user(current_user):
     """新增使用者（需 user.manage 權限）"""
     data = request.json
     if not data:
-        return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
+        return api_error("請求格式錯誤，需要 JSON 資料", 400, code="VALIDATION_ERROR")
     username = data.get('username', '').strip()
     password = data.get('password', '')
     new_role = data.get('role', 'user')
     inspector_id = data.get('inspector_id')
 
     if not username or not password:
-        return jsonify({"error": "使用者名稱和密碼為必填欄位"}), 400
+        return api_error("使用者名稱和密碼為必填欄位", 400, code="VALIDATION_ERROR")
 
     if not _USERNAME_RE.match(username):
-        return jsonify({"error": "使用者名稱長度需 3–50 字元，僅允許英數字、底線、連字號、點號"}), 400
+        return api_error("使用者名稱長度需 3–50 字元，僅允許英數字、底線、連字號、點號", 400, code="VALIDATION_ERROR")
 
     if len(password) < 8:
-        return jsonify({"error": "密碼長度至少需要 8 個字元"}), 400
+        return api_error("密碼長度至少需要 8 個字元", 400, code="VALIDATION_ERROR")
 
     if not _role_is_valid(new_role):
-        return jsonify({"error": "角色值無效，請選擇已定義的角色"}), 400
+        return api_error("角色值無效，請選擇已定義的角色", 400, code="VALIDATION_ERROR")
 
     try:
         if User.query.filter_by(username=username).first():
-            return jsonify({"error": "使用者名稱已存在"}), 400
+            return api_error("使用者名稱已存在", 400, code="VALIDATION_ERROR")
 
         UserService.create(
             username=username,
@@ -283,4 +284,4 @@ def create_user(current_user):
     except Exception as e:
         db.session.rollback()
         current_app.logger.exception("Create user error: %s", str(e))
-        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")

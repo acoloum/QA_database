@@ -4,7 +4,7 @@ from ..services.ncmr_service import NCMRService, NCMRValidationError
 from ..authorization import require_permissions
 from ..errors import APIError
 from ..schemas import NCMRCreateSchema, NCMRUpdateIdentifierSchema, NCMRUpdateSchema
-from ..utils import auth_required, bounded_int, parse_optional_date
+from ..utils import auth_required, bounded_int, parse_optional_date, api_error
 from ..authorization import require_permission
 from ..extensions import db
 
@@ -78,7 +78,7 @@ def get_ncmr_list():
         result = NCMRService.get_ncmr_list(**params)
         return jsonify(result)
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
     except Exception:
         raise
 
@@ -160,7 +160,7 @@ def get_ncmr_info(ncmr_id):
     try:
         info = NCMRService.get_ncmr_info(ncmr_id)
         if info is None:
-            return jsonify({"error": "找不到NCMR記錄"}), 404
+            return api_error("找不到NCMR記錄", 404, code="NOT_FOUND")
         return jsonify(info)
     except Exception:
         raise
@@ -203,7 +203,7 @@ def create_disposition(current_user, ncmr_id):
         )
         return jsonify({"success": True, "id": did})
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
 
 
 @ncmr_bp.route('/api/ncmr/dispositions/<int:disposition_id>', methods=['PUT'])
@@ -218,7 +218,7 @@ def update_disposition(current_user, disposition_id):
         )
         return jsonify({"success": True})
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
 
 
 @ncmr_bp.route('/api/ncmr/dispositions/<int:disposition_id>', methods=['DELETE'])
@@ -241,77 +241,3 @@ def get_risk_releases():
     except Exception:
         raise
 
-# ==================================================
-# 【異常矯正】CAPA API (8D)
-# ==================================================
-
-@ncmr_bp.route('/api/capa', methods=['GET'])
-@auth_required
-@require_permission('capa.view')
-def get_capa_list():
-    try:
-        params = {
-            'page': bounded_int(request.args.get('page'), 1, 1, 1000000),
-            'per_page': bounded_int(request.args.get('per_page'), 20, 1, 100),
-            'status': request.args.get('status') or None,
-            'date_from': parse_optional_date(request.args.get('date_from'), 'date_from'),
-            'date_to': parse_optional_date(request.args.get('date_to'), 'date_to'),
-            'vendor': request.args.get('vendor') or None,
-            'material': request.args.get('material') or None,
-            'product_info': request.args.get('product_info') or None,
-        }
-        result = NCMRService.get_capa_list(**params)
-        return jsonify(result)
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-    except Exception:
-        raise
-
-@ncmr_bp.route('/api/capa/create', methods=['POST'])
-@auth_required
-@require_permission('capa.create')
-def create_capa(current_user):
-    try:
-        result = NCMRService.create_capa(request.json)
-        return jsonify({"success": True, **result})
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-    except Exception:
-        raise
-
-@ncmr_bp.route('/api/capa/detail/<int:id>')
-@auth_required
-@require_permission('capa.view')
-def get_capa_detail(id):
-    try:
-        data = NCMRService.get_capa_detail(id)
-        if data is None:
-            return jsonify({"error": "找不到資料"}), 404
-        return jsonify(data)
-    except Exception:
-        raise
-
-@ncmr_bp.route('/api/capa/update', methods=['POST'])
-@auth_required
-@require_permission('capa.edit')
-def update_capa(current_user):
-    try:
-        NCMRService.update_capa(request.json)
-        return jsonify({"success": True})
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-    except Exception:
-        raise
-
-@ncmr_bp.route('/api/capa/delete', methods=['POST'])
-@auth_required
-@require_permission('capa.close')
-def delete_capa(current_user):
-    try:
-        capa_id = request.json.get('id')
-        if not capa_id:
-            return jsonify({"error": "缺少識別碼"}), 400
-        NCMRService.delete_capa(capa_id)
-        return jsonify({"success": True})
-    except Exception:
-        raise

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Container, Card, Table, Badge, Form, Row, Col, Spinner, Button } from 'react-bootstrap';
 import { Line } from 'react-chartjs-2';
 import { useAuth } from '../../context/useAuth';
+import QueryErrorAlert from '../../components/common/QueryErrorAlert';
 import '../../utils/chartSetup';
 import {
   useVendorPerformanceList,
@@ -22,7 +23,7 @@ const VendorPerformancePage = () => {
   const { hasPermission } = useAuth();
   const refreshMutation = useRefreshVendorPerformance();
 
-  const { data: list = [], isLoading } = useVendorPerformanceList(period);
+  const { data: list = [], isLoading, isError, refetch } = useVendorPerformanceList(period);
   const { data: history = [] } = useVendorPerformanceHistory(selectedVendorId ?? 0);
   const canRefresh = hasPermission('vendor.manage');
 
@@ -56,6 +57,8 @@ const VendorPerformancePage = () => {
           />
         </div>
       </div>
+
+      <QueryErrorAlert show={isError} onRetry={refetch} />
 
       <Card className="shadow-sm mb-4">
         <Card.Body className="p-0">

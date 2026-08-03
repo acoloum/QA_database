@@ -7,7 +7,10 @@ def test_pyrometry_error_response_maps_validation_error(app):
         response, status = pyrometry_error_response(PyrometryValidationError("缺少測試日期"))
 
     assert status == 400
-    assert response.get_json() == {"error": "缺少測試日期"}
+    assert response.get_json() == {
+        "success": False,
+        "error": {"code": "VALIDATION_ERROR", "message": "缺少測試日期"},
+    }
 
 
 def test_pyrometry_error_response_uses_configured_value_error_status(app):
@@ -15,4 +18,7 @@ def test_pyrometry_error_response_uses_configured_value_error_status(app):
         response, status = pyrometry_error_response(ValueError("找不到資料"), value_error_status=404)
 
     assert status == 404
-    assert response.get_json() == {"error": "找不到資料"}
+    assert response.get_json() == {
+        "success": False,
+        "error": {"code": "NOT_FOUND", "message": "找不到資料"},
+    }

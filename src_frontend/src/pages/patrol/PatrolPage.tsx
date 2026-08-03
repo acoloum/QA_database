@@ -11,6 +11,7 @@ import { usePatrolList, usePatrolOptions, useDeletePatrol, useExportPatrolRawDat
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import PermissionAction from '../../components/PermissionAction';
 import { useAuth } from '../../context/useAuth';
+import QueryErrorAlert from '../../components/common/QueryErrorAlert';
 
 const PatrolPage = () => {
     const { hasPermission } = useAuth();
@@ -37,7 +38,7 @@ const PatrolPage = () => {
     const operators = optionsData?.operators || [];
     const customers = optionsData?.customers || [];
 
-    const { data: patrolData, isLoading } = usePatrolList({
+    const { data: patrolData, isLoading, isError, refetch } = usePatrolList({
         page,
         per_page: 20,
         s_date: startDate,
@@ -102,6 +103,7 @@ const PatrolPage = () => {
     const data = patrolData?.data || [];
     return (
         <div className="container-fluid p-4">
+            <QueryErrorAlert show={isError} onRetry={refetch} />
             <div className="d-flex justify-content-between align-items-center mb-4">
                 <h2 className="text-primary fw-bold"><i className="bi bi-shield-check"></i> 現場巡檢管理</h2>
                 <div>

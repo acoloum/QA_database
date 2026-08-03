@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import type { NCMR, NCMRCreateInput, NCMRUpdateInput, NcmrDisposition, RiskRelease } from '../types';
-import { ncmrKeys, capaKeys } from './queryKeys';
+import { ncmrKeys } from './queryKeys';
 
 // --- Queries ---
 
@@ -15,17 +15,6 @@ export interface NCMRListParams {
     date_from?: string;
     date_to?: string;
     source?: string;
-    vendor?: string;
-    material?: string;
-    product_info?: string;
-    status?: string;
-}
-
-export interface CAPAListParams {
-    page?: number;
-    per_page?: number;
-    date_from?: string;
-    date_to?: string;
     vendor?: string;
     material?: string;
     product_info?: string;
@@ -74,40 +63,6 @@ export const useNCMRList = (params: NCMRListParams = {}) => {
     });
 };
 
-
-export const useCAPAList = (params: CAPAListParams = {}) => {
-    return useQuery({
-        queryKey: capaKeys.list(params),
-        queryFn: async () => {
-            const res = await api.get<{
-                data: Record<string, unknown>[];
-                total: number;
-                page: number;
-                per_page: number;
-            }>('/capa', { params });
-            const mapped = res.data.data.map((item) => ({
-                id: item['識別碼'] as number,
-                no: item['8D單號'] || item['識別碼'],
-                ncmr_no: item['NCMR單號'] || ('#' + item['NCMR_ID']),
-                source: item['來源'],
-                vendor: item['廠商'],
-                material: item['材質'],
-                spec: item['規格'],
-                create_date: item['ncmr_date'] || item['建立日期'],
-                owner: item['負責人員姓名'],
-                status: item['狀態'],
-            }));
-            return {
-                data: mapped,
-                total: res.data.total,
-                page: res.data.page,
-                per_page: res.data.per_page,
-            };
-        },
-        placeholderData: (previousData) => previousData,
-        staleTime: 60 * 1000,
-    });
-};
 
 export const useNCMRDetail = (id: number | null) => {
     return useQuery({

@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request, send_file
 from ..services.patrol_service import PatrolService
-from ..utils import auth_required, handle_db_error, validate_upload_file
+from ..utils import auth_required, handle_db_error, validate_upload_file, api_error
 from ..authorization import require_permission
 
 patrol_bp = Blueprint('patrol', __name__)
@@ -43,7 +43,7 @@ def patrol_detail(id):
     try:
         data = PatrolService.get_detail(id)
         if data is None:
-            return jsonify({"error": "資料不存在"}), 404
+            return api_error("資料不存在", 404, code="NOT_FOUND")
         return jsonify(data)
     except Exception:
         raise
@@ -75,7 +75,7 @@ def set_patrol_detail_exclusion_route(detail_id):
         )
         return jsonify(result)
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
     except Exception:
         raise
 
@@ -134,7 +134,7 @@ def patrol_add():
         patrol_id = PatrolService.add_patrol(request.json)
         return jsonify({"success": True, "id": patrol_id})
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
     except Exception:
         raise
 
@@ -146,7 +146,7 @@ def patrol_update():
         PatrolService.update_patrol(request.json)
         return jsonify({"success": True})
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
     except Exception:
         raise
 
@@ -155,9 +155,9 @@ def patrol_update():
 @require_permission('patrol.delete')
 def patrol_delete():
     try:
-        record_id = request.json.get('id')
+        record_id = (request.json or {}).get('id')
         if not record_id:
-            return jsonify({"error": "缺少記錄 ID"}), 400
+            return api_error("缺少記錄 ID", 400, code="VALIDATION_ERROR")
         PatrolService.delete_patrol(record_id)
         return jsonify({"success": True})
     except Exception:
@@ -233,20 +233,20 @@ def patrol_import():
         return '', 200
 
     if 'file' not in request.files:
-        return jsonify({"error": "沒有上傳檔案"}), 400
+        return api_error("沒有上傳檔案", 400, code="VALIDATION_ERROR")
 
     file = request.files['file']
     if file.filename == '':
-        return jsonify({"error": "沒有選擇檔案"}), 400
+        return api_error("沒有選擇檔案", 400, code="VALIDATION_ERROR")
 
     upload_error = validate_upload_file(file)
     if upload_error:
-        return jsonify({"error": upload_error}), 400
+        return api_error(upload_error, 400, code="VALIDATION_ERROR")
 
     try:
         count = PatrolService.import_data(file)
         return jsonify({"success": True, "message": f"匯入成功，共 {count} 筆資料"})
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
     except Exception:
         raise

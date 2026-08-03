@@ -31,15 +31,24 @@ class ReworkService:
         """
         if rework_id in (None, ""):
             return None
+        # 解析結果會直接拿去查執行/檢驗/成本等子表，因此這裡就要確認主檔仍存在且
+        # 未被軟刪除；否則已刪除重工單的子紀錄仍讀得出來。
         try:
-            return int(rework_id)
+            numeric_id = int(rework_id)
         except (ValueError, TypeError):
-            pass
-        if str(rework_id).startswith('RW'):
-            req = ReworkRequest.query.filter_by(rework_number=rework_id).first()
-            if req:
-                return req.id
-        return None
+            numeric_id = None
+
+        if numeric_id is not None:
+            found = ReworkRequest.active_query().filter(
+                ReworkRequest.id == numeric_id
+            ).first()
+        elif str(rework_id).startswith('RW'):
+            found = ReworkRequest.active_query().filter_by(
+                rework_number=str(rework_id)
+            ).first()
+        else:
+            return None
+        return found.id if found else None
 
     @staticmethod
     def _locked_active_request(rework_id: int) -> Optional[ReworkRequest]:
@@ -289,6 +298,8 @@ class ReworkService:
             data.append(item)
 
         # 補上客訴單號（從 CustomerComplaint 反查，避免 N+1 改為批量查詢）
+        # 刻意不過濾軟刪除：此處只是把重工單「當初依據的客訴單號」顯示出來，
+        # 來源客訴事後被刪除時仍應保留這個追溯資訊，而不是變成空白。
         complaint_ids = [r.complaint_id for r in requests if r.complaint_id]
         if complaint_ids:
             complaints = {
@@ -477,6 +488,9 @@ class ReworkService:
             req.review_status = new_status
             req.status = new_status
             req.reviewer_id = reviewer.id if reviewer else None
+            # naive 本地時間：本欄僅供顯示，且 format_value 只輸出 %Y-%m-%d 不做時區換算，
+            # 改存 UTC 會讓 00:00~08:00 之間的紀錄顯示成前一天。
+            # 全系統統一存 UTC 需連同顯示層一起改，見 docs 待辦。
             req.review_time = datetime.now()
             req.review_opinion = data.get('opinion', '')
             AuditService.record(
@@ -862,6 +876,7 @@ class ReworkService:
 
             validate_status_transition('重工', req.status, '已結案')
             req.status = '已結案'
+            # 同 review_time：naive 本地時間，僅供顯示（format_value 不做時區換算）
             req.actual_finish_date = datetime.now()
 
             # 重工完成時自動同步 NCMR（無關聯 CAPA 時）

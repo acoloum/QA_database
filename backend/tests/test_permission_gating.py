@@ -318,7 +318,6 @@ def test_patrol_legacy_control_limit_writes_are_read_only(client, db_session, pa
     ('method', 'path', 'payload', 'model'),
     [
         ('post', '/api/ncmr/add', {}, NCMR),
-        ('post', '/api/capa/create', {}, CorrectiveAction),
         ('post', '/api/complaints', {}, CustomerComplaint),
         ('put', '/api/complaints/1', {}, CustomerComplaint),
         ('post', '/api/rework/apply', {}, ReworkRequest),

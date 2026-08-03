@@ -4,7 +4,7 @@ from ..services.complaint_service import ComplaintService
 from ..services.complaint_stats_service import ComplaintStatsService
 from ..errors import APIError
 from ..authorization import require_permissions
-from ..utils import auth_required, bounded_int, parse_optional_date
+from ..utils import auth_required, bounded_int, parse_optional_date, api_error
 from ..authorization import require_permission
 
 complaint_bp = Blueprint('complaint', __name__)
@@ -31,7 +31,7 @@ def list_complaints(current_user):
         )
         return jsonify(result), 200
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
     except Exception:
         raise
 
@@ -46,7 +46,7 @@ def create_complaint(current_user):
         result = ComplaintService.create(data, creator_id=current_user.id)
         return jsonify(result), 201
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
     except Exception:
         raise
 
@@ -59,7 +59,7 @@ def get_complaint(current_user, complaint_id: int):
     """GET /api/complaints/<id>"""
     c = ComplaintService.get_detail(complaint_id)
     if not c:
-        return jsonify({'error': '客訴不存在'}), 404
+        return api_error('客訴不存在', 404, code="NOT_FOUND")
     return jsonify(c), 200
 
 
@@ -73,7 +73,7 @@ def update_complaint(current_user, complaint_id: int):
         result = ComplaintService.update(complaint_id, data)
         return jsonify(result), 200
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
     except Exception:
         raise
 
@@ -89,7 +89,7 @@ def delete_complaint(current_user, complaint_id: int):
     except APIError as e:
         return jsonify(e.to_dict()), e.status_code
     except ValueError as e:
-        return jsonify({'error': str(e)}), 404
+        return api_error(str(e), 404, code="NOT_FOUND")
 
 
 # ── 開立 CAPA ────────────────────────────────────────────────
@@ -104,7 +104,7 @@ def open_capa_from_complaint(current_user, complaint_id: int):
     except APIError as e:
         return jsonify(e.to_dict()), e.status_code
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
 
 
 
@@ -120,7 +120,7 @@ def open_rework_from_complaint(current_user, complaint_id: int):
     except APIError as e:
         return jsonify(e.to_dict()), e.status_code
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
 
 
 # ── Dashboard 快查 ───────────────────────────────────────────

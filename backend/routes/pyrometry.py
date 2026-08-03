@@ -2,7 +2,7 @@ import io as _io
 from functools import wraps
 from flask import Blueprint, jsonify, request, send_file
 from ..services.pyrometry_service import PyrometryService, PyrometryValidationError
-from ..utils import auth_required, handle_db_error, parse_optional_int, validate_upload_file
+from ..utils import auth_required, handle_db_error, parse_optional_int, validate_upload_file, api_error
 from ..authorization import require_permission
 from ..services.pyrometry_parser import parse_temperature_file
 
@@ -12,10 +12,11 @@ pyrometry_bp = Blueprint('pyrometry', __name__)
 def pyrometry_error_response(error, value_error_status=400):
     """集中爐溫模組 route 的錯誤回應格式，避免各端點各自處理。"""
     if isinstance(error, PyrometryValidationError):
-        return jsonify({"error": str(error)}), 400
+        return api_error(str(error), 400, code="VALIDATION_ERROR")
     if isinstance(error, ValueError):
-        return jsonify({"error": str(error)}), value_error_status
-    return jsonify({"error": handle_db_error(error)}), 500
+        code = "NOT_FOUND" if value_error_status == 404 else "VALIDATION_ERROR"
+        return api_error(str(error), value_error_status, code=code)
+    return api_error(handle_db_error(error), 500, code="INTERNAL_ERROR")
 
 
 def pyrometry_route_errors(value_error_status=400):
@@ -235,10 +236,10 @@ def parse_data():
     """上傳時間序列資料檔，回傳通道摘要與繪圖資料（不落地，僅解析）"""
     file = request.files.get('file')
     if not file:
-        return jsonify({"error": "缺少檔案"}), 400
+        return api_error("缺少檔案", 400, code="VALIDATION_ERROR")
     upload_error = validate_upload_file(file, allowed_extensions={'.csv', '.xlsx', '.xls'})
     if upload_error:
-        return jsonify({"error": upload_error}), 400
+        return api_error(upload_error, 400, code="VALIDATION_ERROR")
     result = parse_temperature_file(file.stream, filename=file.filename)
     return jsonify({"success": True, "data": result})
 

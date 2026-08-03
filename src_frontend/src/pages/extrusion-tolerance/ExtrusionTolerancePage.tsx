@@ -10,6 +10,7 @@ import ViewExtrusionToleranceModal from '../../components/extrusion-tolerance/Vi
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import PaginationBar from '../../components/common/PaginationBar';
 import PermissionAction from '../../components/PermissionAction';
+import QueryErrorAlert from '../../components/common/QueryErrorAlert';
 
 const ExtrusionTolerancePage = () => {
     const [page, setPage] = useState(1);
@@ -17,7 +18,7 @@ const ExtrusionTolerancePage = () => {
     const [spec, setSpec] = useState('');
     const [vendor, setVendor] = useState('');
 
-    const { data: result, isLoading, refetch } = useExtrusionToleranceList({
+    const { data: result, isLoading, isError, refetch } = useExtrusionToleranceList({
         page, page_size: 20, material, spec, vendor,
     });
     const deleteMutation = useDeleteExtrusionTolerance();
@@ -47,6 +48,7 @@ const ExtrusionTolerancePage = () => {
 
     return (
         <div>
+            <QueryErrorAlert show={isError} onRetry={refetch} />
             <div className="d-flex justify-content-between align-items-center mb-3">
                 <h4>擠壓公差管理</h4>
                 <PermissionAction permission="tolerance.manage"><Button variant="primary" size="sm" onClick={handleAdd}>+ 新增</Button></PermissionAction>

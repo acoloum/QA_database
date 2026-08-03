@@ -398,7 +398,10 @@ def generate_number(prefix: str, table_name: Optional[str] = None, number_field:
                 ORDER BY "{number_field}" DESC
             """
             pattern = f"{prefix}-{year_month}-%"
-            # Use db.session.execute with text()
+            # 刻意掃完當月全部單號再取最大值，而不是只讀 ORDER BY DESC 的第一筆：
+            # 字典序只有在序號都是等寬補零時才等於數值序，一旦混入舊制或手改的
+            # 單號（位數不同），只取第一筆就會算出重複的序號。當月筆數僅數百，
+            # 且外層已持有 advisory lock，這裡的成本可忽略。
             result = db.session.execute(text(sql), {"pattern": pattern})
             results = result.fetchall()
             

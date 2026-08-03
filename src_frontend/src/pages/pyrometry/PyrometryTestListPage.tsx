@@ -6,6 +6,7 @@ import PaginationBar from '../../components/common/PaginationBar';
 import { useDeletePyrometryTest, useExportPyrometryTest, useFurnaces, usePyrometryTests } from '../../hooks/usePyrometry';
 import PyrometryTestForm from './PyrometryTestForm';
 import PermissionAction from '../../components/PermissionAction';
+import QueryErrorAlert from '../../components/common/QueryErrorAlert';
 
 const PyrometryTestListPage = () => {
   const [showForm, setShowForm] = useState(false);
@@ -17,7 +18,7 @@ const PyrometryTestListPage = () => {
   const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
   const { data: furnaces } = useFurnaces({ activeOnly: true });
-  const { data: result, isLoading } = usePyrometryTests({ page, filters });
+  const { data: result, isLoading, isError, refetch } = usePyrometryTests({ page, filters });
   const deleteMutation = useDeletePyrometryTest();
   const exportMutation = useExportPyrometryTest();
 
@@ -36,6 +37,7 @@ const PyrometryTestListPage = () => {
 
   return (
     <div>
+      <QueryErrorAlert show={isError} onRetry={refetch} />
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h4>爐溫測試紀錄</h4>
         <PermissionAction permission="pyrometry.edit"><Button variant="primary" size="sm" onClick={() => { setEditId(null); setShowForm(true); }}>+ 新增</Button></PermissionAction>

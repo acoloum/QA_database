@@ -9,7 +9,7 @@ from ..services.mechanical_service import (
 )
 from ..extensions import db
 from ..models import Vendor
-from ..utils import auth_required, handle_db_error, validate_upload_file
+from ..utils import auth_required, handle_db_error, validate_upload_file, api_error
 from ..authorization import require_permission
 
 mechanical_bp = Blueprint('mechanical', __name__)
@@ -23,10 +23,10 @@ def _current_user_id():
 def _mechanical_error_response(error):
     db.session.rollback()
     if isinstance(error, (MechanicalValidationError, BadRequest, UnsupportedMediaType)):
-        return jsonify({"error": str(error)}), 400
+        return api_error(str(error), 400, code="VALIDATION_ERROR")
     if isinstance(error, MechanicalNotFoundError):
-        return jsonify({"error": str(error)}), 404
-    return jsonify({"error": handle_db_error(error)}), 500
+        return api_error(str(error), 404, code="NOT_FOUND")
+    return api_error(handle_db_error(error), 500, code="INTERNAL_ERROR")
 
 
 def _json_object():

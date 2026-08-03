@@ -1,9 +1,10 @@
 import { Table, Card, Spinner } from 'react-bootstrap';
 import { useRiskReleases } from '../../hooks/useNCMR';
+import QueryErrorAlert from '../../components/common/QueryErrorAlert';
 
 // 未授權放行風險清單頁面（IATF 16949 §8.7.1.1）
 const RiskReleasePage = () => {
-    const { data = [], isLoading } = useRiskReleases();
+    const { data = [], isLoading, isError, refetch } = useRiskReleases();
 
     return (
         <Card className="m-3">
@@ -12,6 +13,7 @@ const RiskReleasePage = () => {
                 <small className="text-muted">超出客戶規格但未取得客戶授權即放行的記錄</small>
             </Card.Header>
             <Card.Body>
+                <QueryErrorAlert show={isError} onRetry={refetch} />
                 {isLoading ? <Spinner animation="border" /> : (
                     <Table bordered hover responsive size="sm">
                         <thead>

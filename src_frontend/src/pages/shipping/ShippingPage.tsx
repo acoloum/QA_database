@@ -11,6 +11,7 @@ import { evaluateShippingViolation } from '../../components/shipping/shippingVio
 import PaginationBar from '../../components/common/PaginationBar';
 import PermissionAction from '../../components/PermissionAction';
 import { useAuth } from '../../context/useAuth';
+import QueryErrorAlert from '../../components/common/QueryErrorAlert';
 
 const ShippingPage = () => {
     const { hasPermission } = useAuth();
@@ -46,7 +47,7 @@ const ShippingPage = () => {
         spec: debouncedSpec
     };
 
-    const { data: searchResult, isLoading } = useShippingList(searchParams);
+    const { data: searchResult, isLoading, isError, refetch } = useShippingList(searchParams);
     const deleteMutation = useDeleteShipping();
     const exportShippingData = useExportShippingData();
 
@@ -90,6 +91,7 @@ const ShippingPage = () => {
 
     return (
         <div className="container-fluid px-4 py-4">
+            <QueryErrorAlert show={isError} onRetry={refetch} />
             {/* Header */}
             <div className="d-flex justify-content-between align-items-center mb-4">
                 <h2 className="text-primary fw-bold"><i className="bi bi-clipboard-check"></i> 出貨檢驗數據系統</h2>

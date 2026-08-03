@@ -15,6 +15,7 @@ import PaginationBar from '../../components/common/PaginationBar';
 import type { CustomerComplaint } from '../../types';
 import { ComplaintFilterBar, ComplaintTable, type ComplaintFilters } from './ComplaintPageParts';
 import PermissionAction from '../../components/PermissionAction';
+import QueryErrorAlert from '../../components/common/QueryErrorAlert';
 
 const PAGE_SIZE = 20;
 
@@ -49,7 +50,7 @@ const ComplaintPage = () => {
         per_page: PAGE_SIZE,
     };
 
-    const { data, isLoading }   = useComplaintList(params);
+    const { data, isLoading, isError, refetch } = useComplaintList(params);
     const deleteMutation        = useDeleteComplaint();
     const openCapaMutation      = useOpenCapaFromComplaint();
     const openReworkMutation    = useOpenReworkFromComplaint();
@@ -157,6 +158,8 @@ const ComplaintPage = () => {
             <ComplaintFilterBar filters={filters} onFilterChange={handleFilterChange} onReset={handleReset} />
 
             {/* 表格 */}
+            <QueryErrorAlert show={isError} onRetry={refetch} />
+
             <Card className="shadow-sm">
                 <Card.Body className="p-0">
                     <ComplaintTable

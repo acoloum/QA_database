@@ -104,9 +104,12 @@ class VendorPerformanceService:
 
         if vendor_name:
             # 查詢本月新開的 CAPA，源頭 NCMR 廠商與本廠商相符
-            ncmr_ids_for_vendor = select(NCMR.id).where(NCMR.vendor == vendor_name)
+            ncmr_ids_for_vendor = select(NCMR.id).where(
+                NCMR.vendor == vendor_name, NCMR.deleted_at.is_(None)
+            )
 
-            capas = CorrectiveAction.query.filter(
+            # 與下方客訴統計一致：績效分數不得把已軟刪除的單據算進去
+            capas = CorrectiveAction.active_query().filter(
                 CorrectiveAction.ncmr_id.in_(ncmr_ids_for_vendor),
                 extract("year",  CorrectiveAction.created_at) == year,
                 extract("month", CorrectiveAction.created_at) == month,
@@ -213,6 +216,9 @@ class VendorPerformanceService:
             .filter(
                 CorrectiveAction.created_at >= datetime.combine(start, time.min),
                 CorrectiveAction.created_at < datetime.combine(end, time.min),
+                # 與下方客訴聚合一致：績效分數不得計入已軟刪除的單據
+                CorrectiveAction.deleted_at.is_(None),
+                NCMR.deleted_at.is_(None),
             )
             .all()
         )

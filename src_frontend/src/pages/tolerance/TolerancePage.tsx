@@ -7,6 +7,7 @@ import { useToleranceSearch, useToleranceOptions, useDeleteTolerance, useImportT
 import type { ToleranceStandard, Vendor } from '../../types';
 import { useNavigate } from 'react-router';
 import PermissionAction from '../../components/PermissionAction';
+import QueryErrorAlert from '../../components/common/QueryErrorAlert';
 
 const TolerancePage = () => {
     const navigate = useNavigate();
@@ -28,7 +29,7 @@ const TolerancePage = () => {
         spec
     };
 
-    const { data: searchResult, isLoading, refetch } = useToleranceSearch(searchParams);
+    const { data: searchResult, isLoading, isError, refetch } = useToleranceSearch(searchParams);
     const deleteMutation = useDeleteTolerance();
     const importMutation = useImportTolerance();
     const exportToleranceData = useExportToleranceData();
@@ -97,6 +98,7 @@ const TolerancePage = () => {
 
     return (
         <div className="container-fluid p-4">
+            <QueryErrorAlert show={isError} onRetry={refetch} />
             <div className="d-flex justify-content-between align-items-center mb-4">
                 <h2 className="text-primary fw-bold"><i className="bi bi-rulers"></i> 廠商公差管理系統</h2>
                 <div>

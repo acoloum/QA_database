@@ -8,7 +8,7 @@ from ..services.attachment_service import MSA_ATTACHMENT_ENTITY_TYPES
 from ..services.msa_errors import MsaInternalError, MsaServiceError
 from ..authorization import require_permissions
 from ..errors import AuthorizationError
-from ..utils import auth_required
+from ..utils import auth_required, api_error
 from ..models import Role
 
 
@@ -70,7 +70,7 @@ def _has_entity_permission(current_user, entity_type: str, action: str) -> bool:
 
 def _require_entity_permission(current_user, entity_type: str, action: str):
     if entity_type not in _ENTITY_PERMISSION_PREFIX:
-        return jsonify({'error': f'無效的實體類型：{entity_type}'}), 400
+        return api_error(f'無效的實體類型：{entity_type}', 400, code="VALIDATION_ERROR")
     if not _has_entity_permission(current_user, entity_type, action):
         if entity_type in MSA_ATTACHMENT_ENTITY_TYPES:
             if entity_type == 'equipment_calibration':
@@ -93,7 +93,7 @@ def _require_entity_permission(current_user, entity_type: str, action: str):
                     'permission': required,
                 },
             )
-        return jsonify({'error': '權限不足'}), 403
+        return api_error('權限不足', 403, code="FORBIDDEN")
     return None
 
 
@@ -157,7 +157,7 @@ def _missing_attachment_error(att_id: int):
             404,
             details={'attachment_id': att_id},
         )
-    return jsonify({'error': '附件不存在'}), 404
+    return api_error('附件不存在', 404, code="NOT_FOUND")
 
 
 @attachment_bp.route('/api/attachments/upload', methods=['POST'])
@@ -183,7 +183,7 @@ def upload_attachment(current_user):
                 '未提供檔案',
                 422,
             )
-        return jsonify({'error': '未提供檔案'}), 400
+        return api_error('未提供檔案', 400, code="VALIDATION_ERROR")
 
     file        = request.files['file']
     d_step_raw  = request.form.get('d_step')
@@ -196,7 +196,7 @@ def upload_attachment(current_user):
                 '缺少 entity_type 或 entity_id',
                 422,
             )
-        return jsonify({'error': '缺少 entity_type 或 entity_id'}), 400
+        return api_error('缺少 entity_type 或 entity_id', 400, code="VALIDATION_ERROR")
 
     permission_error = _require_entity_permission(current_user, entity_type, 'edit')
     if permission_error:
@@ -224,7 +224,7 @@ def upload_attachment(current_user):
                 422,
                 details={'entity_type': entity_type},
             )
-        return jsonify({'error': str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
     except Exception:
         if is_msa:
             return _msa_service_error(
@@ -254,7 +254,7 @@ def list_attachments(current_user):
                 '缺少 entity_type 或 entity_id',
                 422,
             )
-        return jsonify({'error': '缺少 entity_type 或 entity_id'}), 400
+        return api_error('缺少 entity_type 或 entity_id', 400, code="VALIDATION_ERROR")
 
     permission_error = _require_entity_permission(current_user, entity_type, 'view')
     if permission_error:
@@ -323,7 +323,7 @@ def download_attachment(current_user, att_id: int):
             404,
             details={'attachment_id': att_id},
         )
-    return jsonify({'error': '檔案不存在於伺服器'}), 404
+    return api_error('檔案不存在於伺服器', 404, code="NOT_FOUND")
 
 
 @attachment_bp.route('/api/attachments/<int:att_id>', methods=['DELETE'])
@@ -360,7 +360,7 @@ def delete_attachment(current_user, att_id: int):
                 404,
                 details={'attachment_id': att_id},
             )
-        return jsonify({'error': str(e)}), 404
+        return api_error(str(e), 404, code="NOT_FOUND")
     except PermissionError as e:
         if 'is_msa' in locals() and is_msa:
             return _msa_error(
@@ -369,7 +369,7 @@ def delete_attachment(current_user, att_id: int):
                 403,
                 details={'attachment_id': att_id},
             )
-        return jsonify({'error': str(e)}), 403
+        return api_error(str(e), 403, code="FORBIDDEN")
     except Exception:
         if 'is_msa' in locals() and is_msa:
             return _msa_error(

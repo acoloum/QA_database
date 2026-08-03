@@ -1,7 +1,7 @@
 
 from flask import Blueprint, jsonify, request, send_file
 from ..services.tolerance_service import ToleranceService
-from ..utils import auth_required, handle_db_error
+from ..utils import auth_required, handle_db_error, api_error
 from ..authorization import require_permission
 
 tolerance_bp = Blueprint('tolerance', __name__)
@@ -104,7 +104,7 @@ def add_tolerance(current_user):
         new_id = ToleranceService.add_tolerance(request.json)
         return jsonify({"success": True, "id": new_id})
     except Exception as e:
-        return jsonify({"error": handle_db_error(e)}), 500
+        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
 
 @tolerance_bp.route('/api/tolerance/update/<int:id>', methods=['POST'])
 @auth_required
@@ -115,9 +115,9 @@ def update_tolerance(current_user, id):
         ToleranceService.update_tolerance(id, request.json)
         return jsonify({"success": True})
     except ValueError as e:
-        return jsonify({"error": str(e)}), 404
+        return api_error(str(e), 404, code="NOT_FOUND")
     except Exception as e:
-        return jsonify({"error": handle_db_error(e)}), 500
+        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
 
 @tolerance_bp.route('/api/tolerance/delete/<int:id>', methods=['POST'])
 @auth_required
@@ -128,7 +128,7 @@ def delete_tolerance(current_user, id):
         ToleranceService.delete_tolerance(id)
         return jsonify({"success": True})
     except Exception as e:
-        return jsonify({"error": handle_db_error(e)}), 500
+        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
 
 @tolerance_bp.route('/api/tolerance/options', methods=['GET'])
 @auth_required
@@ -139,7 +139,7 @@ def get_tolerance_options():
         options = ToleranceService.get_options()
         return jsonify(options)
     except Exception as e:
-        return jsonify({"error": handle_db_error(e)}), 500
+        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
 
 @tolerance_bp.route('/api/tolerance/export', methods=['GET'])
 @auth_required
@@ -151,7 +151,7 @@ def export_tolerance_excel():
         return send_file(output, as_attachment=True, download_name='廠商公差資料.xlsx',
                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     except Exception as e:
-        return jsonify({"error": handle_db_error(e)}), 500
+        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
 
 @tolerance_bp.route('/api/tolerance/check', methods=['GET'])
 @auth_required
@@ -162,4 +162,4 @@ def check_tolerance():
         result = ToleranceService.check_tolerance(request.args)
         return jsonify(result)
     except Exception as e:
-        return jsonify({"error": handle_db_error(e)}), 500
+        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")

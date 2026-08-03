@@ -13,6 +13,7 @@ import type { NCMRListParams } from '../../hooks/useNCMR';
 import { buildNcmrPrintHtml, buildReworkFromNcmrUrl } from './ncmrPageUtils';
 import PermissionAction from '../../components/PermissionAction';
 import { useAuth } from '../../context/useAuth';
+import QueryErrorAlert from '../../components/common/QueryErrorAlert';
 
 const EMPTY_FILTERS: NCMRListParams = {
     page: 1, per_page: 20,
@@ -32,7 +33,7 @@ const NCMRPage = () => {
         per_page: 20,
     };
 
-    const { data: result, isLoading } = useNCMRList(activeParams);
+    const { data: result, isLoading, isError, refetch } = useNCMRList(activeParams);
     const ncmrList = result?.data ?? [];
     const total = result?.total ?? 0;
 
@@ -160,6 +161,8 @@ const NCMRPage = () => {
                     </Form.Select>
                 </Col>
             </FilterBar>
+
+            <QueryErrorAlert show={isError} onRetry={refetch} />
 
             <Card className="shadow-sm ncmr-list-card">
                 <Card.Body className="p-0">

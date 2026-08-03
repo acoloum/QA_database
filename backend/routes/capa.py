@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify, request
 from ..services.capa_service import CAPAService
 from ..services.task_service import TaskService
 from ..errors import APIError
-from ..utils import auth_required, bounded_int, parse_optional_date
+from ..utils import auth_required, bounded_int, parse_optional_date, api_error
 from ..authorization import require_permission
 
 capa_bp = Blueprint('capa', __name__)
@@ -27,7 +27,7 @@ def list_capas(current_user):
         )
         return jsonify(result), 200
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
 
 
 # ── 逾期查詢（Dashboard 用）──────────────────────────────────
@@ -41,7 +41,7 @@ def overdue_capas(current_user):
     from ..models import CorrectiveAction
     today = date.today()
     limit = bounded_int(request.args.get('limit'), 100, 1, 500)
-    items = CorrectiveAction.query.options(
+    items = CorrectiveAction.active_query().options(
         joinedload(CorrectiveAction.leader),
         joinedload(CorrectiveAction.owner),
     ).filter(
@@ -60,7 +60,7 @@ def get_capa(current_user, capa_id: int):
     """GET /api/capas/<id> — CAPA 明細"""
     detail = CAPAService.get_detail(capa_id)
     if not detail:
-        return jsonify({'error': 'CAPA 不存在'}), 404
+        return api_error('CAPA 不存在', 404, code="NOT_FOUND")
     return jsonify(detail), 200
 
 
@@ -89,7 +89,7 @@ def update_step(current_user, capa_id: int):
         result = CAPAService.update_step(capa_id, data)
         return jsonify(result), 200
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
     except Exception:
         raise
 
@@ -141,7 +141,7 @@ def close_capa(current_user, capa_id: int):
     data = request.get_json() or {}
     confirmation = data.get('D8_confirmation') or ''
     if not confirmation.strip():
-        return jsonify({'error': 'D8 結案確認聲明為必填'}), 400
+        return api_error('D8 結案確認聲明為必填', 400, code="VALIDATION_ERROR")
     try:
         result = CAPAService.close(
             capa_id      = capa_id,
@@ -153,7 +153,7 @@ def close_capa(current_user, capa_id: int):
     except APIError as e:
         return jsonify(e.to_dict()), e.status_code
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
 
 
 # ── 刪除 ─────────────────────────────────────────────────────
@@ -168,7 +168,7 @@ def delete_capa(current_user, capa_id: int):
     except APIError as e:
         return jsonify(e.to_dict()), e.status_code
     except ValueError as e:
-        return jsonify({'error': str(e)}), 404
+        return api_error(str(e), 404, code="NOT_FOUND")
 
 
 # ── 報表下載 ────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ def download_pdf(current_user, capa_id: int):
     """GET /api/capas/<id>/report/pdf — 下載 AIAG 8D 報表 PDF"""
     detail = CAPAService.get_detail(capa_id)
     if not detail:
-        return jsonify({'error': 'CAPA 不存在'}), 404
+        return api_error('CAPA 不存在', 404, code="NOT_FOUND")
     try:
         from flask import send_file
         from ..services.eightd_pdf import generate_8d_pdf
@@ -202,7 +202,7 @@ def download_excel(current_user, capa_id: int):
     """GET /api/capas/<id>/report/excel — 下載 AIAG 8D 報表 Excel"""
     detail = CAPAService.get_detail(capa_id)
     if not detail:
-        return jsonify({'error': 'CAPA 不存在'}), 404
+        return api_error('CAPA 不存在', 404, code="NOT_FOUND")
     try:
         from flask import send_file
         from ..services.eightd_excel import generate_8d_excel

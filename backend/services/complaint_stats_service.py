@@ -104,7 +104,8 @@ class ComplaintStatsService:
         date_to: Optional[date] = None,
     ) -> Dict[str, Any]:
         """Warranty / Field Failure 獨立統計"""
-        q = CustomerComplaint.query.filter(
+        # 統計不得計入已軟刪除的客訴
+        q = CustomerComplaint.active_query().filter(
             CustomerComplaint.complaint_type.in_(['warranty', 'field_failure'])
         )
         if date_from:

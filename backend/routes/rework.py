@@ -3,7 +3,7 @@ from functools import wraps
 from flask import Blueprint, jsonify, request, current_app
 from ..services.rework_service import ReworkService
 from ..errors import APIError
-from ..utils import auth_required
+from ..utils import auth_required, api_error
 from ..authorization import require_permission
 
 rework_bp = Blueprint('rework', __name__)
@@ -14,9 +14,9 @@ def rework_error_response(error, context):
     if isinstance(error, APIError):
         return jsonify(error.to_dict()), error.status_code
     if isinstance(error, ValueError):
-        return jsonify({"error": str(error)}), 400
+        return api_error(str(error), 400, code="VALIDATION_ERROR")
     current_app.logger.exception("%s error: %s", context, str(error))
-    return jsonify({"error": "伺服器內部錯誤"}), 500
+    return api_error("伺服器內部錯誤", 500, code="INTERNAL_ERROR")
 
 
 def require_rework_id():
@@ -69,7 +69,7 @@ def get_rework_applications():
 def apply_rework(current_user):
     """提交重工申請"""
     if not request.json:
-        return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
+        return api_error("請求格式錯誤，需要 JSON 資料", 400, code="VALIDATION_ERROR")
     result = ReworkService.create_application(request.json, actor_id=current_user.id)
     return jsonify({"success": True, **result})
 
@@ -80,7 +80,7 @@ def apply_rework(current_user):
 def update_rework_application(rework_id):
     """更新重工申請單"""
     if not request.json:
-        return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
+        return api_error("請求格式錯誤，需要 JSON 資料", 400, code="VALIDATION_ERROR")
     ReworkService.update_application(rework_id, request.json)
     return jsonify({"success": True})
 
@@ -91,7 +91,7 @@ def update_rework_application(rework_id):
 def approve_rework(current_user):
     """審核重工申請"""
     if not request.json:
-        return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
+        return api_error("請求格式錯誤，需要 JSON 資料", 400, code="VALIDATION_ERROR")
     ReworkService.approve_application(request.json, actor_id=current_user.id)
     return jsonify({"success": True})
 
@@ -112,7 +112,7 @@ def get_rework_executions():
 def execute_rework(current_user):
     """記錄重工執行"""
     if not request.json:
-        return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
+        return api_error("請求格式錯誤，需要 JSON 資料", 400, code="VALIDATION_ERROR")
     ReworkService.create_execution(request.json, actor_id=current_user.id)
     return jsonify({"success": True})
 
@@ -124,7 +124,7 @@ def get_execution(execution_id):
     """獲取單筆執行記錄"""
     item = ReworkService.get_execution(execution_id)
     if not item:
-        return jsonify({"error": "找不到執行記錄"}), 404
+        return api_error("找不到執行記錄", 404, code="NOT_FOUND")
     return jsonify(item)
 
 @rework_bp.route('/api/rework/execution/<int:execution_id>', methods=['PUT'])
@@ -134,7 +134,7 @@ def get_execution(execution_id):
 def update_execution(current_user, execution_id):
     """更新執行記錄"""
     if not request.json:
-        return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
+        return api_error("請求格式錯誤，需要 JSON 資料", 400, code="VALIDATION_ERROR")
     ReworkService.update_execution(execution_id, request.json, actor_id=current_user.id)
     return jsonify({"success": True})
 
@@ -174,7 +174,7 @@ def get_rework_costs():
 def add_rework_cost(current_user):
     """新增重工成本記錄"""
     if not request.json:
-        return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
+        return api_error("請求格式錯誤，需要 JSON 資料", 400, code="VALIDATION_ERROR")
     ReworkService.create_cost(request.json, actor_id=current_user.id)
     return jsonify({"success": True})
 
@@ -186,7 +186,7 @@ def get_rework_cost(cost_id):
     """獲取單筆成本記錄"""
     data = ReworkService.get_cost(cost_id)
     if not data:
-        return jsonify({"error": "找不到資料"}), 404
+        return api_error("找不到資料", 404, code="NOT_FOUND")
     return jsonify(data)
 
 @rework_bp.route('/api/rework/cost/<int:cost_id>', methods=['PUT'])
@@ -196,7 +196,7 @@ def get_rework_cost(cost_id):
 def update_rework_cost(current_user, cost_id):
     """更新成本記錄"""
     if not request.json:
-        return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
+        return api_error("請求格式錯誤，需要 JSON 資料", 400, code="VALIDATION_ERROR")
     ReworkService.update_cost(cost_id, request.json, actor_id=current_user.id)
     return jsonify({"success": True})
 
@@ -216,7 +216,7 @@ def delete_rework_cost(current_user, cost_id):
 def inspect_rework(current_user):
     """記錄重工品檢"""
     if not request.json:
-        return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
+        return api_error("請求格式錯誤，需要 JSON 資料", 400, code="VALIDATION_ERROR")
     ReworkService.create_inspection(request.json, actor_id=current_user.id)
     return jsonify({"success": True})
 
@@ -228,7 +228,7 @@ def get_inspection(inspection_id):
     """獲取單筆品檢記錄"""
     item = ReworkService.get_inspection(inspection_id)
     if not item:
-        return jsonify({"error": "找不到品檢記錄"}), 404
+        return api_error("找不到品檢記錄", 404, code="NOT_FOUND")
     return jsonify(item)
 
 @rework_bp.route('/api/rework/inspection/<int:inspection_id>', methods=['PUT'])
@@ -238,7 +238,7 @@ def get_inspection(inspection_id):
 def update_inspection(current_user, inspection_id):
     """更新品檢記錄"""
     if not request.json:
-        return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
+        return api_error("請求格式錯誤，需要 JSON 資料", 400, code="VALIDATION_ERROR")
     ReworkService.update_inspection(inspection_id, request.json, actor_id=current_user.id)
     return jsonify({"success": True})
 
@@ -258,7 +258,7 @@ def delete_inspection(current_user, inspection_id):
 def close_rework(current_user):
     """結案重工申請"""
     if not request.json:
-        return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
+        return api_error("請求格式錯誤，需要 JSON 資料", 400, code="VALIDATION_ERROR")
     ReworkService.close_rework(request.json, actor_id=current_user.id)
     return jsonify({"success": True})
 
@@ -269,9 +269,9 @@ def close_rework(current_user):
 def delete_rework(current_user):
     """刪除重工申請"""
     if not request.json:
-        return jsonify({"error": "請求格式錯誤，需要 JSON 資料"}), 400
-    rework_id = request.json.get('rework_id')
+        return api_error("請求格式錯誤，需要 JSON 資料", 400, code="VALIDATION_ERROR")
+    rework_id = (request.json or {}).get('rework_id')
     if not rework_id:
-        return jsonify({"error": "缺少重工ID"}), 400
+        return api_error("缺少重工ID", 400, code="VALIDATION_ERROR")
     ReworkService.delete_rework(rework_id, actor_id=current_user.id)
     return jsonify({"success": True})

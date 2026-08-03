@@ -44,13 +44,21 @@ def test_ncmr_list_rejects_invalid_date_query(client, db_session):
     assert "date_to" in response.get_json()["error"]["message"]
 
 
-def test_legacy_capa_list_rejects_invalid_date_query(client, db_session):
+def test_legacy_capa_endpoints_are_gone(client, db_session):
+    """舊 /api/capa* 端點已移除；正式清單一律走 /api/capas（CAPAService）。"""
     headers = _auth_headers(db_session, "legacy_capa_bounds_user")
 
-    response = client.get("/api/capa?date_from=2026-99-99", headers=headers)
-
-    assert response.status_code == 400
-    assert "date_from" in response.get_json()["error"]["message"]
+    for method, path in (
+        ('get',  '/api/capa'),
+        ('post', '/api/capa/create'),
+        ('get',  '/api/capa/detail/1'),
+        ('post', '/api/capa/update'),
+        ('post', '/api/capa/delete'),
+    ):
+        response = getattr(client, method)(path, headers=headers)
+        # POST 會落到 SPA 的 catch-all（`/<path:path>` 只允許 GET）而回 405，
+        # GET 則直接 404；兩者都代表該 API 端點已不存在。
+        assert response.status_code in (404, 405), f'{method.upper()} {path} 仍存在'
 
 
 def test_pyrometry_corrections_rejects_invalid_numeric_query(client, db_session):
@@ -107,10 +115,15 @@ def test_dashboard_stats_rejects_range_over_366_days(client, db_session):
     assert "366" in response.get_json()["error"]["message"]
 
 
-def test_legacy_ncmr_service_keeps_capa_methods():
-    assert callable(NCMRService.create_capa)
-    assert callable(NCMRService.update_capa)
-    assert callable(NCMRService.delete_capa)
+def test_legacy_ncmr_capa_methods_are_removed():
+    """NCMR 模組內的舊 CAPA 複製品已移除，正式路徑一律走 CAPAService。
+
+    舊版 create/update/delete 不過濾軟刪除、不寫稽核，delete 更是直接 DELETE
+    而非軟刪除，與 /api/capas 的行為不一致；保留只會讓兩套邏輯繼續分歧。
+    """
+    for name in ('get_capa_list', 'create_capa', 'get_capa_detail',
+                 'update_capa', 'delete_capa'):
+        assert not hasattr(NCMRService, name), f'NCMRService.{name} 應已移除'
 
 
 def test_quality_analytics_rejects_invalid_date(client, db_session):

@@ -9,6 +9,7 @@ import {
 import TaskDetailModal from '../../components/task/TaskDetailModal';
 import type { ActionTask, TaskStatus } from '../../types';
 import PermissionAction from '../../components/PermissionAction';
+import QueryErrorAlert from '../../components/common/QueryErrorAlert';
 
 const PAGE_SIZE = 20;
 
@@ -32,7 +33,7 @@ const TaskListPage = () => {
         per_page:    PAGE_SIZE,
     };
 
-    const { data, isLoading } = useTaskList(params);
+    const { data, isLoading, isError, refetch } = useTaskList(params);
     const tasks     = data?.data ?? [];
     const totalPages = Math.ceil((data?.total ?? 0) / PAGE_SIZE);
 
@@ -121,6 +122,8 @@ const TaskListPage = () => {
             </Card>
 
             {/* 任務表格 */}
+            <QueryErrorAlert show={isError} onRetry={refetch} />
+
             <Card className="shadow-sm">
                 <Card.Body className="p-0">
                     <div className="table-responsive">

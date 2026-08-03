@@ -190,7 +190,7 @@ def update_data():
 @require_permission('shipping.delete')
 def delete_data():
     try:
-        record_id = request.json.get('id')
+        record_id = (request.json or {}).get('id')
         if not record_id:
             return api_error("缺少記錄 ID", 400)
         

@@ -5,7 +5,7 @@ from ..extensions import db
 from ..models import Inspector, Vendor, Machine, Operator, AuditLog
 from ..services.date_range import DateWindow, parse_date_window
 from ..services.dashboard_service import DashboardService
-from ..utils import auth_required
+from ..utils import auth_required, api_error
 from ..authorization import require_permission
 
 admin_bp = Blueprint('admin', __name__)
@@ -60,7 +60,7 @@ def get_dashboard_todos():
         return jsonify(DashboardService.get_todos())
     except Exception as e:
         current_app.logger.exception("載入儀表板待辦事項時發生錯誤: %s", str(e))
-        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
 
 
 @admin_bp.route('/api/dashboard/trends')
@@ -71,7 +71,7 @@ def get_dashboard_trends():
         return jsonify(DashboardService.get_trends())
     except Exception as e:
         current_app.logger.exception("載入儀表板趨勢時發生錯誤: %s", str(e))
-        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
 
 
 # S-6：以下六個端點加上 @auth_required
@@ -97,7 +97,7 @@ def get_inspectors():
         } for i in inspectors])
     except Exception as e:
         current_app.logger.exception("查詢檢驗人員清單時發生錯誤: %s", str(e))
-        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
 
 
 @admin_bp.route('/api/vendors')
@@ -108,7 +108,7 @@ def get_vendors():
         return jsonify([{"id": v.id, "name": v.name.strip() if v.name else ""} for v in vendors])
     except Exception as e:
         current_app.logger.exception("查詢廠商清單時發生錯誤: %s", str(e))
-        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
 
 
 @admin_bp.route('/api/machines')
@@ -119,7 +119,7 @@ def get_machines():
         return jsonify([{"id": m.id, "name": m.name.strip() if m.name else ""} for m in machines])
     except Exception as e:
         current_app.logger.exception("查詢機台清單時發生錯誤: %s", str(e))
-        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
 
 
 @admin_bp.route('/api/operators')
@@ -130,7 +130,7 @@ def get_operators():
         return jsonify([{"id": o.id, "name": o.name.strip() if o.name else ""} for o in operators])
     except Exception as e:
         current_app.logger.exception("查詢操作員清單時發生錯誤: %s", str(e))
-        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
 
 
 @admin_bp.route('/api/materials')
@@ -142,7 +142,7 @@ def get_materials():
         return jsonify(materials)
     except Exception as e:
         current_app.logger.exception("查詢材質清單時發生錯誤: %s", str(e))
-        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
 
 
 @admin_bp.route('/api/specs')
@@ -154,7 +154,7 @@ def get_specs():
         return jsonify(specs)
     except Exception as e:
         current_app.logger.exception("查詢檢驗規格清單時發生錯誤: %s", str(e))
-        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
 
 
 @admin_bp.route('/api/audit-logs', methods=['GET'])
@@ -192,4 +192,4 @@ def get_audit_logs(current_user):
         return jsonify({'data': items, 'total': pagination.total, 'page': page, 'per_page': per_page})
     except Exception as e:
         current_app.logger.exception("查詢審計日誌時發生錯誤: %s", str(e))
-        return jsonify({"error": "伺服器內部錯誤，請稍後再試"}), 500
+        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")

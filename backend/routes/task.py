@@ -7,6 +7,7 @@ from ..utils import (
     bounded_int,
     parse_optional_date,
     parse_optional_int,
+    api_error,
 )
 
 task_bp = Blueprint('task', __name__)
@@ -31,7 +32,7 @@ def list_tasks(current_user):
         )
         return jsonify(result), 200
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
     except Exception:
         raise
 
@@ -57,7 +58,7 @@ def create_task(current_user):
     required = ('source_type', 'source_id', 'category')
     missing = [f for f in required if not data.get(f)]
     if missing:
-        return jsonify({'error': f'缺少必填欄位：{missing}'}), 400
+        return api_error(f'缺少必填欄位：{missing}', 400, code="VALIDATION_ERROR")
     try:
         due = parse_optional_date(data.get('due_date'), 'due_date')
         task = TaskService.create(
@@ -71,7 +72,7 @@ def create_task(current_user):
         )
         return jsonify(task), 201
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
     except Exception:
         raise
 
@@ -84,7 +85,7 @@ def update_task_status(current_user, task_id: int):
     data = request.get_json() or {}
     new_status = data.get('status')
     if not new_status:
-        return jsonify({'error': '缺少 status 欄位'}), 400
+        return api_error('缺少 status 欄位', 400, code="VALIDATION_ERROR")
     try:
         task = TaskService.update_status(
             task_id=task_id,
@@ -94,7 +95,7 @@ def update_task_status(current_user, task_id: int):
         )
         return jsonify(task), 200
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
     except Exception:
         raise
 
@@ -108,7 +109,7 @@ def delete_task(current_user, task_id: int):
         TaskService.delete(task_id)
         return jsonify({'message': '刪除成功'}), 200
     except ValueError as e:
-        return jsonify({'error': str(e)}), 400
+        return api_error(str(e), 400, code="VALIDATION_ERROR")
     except Exception:
         raise
 
@@ -121,7 +122,7 @@ def check_close_gate(current_user):
     source_type = request.args.get('source_type')
     source_id   = request.args.get('source_id')
     if not source_type or not source_id:
-        return jsonify({'error': '缺少 source_type 或 source_id'}), 400
+        return api_error('缺少 source_type 或 source_id', 400, code="VALIDATION_ERROR")
     try:
         result = TaskService.check_close_gate(source_type, int(source_id))
         return jsonify(result), 200

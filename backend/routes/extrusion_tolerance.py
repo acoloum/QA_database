@@ -1,7 +1,7 @@
 
 from flask import Blueprint, jsonify, request
 from ..services.extrusion_tolerance_service import ExtrusionToleranceService
-from ..utils import auth_required, handle_db_error
+from ..utils import auth_required, handle_db_error, api_error
 from ..authorization import require_permission
 
 extrusion_tolerance_bp = Blueprint('extrusion_tolerance', __name__)
@@ -15,7 +15,7 @@ def search():
     try:
         return jsonify(ExtrusionToleranceService.search(request.args))
     except Exception as e:
-        return jsonify({"error": handle_db_error(e)}), 500
+        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
 
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/<int:id>', methods=['GET'])
@@ -26,7 +26,7 @@ def get_detail(id):
     try:
         return jsonify(ExtrusionToleranceService.get_detail(id))
     except ValueError as e:
-        return jsonify({"error": str(e)}), 404
+        return api_error(str(e), 404, code="NOT_FOUND")
 
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/add', methods=['POST'])
@@ -38,7 +38,7 @@ def add():
         new_id = ExtrusionToleranceService.add(request.json)
         return jsonify({"success": True, "id": new_id})
     except Exception as e:
-        return jsonify({"error": handle_db_error(e)}), 500
+        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
 
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/update/<int:id>', methods=['POST'])
@@ -50,9 +50,9 @@ def update(id):
         ExtrusionToleranceService.update(id, request.json)
         return jsonify({"success": True})
     except ValueError as e:
-        return jsonify({"error": str(e)}), 404
+        return api_error(str(e), 404, code="NOT_FOUND")
     except Exception as e:
-        return jsonify({"error": handle_db_error(e)}), 500
+        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
 
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/delete/<int:id>', methods=['POST'])
@@ -64,9 +64,9 @@ def delete(id):
         ExtrusionToleranceService.delete(id)
         return jsonify({"success": True})
     except ValueError as e:
-        return jsonify({"error": str(e)}), 404
+        return api_error(str(e), 404, code="NOT_FOUND")
     except Exception as e:
-        return jsonify({"error": handle_db_error(e)}), 500
+        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
 
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/options', methods=['GET'])
@@ -77,7 +77,7 @@ def get_options():
     try:
         return jsonify(ExtrusionToleranceService.get_options())
     except Exception as e:
-        return jsonify({"error": handle_db_error(e)}), 500
+        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
 
 
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/check', methods=['GET'])
@@ -88,4 +88,4 @@ def check():
     try:
         return jsonify(ExtrusionToleranceService.check(request.args))
     except Exception as e:
-        return jsonify({"error": handle_db_error(e)}), 500
+        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
