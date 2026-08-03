@@ -246,7 +246,7 @@ export default function EquipmentDetailDrawer({
                     }}
                   >
                     <h3>編輯主檔</h3>
-                    <label>
+                    <label className="msa-field-wide">
                       設備名稱
                       <input name="name" defaultValue={equipment.name} required />
                     </label>
@@ -308,7 +308,7 @@ export default function EquipmentDetailDrawer({
                       校驗週期（月）
                       <input name="calibration_interval_months" type="number" min="0" defaultValue={equipment.calibration_interval_months ?? ''} />
                     </label>
-                    {editError && <p role="alert">{editError}</p>}
+                    {editError && <p className="msa-inline-error" role="alert">{editError}</p>}
                     <div className="msa-edit-form__actions">
                       <button
                         type="button"
@@ -362,8 +362,8 @@ export default function EquipmentDetailDrawer({
                         ))}
                       </select>
                     </label>
-                    {statusError && <p role="alert">{statusError}</p>}
-                    <label>
+                    {statusError && <p className="msa-inline-error" role="alert">{statusError}</p>}
+                    <label className="msa-field-wide">
                       變更原因
                       <textarea
                         value={statusReason}
@@ -371,13 +371,15 @@ export default function EquipmentDetailDrawer({
                         required
                       />
                     </label>
-                    <button
-                      className="msa-button msa-button--primary"
-                      type="submit"
-                      disabled={!statusReason.trim() || statusEvent.isPending}
-                    >
-                      變更設備狀態
-                    </button>
+                    <div className="msa-status-form__actions">
+                      <button
+                        className="msa-button msa-button--primary"
+                        type="submit"
+                        disabled={!statusReason.trim() || statusEvent.isPending}
+                      >
+                        變更設備狀態
+                      </button>
+                    </div>
                   </form>
                 )}
               </section>

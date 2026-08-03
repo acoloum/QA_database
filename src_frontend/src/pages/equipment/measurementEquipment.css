@@ -39,8 +39,8 @@
 .msa-risk-queue strong { font-size: 1.1rem; }
 
 .msa-filters { display: grid; grid-template-columns: minmax(16rem, 2fr) repeat(2, minmax(10rem, 1fr)) auto; align-items: end; gap: .8rem; margin-bottom: 1rem; padding: .9rem; border: 1px solid var(--msa-line); border-radius: .45rem; background: var(--msa-aluminum); }
-.msa-page label, .msa-calibration-control label { display: grid; gap: .3rem; color: #314f4d; font-size: .78rem; font-weight: 750; }
-.msa-page input, .msa-page select, .msa-page textarea, .msa-calibration-control input, .msa-calibration-control select, .msa-calibration-control textarea { min-height: 2.5rem; border: 1px solid #aebfc0; border-radius: .3rem; background: #fff; color: var(--msa-ink); padding: .48rem .6rem; font: inherit; }
+.msa-page label, .msa-calibration-control label, .msa-equipment-drawer label { display: grid; gap: .3rem; color: #314f4d; font-size: .78rem; font-weight: 750; }
+.msa-page input, .msa-page select, .msa-page textarea, .msa-calibration-control input, .msa-calibration-control select, .msa-calibration-control textarea, .msa-equipment-drawer input, .msa-equipment-drawer select, .msa-equipment-drawer textarea { min-height: 2.5rem; width: 100%; border: 1px solid #aebfc0; border-radius: .3rem; background: #fff; color: var(--msa-ink); padding: .48rem .6rem; font: inherit; }
 .msa-state { margin: 1rem 0; border: 1px dashed #aebfc0; border-left: 5px solid var(--msa-green); padding: 1.35rem; background: var(--msa-paper); color: var(--msa-muted); }
 .msa-state--error { border-color: #d6a6aa; border-left-color: var(--msa-red); background: #fff7f7; color: #762a32; }
 
@@ -81,7 +81,17 @@
 .msa-definition-grid > div { border-bottom: 1px solid var(--msa-line); padding: .55rem 0; }
 .msa-definition-grid dt { color: var(--msa-muted); font-size: .76rem; }
 .msa-definition-grid dd { margin: .2rem 0 0; font-weight: 700; }
-.msa-status-form, .msa-calibration-form, .msa-approval { display: grid; gap: .75rem; margin-top: 1rem; border-top: 1px solid var(--msa-line); padding-top: 1rem; }
+.msa-calibration-form, .msa-approval { display: grid; gap: .75rem; margin-top: 1rem; border-top: 1px solid var(--msa-line); padding-top: 1rem; }
+
+/* 抽屜內的卡片式表單（編輯主檔／變更設備狀態）：雙欄格線 + 左側色條標示用途。 */
+.msa-edit-form, .msa-status-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem .9rem; margin-top: 1rem; border: 1px solid var(--msa-line); border-radius: .35rem; background: var(--msa-paper); padding: 1rem 1.1rem 1.1rem; }
+.msa-edit-form { border-left: 5px solid var(--msa-green); }
+.msa-status-form { border-left: 5px solid var(--msa-amber); }
+.msa-edit-form h3, .msa-status-form h3 { grid-column: 1 / -1; margin: 0; border-bottom: 1px solid var(--msa-line); padding-bottom: .55rem; color: var(--msa-ink); font-size: 1.05rem; font-weight: 750; }
+.msa-field-wide { grid-column: 1 / -1; }
+.msa-edit-form .msa-inline-error, .msa-status-form .msa-inline-error { grid-column: 1 / -1; margin: 0; }
+.msa-status-form textarea { min-height: 5.5rem; resize: vertical; }
+.msa-edit-form__actions, .msa-status-form__actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .6rem; margin-top: .2rem; border-top: 1px solid var(--msa-line); padding-top: .9rem; }
 .msa-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
 .msa-form-grid__wide { grid-column: 1 / -1; }
 .msa-points { display: grid; gap: .65rem; border: 1px solid var(--msa-line); padding: .8rem; }
@@ -173,7 +183,7 @@
   .msa-risk-queue { grid-template-columns: 1fr; }
   .msa-risk-queue__label { grid-column: auto; }
   .msa-risk-queue button { border-right: 0; border-bottom: 1px solid var(--msa-line); }
-  .msa-filters, .msa-form-grid, .msa-definition-grid, .msa-criteria-profile .msa-definition-grid { grid-template-columns: 1fr; }
+  .msa-filters, .msa-form-grid, .msa-definition-grid, .msa-edit-form, .msa-status-form, .msa-criteria-profile .msa-definition-grid { grid-template-columns: 1fr; }
   .msa-criteria-profile > header, .msa-criteria-version > header { align-items: stretch; flex-direction: column; }
   .msa-form-grid__wide { grid-column: auto; }
   .msa-equipment-table-wrap { display: none; }
