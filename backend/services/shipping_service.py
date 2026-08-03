@@ -1,6 +1,7 @@
 
 import pandas as pd
 from io import BytesIO
+from openpyxl import Workbook
 from datetime import date, datetime, timezone
 from typing import List, Dict, Any, Optional, Union
 from sqlalchemy import or_, text
@@ -20,6 +21,10 @@ from ..utils import (
 from .shipping_import import build_shipping_measurements_from_row
 from .shipping_export import build_shipping_export_columns, build_shipping_export_row
 from .shipping_measurement_keys import build_measurement_key, parse_measurement_key
+
+# 匯出時每批取出的主檔筆數；配合 selectinload，每批只會為該批次撈一次量測明細。
+EXPORT_BATCH_SIZE = 500
+
 
 class ShippingService:
     @staticmethod
@@ -438,19 +443,19 @@ class ShippingService:
 
         query = query.order_by(ShippingData.date.asc())
 
-        items = query.all()
-        
-        if not items:
-            df = pd.DataFrame(columns=build_shipping_export_columns())
-        else:
-            export_data = [
-                build_shipping_export_row(ShippingService._map_row_to_dict(item))
-                for item in items
-            ]
-            
-            df = pd.DataFrame(export_data)
+        # 篩選條件全部是可選的，未設條件時這裡等同整張表（出貨主檔上萬筆、
+        # 量測明細二十餘萬筆）。改為逐批取出、逐列寫入 openpyxl 的 write_only
+        # 工作表，記憶體維持常數級，不再把主檔＋明細＋DataFrame 三份同時放進記憶體。
+        columns = build_shipping_export_columns()
+        workbook = Workbook(write_only=True)
+        sheet = workbook.create_sheet()
+        sheet.append(columns)
+
+        for item in query.yield_per(EXPORT_BATCH_SIZE):
+            export_row = build_shipping_export_row(ShippingService._map_row_to_dict(item))
+            sheet.append([export_row.get(column, "") for column in columns])
 
         output = BytesIO()
-        df.to_excel(output, index=False, engine='openpyxl')
+        workbook.save(output)
         output.seek(0)
         return output

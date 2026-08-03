@@ -10,6 +10,7 @@ from ...models import (
 from ..spc_contracts import SpcReason, SpcStudyInput, SpcSubgroup
 from .common import (
     SPC_INPUT_CONTRACT_VERSION,
+    assert_source_size,
     calculate_study_data_hash,
     canonical_process_stream,
     resolve_tolerance_specification,
@@ -133,6 +134,7 @@ def build_patrol_study_input(
             PatrolMain.spec == filters["spec"] if is_machine
             else PatrolMain.spec.contains(filters["spec"])
         )
+    assert_source_size(query.count(), "patrol")
     details = query.order_by(
         PatrolMain.date.asc(), PatrolDetail.main_id.asc(), PatrolDetail.group.asc(),
         PatrolDetail.id.asc(),

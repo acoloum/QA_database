@@ -8,6 +8,7 @@ from ...models import ShippingData, ShippingMeasurement, Vendor
 from ..spc_contracts import SpcReason, SpcStudyInput, SpcSubgroup
 from .common import (
     SPC_INPUT_CONTRACT_VERSION,
+    assert_source_size,
     calculate_study_data_hash,
     canonical_process_stream,
     specification_from_measurement_limits,
@@ -55,6 +56,7 @@ def build_shipping_study_input(
         query = query.filter(ShippingData.date >= _date_bound(filters["start_date"]))
     if filters["end_date"]:
         query = query.filter(ShippingData.date <= _date_bound(filters["end_date"]))
+    assert_source_size(query.count(), "shipping")
     records = query.order_by(ShippingData.date.asc(), ShippingData.id.asc()).all()
 
     record_ids = [record.id for record in records]

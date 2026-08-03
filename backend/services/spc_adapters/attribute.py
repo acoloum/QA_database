@@ -12,6 +12,7 @@ from ..spc_attribute_options import canonical_attribute_options
 from ..spc_contracts import SpcReason, SpcStudyInput
 from .common import (
     SPC_INPUT_CONTRACT_VERSION,
+    assert_source_size,
     calculate_study_data_hash,
     canonical_attribute_process_stream,
     normalize_attribute_filters,
@@ -66,6 +67,7 @@ def _shipping_records(filters: Mapping[str, Any]) -> list[ShippingData]:
         query = query.filter(ShippingData.date >= _date_bound(filters["start_date"]))
     if filters["end_date"]:
         query = query.filter(ShippingData.date <= _date_bound(filters["end_date"]))
+    assert_source_size(query.count(), "shipping")
     return query.order_by(ShippingData.date.asc(), ShippingData.id.asc()).all()
 
 
@@ -178,6 +180,7 @@ def _patrol_records(filters: Mapping[str, Any]) -> list[PatrolMain]:
         query = query.filter(PatrolMain.material.contains(filters["mat"]))
     if filters["spec"]:
         query = query.filter(PatrolMain.spec.contains(filters["spec"]))
+    assert_source_size(query.distinct().count(), "patrol")
     return query.distinct().order_by(PatrolMain.date.asc(), PatrolMain.id.asc()).all()
 
 

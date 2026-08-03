@@ -123,6 +123,7 @@ def serve_frontend(path):
 # Global Error Handler (Optional but recommended)
 # Global Error Handler
 from .errors import APIError
+from .services.spc_errors import SpcServiceError
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException
 
@@ -148,6 +149,21 @@ def handle_http_exception(error):
 def handle_value_error(error):
     """Handle ValueError as 400 Bad Request"""
     return api_error(str(error), 400, code="VALIDATION_ERROR")
+
+@app.errorhandler(SpcServiceError)
+def handle_spc_service_error(error):
+    """SPC 服務層錯誤契約（code + status_code）。
+
+    原本只有 spc_studies 與匯出報表路由自己 try/except 轉譯，其他路徑
+    （例如 /api/stats）會讓它冒泡成 500 INTERNAL_ERROR，前端收到的是
+    「伺服器內部錯誤」而不是可讀的原因。這裡統一收斂。
+    """
+    return api_error(
+        error.message,
+        error.status_code,
+        code=error.code,
+        details=error.details,
+    )
 
 @app.errorhandler(SQLAlchemyError)
 def handle_db_error(error):

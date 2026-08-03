@@ -24,6 +24,30 @@ ATTRIBUTE_PATROL_FILTERS = PATROL_FILTERS
 ID_FILTERS = {"m_id", "op_id", "cust_id", "vendor_id"}
 DATE_FILTERS = {"start_date", "end_date", "s_date", "e_date"}
 
+# 單次研究可載入的來源主檔上限。
+# adapter 的篩選條件全部是可選的，載入後還要把量測明細一起讀進記憶體做計算；
+# 沒有上界時一次請求就可能把整張表拉進來。管制圖本來就不會用到數千個子組，
+# 因此超過上限時明確要求縮小範圍，而不是默默截斷資料——截斷會讓管制界限失真。
+MAX_SOURCE_RECORDS = 5000
+
+
+def assert_source_size(record_count: int, source: str) -> None:
+    """來源資料筆數超過上限時中止，並告訴使用者該怎麼縮小範圍。"""
+
+    if record_count > MAX_SOURCE_RECORDS:
+        from ..spc_errors import SpcValidationError
+
+        raise SpcValidationError(
+            "SPC_SOURCE_TOO_LARGE",
+            f"符合條件的資料有 {record_count} 筆，超過單次分析上限 "
+            f"{MAX_SOURCE_RECORDS} 筆，請縮小日期範圍或增加篩選條件。",
+            details={
+                "source": source,
+                "record_count": record_count,
+                "max_records": MAX_SOURCE_RECORDS,
+            },
+        )
+
 
 @dataclass(frozen=True)
 class CanonicalProcessStream:

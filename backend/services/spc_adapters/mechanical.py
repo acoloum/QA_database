@@ -13,6 +13,7 @@ from ...models import MechanicalTest, MechanicalMeasurement
 from ..spc_contracts import SpcReason, SpcStudyInput, SpcSubgroup
 from .common import (
     SPC_INPUT_CONTRACT_VERSION,
+    assert_source_size,
     calculate_study_data_hash,
     canonical_process_stream,
     specification_from_mechanical_limits,
@@ -60,6 +61,7 @@ def build_mechanical_study_input(
         query = query.filter(MechanicalTest.test_date >= _date_bound(filters["start_date"]))
     if filters["end_date"]:
         query = query.filter(MechanicalTest.test_date <= _date_bound(filters["end_date"]))
+    assert_source_size(query.count(), "mechanical")
     records = query.order_by(MechanicalTest.test_date.asc(), MechanicalTest.id.asc()).all()
 
     record_ids = [record.id for record in records]
