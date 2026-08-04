@@ -66,7 +66,11 @@ class DashboardService:
                 ReworkRequest.status.notin_(REWORK_TERMINAL_STATUSES)
             ).count()
 
-        # ---------- ShippingData：一次查詢同時取得 current / previous ----------
+        # 當期與前期的最小外框：所有聚合查詢都先用它把掃描範圍收斂到日期索引上。
+        # 少了這層 WHERE，CASE 內的日期條件無法當作索引述詞，每次都會整張表 Seq Scan。
+        span = DateWindow.spanning(window, comparison)
+
+        # ---------- ShippingData：一次查詢取得 current / previous / NG ----------
         shipping_row = db.session.query(
             func.sum(case(
                 (and_(*window.date_filters(ShippingData.date)), 1),
@@ -76,21 +80,18 @@ class DashboardService:
                 (and_(*comparison.date_filters(ShippingData.date)), 1),
                 else_=0
             )).label('previous'),
-        ).first()
-        _shipping_current = int(shipping_row.current or 0)
-        _shipping_previous = int(shipping_row.previous or 0)
-
-        # ShippingData NG：只需 current 期間的 NG 數（rate 僅對當期計算）
-        _shipping_ng = db.session.query(
+            # NG 只需 current 期間（rate 僅對當期計算）
             func.sum(case(
                 (and_(*window.date_filters(ShippingData.date),
                       ShippingData.is_ng == True), 1),
                 else_=0
-            ))
-        ).scalar() or 0
-        _shipping_ng = int(_shipping_ng)
+            )).label('ng'),
+        ).filter(*span.date_filters(ShippingData.date)).first()
+        _shipping_current = int(shipping_row.current or 0)
+        _shipping_previous = int(shipping_row.previous or 0)
+        _shipping_ng = int(shipping_row.ng or 0)
 
-        # ---------- PatrolMain：一次查詢同時取得 current / previous ----------
+        # ---------- PatrolMain：一次查詢取得 current / previous / NG ----------
         patrol_row = db.session.query(
             func.sum(case(
                 (and_(*window.date_filters(PatrolMain.date)), 1),
@@ -100,18 +101,15 @@ class DashboardService:
                 (and_(*comparison.date_filters(PatrolMain.date)), 1),
                 else_=0
             )).label('previous'),
-        ).first()
-        _patrol_current = int(patrol_row.current or 0)
-        _patrol_previous = int(patrol_row.previous or 0)
-
-        _patrol_ng = db.session.query(
             func.sum(case(
                 (and_(*window.date_filters(PatrolMain.date),
                       PatrolMain.is_ng == True), 1),
                 else_=0
-            ))
-        ).scalar() or 0
-        _patrol_ng = int(_patrol_ng)
+            )).label('ng'),
+        ).filter(*span.date_filters(PatrolMain.date)).first()
+        _patrol_current = int(patrol_row.current or 0)
+        _patrol_previous = int(patrol_row.previous or 0)
+        _patrol_ng = int(patrol_row.ng or 0)
 
         # ---------- NCMR：一次查詢同時取得 current / previous（排除軟刪除）----------
         ncmr_row = db.session.query(
@@ -123,7 +121,10 @@ class DashboardService:
                 (and_(*comparison.date_filters(NCMR.date)), 1),
                 else_=0
             )).label('previous'),
-        ).filter(NCMR.deleted_at.is_(None)).first()
+        ).filter(
+            NCMR.deleted_at.is_(None),
+            *span.date_filters(NCMR.date),
+        ).first()
         _ncmr_current = int(ncmr_row.current or 0)
         _ncmr_previous = int(ncmr_row.previous or 0)
 
@@ -139,7 +140,10 @@ class DashboardService:
                       CorrectiveAction.eight_d_number != None), 1),
                 else_=0
             )).label('previous'),
-        ).filter(CorrectiveAction.deleted_at.is_(None)).first()
+        ).filter(
+            CorrectiveAction.deleted_at.is_(None),
+            *span.datetime_filters(CorrectiveAction.created_at),
+        ).first()
         _capa_current = int(capa_row.current or 0)
         _capa_previous = int(capa_row.previous or 0)
 
@@ -153,7 +157,10 @@ class DashboardService:
                 (and_(*comparison.datetime_filters(ReworkRequest.created_at)), 1),
                 else_=0
             )).label('previous'),
-        ).filter(ReworkRequest.deleted_at.is_(None)).first()
+        ).filter(
+            ReworkRequest.deleted_at.is_(None),
+            *span.datetime_filters(ReworkRequest.created_at),
+        ).first()
         _rework_current = int(rework_row.current or 0)
         _rework_previous = int(rework_row.previous or 0)
 

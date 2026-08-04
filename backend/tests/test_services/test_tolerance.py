@@ -127,3 +127,90 @@ def test_tolerance_detail_roundtrips_characteristic_class(app, db_session):
         new_id = ToleranceService.add_tolerance(data)
         got = ToleranceService.get_tolerance_detail(new_id)
         assert got["details"][0]["特性重要度"] == "關鍵"
+
+
+# ---------------------------------------------------------------------------
+# 匯出：改為串流寫入前後的輸出快照
+# ---------------------------------------------------------------------------
+
+EXPORT_COLUMNS = [
+    '識別碼', '材質', '規格', '廠商名稱', '測量項目', '測量位置',
+    '尺寸下限', '尺寸上限', '公差下限', '公差上限', '標準值', '單位', '備註',
+]
+
+
+def _seed_export_fixture(db_session):
+    vendor = Vendor(name='廠商甲')
+    db_session.add(vendor)
+    db_session.flush()
+
+    # 有兩筆明細：每筆明細各展開成一列
+    main_a = VendorToleranceMain(material='6061', spec='10*2', vendor_id=vendor.id)
+    db_session.add(main_a)
+    db_session.flush()
+    db_session.add_all([
+        VendorToleranceDetail(
+            main_id=main_a.id, item='外徑', position='前段',
+            dim_min=9.5, dim_max=10.5, tolerance_min=-0.5, tolerance_max=0.5,
+            std_val=10.0, unit='mm', note='備註A',
+        ),
+        VendorToleranceDetail(
+            main_id=main_a.id, item='內徑', position='中段',
+            dim_min=5.5, dim_max=6.5, tolerance_min=-0.5, tolerance_max=0.5,
+            std_val=6.0, unit='mm', note=None,
+        ),
+    ])
+
+    # 無明細：仿 LEFT JOIN 產生一列，明細欄位全空
+    main_b = VendorToleranceMain(material='6063', spec='20*3', vendor_id=None)
+    db_session.add(main_b)
+    db_session.commit()
+    return main_a, main_b
+
+
+def _export_rows():
+    from openpyxl import load_workbook
+
+    sheet = load_workbook(ToleranceService.export_excel({})).active
+    return [list(row) for row in sheet.iter_rows(values_only=True)]
+
+
+def test_export_excel_expands_details_into_rows(app, db_session):
+    """每筆明細展開成一列，無明細的主檔仍輸出一列且明細欄位留空。"""
+    with app.app_context():
+        main_a, main_b = _seed_export_fixture(db_session)
+
+        rows = _export_rows()
+
+        assert rows[0] == EXPORT_COLUMNS
+        assert len(rows) == 4                      # 表頭 + 2 筆明細 + 1 筆無明細
+
+        # 主檔以識別碼遞增排序，明細以識別碼遞增排序
+        assert [row[0] for row in rows[1:]] == [main_a.id, main_a.id, main_b.id]
+        assert [row[4] for row in rows[1:]] == ['外徑', '內徑', None]
+
+        first = rows[1]
+        assert first[1:4] == ['6061', '10*2', '廠商甲']
+        assert first[5] == '前段'
+        assert first[6] == 9.5      # 尺寸下限
+        assert first[7] == 10.5     # 尺寸上限
+        assert first[8] == -0.5     # 公差下限
+        assert first[10] == 10.0    # 標準值
+        assert first[11] == 'mm'
+        assert first[12] == '備註A'
+
+        # 明細的 note 為 NULL
+        assert rows[2][12] is None
+
+        # 無明細的主檔：廠商為 NULL，明細欄位全空
+        last = rows[3]
+        assert last[1:4] == ['6063', '20*3', None]
+        assert all(value is None for value in last[4:])
+
+
+def test_export_excel_with_no_data_still_writes_header(app, db_session):
+    with app.app_context():
+        rows = _export_rows()
+
+        assert rows[0] == EXPORT_COLUMNS
+        assert len(rows) == 1

@@ -70,7 +70,7 @@ class ExtrusionToleranceService:
 
         page = bounded_int(args.get('page'), 1, 1, 1000000)
         page_size = bounded_int(args.get('page_size'), 20, 1, 100)
-        total = query.count()
+        # paginate() 內部已算過 total，不再另外 count() 一次
         pagination = query.order_by(ExtrusionToleranceMain.id.desc()).paginate(
             page=page, per_page=page_size, error_out=False
         )
@@ -86,7 +86,7 @@ class ExtrusionToleranceService:
             }
             for t in pagination.items
         ]
-        return {"success": True, "data": data, "total": total, "page": page,
+        return {"success": True, "data": data, "total": pagination.total, "page": page,
                 "page_size": page_size, "total_pages": pagination.pages}
 
     @staticmethod

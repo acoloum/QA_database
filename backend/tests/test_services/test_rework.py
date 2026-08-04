@@ -606,3 +606,113 @@ def test_rework_delete_audit_contains_complaint_unlink_without_secret(app, db_se
         assert secret not in json.dumps(
             {'old': log.old_value, 'new': log.new_value}, ensure_ascii=False,
         )
+
+
+# ---------------------------------------------------------------------------
+# get_statistics：條件式聚合（原本為多次 count/sum 分開查詢）的數值回歸
+# ---------------------------------------------------------------------------
+
+def _seed_statistics_fixture(db_session):
+    """建立涵蓋各狀態、部門與成本類型的重工資料。"""
+    requests = [
+        ReworkRequest(rework_number='RW-ST-01', status='已結案', department='押出',
+                      quantity=10, created_at=datetime(2026, 8, 5)),
+        ReworkRequest(rework_number='RW-ST-02', status='已完成', department='押出',
+                      quantity=20, created_at=datetime(2026, 8, 6)),
+        ReworkRequest(rework_number='RW-ST-03', status='執行中', department='加工',
+                      quantity=30, created_at=datetime(2026, 8, 7)),
+        ReworkRequest(rework_number='RW-ST-04', status='已核准', department='加工',
+                      quantity=40, created_at=datetime(2026, 8, 8)),
+        ReworkRequest(rework_number='RW-ST-05', status='待審核', review_status='已拒絕',
+                      department=None, quantity=50, created_at=datetime(2026, 8, 9)),
+    ]
+    db_session.add_all(requests)
+    db_session.commit()
+    return requests
+
+
+def test_get_statistics_application_counts(app, db_session):
+    """各狀態計數與總數量須與逐項 count/sum 的結果一致。"""
+    with app.app_context():
+        _seed_statistics_fixture(db_session)
+
+        stats = ReworkService.get_statistics({})['application_stats']
+
+        assert stats['total_applications'] == 5
+        assert stats['completed'] == 2          # 已結案 + 已完成
+        assert stats['in_progress'] == 1
+        assert stats['approved'] == 1
+        assert stats['rejected'] == 1
+        assert stats['total_rework_quantity'] == 150.0
+
+
+def test_get_statistics_respects_date_range_and_soft_delete(app, db_session):
+    """期間條件與軟刪除排除須套用在同一組聚合上。"""
+    with app.app_context():
+        requests = _seed_statistics_fixture(db_session)
+        requests[0].soft_delete()
+        db_session.add(ReworkRequest(
+            rework_number='RW-ST-OUT', status='執行中', department='押出',
+            quantity=999, created_at=datetime(2026, 9, 1),
+        ))
+        db_session.commit()
+
+        stats = ReworkService.get_statistics({
+            'start_date': datetime(2026, 8, 1),
+            'end_date': datetime(2026, 8, 31),
+        })['application_stats']
+
+        assert stats['total_applications'] == 4      # 5 筆扣掉軟刪除的 1 筆
+        assert stats['completed'] == 1               # 已結案那筆被軟刪除
+        assert stats['total_rework_quantity'] == 140.0
+
+
+def test_get_statistics_department_breakdown(app, db_session):
+    """部門統計須與期間條件共用同一組過濾條件。"""
+    with app.app_context():
+        _seed_statistics_fixture(db_session)
+
+        dept_stats = ReworkService.get_statistics({})['department_stats']
+        by_dept = {row['department']: row for row in dept_stats}
+
+        assert by_dept['押出']['count'] == 2
+        assert by_dept['押出']['quantity'] == 30.0
+        assert by_dept['加工']['count'] == 2
+        assert by_dept['加工']['quantity'] == 70.0
+        assert by_dept['']['count'] == 1             # department 為 NULL 者歸入空字串
+
+
+def test_get_statistics_cost_breakdown(app, db_session):
+    """成本別彙總改為單一條件式聚合後，各項金額須不變。"""
+    with app.app_context():
+        requests = _seed_statistics_fixture(db_session)
+        rework_id = requests[0].id
+        db_session.add_all([
+            ReworkCost(rework_id=rework_id, cost_type='人工成本', total_cost=100.5),
+            ReworkCost(rework_id=rework_id, cost_type='人工成本', total_cost=200.0),
+            ReworkCost(rework_id=rework_id, cost_type='材料成本', total_cost=300.0),
+            ReworkCost(rework_id=rework_id, cost_type='設備成本', total_cost=400.0),
+            ReworkCost(rework_id=rework_id, cost_type='其他', total_cost=50.0),
+        ])
+        db_session.commit()
+
+        cost_stats = ReworkService.get_statistics({})['cost_stats']
+
+        assert cost_stats['total_records'] == 5
+        assert cost_stats['total_cost'] == 1050.5
+        assert cost_stats['labor_cost'] == 300.5
+        assert cost_stats['material_cost'] == 300.0
+        assert cost_stats['equipment_cost'] == 400.0
+
+
+def test_get_statistics_empty_dataset_returns_zeros(app, db_session):
+    """無資料時聚合結果為 NULL，須轉成 0 而非 None。"""
+    with app.app_context():
+        stats = ReworkService.get_statistics({})
+
+        assert stats['application_stats']['total_applications'] == 0
+        assert stats['application_stats']['completed'] == 0
+        assert stats['application_stats']['total_rework_quantity'] == 0
+        assert stats['cost_stats']['total_cost'] == 0
+        assert stats['cost_stats']['labor_cost'] == 0
+        assert stats['department_stats'] == []

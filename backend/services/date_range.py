@@ -24,6 +24,20 @@ class DateWindow:
     start_date: date
     end_date: date
 
+    @classmethod
+    def spanning(cls, *windows: "DateWindow") -> "DateWindow":
+        """回傳涵蓋所有輸入視窗的最小外框視窗。
+
+        用於把「當期 / 前期」兩段條件收斂成單一 WHERE 範圍，讓聚合查詢能走日期索引
+        而非全表掃描；各期實際歸屬仍由 SELECT 內的 CASE 判斷，結果不變。
+        """
+        if not windows:
+            raise ValueError("spanning() 至少需要一個 DateWindow")
+        return cls(
+            start_date=min(w.start_date for w in windows),
+            end_date=max(w.end_date for w in windows),
+        )
+
     @property
     def start_at(self) -> datetime:
         return datetime.combine(self.start_date, time.min)

@@ -3,6 +3,7 @@ import pandas as pd
 from io import BytesIO
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Union
+from openpyxl import Workbook
 from sqlalchemy import func, text
 from sqlalchemy.orm import selectinload
 from ..extensions import db
@@ -24,6 +25,10 @@ from ..utils import (
     handle_db_error,
     log_audit,
 )
+
+# 匯出逐批取回的筆數；與出貨匯出採同一節奏
+EXPORT_BATCH_SIZE = 500
+
 
 class PatrolService:
     @staticmethod
@@ -672,99 +677,120 @@ class PatrolService:
         }
 
     @staticmethod
+    def _apply_export_filters(query, args: Dict[str, Any]):
+        """匯出用篩選條件；欄位探索與資料寫入兩趟查詢共用，避免兩邊條件漂移。"""
+        if args.get('s_date'): query = query.filter(PatrolMain.date >= args['s_date'])
+        if args.get('e_date'): query = query.filter(PatrolMain.date <= args['e_date'])
+        if args.get('m_id'):   query = query.filter(PatrolMain.machine_id == args['m_id'])
+        if args.get('op_id'):  query = query.filter(PatrolMain.operator_id == args['op_id'])
+        if args.get('cust_id'): query = query.filter(PatrolMain.customer_id == args['cust_id'])
+        if args.get('mat'):    query = query.filter(PatrolMain.material.ilike(f"%{args['mat']}%"))
+        if args.get('spec'):   query = query.filter(PatrolMain.spec.ilike(f"%{args['spec']}%"))
+        return query
+
+    @staticmethod
+    def _group_label(group_value) -> str:
+        """組別欄位可能已含「組」字，也可能只是數字。"""
+        group_val = str(group_value)
+        return group_val if "組" in group_val else f"第{group_val}組"
+
+    @staticmethod
+    def _export_group_columns(args: Dict[str, Any]) -> List[str]:
+        """第一趟：只取 (主檔ID, 組別) 決定動態欄位順序。
+
+        write_only 工作表必須先寫表頭，而表頭包含哪些組別要掃過全部資料才知道；
+        因此拆成兩趟，第一趟只讀兩個整數欄位並以 yield_per 串流，記憶體維持常數級。
+        組別的排列沿用原本「依 識別碼 desc 掃描時的首次出現順序」。
+        """
+        query = PatrolService._apply_export_filters(
+            db.session.query(PatrolMain.id, PatrolDetail.group)
+            .outerjoin(PatrolDetail, PatrolDetail.main_id == PatrolMain.id),
+            args,
+        ).distinct().order_by(PatrolMain.id.desc(), PatrolDetail.group)
+
+        ordered_groups: List[str] = []
+        for _patrol_id, group_value in query.yield_per(EXPORT_BATCH_SIZE):
+            # 無明細的主檔（outerjoin 得到 NULL）沿用原本的「第1組」預設欄位
+            label = "第1組" if group_value is None else PatrolService._group_label(group_value)
+            if label not in ordered_groups:
+                ordered_groups.append(label)
+        return ordered_groups
+
+    @staticmethod
     def export_excel(args: Dict[str, Any]) -> BytesIO:
         """匯出巡檢原始資料；SPC 報表由不可變研究版本的路由流程處理。"""
         spc_item = args.get('item', '')      # 測量項目（外徑/內徑/厚度）
         spc_position = args.get('position', '')  # 測量位置（前段/中段/後段/全段）
 
         try:
-            # === 1. 查詢原始資料 ===
-            query = db.session.query(
-                PatrolMain,
-                Machine.name.label('m_name'),
-                Operator.name.label('op_name'),
-                Inspector.name.label('i_name'),
-                Vendor.name.label('v_name')
-            )\
-            .outerjoin(Machine, PatrolMain.machine_id == Machine.id)\
-            .outerjoin(Operator, PatrolMain.operator_id == Operator.id)\
-            .outerjoin(Inspector, PatrolMain.inspector_id == Inspector.id)\
-            .outerjoin(Vendor, PatrolMain.customer_id == Vendor.id)\
-            .options(selectinload(PatrolMain.details))
+            # === 1. 決定欄位版面 ===
+            # 篩選條件全部是可選的，未設條件時等同整張巡檢主檔加子檔。原本先 all()
+            # 取回全部 ORM 實體、再轉 dict、再轉 DataFrame，三份同時存在記憶體；
+            # 改為兩趟串流 + openpyxl write_only 後記憶體維持常數級。
+            columns = ['識別碼', '檢驗日期', '擠壓機編號', '員工姓名', '材質',
+                       '擠壓規格', '廠商名稱', '原料批號', '檢驗人員']
+            for group in PatrolService._export_group_columns(args):
+                for item in ["外徑", "內徑", "厚度"]:
+                    for pos in ["前段", "中段", "後段"]:
+                        columns.append(f"{group}{item}{pos}最小")
+                        columns.append(f"{group}{item}{pos}最大")
 
-            if args.get('s_date'): query = query.filter(PatrolMain.date >= args['s_date'])
-            if args.get('e_date'): query = query.filter(PatrolMain.date <= args['e_date'])
-            if args.get('m_id'):   query = query.filter(PatrolMain.machine_id == args['m_id'])
-            if args.get('op_id'):  query = query.filter(PatrolMain.operator_id == args['op_id'])
-            if args.get('cust_id'): query = query.filter(PatrolMain.customer_id == args['cust_id'])
-            if args.get('mat'):    query = query.filter(PatrolMain.material.ilike(f"%{args['mat']}%"))
-            if args.get('spec'):   query = query.filter(PatrolMain.spec.ilike(f"%{args['spec']}%"))
+            workbook = Workbook(write_only=True)
+            sheet = workbook.create_sheet('原始數據')
+            sheet.append(columns)
 
-            query = query.order_by(PatrolMain.id.desc())
-            rows = query.all()
+            # === 2. 逐批取出並寫入 ===
+            query = PatrolService._apply_export_filters(
+                db.session.query(
+                    PatrolMain,
+                    Machine.name.label('m_name'),
+                    Operator.name.label('op_name'),
+                    Inspector.name.label('i_name'),
+                    Vendor.name.label('v_name')
+                )
+                .outerjoin(Machine, PatrolMain.machine_id == Machine.id)
+                .outerjoin(Operator, PatrolMain.operator_id == Operator.id)
+                .outerjoin(Inspector, PatrolMain.inspector_id == Inspector.id)
+                .outerjoin(Vendor, PatrolMain.customer_id == Vendor.id)
+                .options(selectinload(PatrolMain.details)),
+                args,
+            ).order_by(PatrolMain.id.desc())
 
-            if not rows:
-                df = pd.DataFrame(columns=['識別碼', '檢驗日期', '擠壓機編號', '員工姓名', '材質', '擠壓規格', '廠商名稱', '原料批號', '檢驗人員'])
-            else:
-                export_data = []
-                unique_groups = []
+            for patrol, m_name, op_name, i_name, v_name in query.yield_per(EXPORT_BATCH_SIZE):
+                details = sorted(patrol.details, key=lambda x: (x.group, x.item, x.position))
 
-                for row in rows:
-                    patrol, m_name, op_name, i_name, v_name = row
-                    details = sorted(patrol.details, key=lambda x: (x.group, x.item, x.position))
-
-                    measurements = {}
-                    current_groups = []
-
-                    for d in details:
-                        group_val = str(d.group)
-                        group_name = group_val if "組" in group_val else f"第{group_val}組"
-                        item = d.item.strip() if d.item else ""
-                        pos = d.position.strip() if d.position else ""
-                        min_val = float(d.min_val) if d.min_val else ""
-                        max_val = float(d.max_val) if d.max_val else ""
-                        key = f"{group_name}_{item}_{pos}"
-                        measurements[key] = {"min": min_val, "max": max_val}
-                        if group_name not in current_groups:
-                            current_groups.append(group_name)
-
-                    for g in current_groups:
-                        if g not in unique_groups:
-                            unique_groups.append(g)
-
-                    if not current_groups:
-                        current_groups = ["第1組"]
-                        if "第1組" not in unique_groups:
-                            unique_groups.append("第1組")
-
-                    row_dict = {
-                        '識別碼': patrol.id,
-                        '檢驗日期': patrol.date.strftime('%Y-%m-%d') if patrol.date else '',
-                        '擠壓機編號': m_name.strip() if m_name else '',
-                        '員工姓名': op_name.strip() if op_name else '',
-                        '材質': patrol.material,
-                        '擠壓規格': patrol.spec,
-                        '廠商名稱': v_name.strip() if v_name else '',
-                        '原料批號': patrol.batch_num,
-                        '檢驗人員': i_name.strip() if i_name else ''
+                measurements = {}
+                for d in details:
+                    group_name = PatrolService._group_label(d.group)
+                    item = d.item.strip() if d.item else ""
+                    pos = d.position.strip() if d.position else ""
+                    measurements[f"{group_name}_{item}_{pos}"] = {
+                        "min": float(d.min_val) if d.min_val else "",
+                        "max": float(d.max_val) if d.max_val else "",
                     }
 
-                    for group in current_groups:
-                        for item in ["外徑", "內徑", "厚度"]:
-                            for pos in ["前段", "中段", "後段"]:
-                                key = f"{group}_{item}_{pos}"
-                                min_val = measurements.get(key, {}).get("min", "")
-                                max_val = measurements.get(key, {}).get("max", "")
-                                row_dict[f"{group}{item}{pos}最小"] = min_val
-                                row_dict[f"{group}{item}{pos}最大"] = max_val
+                row_values = {
+                    '識別碼': patrol.id,
+                    '檢驗日期': patrol.date.strftime('%Y-%m-%d') if patrol.date else '',
+                    '擠壓機編號': m_name.strip() if m_name else '',
+                    '員工姓名': op_name.strip() if op_name else '',
+                    '材質': patrol.material,
+                    '擠壓規格': patrol.spec,
+                    '廠商名稱': v_name.strip() if v_name else '',
+                    '原料批號': patrol.batch_num,
+                    '檢驗人員': i_name.strip() if i_name else ''
+                }
+                for group in {PatrolService._group_label(d.group) for d in details}:
+                    for item in ["外徑", "內徑", "厚度"]:
+                        for pos in ["前段", "中段", "後段"]:
+                            cell = measurements.get(f"{group}_{item}_{pos}", {})
+                            row_values[f"{group}{item}{pos}最小"] = cell.get("min", "")
+                            row_values[f"{group}{item}{pos}最大"] = cell.get("max", "")
 
-                    export_data.append(row_dict)
+                sheet.append([row_values.get(column, "") for column in columns])
 
-                df = pd.DataFrame(export_data)
-
-            # 先產生原始數據工作表
             output = BytesIO()
-            df.to_excel(output, index=False, engine='openpyxl', sheet_name='原始數據')
+            workbook.save(output)
             output.seek(0)
 
             # SPC 報表必須由路由層取得 actor、建立或驗證不可變研究版本後，

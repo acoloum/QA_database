@@ -648,9 +648,10 @@ class MechanicalService:
             items = filtered[start:start + page_size]
             total_pages = max((total + page_size - 1) // page_size, 1)
         else:
-            total = query.count()
             # 以識別碼倒序（新→舊），避免 SQLite NULLS LAST 相容性問題（沿用擠壓公差慣例）
+            # paginate() 內部已算過 total，不再另外 count() 一次
             pagination = query.paginate(page=page, per_page=page_size, error_out=False)
+            total = pagination.total
             items = pagination.items
             total_pages = pagination.pages
 

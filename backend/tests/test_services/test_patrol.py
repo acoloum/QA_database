@@ -336,54 +336,70 @@ def test_get_history_no_customer_id_unchanged(app, db_session):
         assert row['is_ng'] is False
 
 
-def test_export_excel_batches_patrol_details(app, db_session):
-    """匯出巡檢 Excel 時，明細應批次載入，避免資料筆數增加就產生 N+1 查詢。"""
-    with app.app_context():
-        machine = Machine(name='M1')
-        operator = Operator(name='OP1')
-        inspector = Inspector(name='I1')
-        vendor = Vendor(name='客戶甲')
-        db_session.add_all([machine, operator, inspector, vendor])
+def _seed_patrol_rows(db_session, count, start_day):
+    machine = Machine(name='M1')
+    operator = Operator(name='OP1')
+    inspector = Inspector(name='I1')
+    vendor = Vendor(name='客戶甲')
+    db_session.add_all([machine, operator, inspector, vendor])
+    db_session.flush()
+
+    for idx in range(count):
+        patrol = PatrolMain(
+            date=date(2026, 1, start_day + idx),
+            machine_id=machine.id,
+            operator_id=operator.id,
+            inspector_id=inspector.id,
+            customer_id=vendor.id,
+            material='6061',
+            spec='10*2',
+        )
+        db_session.add(patrol)
         db_session.flush()
+        db_session.add(PatrolDetail(
+            main_id=patrol.id,
+            group=1,
+            item='外徑',
+            position='前段',
+            min_val=10.0,
+            max_val=10.1,
+        ))
+    db_session.commit()
 
-        for idx in range(5):
-            patrol = PatrolMain(
-                date=date(2026, 1, idx + 1),
-                machine_id=machine.id,
-                operator_id=operator.id,
-                inspector_id=inspector.id,
-                customer_id=vendor.id,
-                material='6061',
-                spec='10*2',
-            )
-            db_session.add(patrol)
-            db_session.flush()
-            db_session.add(PatrolDetail(
-                main_id=patrol.id,
-                group=1,
-                item='外徑',
-                position='前段',
-                min_val=10.0,
-                max_val=10.1,
-            ))
-        db_session.commit()
 
-        statements = []
+def _count_detail_selects(callback):
+    statements = []
 
-        def track_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
-            statements.append(statement)
+    def track_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement)
 
-        event.listen(db.engine, 'before_cursor_execute', track_sql)
-        try:
-            PatrolService.export_excel({})
-        finally:
-            event.remove(db.engine, 'before_cursor_execute', track_sql)
+    event.listen(db.engine, 'before_cursor_execute', track_sql)
+    try:
+        callback()
+    finally:
+        event.remove(db.engine, 'before_cursor_execute', track_sql)
 
-        detail_selects = [
-            statement for statement in statements
-            if '巡檢子檔' in statement and statement.lstrip().upper().startswith('SELECT')
-        ]
-        assert len(detail_selects) <= 1
+    return len([
+        statement for statement in statements
+        if '巡檢子檔' in statement and statement.lstrip().upper().startswith('SELECT')
+    ])
+
+
+def test_export_excel_batches_patrol_details(app, db_session):
+    """匯出巡檢 Excel 時，子檔查詢次數不得隨資料筆數增加（避免 N+1）。
+
+    匯出改為兩趟串流（先掃組別決定表頭、再逐批寫列）後，子檔查詢固定為兩次；
+    這裡直接比較不同資料量下的查詢次數，而非釘住某個magic number。
+    """
+    with app.app_context():
+        _seed_patrol_rows(db_session, count=5, start_day=1)
+        few = _count_detail_selects(lambda: PatrolService.export_excel({}))
+
+        _seed_patrol_rows(db_session, count=15, start_day=6)
+        many = _count_detail_selects(lambda: PatrolService.export_excel({}))
+
+        assert few == many, f'子檔查詢次數隨筆數變動：{few} → {many}'
+        assert many <= 2
 
 
 def test_get_patrol_details_returns_all_rows_with_exclusion_status(app, db_session):
@@ -807,3 +823,98 @@ def test_get_live_limits_recent_values_scoped_to_operator(app, db_session):
 
         assert result['found'] is True
         assert result['recent_values'] == [{'min': 84.9, 'max': 85.3}]
+
+
+# ---------------------------------------------------------------------------
+# 匯出：改為串流寫入前後的輸出快照（欄位順序為動態產生，最容易漂移）
+# ---------------------------------------------------------------------------
+
+def _seed_export_fixture(db_session):
+    """三筆巡檢，分別帶不同的量測組，用來釘住動態欄位的產生順序。"""
+    machine = Machine(name='M1 ')
+    operator = Operator(name=' OP1')
+    inspector = Inspector(name='I1')
+    vendor = Vendor(name='客戶甲')
+    db_session.add_all([machine, operator, inspector, vendor])
+    db_session.flush()
+
+    def make(day, groups, batch):
+        patrol = PatrolMain(
+            date=date(2026, 3, day), machine_id=machine.id, operator_id=operator.id,
+            inspector_id=inspector.id, customer_id=vendor.id,
+            material='6061', spec='10*2', batch_num=batch,
+        )
+        db_session.add(patrol)
+        db_session.flush()
+        for group in groups:
+            db_session.add(PatrolDetail(
+                main_id=patrol.id, group=group, item='外徑', position='前段',
+                min_val=10.0 + group, max_val=10.5 + group,
+            ))
+        return patrol
+
+    # id 由小到大建立；匯出以 id.desc() 排序，故實際輸出順序為 C → B → A
+    make(1, [1], 'A')
+    make(2, [2, 1], 'B')
+    make(3, [], 'C')          # 無明細 → 落入「第1組」預設分支
+    db_session.commit()
+
+
+def _export_rows():
+    from openpyxl import load_workbook
+
+    sheet = load_workbook(PatrolService.export_excel({})).active
+    return [list(row) for row in sheet.iter_rows(values_only=True)]
+
+
+def test_export_excel_column_layout_and_values(app, db_session):
+    """匯出的表頭順序、固定欄位與動態量測欄位的值都必須穩定。"""
+    with app.app_context():
+        _seed_export_fixture(db_session)
+
+        rows = _export_rows()
+        header = rows[0]
+
+        assert header[:9] == [
+            '識別碼', '檢驗日期', '擠壓機編號', '員工姓名', '材質',
+            '擠壓規格', '廠商名稱', '原料批號', '檢驗人員',
+        ]
+        # 動態欄位：先出現的組別排前面（第3筆無明細→第1組，第2筆→第1、2組）
+        assert header[9] == '第1組外徑前段最小'
+        assert '第2組外徑前段最小' in header
+        assert header.index('第1組外徑前段最小') < header.index('第2組外徑前段最小')
+        # 每組都展開 外徑/內徑/厚度 × 前段/中段/後段 × 最小/最大 = 18 欄
+        assert len([h for h in header if h.startswith('第1組')]) == 18
+        assert len([h for h in header if h.startswith('第2組')]) == 18
+
+        assert len(rows) == 4                      # 表頭 + 3 筆
+        # id.desc() → 批號 C、B、A
+        batch_index = header.index('原料批號')
+        assert [row[batch_index] for row in rows[1:]] == ['C', 'B', 'A']
+        # 主檔欄位去除前後空白
+        assert rows[1][header.index('擠壓機編號')] == 'M1'
+        assert rows[1][header.index('員工姓名')] == 'OP1'
+        assert rows[1][header.index('檢驗日期')] == '2026-03-03'
+
+        g1_min = header.index('第1組外徑前段最小')
+        g2_min = header.index('第2組外徑前段最小')
+        # 第3筆（批號C）無明細
+        assert rows[1][g1_min] in ('', None)
+        # 第2筆（批號B）有第1、2組
+        assert rows[2][g1_min] == 11.0
+        assert rows[2][g2_min] == 12.0
+        # 第1筆（批號A）只有第1組，第2組欄位留空
+        assert rows[3][g1_min] == 11.0
+        assert rows[3][g2_min] in ('', None)
+
+
+def test_export_excel_with_no_data_still_writes_header(app, db_session):
+    """無資料時仍須輸出固定表頭。"""
+    with app.app_context():
+        rows = _export_rows()
+
+        assert rows[0][:9] == [
+            '識別碼', '檢驗日期', '擠壓機編號', '員工姓名', '材質',
+            '擠壓規格', '廠商名稱', '原料批號', '檢驗人員',
+        ]
+        assert len(rows) == 1

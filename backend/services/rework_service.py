@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import joinedload
-from sqlalchemy import desc, func
+from sqlalchemy import case, desc, func
 from ..extensions import db
 from ..errors import APIError, NotFoundError
 from ..models import (
@@ -151,41 +151,45 @@ class ReworkService:
     @staticmethod
     def get_statistics(args: Dict[str, Any]) -> Dict[str, Any]:
         """獲取重工統計數據"""
-        query = ReworkRequest.active_query()
-
+        # 三段統計共用同一組期間條件，集中一次組出來避免各自重複拼接
+        period_filters = [ReworkRequest.deleted_at.is_(None)]
         if args.get('start_date'):
-            query = query.filter(ReworkRequest.created_at >= args['start_date'])
+            period_filters.append(ReworkRequest.created_at >= args['start_date'])
         if args.get('end_date'):
-            query = query.filter(ReworkRequest.created_at <= args['end_date'])
+            period_filters.append(ReworkRequest.created_at <= args['end_date'])
 
-        # Application stats
-        total = query.count()
-        completed = query.filter(ReworkRequest.status.in_(['已結案', '已完成'])).count()
-        in_progress = query.filter(ReworkRequest.status == '執行中').count()
-        approved = query.filter(ReworkRequest.status == '已核准').count()
-        rejected = query.filter(ReworkRequest.review_status == '已拒絕').count()
+        # Application stats：原本是 5 次 count() 加 1 次 sum()，對同一組資料掃 6 遍；
+        # 改用單一查詢的條件式聚合，語意不變但只掃一遍。
+        app_row = db.session.query(
+            func.count(ReworkRequest.id).label('total'),
+            func.sum(case(
+                (ReworkRequest.status.in_(['已結案', '已完成']), 1), else_=0
+            )).label('completed'),
+            func.sum(case(
+                (ReworkRequest.status == '執行中', 1), else_=0
+            )).label('in_progress'),
+            func.sum(case(
+                (ReworkRequest.status == '已核准', 1), else_=0
+            )).label('approved'),
+            func.sum(case(
+                (ReworkRequest.review_status == '已拒絕', 1), else_=0
+            )).label('rejected'),
+            func.sum(ReworkRequest.quantity).label('total_qty'),
+        ).filter(*period_filters).first()
 
-        qty_query = db.session.query(func.sum(ReworkRequest.quantity)).filter(
-            ReworkRequest.deleted_at.is_(None)
-        )
-        if args.get('start_date'):
-            qty_query = qty_query.filter(ReworkRequest.created_at >= args['start_date'])
-        if args.get('end_date'):
-            qty_query = qty_query.filter(ReworkRequest.created_at <= args['end_date'])
-        total_qty = qty_query.scalar() or 0
+        total = int(app_row.total or 0)
+        completed = int(app_row.completed or 0)
+        in_progress = int(app_row.in_progress or 0)
+        approved = int(app_row.approved or 0)
+        rejected = int(app_row.rejected or 0)
+        total_qty = app_row.total_qty or 0
 
         # Department stats
-        dept_query = db.session.query(
+        dept_results = db.session.query(
             ReworkRequest.department,
             func.count(ReworkRequest.id).label('count'),
             func.sum(ReworkRequest.quantity).label('quantity')
-        ).filter(ReworkRequest.deleted_at.is_(None))
-        if args.get('start_date'):
-            dept_query = dept_query.filter(ReworkRequest.created_at >= args['start_date'])
-        if args.get('end_date'):
-            dept_query = dept_query.filter(ReworkRequest.created_at <= args['end_date'])
-
-        dept_results = dept_query.group_by(ReworkRequest.department).all()
+        ).filter(*period_filters).group_by(ReworkRequest.department).all()
 
         dept_stats = []
         for row in dept_results:
@@ -195,20 +199,20 @@ class ReworkService:
                 'quantity': float(row[2]) if row[2] else 0
             })
 
-        # Cost stats
-        cost_query = db.session.query(
+        # Cost stats：原本總額與三種成本別各查一次（掃 4 遍），改為單一條件式聚合
+        cost_row = db.session.query(
             func.count(ReworkCost.id).label('total_records'),
-            func.sum(ReworkCost.total_cost).label('total_cost')
-        )
-        
-        labor_query = cost_query
-        material_query = cost_query
-        equipment_query = cost_query
-        
-        cost_result = cost_query.first()
-        labor_result = labor_query.filter(ReworkCost.cost_type == '人工成本').first()
-        material_result = material_query.filter(ReworkCost.cost_type == '材料成本').first()
-        equipment_result = equipment_query.filter(ReworkCost.cost_type == '設備成本').first()
+            func.sum(ReworkCost.total_cost).label('total_cost'),
+            func.sum(case(
+                (ReworkCost.cost_type == '人工成本', ReworkCost.total_cost), else_=0
+            )).label('labor_cost'),
+            func.sum(case(
+                (ReworkCost.cost_type == '材料成本', ReworkCost.total_cost), else_=0
+            )).label('material_cost'),
+            func.sum(case(
+                (ReworkCost.cost_type == '設備成本', ReworkCost.total_cost), else_=0
+            )).label('equipment_cost'),
+        ).first()
 
         return {
             'application_stats': {
@@ -220,11 +224,11 @@ class ReworkService:
                 'total_rework_quantity': float(total_qty) if total_qty else 0
             },
             'cost_stats': {
-                'total_records': cost_result[0] if cost_result and cost_result[0] else 0,
-                'total_cost': float(cost_result[1]) if cost_result and cost_result[1] else 0,
-                'labor_cost': float(labor_result[1]) if labor_result and labor_result[1] else 0,
-                'material_cost': float(material_result[1]) if material_result and material_result[1] else 0,
-                'equipment_cost': float(equipment_result[1]) if equipment_result and equipment_result[1] else 0
+                'total_records': int(cost_row.total_records or 0),
+                'total_cost': float(cost_row.total_cost or 0),
+                'labor_cost': float(cost_row.labor_cost or 0),
+                'material_cost': float(cost_row.material_cost or 0),
+                'equipment_cost': float(cost_row.equipment_cost or 0),
             },
             'department_stats': dept_stats
         }

@@ -1,11 +1,14 @@
 
 from typing import List, Dict, Any, Optional
-import pandas as pd
 from io import BytesIO
+from openpyxl import Workbook
 from sqlalchemy.orm import joinedload, selectinload
 from ..extensions import db
 from ..models import VendorToleranceMain, VendorToleranceDetail, Vendor
 from ..utils import bounded_int, format_value
+
+# 匯出逐批取回的筆數；與出貨／巡檢匯出採同一節奏
+EXPORT_BATCH_SIZE = 500
 
 
 class ToleranceService:
@@ -24,11 +27,10 @@ class ToleranceService:
         page = bounded_int(args.get('page'), 1, 1, 1000000)
         page_size = bounded_int(args.get('page_size'), 20, 1, 100)
         
-        total = query.count()
-        
+        # paginate() 內部已算過 total，不再另外 count() 一次
         query = query.order_by(VendorToleranceMain.id.desc())
         pagination = query.paginate(page=page, per_page=page_size, error_out=False)
-        
+
         data = []
         for t in pagination.items:
             item = {
@@ -45,7 +47,7 @@ class ToleranceService:
         return {
             "success": True,
             "data": data,
-            "total": total,
+            "total": pagination.total,
             "page": page,
             "page_size": page_size,
             "total_pages": pagination.pages
@@ -197,45 +199,46 @@ class ToleranceService:
 
     @staticmethod
     def export_excel(args: Dict[str, Any]) -> BytesIO:
+        # 篩選條件全部是可選的，未設條件時等同整張主檔加明細檔。原本先 all() 取回
+        # 全部 ORM 實體、再組 list、再轉 DataFrame，三份同時放進記憶體；改為逐批取出、
+        # 逐列寫入 openpyxl 的 write_only 工作表，記憶體維持常數級。
+        # 明細改用 selectinload：joinedload 的集合式 eager load 不能與 yield_per 併用。
         query = VendorToleranceMain.query.options(
             joinedload(VendorToleranceMain.vendor),
-            joinedload(VendorToleranceMain.details)
+            selectinload(VendorToleranceMain.details)
         )
-        
+
         if args.get('material'):
             query = query.filter(VendorToleranceMain.material.ilike(f"%{args['material']}%"))
         if args.get('vendor_id'):
             query = query.filter(VendorToleranceMain.vendor_id == args['vendor_id'])
         if args.get('spec'):
             query = query.filter(VendorToleranceMain.spec.ilike(f"%{args['spec']}%"))
-        
-        data_rows = []
-        
-        # To mimic SQL LEFT JOIN behavior where each detail is a row
-        # We iterate mains and then their details
-        mains = query.order_by(VendorToleranceMain.id).all()
-        
-        for m in mains:
+
+        cols = ['識別碼', '材質', '規格', '廠商名稱', '測量項目', '測量位置',
+                '尺寸下限', '尺寸上限', '公差下限', '公差上限', '標準值', '單位', '備註']
+
+        workbook = Workbook(write_only=True)
+        sheet = workbook.create_sheet()
+        sheet.append(cols)
+
+        query = query.order_by(VendorToleranceMain.id)
+
+        for m in query.yield_per(EXPORT_BATCH_SIZE):
+            main_cells = [m.id, m.material, m.spec, m.vendor.name if m.vendor else None]
             details = sorted(m.details, key=lambda d: d.id)
             if not details:
-                 # Add row with main info only? Legacy left join would produce one row with null details.
-                 row = [m.id, m.material, m.spec, m.vendor.name if m.vendor else None, 
-                        None, None, None, None, None, None, None, None, None]
-                 data_rows.append(row)
+                # 沿用 LEFT JOIN 語意：無明細的主檔仍輸出一列，明細欄位留空
+                sheet.append(main_cells + [None] * 9)
             else:
                 for d in details:
-                    row = [m.id, m.material, m.spec, m.vendor.name if m.vendor else None,
-                           d.item, d.position, d.dim_min, d.dim_max, 
-                           d.tolerance_min, d.tolerance_max, d.std_val, d.unit, d.note]
-                    data_rows.append(row)
-        
-        cols = ['識別碼', '材質', '規格', '廠商名稱', '測量項目', '測量位置', 
-                '尺寸下限', '尺寸上限', '公差下限', '公差上限', '標準值', '單位', '備註']
-        
-        df = pd.DataFrame(data_rows, columns=cols)
-        
+                    sheet.append(main_cells + [
+                        d.item, d.position, d.dim_min, d.dim_max,
+                        d.tolerance_min, d.tolerance_max, d.std_val, d.unit, d.note,
+                    ])
+
         output = BytesIO()
-        df.to_excel(output, index=False, engine='openpyxl')
+        workbook.save(output)
         output.seek(0)
         return output
 

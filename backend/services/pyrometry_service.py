@@ -555,7 +555,7 @@ class PyrometryService:
             q = q.filter(PyrometryTest.test_date <= parse_date(args["date_to"]))
         page = bounded_int(args.get("page"), 1, 1, 1000000)
         page_size = bounded_int(args.get("page_size"), 20, 1, 100)
-        total = q.count()
+        # paginate() 內部已算過 total，不再另外 count() 一次
         pg = q.order_by(PyrometryTest.test_date.desc(), PyrometryTest.id.desc()).paginate(
             page=page, per_page=page_size, error_out=False)
         data = [{
@@ -564,7 +564,7 @@ class PyrometryService:
             "測試日期": format_value(t.test_date), "是否合格": t.is_pass,
             "測試人員姓名": t.tester.name if t.tester else "",
         } for t in pg.items]
-        return {"success": True, "data": data, "total": total, "page": page,
+        return {"success": True, "data": data, "total": pg.total, "page": page,
                 "page_size": page_size, "total_pages": pg.pages}
 
     # ---------- 到期計算 ----------

@@ -2549,6 +2549,8 @@ class MsaStudyEquipment(db.Model):
             '研究ID', '設備ID', '角色', '量測模式',
             name='uq_msa_study_equipment_role',
         ),
+        # 研究ID 已是上述唯一約束的前導欄；設備ID 需自己的索引才能反查「這台設備用於哪些研究」
+        db.Index('idx_msa_study_equipment_equipment', '設備ID'),
     )
 
     id = db.Column('識別碼', db.Integer, primary_key=True)
@@ -2760,6 +2762,8 @@ class MsaObservation(db.Model):
         db.Index(
             'idx_msa_observation_plan_order', '計畫版本ID', '實際輸入順序'
         ),
+        # 匯入批次回溯／撤銷需以批次反查觀測值
+        db.Index('idx_msa_observation_import_batch', '匯入批次ID'),
     )
 
     id = db.Column('識別碼', db.Integer, primary_key=True)
@@ -2823,6 +2827,8 @@ class MsaResultVersion(db.Model):
             sqlite_where=db.text('"狀態" = \'submitted\''),
             postgresql_where=db.text('"狀態" = \'submitted\''),
         ),
+        # 既有約束都以研究ID 為前導欄，計畫版本ID 反查需要自己的索引
+        db.Index('idx_msa_result_version_plan_version', '計畫版本ID'),
     )
 
     id = db.Column('識別碼', db.Integer, primary_key=True)
@@ -2868,6 +2874,8 @@ class MsaWorkflowDecision(db.Model):
     __tablename__ = 'MSA工作流決策'
     __table_args__ = (
         db.Index('idx_msa_decision_study', '研究ID', '建立時間'),
+        # 結果版本頁需列出該版本的所有決策
+        db.Index('idx_msa_decision_result_version', '結果版本ID'),
     )
 
     id = db.Column('識別碼', db.Integer, primary_key=True)
@@ -3286,6 +3294,8 @@ class CorrectiveAction(SoftDeleteMixin, db.Model):
     __table_args__ = (
         db.Index('idx_capa_source', '來源類型', '來源ID'),
         db.Index('idx_capa_status_deadline', '狀態', 'D0_客戶要求結案日'),
+        # NCMR 清單以 subqueryload 反查矯正措施（WHERE NCMR_ID IN (...)），需要索引
+        db.Index('idx_capa_ncmr', 'NCMR_ID'),
     )
 
     # --- 關聯 ---
@@ -3356,6 +3366,11 @@ class ReworkExecution(db.Model):
     abnormal = db.Column('異常狀況', db.String)
     executor_id = db.Column('執行人員', db.Integer, db.ForeignKey('品管人員.識別碼'))
 
+    # 子表一律以主單反查（清單 selectinload、明細查詢、串聯刪除）
+    __table_args__ = (
+        db.Index('idx_rework_exec_request', '重工單號'),
+    )
+
     owner = db.relationship('Inspector', foreign_keys=[owner_id], backref='rework_executions')
     executor = db.relationship('Inspector', foreign_keys=[executor_id], backref='rework_executions_done')
 
@@ -3372,6 +3387,10 @@ class ReworkInspection(db.Model):
     remark = db.Column('檢驗備註', db.String)
     created_at = db.Column('記錄時間', db.DateTime, default=utc_now)
 
+    __table_args__ = (
+        db.Index('idx_rework_insp_request', '重工單號'),
+    )
+
     inspector = db.relationship('Inspector', backref='rework_inspections')
 
 class ReworkCost(db.Model):
@@ -3387,6 +3406,10 @@ class ReworkCost(db.Model):
     recorder_id = db.Column('記錄人員', db.Integer, db.ForeignKey('品管人員.識別碼'))
     remark = db.Column('備註', db.String)
     created_at = db.Column('記錄日期', db.DateTime, default=utc_now)
+
+    __table_args__ = (
+        db.Index('idx_rework_cost_request', '重工單號'),
+    )
 
     recorder = db.relationship('Inspector', backref='rework_costs')
     rework = db.relationship('ReworkRequest', backref='costs')
@@ -3489,6 +3512,11 @@ class ActionTask(db.Model):
     # 時間戳
     created_at = db.Column('建立時間', db.DateTime, default=utc_now)
     updated_at = db.Column('更新時間', db.DateTime, default=utc_now, onupdate=utc_now)
+
+    # 任務清單與「我的任務」都以負責人篩選
+    __table_args__ = (
+        db.Index('idx_task_assignee', '負責人'),
+    )
 
     assignee = db.relationship('Inspector', backref='assigned_tasks')
 
@@ -3628,6 +3656,11 @@ class TusPoint(db.Model):
     excluded       = db.Column('已排除',   db.Boolean, nullable=False, default=False)
     exclude_reason = db.Column('排除原因', db.Text, nullable=True)
 
+    # 量測點一律以測試單反查（報表、明細載入、串聯刪除）
+    __table_args__ = (
+        db.Index('idx_tus_point_test', '測試ID'),
+    )
+
 
 class SatPoint(db.Model):
     """SAT 量測點明細 — 每筆=一個控溫區，包含多筆取樣讀值"""
@@ -3646,6 +3679,10 @@ class SatPoint(db.Model):
     is_pass       = db.Column('是否合格',       db.Boolean, default=True)
     excluded       = db.Column('已排除',   db.Boolean, nullable=False, default=False)
     exclude_reason = db.Column('排除原因', db.Text, nullable=True)
+
+    __table_args__ = (
+        db.Index('idx_sat_point_test', '測試ID'),
+    )
 
 
 class Recorder(db.Model):

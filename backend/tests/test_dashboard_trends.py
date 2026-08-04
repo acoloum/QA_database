@@ -1,6 +1,8 @@
 import datetime
 
-from backend.models import CorrectiveAction, NCMR, ReworkRequest, Role, User, ShippingData
+from backend.models import CorrectiveAction, NCMR, PatrolMain, ReworkRequest, Role, User, ShippingData
+from backend.services.dashboard_service import DashboardService
+from backend.services.date_range import DateWindow
 from backend.utils import generate_token, hash_password
 
 
@@ -166,3 +168,110 @@ def test_dashboard_stats_includes_date_column_on_end_date(client, db_session):
     assert resp.status_code == 200
     data = resp.get_json()
     assert data['stats']['shipping']['current'] == 1
+
+
+# ---------------------------------------------------------------------------
+# 聚合查詢加上外框日期 WHERE（可走索引）後的行為回歸
+# ---------------------------------------------------------------------------
+
+def test_dashboard_stats_counts_previous_period(db_session):
+    """前期資料落在外框 WHERE 範圍內，previous 與趨勢仍須正確計算。"""
+    db_session.add_all([
+        ShippingData(date=datetime.date(2026, 8, 10), material='6063', spec='40x3', is_ng=False),
+        ShippingData(date=datetime.date(2026, 8, 20), material='6063', spec='40x3', is_ng=False),
+        # 前期（7 月）
+        ShippingData(date=datetime.date(2026, 7, 15), material='6063', spec='40x3', is_ng=False),
+    ])
+    db_session.commit()
+
+    stats = DashboardService.get_stats(
+        DateWindow(start_date=datetime.date(2026, 8, 1), end_date=datetime.date(2026, 8, 31))
+    )
+
+    assert stats['shipping']['current'] == 2
+    assert stats['shipping']['previous'] == 1
+
+
+def test_dashboard_stats_excludes_records_outside_span(db_session):
+    """外框 WHERE 之外的資料不得被計入任何一期。"""
+    db_session.add_all([
+        ShippingData(date=datetime.date(2026, 8, 10), material='6063', spec='40x3', is_ng=False),
+        # 遠早於前期起點
+        ShippingData(date=datetime.date(2020, 1, 1), material='6063', spec='40x3', is_ng=False),
+        # 晚於當期結束
+        ShippingData(date=datetime.date(2027, 1, 1), material='6063', spec='40x3', is_ng=False),
+    ])
+    db_session.commit()
+
+    stats = DashboardService.get_stats(
+        DateWindow(start_date=datetime.date(2026, 8, 1), end_date=datetime.date(2026, 8, 31))
+    )
+
+    assert stats['shipping']['current'] == 1
+    assert stats['shipping']['previous'] == 0
+
+
+def test_dashboard_stats_ng_counts_folded_into_same_query(db_session):
+    """NG 數併入主查詢後，仍只計當期且 ng_rate 正確。"""
+    db_session.add_all([
+        ShippingData(date=datetime.date(2026, 8, 5), material='6063', spec='40x3', is_ng=True),
+        ShippingData(date=datetime.date(2026, 8, 6), material='6063', spec='40x3', is_ng=False),
+        ShippingData(date=datetime.date(2026, 8, 7), material='6063', spec='40x3', is_ng=False),
+        ShippingData(date=datetime.date(2026, 8, 8), material='6063', spec='40x3', is_ng=False),
+        # 前期 NG 不得計入當期 ng_count
+        ShippingData(date=datetime.date(2026, 7, 5), material='6063', spec='40x3', is_ng=True),
+    ])
+    db_session.add_all([
+        PatrolMain(date=datetime.date(2026, 8, 5), material='6063', spec='40x3', is_ng=True),
+        PatrolMain(date=datetime.date(2026, 8, 6), material='6063', spec='40x3', is_ng=False),
+        PatrolMain(date=datetime.date(2026, 7, 6), material='6063', spec='40x3', is_ng=True),
+    ])
+    db_session.commit()
+
+    stats = DashboardService.get_stats(
+        DateWindow(start_date=datetime.date(2026, 8, 1), end_date=datetime.date(2026, 8, 31))
+    )
+
+    assert stats['shipping']['current'] == 4
+    assert stats['shipping']['ng_count'] == 1
+    assert stats['shipping']['ng_rate'] == 25.0
+    assert stats['patrol']['current'] == 2
+    assert stats['patrol']['ng_count'] == 1
+    assert stats['patrol']['ng_rate'] == 50.0
+
+
+def test_dashboard_stats_supports_non_adjacent_comparison_window(db_session):
+    """明確指定不相鄰的比較期時，外框仍須涵蓋兩端（spanning 取 min/max）。"""
+    db_session.add_all([
+        ShippingData(date=datetime.date(2026, 8, 10), material='6063', spec='40x3', is_ng=False),
+        # 比較期在半年前，與當期不相鄰
+        ShippingData(date=datetime.date(2026, 2, 10), material='6063', spec='40x3', is_ng=False),
+        ShippingData(date=datetime.date(2026, 2, 11), material='6063', spec='40x3', is_ng=False),
+        # 兩期之間的資料不屬於任何一期
+        ShippingData(date=datetime.date(2026, 5, 1), material='6063', spec='40x3', is_ng=False),
+    ])
+    db_session.commit()
+
+    stats = DashboardService.get_stats(
+        DateWindow(start_date=datetime.date(2026, 8, 1), end_date=datetime.date(2026, 8, 31)),
+        comparison=DateWindow(start_date=datetime.date(2026, 2, 1), end_date=datetime.date(2026, 2, 28)),
+    )
+
+    assert stats['shipping']['current'] == 1
+    assert stats['shipping']['previous'] == 2
+
+
+def test_dashboard_stats_ignores_null_dates(db_session):
+    """日期為 NULL 的資料在加上 WHERE 後仍應被排除（與原本 CASE else_=0 行為一致）。"""
+    db_session.add_all([
+        ShippingData(date=datetime.date(2026, 8, 10), material='6063', spec='40x3', is_ng=False),
+        ShippingData(date=None, material='6063', spec='40x3', is_ng=True),
+    ])
+    db_session.commit()
+
+    stats = DashboardService.get_stats(
+        DateWindow(start_date=datetime.date(2026, 8, 1), end_date=datetime.date(2026, 8, 31))
+    )
+
+    assert stats['shipping']['current'] == 1
+    assert stats['shipping']['ng_count'] == 0
