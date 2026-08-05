@@ -1,5 +1,12 @@
 // ===== 機械性質檢驗 =====
-export type MechItem = 'EC值' | '硬度' | '抗拉強度' | '降伏強度' | '伸長率';
+export type MechItem =
+  | 'EC值'
+  | '硬度'
+  | '韋伯氏硬度'
+  | '真直度'
+  | '抗拉強度'
+  | '降伏強度'
+  | '伸長率';
 export type MechLocation = '爐門' | '爐頂';
 export type MechanicalJudgementStatus = 'NG' | 'OK' | 'NO_SPEC' | 'INCOMPLETE';
 
@@ -9,9 +16,12 @@ export interface MechanicalTraceNumber {
   編號: string;
 }
 
+/** 可標記免測的項目；韋伯氏硬度／真直度為選填項目，不納入免測機制。 */
+export type MechWaivableItem = Exclude<MechItem, 'EC值' | '韋伯氏硬度' | '真直度'>;
+
 /** 免測項目：設備故障等原因無法量測時標記，該項目不列入完成判定。 */
 export interface MechanicalWaivedItem {
-  項目: MechItem;
+  項目: MechWaivableItem;
   原因: string;
 }
 
@@ -27,7 +37,9 @@ export interface MechanicalMeasurement {
   測量位置: MechLocation;
   取樣序: number;
   量測值: number | null;
+  /** 判定邊依項目而定：力學特性與硬度受下限管制，真直度受上限管制。 */
   下限?: number | null;
+  上限?: number | null;
   是否超差?: boolean;
   排除統計?: boolean;
   排除原因?: string | null;

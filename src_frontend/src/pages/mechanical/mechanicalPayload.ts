@@ -1,13 +1,23 @@
 import type {
   MechItem,
   MechLocation,
+  MechWaivableItem,
   MechanicalMeasurement,
   MechanicalTraceNumber,
   MechanicalWaivedItem,
 } from '../../types';
 
-export const JUDGED_ITEMS: MechItem[] = ['硬度', '抗拉強度', '降伏強度', '伸長率'];
-export const ALL_ITEMS: MechItem[] = ['硬度', '抗拉強度', '降伏強度', '伸長率', 'EC值'];
+/** 必測的力學特性：納入完成判定，且可標記免測。 */
+export const JUDGED_ITEMS: MechWaivableItem[] = ['硬度', '抗拉強度', '降伏強度', '伸長率'];
+
+/** 依公差檔決定是否顯示的選填項目；不納入完成判定，也不可標記免測。
+ *
+ * 韋伯氏硬度（HW）與洛氏硬度是兩種不同標度，不可互為別名；真直度受上限管制。
+ * 兩者都只有部分廠商／規格有登錄公差，故欄位依公差檔動態顯示。
+ */
+export const SPEC_DRIVEN_ITEMS: MechItem[] = ['韋伯氏硬度', '真直度'];
+
+export const ALL_ITEMS: MechItem[] = [...JUDGED_ITEMS, ...SPEC_DRIVEN_ITEMS, 'EC值'];
 export const LOCATIONS: MechLocation[] = ['爐門', '爐頂'];
 export const SAMPLES = [1, 2] as const;
 
@@ -23,6 +33,35 @@ export function emptyGrid(): MechGrid {
     }
   }
   return grid;
+}
+
+/** 規格界限查表；一個項目只會出現在受管制的那一邊。 */
+export interface SpecLimits {
+  lower: Record<string, number>;
+  upper: Record<string, number>;
+}
+
+/** 取某項目的界限；回傳 [下限, 上限]，未受管制的那一邊為 undefined。 */
+export const itemLimits = (
+  limits: SpecLimits | undefined,
+  item: MechItem,
+): [number | undefined, number | undefined] => [limits?.lower[item], limits?.upper[item]];
+
+/**
+ * 決定要顯示哪些依公差驅動的項目（韋伯氏硬度／真直度）。
+ *
+ * 公差檔有登錄該項目就顯示欄位。另有一條安全規則：**該筆已填過數值的項目
+ * 一律不隱藏**——公差改版或查無公差時把欄位藏起來，會讓既有數值變成使用者
+ * 看不到也改不掉的孤兒（沿用出貨檢驗表單的同一條規則）。
+ */
+export function visibleSpecDrivenItems(
+  limits: SpecLimits | undefined,
+  presentItems?: ReadonlySet<string>,
+): MechItem[] {
+  return SPEC_DRIVEN_ITEMS.filter((item) => {
+    const [lower, upper] = itemLimits(limits, item);
+    return lower !== undefined || upper !== undefined || !!presentItems?.has(item);
+  });
 }
 
 export function buildMeasurements(grid: MechGrid): MechanicalMeasurement[] {

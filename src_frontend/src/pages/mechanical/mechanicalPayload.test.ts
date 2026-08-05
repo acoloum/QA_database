@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   JUDGED_ITEMS,
+  SPEC_DRIVEN_ITEMS,
   buildMeasurements,
   buildTraceNumbers,
   duplicateTraceNumberIndexes,
@@ -8,9 +9,45 @@ import {
   emptyTraceNumber,
   hydrateGrid,
   hydrateTraceNumbers,
+  itemLimits,
   removeTraceNumber,
+  visibleSpecDrivenItems,
   type MechGrid,
 } from './mechanicalPayload';
+
+describe('visibleSpecDrivenItems', () => {
+  it('公差查無這兩項時都不顯示', () => {
+    expect(visibleSpecDrivenItems({ lower: { 硬度: 90 }, upper: {} })).toEqual([]);
+    expect(visibleSpecDrivenItems(undefined)).toEqual([]);
+  });
+
+  it('公差有登錄就顯示，各自認自己的判定邊', () => {
+    const limits = { lower: { 韋伯氏硬度: 15 }, upper: { 真直度: 0.3 } };
+    expect(visibleSpecDrivenItems(limits)).toEqual(['韋伯氏硬度', '真直度']);
+  });
+
+  it('公差只登錄其中一項時只顯示該項', () => {
+    expect(visibleSpecDrivenItems({ lower: {}, upper: { 真直度: 0.3 } })).toEqual(['真直度']);
+  });
+
+  it('已有數值的項目即使查無公差也不隱藏（避免既有數值變孤兒）', () => {
+    const limits = { lower: {}, upper: {} };
+    expect(visibleSpecDrivenItems(limits, new Set(['韋伯氏硬度']))).toEqual(['韋伯氏硬度']);
+  });
+
+  it('itemLimits 只回傳該項受管制的那一邊', () => {
+    const limits = { lower: { 韋伯氏硬度: 15 }, upper: { 真直度: 0.3 } };
+    expect(itemLimits(limits, '韋伯氏硬度')).toEqual([15, undefined]);
+    expect(itemLimits(limits, '真直度')).toEqual([undefined, 0.3]);
+    expect(itemLimits(limits, 'EC值')).toEqual([undefined, undefined]);
+  });
+
+  it('選填項目不與必測項目重疊（必測才納入完成判定與免測）', () => {
+    for (const item of SPEC_DRIVEN_ITEMS) {
+      expect(JUDGED_ITEMS).not.toContain(item);
+    }
+  });
+});
 
 describe('mechanicalPayload', () => {
   it('emptyGrid 常態每項有爐門/爐頂取樣1兩格', () => {

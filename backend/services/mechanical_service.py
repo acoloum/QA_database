@@ -18,7 +18,7 @@ from ..models import (
 from ..utils import bounded_int
 from .mechanical_import import build_payloads_from_workbook
 from .mechanical_spec import (
-    lookup_lower_limits,
+    lookup_limits,
     compute_measurement_ng,
     resolve_material_by_spec,
 )
@@ -32,11 +32,16 @@ class MechanicalNotFoundError(ValueError):
     """找不到指定的機械性質檢驗主檔。"""
 
 
-ALLOWED_MEASUREMENT_ITEMS = {"EC值", "硬度", "抗拉強度", "降伏強度", "伸長率"}
+ALLOWED_MEASUREMENT_ITEMS = {
+    "EC值", "硬度", "韋伯氏硬度", "真直度", "抗拉強度", "降伏強度", "伸長率",
+}
 ALLOWED_MEASUREMENT_LOCATIONS = {"爐門", "爐頂"}
 ALLOWED_SAMPLE_NUMBERS = {1, 2}
 # 完成判定所需的力學特性項目：每一項只要有任一量測值（不限位置／取樣序）即算完成。
 # 實務上部分批次僅取單一位置（爐門或爐頂）就是完整檢驗，故不強制兩個位置都齊。
+#
+# 韋伯氏硬度與真直度刻意不列入：兩者是「公差檔有登錄才顯示」的選填項目，
+# 既有紀錄都沒有這兩項數值，納入必測會讓它們全數變成 INCOMPLETE。
 REQUIRED_MEASUREMENT_ITEMS = {"硬度", "抗拉強度", "降伏強度", "伸長率"}
 # 可標記「免測」的項目：設備故障等原因無法量測時，該項目不列入完成判定。
 ALLOWED_WAIVED_ITEMS = REQUIRED_MEASUREMENT_ITEMS
@@ -366,7 +371,12 @@ def _judgement_status(test: MechanicalTest) -> str:
     required = REQUIRED_MEASUREMENT_ITEMS - waived_items
     if not required.issubset(measured_items):
         return "INCOMPLETE"
-    if any(measurement.lower_limit is None for measurement in judged):
+    # 「無規格」＝該量測兩邊界限都沒有。真直度只受上限管制、下限恆為空，
+    # 若只看下限會讓每一筆填了真直度的紀錄都被誤判為 NO_SPEC。
+    if any(
+        measurement.lower_limit is None and measurement.upper_limit is None
+        for measurement in judged
+    ):
         return "NO_SPEC"
     return "OK"
 
@@ -425,7 +435,7 @@ class MechanicalService:
     @staticmethod
     def _apply_measurements(test: MechanicalTest, data: Dict[str, Any]) -> None:
         """依受控鍵值更新量測明細並保留既有排除追溯資訊。"""
-        limits = lookup_lower_limits(test.material, test.product_size, test.vendor_id)
+        limits = lookup_limits(test.material, test.product_size, test.vendor_id)
         existing_by_key = {
             (measurement.item, measurement.location, measurement.sample_no): measurement
             for measurement in test.measurements
@@ -437,8 +447,12 @@ class MechanicalService:
             location = m.get("測量位置")
             sample_no = m.get("取樣序")
             value = _to_float(m.get("量測值"))
-            lower = limits.get(item)  # EC 或查無規格 → None
-            is_ng = compute_measurement_ng(value, float(lower) if lower is not None else None)
+            lower, upper = limits.get(item, (None, None))  # EC 或查無規格 → 皆 None
+            is_ng = compute_measurement_ng(
+                value,
+                float(lower) if lower is not None else None,
+                float(upper) if upper is not None else None,
+            )
             key = (item, location, sample_no)
             submitted_keys.add(key)
             measurement = existing_by_key.get(key)
@@ -449,12 +463,14 @@ class MechanicalService:
                     sample_no=sample_no,
                     value=value,
                     lower_limit=lower,
+                    upper_limit=upper,
                     is_ng=is_ng,
                 ))
                 continue
             if not measurement.excluded:
                 measurement.value = value
                 measurement.lower_limit = lower
+                measurement.upper_limit = upper
                 measurement.is_ng = is_ng
 
         for key, measurement in existing_by_key.items():
@@ -719,6 +735,7 @@ class MechanicalService:
             "取樣序": m.sample_no,
             "量測值": float(m.value) if m.value is not None else None,
             "下限": float(m.lower_limit) if m.lower_limit is not None else None,
+            "上限": float(m.upper_limit) if m.upper_limit is not None else None,
             "是否超差": m.is_ng,
             "排除統計": m.excluded,
             "排除原因": m.exclusion_reason,

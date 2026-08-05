@@ -37,24 +37,27 @@ from ..models import MechanicalTest, Vendor
 from ..services.mechanical_service import _judgement_status
 from ..services.mechanical_spec import (
     compute_measurement_ng,
-    lookup_lower_limits,
+    lookup_limits,
     resolve_material_by_spec,
 )
 
 
 def _recompute_judgement(test: MechanicalTest, material: str) -> None:
-    """材質變更後重算量測明細的下限與超規旗標。
+    """材質變更後重算量測明細的界限與超規旗標。
 
-    下限與 is_ng 是存檔當下凍結在明細列上的（見 _apply_measurements），
+    上下限與 is_ng 是存檔當下凍結在明細列上的（見 _apply_measurements），
     只改材質不重算會讓 NG 判定沿用舊材質的規格而失真。
     """
-    limits = lookup_lower_limits(material, test.product_size, test.vendor_id)
+    limits = lookup_limits(material, test.product_size, test.vendor_id)
     for measurement in test.measurements:
-        lower = limits.get(measurement.item)  # EC值 或查無規格 → None
+        # EC值 或查無規格 → 兩邊皆 None
+        lower, upper = limits.get(measurement.item, (None, None))
         measurement.lower_limit = lower
+        measurement.upper_limit = upper
         measurement.is_ng = compute_measurement_ng(
             float(measurement.value) if measurement.value is not None else None,
             float(lower) if lower is not None else None,
+            float(upper) if upper is not None else None,
         )
 
 

@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""重算既有機械性質量測明細的規格下限與超規旗標。
+"""重算既有機械性質量測明細的規格界限與超規旗標。
 
-背景：明細列的「下限」與 is_ng 是存檔當下依當時的廠商公差凍結的，
+背景：明細列的「下限」「上限」與 is_ng 是存檔當下依當時的廠商公差凍結的，
 `_judgement_status()` 是讀這些凍結值來決定 OK／NG／無規格。因此在存檔之後
 才補建或修改廠商公差時，既有紀錄不會自動跟上——最典型的症狀是公差已補建，
 紀錄卻仍顯示「無規格」。
 
-本腳本以現行公差重算下限與 is_ng，並回報判定狀態的變化。材質本身是否正確
+本腳本以現行公差重算上下限與 is_ng，並回報判定狀態的變化。材質本身是否正確
 不在此處理，請先用 audit_mechanical_material 稽核。
 
 用法（repo 根目錄）：
@@ -25,7 +25,7 @@ from ..app import app
 from ..extensions import db
 from ..models import MechanicalTest, Vendor
 from ..services.mechanical_service import _judgement_status
-from ..services.mechanical_spec import compute_measurement_ng, lookup_lower_limits
+from ..services.mechanical_spec import compute_measurement_ng, lookup_limits
 
 
 def main(apply: bool):
@@ -41,7 +41,7 @@ def main(apply: bool):
         for test in tests:
             key = (test.material, test.product_size, test.vendor_id)
             if key not in limit_cache:
-                limit_cache[key] = lookup_lower_limits(
+                limit_cache[key] = lookup_limits(
                     test.material, test.product_size, test.vendor_id
                 )
             limits = limit_cache[key]
@@ -49,24 +49,33 @@ def main(apply: bool):
             before = _judgement_status(test)
             changes = []
             for measurement in test.measurements:
-                lower = limits.get(measurement.item)  # EC值 或查無規格 → None
+                # EC值 或查無規格 → 兩邊皆 None
+                lower, upper = limits.get(measurement.item, (None, None))
+                new_lower = float(lower) if lower is not None else None
+                new_upper = float(upper) if upper is not None else None
                 new_ng = compute_measurement_ng(
                     float(measurement.value) if measurement.value is not None else None,
-                    float(lower) if lower is not None else None,
+                    new_lower,
+                    new_upper,
                 )
                 old_lower = (
                     float(measurement.lower_limit)
                     if measurement.lower_limit is not None else None
                 )
-                new_lower = float(lower) if lower is not None else None
-                if old_lower != new_lower or bool(measurement.is_ng) != new_ng:
-                    changes.append((measurement, new_lower, new_ng))
+                old_upper = (
+                    float(measurement.upper_limit)
+                    if measurement.upper_limit is not None else None
+                )
+                if (old_lower != new_lower or old_upper != new_upper
+                        or bool(measurement.is_ng) != new_ng):
+                    changes.append((measurement, new_lower, new_upper, new_ng))
 
             if not changes:
                 continue
 
-            for measurement, new_lower, new_ng in changes:
+            for measurement, new_lower, new_upper, new_ng in changes:
                 measurement.lower_limit = new_lower
+                measurement.upper_limit = new_upper
                 measurement.is_ng = new_ng
             after = _judgement_status(test)
             stale.append((test, before, after, len(changes)))
@@ -92,7 +101,7 @@ def main(apply: bool):
 
         if apply:
             db.session.commit()
-            print(f'\n  ✅ 已重算 {len(stale)} 筆的下限與 NG 判定。')
+            print(f'\n  ✅ 已重算 {len(stale)} 筆的上下限與 NG 判定。')
         else:
             db.session.rollback()
             print('\n  ℹ️  DRY-RUN，未寫入。確認無誤後加 --apply 實際更新。')

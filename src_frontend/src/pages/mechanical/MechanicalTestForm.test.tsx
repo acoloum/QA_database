@@ -66,10 +66,8 @@ describe('MechanicalTestForm', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(mechanicalApi.getSpec).mockResolvedValue({
-      硬度: 90,
-      抗拉強度: 240,
-      降伏強度: 180,
-      伸長率: 8,
+      lower: { 硬度: 90, 抗拉強度: 240, 降伏強度: 180, 伸長率: 8 },
+      upper: {},
     });
     vi.mocked(mechanicalApi.create).mockResolvedValue({ success: true, id: 9 });
     vi.mocked(mechanicalApi.update).mockResolvedValue({ success: true });
@@ -326,7 +324,8 @@ describe('MechanicalTestForm', () => {
     await screen.findByRole('option', { name: '安泰' });
     fireEvent.change(screen.getByLabelText('廠商'), { target: { value: '42' } });
     fireEvent.change(screen.getByLabelText('產品尺寸'), { target: { value: '62.5 x 2.3' } });
-    expect(await screen.findByText('90')).toBeInTheDocument();
+    // 規格欄以判定方向標示：下限為 ≥、上限為 ≤
+    expect(await screen.findByText('≥ 90')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('硬度－爐門－取樣 1'), { target: { value: '89' } });
 
     const input = screen.getByLabelText('硬度－爐門－取樣 1');
@@ -490,13 +489,103 @@ describe('MechanicalTestForm', () => {
         排除原因: '儀器異常',
       }],
     });
-    vi.mocked(mechanicalApi.getSpec).mockResolvedValue({ 硬度: 100 });
+    vi.mocked(mechanicalApi.getSpec).mockResolvedValue({ lower: { 硬度: 100 }, upper: {} });
     renderForm(8);
 
     const input = await screen.findByLabelText('硬度－爐門－取樣 1');
     expect(input).toHaveAttribute('aria-invalid', 'false');
-    expect(screen.getByText(/歷史快照：下限 90，判定 OK/)).toBeInTheDocument();
+    expect(screen.getByText(/歷史快照：規格 ≥ 90，判定 OK/)).toBeInTheDocument();
     expect(screen.queryByText('NG：低於下限 100')).not.toBeInTheDocument();
+  });
+
+  /** 規格查詢需要廠商 + 材質 + 產品尺寸三者齊備才會啟用 */
+  const pickVendorAndSize = async () => {
+    await screen.findByRole('option', { name: '安泰' });
+    fireEvent.change(screen.getByLabelText('廠商'), { target: { value: '42' } });
+    fireEvent.change(screen.getByLabelText('產品尺寸'), { target: { value: '62.5 x 2.3' } });
+  };
+
+  it('公差沒有韋伯氏硬度與真直度時不顯示這兩個欄位', async () => {
+    renderForm();
+    await pickVendorAndSize();
+    await waitFor(() => expect(mechanicalApi.getSpec).toHaveBeenCalled());
+
+    expect(screen.queryByText('韋伯氏硬度(HW)')).not.toBeInTheDocument();
+    expect(screen.queryByText('真直度(mm)')).not.toBeInTheDocument();
+  });
+
+  it('公差有登錄時顯示韋伯氏硬度與真直度欄位並標示規格方向', async () => {
+    vi.mocked(mechanicalApi.getSpec).mockResolvedValue({
+      lower: { 硬度: 90, 韋伯氏硬度: 15 },
+      upper: { 真直度: 0.3 },
+    });
+    renderForm();
+    await pickVendorAndSize();
+
+    expect(await screen.findByText('韋伯氏硬度(HW)')).toBeInTheDocument();
+    expect(screen.getByText('真直度(mm)')).toBeInTheDocument();
+    expect(screen.getByLabelText('韋伯氏硬度－爐門－取樣 1')).toBeInTheDocument();
+    expect(screen.getByLabelText('真直度－爐頂－取樣 1')).toBeInTheDocument();
+    // 韋伯判下限、真直度判上限
+    expect(screen.getByText('≥ 15')).toBeInTheDocument();
+    expect(screen.getByText('≤ 0.3')).toBeInTheDocument();
+  });
+
+  it('真直度高於上限標為 NG，韋伯氏硬度只在低於下限時標 NG', async () => {
+    vi.mocked(mechanicalApi.getSpec).mockResolvedValue({
+      lower: { 韋伯氏硬度: 15 },
+      upper: { 真直度: 0.3 },
+    });
+    renderForm();
+    await pickVendorAndSize();
+
+    const straightness = await screen.findByLabelText('真直度－爐門－取樣 1');
+    fireEvent.change(straightness, { target: { value: '0.31' } });
+    expect(straightness).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('NG：高於上限 0.3')).toBeInTheDocument();
+
+    fireEvent.change(straightness, { target: { value: '0.3' } });
+    expect(straightness).toHaveAttribute('aria-invalid', 'false');
+
+    // 公差雖常同時登錄上限，判定仍只看下限（與洛氏硬度一致）
+    const webster = screen.getByLabelText('韋伯氏硬度－爐門－取樣 1');
+    fireEvent.change(webster, { target: { value: '99' } });
+    expect(webster).toHaveAttribute('aria-invalid', 'false');
+
+    fireEvent.change(webster, { target: { value: '14' } });
+    expect(webster).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('NG：低於下限 15')).toBeInTheDocument();
+  });
+
+  it('這兩個項目不提供免測勾選', async () => {
+    vi.mocked(mechanicalApi.getSpec).mockResolvedValue({
+      lower: { 韋伯氏硬度: 15 },
+      upper: { 真直度: 0.3 },
+    });
+    renderForm();
+    await pickVendorAndSize();
+
+    await screen.findByText('真直度(mm)');
+    expect(document.getElementById('mechanical-waive-硬度')).not.toBeNull();
+    expect(document.getElementById('mechanical-waive-真直度')).toBeNull();
+    expect(document.getElementById('mechanical-waive-韋伯氏硬度')).toBeNull();
+  });
+
+  it('公差已查無該項但紀錄已有數值時，欄位不隱藏', async () => {
+    vi.mocked(mechanicalApi.getDetail).mockResolvedValue({
+      ...editDetail,
+      measurements: [
+        ...editDetail.measurements,
+        {
+          量測項目: '真直度' as const, 測量位置: '爐門' as const, 取樣序: 1, 量測值: 0.12,
+          排除統計: false, 排除原因: null, 排除者ID: null, 排除時間: null,
+        },
+      ],
+    });
+    renderForm(8);
+
+    expect(await screen.findByText('真直度(mm)')).toBeInTheDocument();
+    expect(screen.getByLabelText('真直度－爐門－取樣 1')).toHaveValue('0.12');
   });
 
   it('儲存失敗時顯示後端提供的 403 訊息', async () => {

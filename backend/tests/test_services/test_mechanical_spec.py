@@ -1,19 +1,34 @@
 from backend.models import Vendor, VendorToleranceMain, VendorToleranceDetail
 from backend.services.mechanical_spec import (
+    ITEM_LIMIT_SIDE,
     MECH_ITEM_TO_TOLERANCE,
+    lookup_limits,
     lookup_lower_limits,
     compute_measurement_ng,
     resolve_material_by_spec,
 )
 
 
-def test_mapping_covers_four_judged_items():
+def test_mapping_covers_judged_items():
     assert MECH_ITEM_TO_TOLERANCE == {
         "硬度": "洛氏硬度",
+        "韋伯氏硬度": "韋伯氏硬度",
+        "真直度": "真直度",
         "抗拉強度": "抗拉強度",
         "降伏強度": "降伏強度",
         "伸長率": "伸長率",
     }
+
+
+def test_every_mapped_item_declares_a_limit_side():
+    """漏宣告判定邊會靜默退回下限判定，真直度會因此讀不到界限而不判定。"""
+    assert set(ITEM_LIMIT_SIDE) == set(MECH_ITEM_TO_TOLERANCE)
+    assert set(ITEM_LIMIT_SIDE.values()) <= {"lower", "upper"}
+
+
+def test_straightness_is_the_only_upper_bounded_item():
+    upper_items = {item for item, side in ITEM_LIMIT_SIDE.items() if side == "upper"}
+    assert upper_items == {"真直度"}
 
 
 def _seed_spec(db_session):
@@ -260,3 +275,67 @@ def test_compute_measurement_ng_lower_bound_only():
     # 無下限或無值 → 不判定
     assert compute_measurement_ng(50, None) is False
     assert compute_measurement_ng(None, 60) is False
+
+
+def test_compute_measurement_ng_upper_bound_only():
+    # 值 > 上限 → NG
+    assert compute_measurement_ng(0.31, None, 0.3) is True
+    # 值 == 上限 → 合格（含界限）
+    assert compute_measurement_ng(0.3, None, 0.3) is False
+    # 值 < 上限 → 合格（無下限，真直度沒有「太直」的問題）
+    assert compute_measurement_ng(0, None, 0.3) is False
+    # 兩邊皆無界限 → 不判定
+    assert compute_measurement_ng(0.5, None, None) is False
+
+
+def _seed_webster_and_straightness(db_session):
+    vendor = Vendor(name="安泰")
+    db_session.add(vendor)
+    db_session.flush()
+    main = VendorToleranceMain(vendor_id=vendor.id, material="6061-T651", spec="36*25.2")
+    db_session.add(main)
+    db_session.flush()
+    # 韋伯氏硬度公差同時登錄上下限；真直度只有上限（實際公差檔即如此）
+    db_session.add(VendorToleranceDetail(
+        main_id=main.id, item="韋伯氏硬度", dim_min=10, dim_max=12, unit="HW"
+    ))
+    db_session.add(VendorToleranceDetail(
+        main_id=main.id, item="真直度", dim_max=0.3, unit="mm"
+    ))
+    db_session.add(VendorToleranceDetail(
+        main_id=main.id, item="洛氏硬度", dim_min=60, dim_max=70, unit="HRB"
+    ))
+    db_session.commit()
+    return vendor.id
+
+
+def test_lookup_limits_reads_straightness_upper_bound(db_session):
+    vendor_id = _seed_webster_and_straightness(db_session)
+
+    limits = lookup_limits("6061-T651", "36x25.2", vendor_id=vendor_id)
+
+    lower, upper = limits["真直度"]
+    assert lower is None
+    assert float(upper) == 0.3
+
+
+def test_lookup_limits_keeps_hardness_lower_bound_only(db_session):
+    """硬度類公差常同時有上限，但判定仍只看下限，與既有洛氏硬度規則一致。"""
+    vendor_id = _seed_webster_and_straightness(db_session)
+
+    limits = lookup_limits("6061-T651", "36x25.2", vendor_id=vendor_id)
+
+    for item in ("韋伯氏硬度", "硬度"):
+        lower, upper = limits[item]
+        assert lower is not None
+        assert upper is None
+
+
+def test_lookup_lower_limits_omits_upper_bounded_items(db_session):
+    """相容介面只回傳下限；真直度沒有下限，不應以 None 混入。"""
+    vendor_id = _seed_webster_and_straightness(db_session)
+
+    limits = lookup_lower_limits("6061-T651", "36x25.2", vendor_id=vendor_id)
+
+    assert "真直度" not in limits
+    assert float(limits["韋伯氏硬度"]) == 10

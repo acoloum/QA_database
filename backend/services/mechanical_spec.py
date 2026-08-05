@@ -1,12 +1,20 @@
 """機械性質規格撈取與 NG 判定。
 
-規格為單邊下限（只有下限、沒有上限）：量測值 < 下限 → NG。
 規格值直接讀取既有「廠商公差」，依（材質 + 產品尺寸）比對，
 量測項目對應廠商公差項目採 MECH_ITEM_TO_TOLERANCE 映射。EC 無規格。
+
+判定邊**逐項宣告**於 ITEM_LIMIT_SIDE，不是全模組共用一種方向：
+  力學特性與硬度（含韋伯氏硬度）為單邊下限 — 量測值 < 下限 → NG
+  真直度為單邊上限 — 量測值 > 上限 → NG
+
+真直度必須是上限：公差檔中它從來只有尺寸上限（0.07 / 0.15 / 0.3 / 1.0 mm），
+沿用下限判定會讀不到界限而靜默不判定。反之韋伯氏硬度雖常同時登錄上下限
+（如 10~12 HW），仍**只判下限**，與同一張表的洛氏硬度規則一致；改成雙邊
+會讓同表兩列硬度有兩套判定，也等於間接變更既有洛氏硬度紀錄的判定基準。
 """
 from decimal import Decimal
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from ..models import VendorToleranceMain, VendorToleranceDetail
 from .extrusion_tolerance_service import ExtrusionToleranceService
@@ -14,16 +22,35 @@ from .extrusion_tolerance_service import ExtrusionToleranceService
 # 機械性質判定項目 → 廠商公差「測量項目」
 MECH_ITEM_TO_TOLERANCE: Dict[str, str] = {
     "硬度": "洛氏硬度",
+    "韋伯氏硬度": "韋伯氏硬度",
+    "真直度": "真直度",
     "抗拉強度": "抗拉強度",
     "降伏強度": "降伏強度",
     "伸長率": "伸長率",
 }
 
+# 各項目的判定邊："lower" = 低於下限即 NG；"upper" = 高於上限即 NG
+ITEM_LIMIT_SIDE: Dict[str, str] = {
+    "硬度": "lower",
+    "韋伯氏硬度": "lower",
+    "抗拉強度": "lower",
+    "降伏強度": "lower",
+    "伸長率": "lower",
+    "真直度": "upper",
+}
 
-def lookup_lower_limits(
+# (下限, 上限)；未受管制的那一邊為 None
+Limits = Tuple[Optional[float], Optional[float]]
+
+
+def lookup_limits(
     material: str, product_size: str, vendor_id: Optional[int] = None
-) -> Dict[str, float]:
-    """回傳 {機械性質項目: 下限}，查無則不含該項；EC 不查。
+) -> Dict[str, Limits]:
+    """回傳 {機械性質項目: (下限, 上限)}，查無則不含該項；EC 不查。
+
+    只填該項目受管制的那一邊（見 ITEM_LIMIT_SIDE），另一邊一律 None——
+    公差檔常對硬度同時登錄上下限，若照單全收會把只判下限的既有項目
+    悄悄變成雙邊判定，反而改動歷史紀錄的判定基準。
 
     候選優先序依序為：材質完全相同、規格正規化後完全相同、
     規格僅前兩段相同（_match_spec 的相近匹配）；相同層級再依 id
@@ -67,18 +94,39 @@ def lookup_lower_limits(
 
     # 反查：廠商公差項目 → 機械性質項目
     tol_to_mech = {v: k for k, v in MECH_ITEM_TO_TOLERANCE.items()}
-    result: Dict[str, float] = {}
+    result: Dict[str, Limits] = {}
     details = VendorToleranceDetail.query.filter_by(main_id=candidate.id).all()
     for d in details:
         mech_item = tol_to_mech.get(d.item)
         if not mech_item:
             continue
-        # 優先使用尺寸下限（廠商公差頁面填寫下限的慣用欄位），
-        # 沒有尺寸下限時退而使用公差下限（視為絕對下限值）。
-        lower = d.dim_min if d.dim_min is not None else d.tolerance_min
-        if lower is not None:
-            result[mech_item] = lower
+        # 優先使用尺寸界限（廠商公差頁面填寫界限的慣用欄位），
+        # 沒有尺寸界限時退而使用公差界限（視為絕對界限值）。
+        if ITEM_LIMIT_SIDE.get(mech_item) == "upper":
+            upper = d.dim_max if d.dim_max is not None else d.tolerance_max
+            if upper is not None:
+                result[mech_item] = (None, upper)
+        else:
+            lower = d.dim_min if d.dim_min is not None else d.tolerance_min
+            if lower is not None:
+                result[mech_item] = (lower, None)
     return result
+
+
+def lookup_lower_limits(
+    material: str, product_size: str, vendor_id: Optional[int] = None
+) -> Dict[str, float]:
+    """只取下限的相容介面，供既有重算／稽核腳本沿用。
+
+    上限判定的項目（真直度）不會出現在回傳結果中。
+    """
+    return {
+        item: lower
+        for item, (lower, _upper) in lookup_limits(
+            material, product_size, vendor_id
+        ).items()
+        if lower is not None
+    }
 
 
 def resolve_material_by_spec(
@@ -150,8 +198,21 @@ def resolve_material_by_spec(
     return {"status": "not_found", "material": None, "candidates": [], "match": None}
 
 
-def compute_measurement_ng(value: Optional[float], lower_limit: Optional[float]) -> bool:
-    """單邊下限判定：有值且有下限且值 < 下限 → True，其餘 False。"""
-    if value is None or lower_limit is None:
+def compute_measurement_ng(
+    value: Optional[float],
+    lower_limit: Optional[float],
+    upper_limit: Optional[float] = None,
+) -> bool:
+    """界限判定：值 < 下限 或 值 > 上限 → True，其餘 False。
+
+    只判定有給界限的那一邊；兩邊皆為 None（無規格）時一律 False。
+    upper_limit 預設 None，故既有只傳下限的呼叫端行為不變。
+    """
+    if value is None:
         return False
-    return Decimal(str(value)) < Decimal(str(lower_limit))
+    measured = Decimal(str(value))
+    if lower_limit is not None and measured < Decimal(str(lower_limit)):
+        return True
+    if upper_limit is not None and measured > Decimal(str(upper_limit)):
+        return True
+    return False

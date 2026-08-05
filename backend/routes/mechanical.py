@@ -150,16 +150,31 @@ def get_stats():
 @auth_required
 @require_permission('mechanical.view')
 def get_spec():
-    """依材質+尺寸查規格下限（供表單即時顯示）"""
-    from ..services.mechanical_spec import lookup_lower_limits
+    """依材質+尺寸查規格界限（供表單即時顯示與欄位顯示條件）
+
+    下限與上限分兩個欄位回傳：limits 維持原本的 {項目: 下限} 契約不變，
+    上限判定的項目（真直度）另放在 upper_limits，避免改動既有欄位形狀。
+    表單以「項目出現在任一邊」決定是否顯示韋伯氏硬度／真直度欄位。
+    """
+    from ..services.mechanical_spec import lookup_limits
     try:
         material = request.args.get('material', '')
         size = request.args.get('product_size', '')
         vendor_id = parse_vendor_id(request.args.get('vendor_id'))
         if vendor_id is not None and db.session.get(Vendor, vendor_id) is None:
             raise MechanicalValidationError("指定的廠商不存在")
-        limits = lookup_lower_limits(material, size, vendor_id=vendor_id)
-        return jsonify({"success": True, "limits": {k: float(v) for k, v in limits.items()}})
+        limits = lookup_limits(material, size, vendor_id=vendor_id)
+        return jsonify({
+            "success": True,
+            "limits": {
+                item: float(lower)
+                for item, (lower, _upper) in limits.items() if lower is not None
+            },
+            "upper_limits": {
+                item: float(upper)
+                for item, (_lower, upper) in limits.items() if upper is not None
+            },
+        })
     except Exception as e:
         return _mechanical_error_response(e)
 

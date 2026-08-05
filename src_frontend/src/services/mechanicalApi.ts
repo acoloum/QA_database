@@ -52,6 +52,19 @@ export interface MechanicalImportMaterialSource {
   筆數: number;
 }
 
+/** 規格界限；下限與上限分開回傳，一個項目只會出現在受管制的那一邊。 */
+export interface MechanicalSpecResponse {
+  success: boolean;
+  limits: Record<string, number>;
+  upper_limits: Record<string, number>;
+}
+
+/** 表單使用的界限查表：lower[項目] / upper[項目]，查無該項即為 undefined。 */
+export interface MechanicalSpecLimits {
+  lower: Record<string, number>;
+  upper: Record<string, number>;
+}
+
 export interface MechanicalImportResult {
   success: boolean;
   message: string;
@@ -79,10 +92,13 @@ export const mechanicalApi = {
 
   getSpec: (material: string, product_size: string, vendor_id?: number) =>
     api
-      .get<{ success: boolean; limits: Record<string, number> }>('/mechanical/spec', {
+      .get<MechanicalSpecResponse>('/mechanical/spec', {
         params: { material, product_size, vendor_id },
       })
-      .then((r) => r.data.limits),
+      .then((r) => ({
+        lower: r.data.limits ?? {},
+        upper: r.data.upper_limits ?? {},
+      })),
 
   getVendors: () =>
     api.get<MechanicalVendorOption[]>('/vendors').then((r) => r.data),

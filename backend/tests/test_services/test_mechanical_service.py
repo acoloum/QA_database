@@ -574,6 +574,100 @@ def test_judgement_status_no_spec_when_one_of_eight_limits_missing(db_session):
     assert MechanicalService.get_detail(test_id)["main"]["判定狀態"] == "NO_SPEC"
 
 
+def _seed_full_spec(db_session):
+    """完整公差：四項力學特性 + 韋伯氏硬度（上下限）+ 真直度（僅上限）。"""
+    vendor = Vendor(name="安泰")
+    db_session.add(vendor); db_session.flush()
+    main = VendorToleranceMain(vendor_id=vendor.id, material="6061-T651", spec="36*25.2")
+    db_session.add(main); db_session.flush()
+    for item, dim_min, dim_max in (
+        ("洛氏硬度", 60, 70),
+        ("抗拉強度", 60, None),
+        ("降伏強度", 60, None),
+        ("伸長率", 60, None),
+        ("韋伯氏硬度", 10, 12),
+        ("真直度", None, 0.3),
+    ):
+        db_session.add(VendorToleranceDetail(
+            main_id=main.id, item=item, dim_min=dim_min, dim_max=dim_max, unit=""
+        ))
+    db_session.commit()
+    return vendor.id
+
+
+def test_straightness_is_ng_when_above_upper_limit(db_session):
+    vendor_id = _seed_full_spec(db_session)
+    payload = _payload()
+    payload["廠商ID"] = vendor_id
+    payload["measurements"] = _required_measurements() + [
+        {"量測項目": "真直度", "測量位置": "爐門", "取樣序": 1, "量測值": 0.31},
+        {"量測項目": "真直度", "測量位置": "爐頂", "取樣序": 1, "量測值": 0.30},
+    ]
+    test_id = MechanicalService.create(payload, user_id=None)
+
+    detail = MechanicalService.get_detail(test_id)
+    by_location = {
+        m["測量位置"]: m for m in detail["measurements"] if m["量測項目"] == "真直度"
+    }
+    assert by_location["爐門"]["是否超差"] is True
+    assert by_location["爐頂"]["是否超差"] is False
+    # 上限判定的項目下限恆為空，界限存在「上限」欄
+    assert by_location["爐門"]["下限"] is None
+    assert by_location["爐門"]["上限"] == 0.3
+    assert detail["main"]["判定狀態"] == "NG"
+
+
+def test_straightness_with_upper_limit_does_not_degrade_status_to_no_spec(db_session):
+    """真直度沒有下限。若「無規格」仍只看下限，整筆會被誤判成 NO_SPEC。"""
+    vendor_id = _seed_full_spec(db_session)
+    payload = _payload()
+    payload["廠商ID"] = vendor_id
+    payload["measurements"] = _required_measurements() + [
+        {"量測項目": "真直度", "測量位置": "爐門", "取樣序": 1, "量測值": 0.1},
+    ]
+    test_id = MechanicalService.create(payload, user_id=None)
+
+    assert MechanicalService.get_detail(test_id)["main"]["判定狀態"] == "OK"
+
+
+def test_webster_hardness_is_judged_on_lower_limit_only(db_session):
+    """公差登錄 10~12 HW，但超出上限不算 NG——與同表的洛氏硬度規則一致。"""
+    vendor_id = _seed_full_spec(db_session)
+    payload = _payload()
+    payload["廠商ID"] = vendor_id
+    payload["measurements"] = _required_measurements() + [
+        {"量測項目": "韋伯氏硬度", "測量位置": "爐門", "取樣序": 1, "量測值": 9},
+        {"量測項目": "韋伯氏硬度", "測量位置": "爐頂", "取樣序": 1, "量測值": 13},
+    ]
+    test_id = MechanicalService.create(payload, user_id=None)
+
+    detail = MechanicalService.get_detail(test_id)
+    by_location = {
+        m["測量位置"]: m for m in detail["measurements"] if m["量測項目"] == "韋伯氏硬度"
+    }
+    assert by_location["爐門"]["是否超差"] is True   # 9 < 下限 10
+    assert by_location["爐頂"]["是否超差"] is False  # 13 > 上限 12，仍不判 NG
+    assert by_location["爐頂"]["上限"] is None
+
+
+def test_new_items_are_not_required_for_completion(db_session):
+    """既有紀錄都沒有這兩項數值；納入必測會讓它們全數變成 INCOMPLETE。"""
+    vendor_id = _seed_full_spec(db_session)
+    payload = _payload()
+    payload["廠商ID"] = vendor_id
+    payload["measurements"] = _required_measurements()
+    test_id = MechanicalService.create(payload, user_id=None)
+
+    assert MechanicalService.get_detail(test_id)["main"]["判定狀態"] == "OK"
+
+
+def test_new_items_cannot_be_marked_as_waived(db_session):
+    payload = _payload()
+    payload["waived_items"] = [{"項目": "真直度", "原因": "設備故障"}]
+    with pytest.raises(MechanicalValidationError, match="免測項目不受支援"):
+        MechanicalService.create(payload, user_id=None)
+
+
 def test_nullable_fields_are_serialized_as_null(db_session):
     payload = _payload()
     payload.update({"測試日期": None, "T4溫度時間": None, "T6溫度時間": None, "備註": None})

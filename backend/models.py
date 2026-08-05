@@ -3868,7 +3868,8 @@ class MechanicalMeasurement(db.Model):
         db.UniqueConstraint('機械性質檢驗_ID', '量測項目', '測量位置', '取樣序',
                             name='uq_mech_group_item'),
         db.CheckConstraint(
-            '"量測項目" IN (\'EC值\', \'硬度\', \'抗拉強度\', \'降伏強度\', \'伸長率\')',
+            '"量測項目" IN (\'EC值\', \'硬度\', \'韋伯氏硬度\', \'真直度\', '
+            '\'抗拉強度\', \'降伏強度\', \'伸長率\')',
             name='ck_mech_measurement_item',
         ),
         db.CheckConstraint('"測量位置" IN (\'爐門\', \'爐頂\')', name='ck_mech_measurement_location'),
@@ -3883,7 +3884,10 @@ class MechanicalMeasurement(db.Model):
     location    = db.Column('測量位置',      db.String(10), nullable=False)
     sample_no   = db.Column('取樣序',        db.Integer, nullable=False)
     value       = db.Column('量測值',        db.Numeric(12, 4), nullable=True)
+    # 判定邊依項目而定（見 services/mechanical_spec.ITEM_LIMIT_SIDE）：
+    # 力學特性與硬度為單邊下限，真直度為單邊上限，故兩個界限欄位都可為空。
     lower_limit = db.Column('下限',          db.Numeric(12, 4), nullable=True)
+    upper_limit = db.Column('上限',          db.Numeric(12, 4), nullable=True)
     is_ng       = db.Column('是否超差',      db.Boolean, default=False, nullable=False)
     # §6.6 離群值：標示無效並保留追溯，不得刪除；排除於統計計算之外
     excluded          = db.Column('排除統計', db.Boolean, default=False, nullable=False)

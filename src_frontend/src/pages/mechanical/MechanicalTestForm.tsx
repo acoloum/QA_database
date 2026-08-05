@@ -32,7 +32,9 @@ import {
   hydrateGrid,
   hydrateTraceNumbers,
   hydrateWaivedItems,
+  itemLimits,
   removeTraceNumber,
+  visibleSpecDrivenItems,
   waivedItemsMissingReason,
   type MechGrid,
   type MechWaivedState,
@@ -70,9 +72,17 @@ const cellLabel = (item: MechItem, location: MechLocation, sample: number) =>
 const ITEM_KEYS: Record<MechItem, string> = {
   EC值: 'ec',
   硬度: 'hardness',
+  韋伯氏硬度: 'webster',
+  真直度: 'straightness',
   抗拉強度: 'tensile',
   降伏強度: 'yield',
   伸長率: 'elongation',
+};
+
+// 依公差驅動的項目在表格中顯示的標題（標度／單位寫在標題上避免填錯標度）
+const ITEM_LABELS: Partial<Record<MechItem, string>> = {
+  韋伯氏硬度: '韋伯氏硬度(HW)',
+  真直度: '真直度(mm)',
 };
 
 const LOCATION_KEYS: Record<MechLocation, string> = {
@@ -254,11 +264,21 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
     setValidationError('');
   };
 
+  // 判定邊依項目而定：力學特性與硬度受下限管制，真直度受上限管制
   const cellNg = (item: MechItem, value: string) => {
-    const lowerLimit = limits?.[item];
-    if (lowerLimit === undefined || value.trim() === '') return false;
+    const [lowerLimit, upperLimit] = itemLimits(limits, item);
+    if (value.trim() === '') return false;
     const numericValue = Number(value);
-    return Number.isFinite(numericValue) && numericValue < lowerLimit;
+    if (!Number.isFinite(numericValue)) return false;
+    if (lowerLimit !== undefined && numericValue < lowerLimit) return true;
+    return upperLimit !== undefined && numericValue > upperLimit;
+  };
+
+  // 規格欄文字：≥ 下限／≤ 上限；EC 與查無公差者顯示破折號
+  const specText = (lower?: number | null, upper?: number | null) => {
+    if (lower !== undefined && lower !== null) return `≥ ${lower}`;
+    if (upper !== undefined && upper !== null) return `≤ ${upper}`;
+    return '—';
   };
 
   const save = async () => {
@@ -332,7 +352,15 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
   };
 
   const samples = showSecond ? [1, 2] : [1];
-  const items: MechItem[] = showEc ? [...JUDGED_ITEMS, 'EC值'] : JUDGED_ITEMS;
+  // 已有量測值的項目一律不隱藏，避免公差改版後既有數值變成看不到的孤兒
+  const presentItems = new Set(
+    (detail?.measurements ?? []).map((measurement) => measurement.量測項目),
+  );
+  const items: MechItem[] = [
+    ...JUDGED_ITEMS,
+    ...visibleSpecDrivenItems(limits, presentItems),
+    ...(showEc ? (['EC值'] as MechItem[]) : []),
+  ];
 
   if (testId !== null && isDetailError) {
     return (
@@ -529,17 +557,18 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                     {LOCATIONS.flatMap((location) => samples.map((sample) => (
                       <th key={`${location}-${sample}`} scope="col">{location} 取樣 {sample}</th>
                     )))}
-                    <th scope="col">下限</th>
+                    <th scope="col">規格</th>
                     <th scope="col">免測</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((item) => {
-                    const canWaive = item !== 'EC值';
+                    // 只有必測的力學特性可標記免測；EC 與依公差顯示的選填項目不納入
+                    const canWaive = (JUDGED_ITEMS as MechItem[]).includes(item);
                     const isWaived = canWaive && waived[item].waived;
                     return (
                     <tr key={item}>
-                      <th scope="row">{item}</th>
+                      <th scope="row">{ITEM_LABELS[item] ?? item}</th>
                       {LOCATIONS.flatMap((location) => samples.map((sample) => {
                         const value = grid[item][location][sample] ?? '';
                         const excludedMeasurement = detail?.measurements.find((measurement) => (
@@ -553,9 +582,17 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                           : cellNg(item, value);
                         const validationMessage = measurementValidationError(value);
                         const hasFormatError = validationMessage !== null;
+                        const [specLower, specUpper] = itemLimits(limits, item);
+                        // 已排除的量測顯示存檔當下凍結的界限，不套用現行公差
                         const lowerLimit = excludedMeasurement
                           ? (excludedMeasurement.下限 ?? undefined)
-                          : limits?.[item];
+                          : specLower;
+                        const upperLimit = excludedMeasurement
+                          ? (excludedMeasurement.上限 ?? undefined)
+                          : specUpper;
+                        const snapshotSpec = specText(lowerLimit, upperLimit) === '—'
+                          ? '無規格'
+                          : specText(lowerLimit, upperLimit);
                         const errorId = excludedMeasurement
                           ? excludedSnapshotId(item, location, sample)
                           : hasFormatError
@@ -582,9 +619,12 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                               <Form.Text id={measurementErrorId(item, location, sample, 'format')} className="text-danger" role="alert">
                                 {validationMessage}
                               </Form.Text>
-                            ) : !excludedMeasurement && isNg && lowerLimit !== undefined && (
+                            ) : !excludedMeasurement && isNg
+                              && (lowerLimit !== undefined || upperLimit !== undefined) && (
                               <Form.Text id={measurementErrorId(item, location, sample, 'ng')} className="text-danger">
-                                NG：低於下限 {lowerLimit}
+                                {lowerLimit !== undefined
+                                  ? `NG：低於下限 ${lowerLimit}`
+                                  : `NG：高於上限 ${upperLimit}`}
                               </Form.Text>
                             )}
                             {excludedMeasurement && (
@@ -595,14 +635,14 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
                                 已排除：{excludedMeasurement.排除原因 || '未填原因'}
                                 {excludedMeasurement.排除時間 ? `（${excludedMeasurement.排除時間}）` : ''}
                                 <span>
-                                  ；歷史快照：下限 {excludedMeasurement.下限 ?? '無規格'}，判定 {excludedMeasurement.是否超差 ? 'NG' : 'OK'}
+                                  ；歷史快照：規格 {snapshotSpec}，判定 {excludedMeasurement.是否超差 ? 'NG' : 'OK'}
                                 </span>
                               </Form.Text>
                             )}
                           </td>
                         );
                       }))}
-                      <td>{item === 'EC值' ? '—' : (limits?.[item] ?? '—')}</td>
+                      <td>{item === 'EC值' ? '—' : specText(...itemLimits(limits, item))}</td>
                       <td style={{ minWidth: 160 }}>
                         {canWaive ? (
                           <>
