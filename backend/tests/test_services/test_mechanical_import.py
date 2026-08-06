@@ -142,3 +142,98 @@ def test_build_payloads_skips_resolution_for_empty_sheets():
 
     assert [r["工作表"] for r in plan.resolutions] == ["80X70"]
     assert plan.errors == []
+
+
+def _trace_sheet(*rows: tuple[str, object]):
+    """依 (A欄標籤, B欄值) 順序建立單一工作表工作簿；標籤為 None 表示未標籤列。"""
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("80X70")
+    for index, (label, value) in enumerate(rows, start=1):
+        if label is not None:
+            ws.cell(row=index, column=1, value=label)
+        if value is not None:
+            ws.cell(row=index, column=2, value=value)
+    return wb
+
+
+def _only_payload(wb):
+    plan = build_payloads_from_workbook(wb, "6061-T651", vendor_id=None)
+    assert len(plan.payloads) == 1
+    return plan.payloads[0][2]
+
+
+def test_unlabeled_row_above_t4_furnace_label_is_extrusion_not_furnace():
+    """「T4爐具編號」標籤之前的未標籤列屬第二個擠製編號，不得落入 T4 爐號。"""
+    payload = _only_payload(_trace_sheet(
+        ("擠製日期/批號", "042451 D11"),
+        (None, "052571 D50"),
+        ("T4爐具編號", "051103T42"),
+        ("T4溫度/時間", "530/6H"),
+        ("測試日期", "2026-01-05"),
+    ))
+
+    assert payload["extrusion_numbers"] == [
+        {"序號": 1, "編號": "042451 D11"},
+        {"序號": 2, "編號": "052571 D50"},
+    ]
+    assert payload["t4_furnace_numbers"] == [{"序號": 1, "編號": "051103T42"}]
+
+
+def test_unlabeled_row_below_t4_furnace_label_is_still_furnace():
+    """「T4爐具編號」標籤之後的未標籤列仍是 T4 爐號（同欄可有多個爐號）。"""
+    payload = _only_payload(_trace_sheet(
+        ("擠製日期/批號", "042451 D11"),
+        ("T4爐具編號", "051103T42"),
+        (None, "051104T42"),
+        ("T4溫度/時間", "530/6H"),
+        ("測試日期", "2026-01-05"),
+    ))
+
+    assert payload["extrusion_numbers"] == [{"序號": 1, "編號": "042451 D11"}]
+    assert payload["t4_furnace_numbers"] == [
+        {"序號": 1, "編號": "051103T42"},
+        {"序號": 2, "編號": "051104T42"},
+    ]
+
+
+def test_extrusion_label_row_empty_still_reads_unlabeled_extrusion_row():
+    """擠製標籤列該欄空白、值落在下一列未標籤列時，序號仍從 1 起算。"""
+    payload = _only_payload(_trace_sheet(
+        ("擠製日期/批號", None),
+        (None, "052571 D50"),
+        ("T4爐具編號", "051103T42"),
+        ("T4溫度/時間", None),
+        ("測試日期", "2026-01-05"),
+    ))
+
+    assert payload["extrusion_numbers"] == [{"序號": 1, "編號": "052571 D50"}]
+    assert payload["t4_furnace_numbers"] == [{"序號": 1, "編號": "051103T42"}]
+
+
+def test_duplicate_trace_values_across_rows_are_deduplicated():
+    """同欄重複填寫的追溯編號只保留一筆，序號才能維持從 1 連續。"""
+    payload = _only_payload(_trace_sheet(
+        ("擠製日期/批號", "042451 D11"),
+        (None, "042451 D11"),
+        ("T4爐具編號", "051103T42"),
+        (None, "051103T42"),
+        ("T4溫度/時間", None),
+        ("測試日期", "2026-01-05"),
+    ))
+
+    assert payload["extrusion_numbers"] == [{"序號": 1, "編號": "042451 D11"}]
+    assert payload["t4_furnace_numbers"] == [{"序號": 1, "編號": "051103T42"}]
+
+
+def test_missing_t4_furnace_label_keeps_rows_between_as_furnace():
+    """沒有「T4爐具編號」標籤時無從切分，維持舊行為避免漏收爐號。"""
+    payload = _only_payload(_trace_sheet(
+        ("擠製日期/批號", "042451 D11"),
+        (None, "051103T42"),
+        ("T4溫度/時間", None),
+        ("測試日期", "2026-01-05"),
+    ))
+
+    assert payload["extrusion_numbers"] == [{"序號": 1, "編號": "042451 D11"}]
+    assert payload["t4_furnace_numbers"] == [{"序號": 1, "編號": "051103T42"}]

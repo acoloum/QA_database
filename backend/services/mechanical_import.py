@@ -88,18 +88,42 @@ def _row_label_map(ws) -> dict[str, int]:
     return mapping
 
 
-def _t4_furnace_rows(mapping: dict[str, int]) -> list[int]:
-    """『擠製日期/批號』列與『T4溫度/時間』列之間的所有列，皆視為 T4爐號候選列。
+def _trace_rows(mapping: dict[str, int]) -> tuple[list[int], list[int]]:
+    """切出 (擠製編號候選列, T4爐號候選列)。
 
-    來源 Excel 部分工作表在「T4爐具編號」標籤下方多插入一列未標籤的爐號資料
-    （同一欄可能同時有兩個 T4 爐號），列位置隨工作表略有偏移，故以標籤間距動態偵測。
+    來源 Excel 在「擠製日期/批號」與「T4爐具編號」標籤下方，都可能多插入未標籤的
+    資料列（同一欄同時有兩個擠製編號或兩個 T4 爐號），列位置隨工作表略有偏移，故以
+    「擠製日期/批號」→「T4爐具編號」→「T4溫度/時間」三個標籤的間距切出兩段區間：
+    落在「T4爐具編號」標籤之前的未標籤列屬擠製編號，之後的才是 T4 爐號。
     """
     extrusion_row = mapping.get(LABEL_EXTRUSION)
+    furnace_row = mapping.get(LABEL_T4_FURNACE)
     t4_temp_row = mapping.get(LABEL_T4_TEMP)
-    if extrusion_row is None or t4_temp_row is None or t4_temp_row <= extrusion_row + 1:
-        furnace_row = mapping.get(LABEL_T4_FURNACE)
-        return [furnace_row] if furnace_row else []
-    return list(range(extrusion_row + 1, t4_temp_row))
+
+    if extrusion_row is None:
+        extrusion_rows: list[int] = []
+    elif furnace_row is not None and furnace_row > extrusion_row:
+        extrusion_rows = list(range(extrusion_row, furnace_row))
+    else:
+        extrusion_rows = [extrusion_row]
+
+    if furnace_row is not None:
+        furnace_rows = (
+            list(range(furnace_row, t4_temp_row))
+            if t4_temp_row is not None and t4_temp_row > furnace_row
+            else [furnace_row]
+        )
+    elif (
+        extrusion_row is not None
+        and t4_temp_row is not None
+        and t4_temp_row > extrusion_row + 1
+    ):
+        # 無「T4爐具編號」標籤時無從切分兩段，只能沿用擠製列之後全視為爐號候選
+        furnace_rows = list(range(extrusion_row + 1, t4_temp_row))
+    else:
+        furnace_rows = []
+
+    return extrusion_rows, furnace_rows
 
 
 # T4爐號編碼規則：日期(4碼) + 爐次流水號(2碼，可用「/」並列多筆) + T4爐別(T41或T42)
@@ -243,7 +267,7 @@ def build_payloads_from_workbook(
         product_size = normalize_product_size(
             PRODUCT_SIZE_OVERRIDES.get(sheet_key, sheet_key)
         )
-        furnace_rows = _t4_furnace_rows(mapping)
+        extrusion_rows, furnace_rows = _trace_rows(mapping)
         measurement_rows = {
             key: mapping[label]
             for label, key in MEASUREMENT_LABELS.items()
@@ -254,12 +278,19 @@ def build_payloads_from_workbook(
         sheet_columns: list[tuple[int, dict]] = []
         for col in range(2, ws.max_column + 1):
             test_date = _cell_date(ws, mapping.get(LABEL_TEST_DATE), col)
-            extrusion_value = _cell_str(ws, mapping.get(LABEL_EXTRUSION), col)
+            extrusion_values: list[str] = []
+            for row in extrusion_rows:
+                raw = _cell_str(ws, row, col)
+                if raw is not None and raw not in extrusion_values:
+                    extrusion_values.append(raw)
             furnace_values: list[str] = []
             for row in furnace_rows:
                 raw = _cell_str(ws, row, col)
-                if raw is not None:
-                    furnace_values.extend(_split_t4_furnace_value(raw))
+                if raw is None:
+                    continue
+                for value in _split_t4_furnace_value(raw):
+                    if value not in furnace_values:
+                        furnace_values.append(value)
             t4_temp = _cell_str(ws, mapping.get(LABEL_T4_TEMP), col)
             t6_temp = _cell_str(ws, mapping.get(LABEL_T6_TEMP), col)
             rework = _cell_str(ws, mapping.get(LABEL_REWORK), col)
@@ -277,7 +308,7 @@ def build_payloads_from_workbook(
                     })
 
             has_data = any([
-                test_date, extrusion_value, furnace_values, t4_temp, t6_temp,
+                test_date, extrusion_values, furnace_values, t4_temp, t6_temp,
                 rework, note, measurements,
             ])
             if not has_data:
@@ -295,9 +326,10 @@ def build_payloads_from_workbook(
                 "T4溫度時間": t4_temp,
                 "T6溫度時間": t6_temp,
                 "備註": final_note,
-                "extrusion_numbers": (
-                    [{"序號": 1, "編號": extrusion_value}] if extrusion_value else []
-                ),
+                "extrusion_numbers": [
+                    {"序號": i + 1, "編號": value}
+                    for i, value in enumerate(extrusion_values)
+                ],
                 "t4_furnace_numbers": [
                     {"序號": i + 1, "編號": value}
                     for i, value in enumerate(furnace_values)
