@@ -32,6 +32,11 @@ if not SECRET_KEY:
     )
 TOKEN_EXPIRATION_HOURS = int(os.getenv('TOKEN_EXPIRATION_HOURS', '24'))
 
+# 請求與代理邊界：由 Nginx 與 Flask 同時限制上傳大小，避免只依賴單一層。
+MAX_CONTENT_LENGTH = int(os.getenv('MAX_CONTENT_LENGTH', str(10 * 1024 * 1024)))
+TRUSTED_PROXY_COUNT = int(os.getenv('TRUSTED_PROXY_COUNT', '0'))
+RATELIMIT_STORAGE_URI = os.getenv('RATELIMIT_STORAGE_URI', 'memory://')
+
 # CORS 白名單：以逗號分隔的允許來源清單（可透過環境變數覆寫）
 ALLOWED_ORIGINS = os.getenv(
     'ALLOWED_ORIGINS',

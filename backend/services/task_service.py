@@ -45,7 +45,7 @@ class TaskService:
 
     # ── 建立任務 ─────────────────────────────────────────────
     @staticmethod
-    def create(
+    def _create_without_commit(
         source_type: str,
         source_id: int,
         category: str,
@@ -53,7 +53,8 @@ class TaskService:
         due_date: Optional[date] = None,
         description: Optional[str] = None,
         part_nos: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+    ) -> ActionTask:
+        """建立並 flush 任務，讓外層服務可以與其他異動共用交易。"""
         if category not in VALID_CATEGORIES:
             raise ValueError(f'無效類別：{category}，合法值：{VALID_CATEGORIES}')
 
@@ -71,6 +72,29 @@ class TaskService:
             status='pending',
         )
         db.session.add(task)
+        db.session.flush()
+        return task
+
+    @staticmethod
+    def create(
+        source_type: str,
+        source_id: int,
+        category: str,
+        assignee_id: Optional[int] = None,
+        due_date: Optional[date] = None,
+        description: Optional[str] = None,
+        part_nos: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """建立任務並提交；跨服務流程應使用不提交的內部建構器。"""
+        task = TaskService._create_without_commit(
+            source_type=source_type,
+            source_id=source_id,
+            category=category,
+            assignee_id=assignee_id,
+            due_date=due_date,
+            description=description,
+            part_nos=part_nos,
+        )
         db.session.commit()
         return TaskService._to_dict(task)
 

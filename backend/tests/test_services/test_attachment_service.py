@@ -615,3 +615,37 @@ def test_msa_delete_storage_failure_restores_database_link(
         .all()
     ]
     assert actions == ["upload", "delete", "delete_compensated"]
+
+
+def test_non_msa_delete_storage_failure_restores_database_link(
+    app,
+    client,
+    monkeypatch,
+    tmp_path,
+    msa_attachment_headers,
+):
+    """一般附件刪檔失敗時，也必須補償恢復資料庫連結。"""
+    app.config["STORAGE"] = LocalStorage(str(tmp_path / "uploads"))
+    headers = msa_attachment_headers("admin")
+    upload_response = client.post(
+        "/api/attachments/upload",
+        data={
+            "file": (BytesIO(b"restore-general"), "restore-general.txt"),
+            "entity_type": "complaint",
+            "entity_id": "99999",
+        },
+        headers=headers,
+        content_type="multipart/form-data",
+    )
+    assert upload_response.status_code == 201, upload_response.get_json()
+    created = upload_response.get_json()
+
+    def fail_delete(_rel_path):
+        raise OSError("forced storage delete failure")
+
+    monkeypatch.setattr(app.config["STORAGE"], "delete", fail_delete)
+    response = client.delete(f"/api/attachments/{created['id']}", headers=headers)
+
+    assert response.status_code == 500
+    assert db.session.get(Attachment, created["id"]) is not None
+    assert app.config["STORAGE"].exists(created["file_path"]) is True

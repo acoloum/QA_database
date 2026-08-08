@@ -33,8 +33,6 @@ def list_tasks(current_user):
         return jsonify(result), 200
     except ValueError as e:
         return api_error(str(e), 400, code="VALIDATION_ERROR")
-    except Exception:
-        raise
 
 
 @task_bp.route('/api/tasks/my', methods=['GET'])
@@ -42,11 +40,8 @@ def list_tasks(current_user):
 @require_permission('task.view')
 def my_tasks(current_user):
     """GET /api/tasks/my — 當前使用者的未完成待辦"""
-    try:
-        tasks = TaskService.my_tasks_for_user(current_user)
-        return jsonify(tasks), 200
-    except Exception:
-        raise
+    tasks = TaskService.my_tasks_for_user(current_user)
+    return jsonify(tasks), 200
 
 
 @task_bp.route('/api/tasks', methods=['POST'])
@@ -73,8 +68,6 @@ def create_task(current_user):
         return jsonify(task), 201
     except ValueError as e:
         return api_error(str(e), 400, code="VALIDATION_ERROR")
-    except Exception:
-        raise
 
 
 @task_bp.route('/api/tasks/<int:task_id>/status', methods=['PATCH'])
@@ -96,8 +89,6 @@ def update_task_status(current_user, task_id: int):
         return jsonify(task), 200
     except ValueError as e:
         return api_error(str(e), 400, code="VALIDATION_ERROR")
-    except Exception:
-        raise
 
 
 @task_bp.route('/api/tasks/<int:task_id>', methods=['DELETE'])
@@ -110,8 +101,6 @@ def delete_task(current_user, task_id: int):
         return jsonify({'message': '刪除成功'}), 200
     except ValueError as e:
         return api_error(str(e), 400, code="VALIDATION_ERROR")
-    except Exception:
-        raise
 
 
 @task_bp.route('/api/tasks/check-gate', methods=['GET'])
@@ -123,8 +112,5 @@ def check_close_gate(current_user):
     source_id   = request.args.get('source_id')
     if not source_type or not source_id:
         return api_error('缺少 source_type 或 source_id', 400, code="VALIDATION_ERROR")
-    try:
-        result = TaskService.check_close_gate(source_type, int(source_id))
-        return jsonify(result), 200
-    except Exception:
-        raise
+    result = TaskService.check_close_gate(source_type, int(source_id))
+    return jsonify(result), 200

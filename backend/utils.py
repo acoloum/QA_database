@@ -26,13 +26,24 @@ def api_success(data=None, message: str = '操作成功', code: int = 200):
     return jsonify({'success': True, 'data': data, 'message': message}), code
 
 def api_error(
-    message: str,
+    message: Union[str, Dict[str, Any]],
     status: int = 400,
     *,
     code: str = "VALIDATION_ERROR",
     details=None,
 ):
     """統一錯誤回傳格式"""
+    # 相容舊有 handle_db_error() 回傳的 {message, field}，避免把整個
+    # dict 巢狀放入 error.message，讓前端無法穩定解包。
+    if isinstance(message, dict):
+        legacy_payload = message
+        message = str(legacy_payload.get('message', '伺服器內部錯誤'))
+        if details is None:
+            details = {
+                key: value
+                for key, value in legacy_payload.items()
+                if key != 'message'
+            } or None
     return jsonify(build_error_envelope(message, code, details)), status
 
 

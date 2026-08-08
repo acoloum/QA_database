@@ -195,46 +195,44 @@ class QualityAnalyticsService:
         limit: int = 10,
     ) -> Dict[str, Any]:
         """回傳 NCMR 聚合重複問題與已標記的重複客訴（欄位級 select）。"""
-        ncmr_rows = db.session.query(
+        group_columns = (
             NCMR.vendor,
             NCMR.material,
             NCMR.product_info,
             NCMR.defect_category,
             NCMR.defect_detail,
-            NCMR.ncmr_number,
-            NCMR.date,
-        ).filter(*QualityAnalyticsService._ncmr_filters(date_from, date_to)).all()
+        )
+        grouped_rows = db.session.query(
+            *group_columns,
+            func.count(NCMR.id).label('issue_count'),
+            func.max(NCMR.date).label('latest_date'),
+        ).filter(*QualityAnalyticsService._ncmr_filters(date_from, date_to)).group_by(
+            *group_columns
+        ).having(func.count(NCMR.id) >= 2).order_by(
+            func.count(NCMR.id).desc(),
+            func.max(NCMR.date).desc(),
+        ).limit(max(1, limit)).all()
 
-        groups: Dict[tuple, Dict[str, Any]] = {}
-        for row in ncmr_rows:
-            key = (
-                row.vendor or '未填',
-                row.material or '未填',
-                row.product_info or '未填',
-                row.defect_category or '未分類',
-                row.defect_detail or '未分類',
-            )
-            entry = groups.setdefault(key, {
-                'vendor': key[0],
-                'material': key[1],
-                'product_info': key[2],
-                'defect_category': key[3],
-                'defect_detail': key[4],
-                'count': 0,
-                'latest_date': None,
-                'numbers': [],
+        repeated_ncmr = []
+        for row in grouped_rows:
+            raw_key = tuple(row[index] for index in range(len(group_columns)))
+            number_rows = db.session.query(NCMR.ncmr_number).filter(
+                *QualityAnalyticsService._ncmr_filters(date_from, date_to),
+                *[
+                    column.is_(None) if value is None else column == value
+                    for column, value in zip(group_columns, raw_key)
+                ],
+            ).order_by(NCMR.date.desc(), NCMR.id.desc()).all()
+            repeated_ncmr.append({
+                'vendor': row.vendor or '未填',
+                'material': row.material or '未填',
+                'product_info': row.product_info or '未填',
+                'defect_category': row.defect_category or '未分類',
+                'defect_detail': row.defect_detail or '未分類',
+                'count': row.issue_count,
+                'latest_date': row.latest_date.isoformat() if row.latest_date else None,
+                'numbers': [item.ncmr_number for item in number_rows],
             })
-            entry['count'] += 1
-            entry['numbers'].append(row.ncmr_number)
-            if row.date and (entry['latest_date'] is None or row.date > entry['latest_date']):
-                entry['latest_date'] = row.date
-
-        repeated_ncmr = [
-            {**entry, 'latest_date': entry['latest_date'].isoformat() if entry['latest_date'] else None}
-            for entry in groups.values()
-            if entry['count'] >= 2
-        ]
-        repeated_ncmr.sort(key=lambda x: (x['count'], x['latest_date'] or ''), reverse=True)
 
         complaint_filters = [
             CustomerComplaint.deleted_at.is_(None),

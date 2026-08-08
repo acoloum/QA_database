@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from backend.models import AuditLog, CorrectiveAction, CustomerComplaint, NCMR, User
+from backend.models import ActionTask, AuditLog, CorrectiveAction, CustomerComplaint, NCMR, User
 from backend.services.audit_service import AuditService
 from backend.services.capa_service import CAPAService
 from backend.services.complaint_service import ComplaintService
@@ -62,6 +62,53 @@ def test_delete_ncmr_capa_clears_ncmr_link_and_status(app, db_session):
         assert refreshed.related_capa_id is None
         assert refreshed.related_capa_source is None
         assert refreshed.status == '待處理'
+
+
+def test_capa_update_step_d7_failure_rolls_back_all_changes(app, db_session):
+    """D7 同步失敗時，CAPA 欄位與任務異動必須一起回滾。"""
+    with app.app_context():
+        capa = CorrectiveAction(
+            eight_d_number='CAPA-D7-ATOMIC',
+            status='進行中',
+            d3_action='原始暫時對策',
+        )
+        task = ActionTask(
+            task_no='TASK-D7-ATOMIC',
+            source_type='capa',
+            source_id=1,
+            category='sop',
+            title='更新 SOP',
+            status='in_progress',
+        )
+        db_session.add(capa)
+        db_session.flush()
+        task.source_id = capa.id
+        db_session.add(task)
+        db_session.commit()
+
+        with pytest.raises(ValueError, match='正在進行中'):
+            CAPAService.update_step(
+                capa.id,
+                {
+                    'D3_action': '不應保存的新對策',
+                    'D7_actions': [
+                        {'type': 'sop', 'checked': False},
+                        {'type': 'training', 'checked': True, 'description': '不應建立的新任務'},
+                    ],
+                },
+            )
+
+        db_session.rollback()
+        db_session.expire_all()
+        persisted_capa = db_session.get(CorrectiveAction, capa.id)
+        persisted_task = db_session.get(ActionTask, task.id)
+        persisted_new_task = ActionTask.query.filter_by(
+            source_type='capa', source_id=capa.id, category='training'
+        ).first()
+        assert persisted_capa.d3_action == '原始暫時對策'
+        assert persisted_task is not None
+        assert persisted_task.status == 'in_progress'
+        assert persisted_new_task is None
 
 
 @pytest.mark.parametrize('operation', ['close', 'delete'])

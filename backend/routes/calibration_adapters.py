@@ -2,13 +2,13 @@
 
 from functools import wraps
 
-from flask import current_app, jsonify
+from flask import current_app
 from werkzeug.exceptions import HTTPException
 
 from ..authorization import require_permissions
 from ..errors import AuthorizationError
 from ..services.calibration_errors import CalibrationServiceError
-from ..utils import auth_required
+from ..utils import api_error, auth_required
 
 
 def handle_calibration_errors(function):
@@ -19,33 +19,21 @@ def handle_calibration_errors(function):
         try:
             return function(*args, **kwargs)
         except CalibrationServiceError as error:
-            return (
-                jsonify(
-                    {
-                        "error": {
-                            "code": error.code,
-                            "message": error.message,
-                            "details": error.details,
-                        }
-                    }
-                ),
+            return api_error(
+                error.message,
                 error.status_code,
+                code=error.code,
+                details=error.details,
             )
         except HTTPException:
             raise
         except Exception:
             current_app.logger.exception("校正服務發生未預期錯誤")
-            return (
-                jsonify(
-                    {
-                        "error": {
-                            "code": "CALIBRATION_INTERNAL_ERROR",
-                            "message": "校正服務發生未預期錯誤",
-                            "details": {},
-                        }
-                    }
-                ),
+            return api_error(
+                "校正服務發生未預期錯誤",
                 500,
+                code="CALIBRATION_INTERNAL_ERROR",
+                details={},
             )
 
     return wrapped
@@ -68,30 +56,12 @@ def _has_calibration_error_code(response) -> bool:
 def _reject_if_user_missing_or_inactive(current_user):
     """使用者不存在或已停用時回傳 401 回應；否則回傳 None。"""
     if current_user is None:
-        return (
-            jsonify(
-                {
-                    "error": {
-                        "code": "CALIBRATION_USER_NOT_FOUND",
-                        "message": "使用者不存在",
-                        "details": {},
-                    }
-                }
-            ),
-            401,
+        return api_error(
+            "使用者不存在", 401, code="CALIBRATION_USER_NOT_FOUND", details={}
         )
     if not bool(current_user.is_active):
-        return (
-            jsonify(
-                {
-                    "error": {
-                        "code": "CALIBRATION_USER_INACTIVE",
-                        "message": "使用者帳號已停用",
-                        "details": {},
-                    }
-                }
-            ),
-            401,
+        return api_error(
+            "使用者帳號已停用", 401, code="CALIBRATION_USER_INACTIVE", details={}
         )
     return None
 
@@ -111,17 +81,9 @@ def require_calibration_permission(permission: str):
             try:
                 result = guarded(current_user, *args, **kwargs)
             except AuthorizationError:
-                return (
-                    jsonify(
-                        {
-                            "error": {
-                                "code": "CALIBRATION_PERMISSION_DENIED",
-                                "message": "權限不足",
-                                "details": {"permission": permission},
-                            }
-                        }
-                    ),
-                    403,
+                return api_error(
+                    "權限不足", 403, code="CALIBRATION_PERMISSION_DENIED",
+                    details={"permission": permission},
                 )
             if isinstance(result, tuple) and len(result) == 2:
                 response, status_code = result
@@ -131,17 +93,9 @@ def require_calibration_permission(permission: str):
                     status_code == 403
                     and not _has_calibration_error_code(response)
                 ):
-                    return (
-                        jsonify(
-                            {
-                                "error": {
-                                    "code": "CALIBRATION_PERMISSION_DENIED",
-                                    "message": "權限不足",
-                                    "details": {"permission": permission},
-                                }
-                            }
-                        ),
-                        403,
+                    return api_error(
+                        "權限不足", 403, code="CALIBRATION_PERMISSION_DENIED",
+                        details={"permission": permission},
                     )
             return result
 
@@ -168,19 +122,9 @@ def require_calibration_any_permission(*permissions: str):
             try:
                 return guarded(current_user, *args, **kwargs)
             except AuthorizationError:
-                return (
-                    jsonify(
-                        {
-                            "error": {
-                                "code": "CALIBRATION_PERMISSION_DENIED",
-                                "message": "權限不足",
-                                "details": {
-                                    "permission": " 或 ".join(permissions),
-                                },
-                            }
-                        }
-                    ),
-                    403,
+                return api_error(
+                    "權限不足", 403, code="CALIBRATION_PERMISSION_DENIED",
+                    details={"permission": " 或 ".join(permissions)},
                 )
 
         wrapped.__authorization_guards__ = guarded.__authorization_guards__
@@ -238,17 +182,11 @@ def calibration_auth_required(function):
             reason = details.get("reason")
             if not isinstance(message, str) or reason not in CALIBRATION_AUTH_CODE_BY_REASON:
                 return result
-            return (
-                jsonify(
-                    {
-                        "error": {
-                            "code": CALIBRATION_AUTH_CODE_BY_REASON[reason],
-                            "message": CALIBRATION_AUTH_MESSAGE_BY_REASON.get(reason, message),
-                            "details": {},
-                        }
-                    }
-                ),
+            return api_error(
+                CALIBRATION_AUTH_MESSAGE_BY_REASON.get(reason, message),
                 401,
+                code=CALIBRATION_AUTH_CODE_BY_REASON[reason],
+                details={},
             )
         return result
 

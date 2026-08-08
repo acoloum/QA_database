@@ -2,10 +2,19 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 from flask import Flask, send_from_directory, abort
+from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_cors import CORS
 from flasgger import Swagger
 from datetime import datetime
-from .config import SECRET_KEY, SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS, SQLALCHEMY_ENGINE_OPTIONS, ALLOWED_ORIGINS
+from .config import (
+    SECRET_KEY,
+    SQLALCHEMY_DATABASE_URI,
+    SQLALCHEMY_TRACK_MODIFICATIONS,
+    SQLALCHEMY_ENGINE_OPTIONS,
+    ALLOWED_ORIGINS,
+    MAX_CONTENT_LENGTH,
+    TRUSTED_PROXY_COUNT,
+)
 from .extensions import db, limiter
 from .routes.auth import auth_bp
 from .routes.admin import admin_bp
@@ -41,6 +50,7 @@ app.secret_key = SECRET_KEY
 app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = SQLALCHEMY_TRACK_MODIFICATIONS
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = SQLALCHEMY_ENGINE_OPTIONS
+app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 app.config['SWAGGER'] = {
     'title': 'QA Database API',
     'uiversion': 3,
@@ -50,6 +60,16 @@ app.config['SWAGGER'] = {
 }
 
 Swagger(app)
+
+# 僅信任明確設定的代理層數；直接啟動 Flask 時不接受外部偽造的
+# X-Forwarded-For，避免限流與稽核來源被繞過。
+if TRUSTED_PROXY_COUNT > 0:
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app,
+        x_for=TRUSTED_PROXY_COUNT,
+        x_proto=TRUSTED_PROXY_COUNT,
+        x_host=TRUSTED_PROXY_COUNT,
+    )
 
 # 非 debug 模式才啟用 rotating file handler（dev 環境直接看 console）
 if not app.debug:

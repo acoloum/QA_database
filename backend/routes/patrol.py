@@ -9,54 +9,39 @@ patrol_bp = Blueprint('patrol', __name__)
 @auth_required
 @require_permission('patrol.view')
 def patrol_options():
-    try:
-        options = PatrolService.get_options()
-        return jsonify(options)
-    except Exception:
-        raise
+    options = PatrolService.get_options()
+    return jsonify(options)
 
 @patrol_bp.route('/api/patrol/spc')
 @auth_required
 @require_permission('patrol.view')
 def patrol_spc():
-    try:
-        data = PatrolService.get_spc(request.args)
-        return jsonify(data)
-    except Exception:
-        raise
+    data = PatrolService.get_spc(request.args)
+    return jsonify(data)
 
 @patrol_bp.route('/api/patrol/live-limits')
 @auth_required
 @require_permission('spc.view')
 def patrol_live_limits():
     """巡檢即時模式：查詢生效中的 SPC 管制界限與最近歷史值（唯讀，供前端即時提示）"""
-    try:
-        data = PatrolService.get_live_limits(request.args)
-        return jsonify(data)
-    except Exception:
-        raise
+    data = PatrolService.get_live_limits(request.args)
+    return jsonify(data)
 
 @patrol_bp.route('/api/patrol/detail/<int:id>')
 @auth_required
 @require_permission('patrol.view')
 def patrol_detail(id):
-    try:
-        data = PatrolService.get_detail(id)
-        if data is None:
-            return api_error("資料不存在", 404, code="NOT_FOUND")
-        return jsonify(data)
-    except Exception:
-        raise
+    data = PatrolService.get_detail(id)
+    if data is None:
+        return api_error("資料不存在", 404, code="NOT_FOUND")
+    return jsonify(data)
 
 @patrol_bp.route('/api/patrol/<int:main_id>/details', methods=['GET'])
 @auth_required
 @require_permission('patrol.view')
 def get_patrol_details_route(main_id):
     """取得單筆巡檢記錄的量測明細（含離群標記）"""
-    try:
-        return jsonify(PatrolService.get_patrol_details(main_id))
-    except Exception:
-        raise
+    return jsonify(PatrolService.get_patrol_details(main_id))
 
 
 @patrol_bp.route('/api/patrol-details/<int:detail_id>/exclusion', methods=['PATCH'])
@@ -76,8 +61,6 @@ def set_patrol_detail_exclusion_route(detail_id):
         return jsonify(result)
     except ValueError as e:
         return api_error(str(e), 400, code="VALIDATION_ERROR")
-    except Exception:
-        raise
 
 
 @patrol_bp.route('/api/patrol/control-limits', methods=['GET'])
@@ -85,19 +68,16 @@ def set_patrol_detail_exclusion_route(detail_id):
 @require_permission('patrol.view')
 def get_patrol_control_limits_route():
     """查詢巡檢管制界限凍結狀態（AIAG-VDA SPC 2026 §9.4）"""
-    try:
-        key = {
-            "material": request.args.get('material', ''),
-            "spec": request.args.get('spec', ''),
-            "item": request.args.get('item', '外徑'),
-            "position": request.args.get('position', ''),
-        }
-        legacy = PatrolService.get_frozen_limits(key)
-        if legacy:
-            legacy.update({"status": "legacy_imported", "audit_incomplete": True})
-        return jsonify(legacy or {})
-    except Exception:
-        raise
+    key = {
+        "material": request.args.get('material', ''),
+        "spec": request.args.get('spec', ''),
+        "item": request.args.get('item', '外徑'),
+        "position": request.args.get('position', ''),
+    }
+    legacy = PatrolService.get_frozen_limits(key)
+    if legacy:
+        legacy.update({"status": "legacy_imported", "audit_incomplete": True})
+    return jsonify(legacy or {})
 
 
 @patrol_bp.route('/api/patrol/control-limits', methods=['POST'])
@@ -135,8 +115,6 @@ def patrol_add():
         return jsonify({"success": True, "id": patrol_id})
     except ValueError as e:
         return api_error(str(e), 400, code="VALIDATION_ERROR")
-    except Exception:
-        raise
 
 @patrol_bp.route('/api/patrol/update', methods=['POST'])
 @auth_required
@@ -147,31 +125,23 @@ def patrol_update():
         return jsonify({"success": True})
     except ValueError as e:
         return api_error(str(e), 400, code="VALIDATION_ERROR")
-    except Exception:
-        raise
 
 @patrol_bp.route('/api/patrol/delete', methods=['POST'])
 @auth_required
 @require_permission('patrol.delete')
 def patrol_delete():
-    try:
-        record_id = (request.json or {}).get('id')
-        if not record_id:
-            return api_error("缺少記錄 ID", 400, code="VALIDATION_ERROR")
-        PatrolService.delete_patrol(record_id)
-        return jsonify({"success": True})
-    except Exception:
-        raise
+    record_id = (request.json or {}).get('id')
+    if not record_id:
+        return api_error("缺少記錄 ID", 400, code="VALIDATION_ERROR")
+    PatrolService.delete_patrol(record_id)
+    return jsonify({"success": True})
 
 @patrol_bp.route('/api/patrol/history')
 @auth_required
 @require_permission('patrol.view')
 def patrol_history():
-    try:
-        result = PatrolService.get_history(request.args)
-        return jsonify(result)
-    except Exception:
-        raise
+    result = PatrolService.get_history(request.args)
+    return jsonify(result)
 
 @patrol_bp.route('/api/patrol/export')
 @auth_required
@@ -248,5 +218,3 @@ def patrol_import():
         return jsonify({"success": True, "message": f"匯入成功，共 {count} 筆資料"})
     except ValueError as e:
         return api_error(str(e), 400, code="VALIDATION_ERROR")
-    except Exception:
-        raise

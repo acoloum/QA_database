@@ -10,45 +10,33 @@ shipping_bp = Blueprint('shipping', __name__)
 @auth_required
 @require_permission('shipping.view')
 def get_data():
-    try:
-        result = ShippingService.get_list(request.args)
-        return jsonify(result)
-    except Exception:
-        raise
+    result = ShippingService.get_list(request.args)
+    return jsonify(result)
 
 @shipping_bp.route('/api/data/<int:data_id>', methods=['GET'])
 @auth_required
 @require_permission('shipping.view')
 def get_shipping_data(data_id):
     """根據 ID 獲取單筆出貨檢驗資料"""
-    try:
-        result = ShippingService.get_by_id(data_id)
-        if result is None:
-            return api_error('資料不存在', 404)
-        return jsonify(result)
-    except Exception:
-        raise
+    result = ShippingService.get_by_id(data_id)
+    if result is None:
+        return api_error('資料不存在', 404)
+    return jsonify(result)
 
 @shipping_bp.route('/api/stats', methods=['GET'])
 @auth_required
 @require_permission('shipping.view')
 def get_shipping_stats():
     """獲取出貨檢驗的 SPC 統計數據"""
-    try:
-        result = ShippingService.get_stats(request.args)
-        return jsonify(result)
-    except Exception:
-        raise
+    result = ShippingService.get_stats(request.args)
+    return jsonify(result)
 
 @shipping_bp.route('/api/data/<int:data_id>/measurements', methods=['GET'])
 @auth_required
 @require_permission('shipping.view')
 def get_shipping_measurements(data_id):
     """取得單筆出貨記錄的量測明細（含離群標記）"""
-    try:
-        return jsonify(ShippingService.get_measurements(data_id))
-    except Exception:
-        raise
+    return jsonify(ShippingService.get_measurements(data_id))
 
 
 @shipping_bp.route('/api/measurements/<int:measurement_id>/exclusion', methods=['PATCH'])
@@ -68,8 +56,6 @@ def set_measurement_exclusion(measurement_id):
         return jsonify(result)
     except ValueError as e:
         return api_error(str(e), 400)
-    except Exception:
-        raise
 
 
 @shipping_bp.route('/api/control-limits', methods=['GET'])
@@ -77,19 +63,16 @@ def set_measurement_exclusion(measurement_id):
 @require_permission('spc.view')
 def get_control_limits_route():
     """查詢管制界限凍結狀態（AIAG-VDA SPC 2026 §9.4）"""
-    try:
-        key = {
-            "vendor": request.args.get('vendor', ''),
-            "material": request.args.get('material', ''),
-            "spec": request.args.get('spec', ''),
-            "field": request.args.get('field', '外徑'),
-        }
-        legacy = ShippingService.get_frozen_limits(key)
-        if legacy:
-            legacy.update({"status": "legacy_imported", "audit_incomplete": True})
-        return jsonify(legacy or {})
-    except Exception:
-        raise
+    key = {
+        "vendor": request.args.get('vendor', ''),
+        "material": request.args.get('material', ''),
+        "spec": request.args.get('spec', ''),
+        "field": request.args.get('field', '外徑'),
+    }
+    legacy = ShippingService.get_frozen_limits(key)
+    if legacy:
+        legacy.update({"status": "legacy_imported", "audit_incomplete": True})
+    return jsonify(legacy or {})
 
 
 @shipping_bp.route('/api/control-limits', methods=['POST'])
@@ -189,15 +172,12 @@ def update_data():
 @auth_required
 @require_permission('shipping.delete')
 def delete_data():
-    try:
-        record_id = (request.json or {}).get('id')
-        if not record_id:
-            return api_error("缺少記錄 ID", 400)
+    record_id = (request.json or {}).get('id')
+    if not record_id:
+        return api_error("缺少記錄 ID", 400)
         
-        ShippingService.delete_data(record_id)
-        return jsonify({"success": True})
-    except Exception:
-        raise
+    ShippingService.delete_data(record_id)
+    return jsonify({"success": True})
 
 @shipping_bp.route('/api/import', methods=['POST', 'OPTIONS'])
 @auth_required
@@ -222,21 +202,16 @@ def shipping_import():
         return jsonify({"success": True, "message": f"匯入成功，共 {count} 筆資料"})
     except ValueError as e:
         return api_error(str(e), 400)
-    except Exception:
-        raise
 
 @shipping_bp.route('/api/export/excel')
 @auth_required
 @require_permission('shipping.view')
 def export_excel():
-    try:
-        output = ShippingService.export_excel(request.args)
-        return send_file(
-            output, 
-            as_attachment=True, 
-            download_name='出貨檢驗數據.xlsx', 
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-    except Exception:
-        raise
+    output = ShippingService.export_excel(request.args)
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name='出貨檢驗數據.xlsx',
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
 

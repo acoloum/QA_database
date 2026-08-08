@@ -15,11 +15,8 @@ vendor_perf_bp = Blueprint('vendor_performance', __name__)
 def list_vendor_performance(current_user):
     """GET /api/vendor-performance?period=YYYY-MM"""
     period = request.args.get('period', date.today().strftime('%Y-%m'))
-    try:
-        data = VendorPerformanceService.list_by_period(period)
-        return api_success(data)
-    except Exception:
-        raise
+    data = VendorPerformanceService.list_by_period(period)
+    return api_success(data)
 
 
 @vendor_perf_bp.route('/api/vendor-performance/<int:vendor_id>/history', methods=['GET'])
@@ -28,11 +25,8 @@ def list_vendor_performance(current_user):
 def vendor_history(current_user, vendor_id: int):
     """GET /api/vendor-performance/<vendor_id>/history?months=6"""
     months = bounded_int(request.args.get('months'), 6, 1, 36)
-    try:
-        data = VendorPerformanceService.history(vendor_id, months)
-        return api_success(data)
-    except Exception:
-        raise
+    data = VendorPerformanceService.history(vendor_id, months)
+    return api_success(data)
 
 
 @vendor_perf_bp.route('/api/vendor-performance/refresh', methods=['POST'])

@@ -1,6 +1,7 @@
 import io as _io
 from functools import wraps
 from flask import Blueprint, jsonify, request, send_file
+from werkzeug.exceptions import RequestEntityTooLarge
 from ..services.pyrometry_service import PyrometryService, PyrometryValidationError
 from ..utils import auth_required, handle_db_error, parse_optional_int, validate_upload_file, api_error
 from ..authorization import require_permission
@@ -13,6 +14,8 @@ def pyrometry_error_response(error, value_error_status=400):
     """集中爐溫模組 route 的錯誤回應格式，避免各端點各自處理。"""
     if isinstance(error, PyrometryValidationError):
         return api_error(str(error), 400, code="VALIDATION_ERROR")
+    if isinstance(error, RequestEntityTooLarge):
+        return api_error("檔案大小超過 10MB 限制", 400, code="VALIDATION_ERROR")
     if isinstance(error, ValueError):
         code = "NOT_FOUND" if value_error_status == 404 else "VALIDATION_ERROR"
         return api_error(str(error), value_error_status, code=code)

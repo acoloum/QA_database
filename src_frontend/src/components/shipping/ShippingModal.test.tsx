@@ -30,16 +30,22 @@ vi.mock('react-hot-toast', () => ({
 
 // ShippingModal 改走統一 useInspectors hook（內部使用 useQuery），測試直接 mock 該 hook 資料
 vi.mock('../../hooks/useInspectors', () => ({
-  useInspectors: () => ({ data: [{ id: 1, name: '檢驗員A' }] }),
+  useInspectors: (() => {
+    const data = [{ id: 1, name: '檢驗員A' }];
+    return () => ({ data });
+  })(),
 }));
 
-vi.mock('../../hooks/useShipping', () => ({
-  useVendors: () => ({ data: [{ id: 10, name: '廠商A' }] }),
-  useShippingDetail: () => ({ data: shippingDetail, isLoading: false }),
-  useCreateShipping: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useUpdateShipping: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useCheckTolerance: () => ({ mutateAsync: checkToleranceMutate }),
-}));
+vi.mock('../../hooks/useShipping', () => {
+  const vendors = [{ id: 10, name: '廠商A' }];
+  return {
+    useVendors: () => ({ data: vendors }),
+    useShippingDetail: () => ({ data: shippingDetail, isLoading: false }),
+    useCreateShipping: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useUpdateShipping: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useCheckTolerance: () => ({ mutateAsync: checkToleranceMutate }),
+  };
+});
 
 const toleranceResponse = (specLabel: string): ToleranceResult => ({
   success: true,

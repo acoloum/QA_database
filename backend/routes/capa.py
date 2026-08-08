@@ -90,8 +90,6 @@ def update_step(current_user, capa_id: int):
         return jsonify(result), 200
     except ValueError as e:
         return api_error(str(e), 400, code="VALIDATION_ERROR")
-    except Exception:
-        raise
 
 
 # ── D6 Gate 檢查 ─────────────────────────────────────────────
@@ -100,11 +98,8 @@ def update_step(current_user, capa_id: int):
 @require_permission('capa.view')
 def check_d6_gate(current_user, capa_id: int):
     """GET /api/capas/<id>/d6-gate — 查詢 D6 驗證是否通過"""
-    try:
-        passed = CAPAService.check_d6_gate(capa_id)
-        return jsonify({'d6_passed': passed}), 200
-    except Exception:
-        raise
+    passed = CAPAService.check_d6_gate(capa_id)
+    return jsonify({'d6_passed': passed}), 200
 
 
 # ── 結案 Gate 檢查 ────────────────────────────────────────────
@@ -113,16 +108,13 @@ def check_d6_gate(current_user, capa_id: int):
 @require_permission('capa.view')
 def check_close_gate(current_user, capa_id: int):
     """GET /api/capas/<id>/close-gate — 查詢 D8 結案 gate（任務狀態）"""
-    try:
-        gate = TaskService.check_close_gate('capa', capa_id)
-        d6   = CAPAService.check_d6_gate(capa_id)
-        missing = CAPAService.get_missing_step_labels(capa_id)
-        gate['d6_passed'] = d6
-        gate['missing_steps'] = missing
-        gate['can_close'] = gate['can_close'] and d6 and not missing
-        return jsonify(gate), 200
-    except Exception:
-        raise
+    gate = TaskService.check_close_gate('capa', capa_id)
+    d6   = CAPAService.check_d6_gate(capa_id)
+    missing = CAPAService.get_missing_step_labels(capa_id)
+    gate['d6_passed'] = d6
+    gate['missing_steps'] = missing
+    gate['can_close'] = gate['can_close'] and d6 and not missing
+    return jsonify(gate), 200
 
 
 # ── D8 結案 ───────────────────────────────────────────────────
@@ -180,19 +172,16 @@ def download_pdf(current_user, capa_id: int):
     detail = CAPAService.get_detail(capa_id)
     if not detail:
         return api_error('CAPA 不存在', 404, code="NOT_FOUND")
-    try:
-        from flask import send_file
-        from ..services.eightd_pdf import generate_8d_pdf
-        buf = generate_8d_pdf(detail)
-        filename = f"8D_{detail.get('no', capa_id)}.pdf"
-        return send_file(
-            buf,
-            mimetype='application/pdf',
-            as_attachment=True,
-            download_name=filename,
-        )
-    except Exception:
-        raise
+    from flask import send_file
+    from ..services.eightd_pdf import generate_8d_pdf
+    buf = generate_8d_pdf(detail)
+    filename = f"8D_{detail.get('no', capa_id)}.pdf"
+    return send_file(
+        buf,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=filename,
+    )
 
 
 @capa_bp.route('/api/capas/<int:capa_id>/report/excel', methods=['GET'])
@@ -203,16 +192,13 @@ def download_excel(current_user, capa_id: int):
     detail = CAPAService.get_detail(capa_id)
     if not detail:
         return api_error('CAPA 不存在', 404, code="NOT_FOUND")
-    try:
-        from flask import send_file
-        from ..services.eightd_excel import generate_8d_excel
-        buf = generate_8d_excel(detail)
-        filename = f"8D_{detail.get('no', capa_id)}.xlsx"
-        return send_file(
-            buf,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name=filename,
-        )
-    except Exception:
-        raise
+    from flask import send_file
+    from ..services.eightd_excel import generate_8d_excel
+    buf = generate_8d_excel(detail)
+    filename = f"8D_{detail.get('no', capa_id)}.xlsx"
+    return send_file(
+        buf,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=filename,
+    )

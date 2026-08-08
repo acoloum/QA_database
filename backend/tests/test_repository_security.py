@@ -34,6 +34,8 @@ def test_tracked_files_do_not_contain_secrets(repo_root: Path) -> None:
         [sys.executable, "backend/scripts/scan_tracked_secrets.py"],
         cwd=repo_root,
         text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         capture_output=True,
         check=False,
     )
@@ -64,6 +66,8 @@ def test_scanner_detects_utf16_tracked_text(repo_root: Path, tmp_path: Path) -> 
         [sys.executable, "backend/scripts/scan_tracked_secrets.py"],
         cwd=isolated_repo,
         text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         capture_output=True,
         check=False,
     )
@@ -100,6 +104,8 @@ def test_scanner_detects_utf16_without_bom_after_traditional_chinese(
         [sys.executable, "backend/scripts/scan_tracked_secrets.py"],
         cwd=isolated_repo,
         text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         capture_output=True,
         check=False,
     )
@@ -118,6 +124,7 @@ def test_compose_requires_secrets(repo_root: Path) -> None:
         cwd=repo_root,
         env=without_env("DB_PASSWORD", "SECRET_KEY"),
         text=True,
+        encoding="utf-8",
         capture_output=True,
         check=False,
     )
@@ -130,6 +137,7 @@ def test_compose_requires_secrets(repo_root: Path) -> None:
         cwd=repo_root,
         env=with_test_secrets(),
         text=True,
+        encoding="utf-8",
         capture_output=True,
         check=False,
     )

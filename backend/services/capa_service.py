@@ -294,15 +294,19 @@ class CAPAService:
         _setif(ca, 'd6_implement_date', data, 'D6_implement_date', _parse_date)
         _setif(ca, 'd6_result',         data, 'D6_result')
 
-        # D7 橫展（同步處理任務）
-        if 'D7_actions' in data:
-            CAPAService._sync_d7_tasks(ca, data['D7_actions'])
+        try:
+            # D7 橫展（同步處理任務）
+            if 'D7_actions' in data:
+                CAPAService._sync_d7_tasks(ca, data['D7_actions'])
 
-        # D8
-        _setif(ca, 'd8_confirmation', data, 'D8_confirmation')
-        _setif(ca, 'd8_recognition',  data, 'D8_recognition')
+            # D8
+            _setif(ca, 'd8_confirmation', data, 'D8_confirmation')
+            _setif(ca, 'd8_recognition',  data, 'D8_recognition')
 
-        db.session.commit()
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
         return CAPAService._to_dict(ca)
 
     # ── D7 任務同步 ──────────────────────────────────────────
@@ -323,7 +327,7 @@ class CAPAService:
                 continue
             due = _parse_date(action.get('due_date'))
             if atype not in existing:
-                TaskService.create(
+                task = TaskService._create_without_commit(
                     source_type  = 'capa',
                     source_id    = ca.id,
                     category     = D7_TYPE_CATEGORY[atype],
@@ -332,6 +336,7 @@ class CAPAService:
                     description  = action.get('description'),
                     part_nos     = action.get('part_nos'),
                 )
+                existing[atype] = task
             else:
                 task = existing[atype]
                 # 已完成/豁免的任務視為定案，不再回寫

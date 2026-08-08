@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict, Optional
 
 import openpyxl
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.orm import selectinload
 
 from ..extensions import db
@@ -652,17 +653,45 @@ class MechanicalService:
 
         status_filter = str(args.get("judgement_status") or "").strip().upper()
         if status_filter in JUDGEMENT_STATUSES:
-            # 判定狀態是跨量測明細聚合出的衍生值，資料庫沒有對應欄位可直接 filter；
-            # 先套用其餘條件縮小候選集合，一次撈出量測明細後在 Python 端篩選、手動分頁。
-            candidates = query.options(
+            # 判定狀態是衍生值，但可用 EXISTS 子查詢在資料庫完成篩選，
+            # 避免先把所有量測明細載入 Python 後才手動分頁。
+            measurement = MechanicalMeasurement
+            waived = MechanicalWaivedItem
+            judged = and_(
+                measurement.test_id == MechanicalTest.id,
+                measurement.item != "EC值",
+                measurement.value.isnot(None),
+            )
+            has_ng = exists(select(1).where(judged, measurement.is_ng.is_(True)))
+            has_no_spec = exists(select(1).where(
+                judged,
+                measurement.lower_limit.is_(None),
+                measurement.upper_limit.is_(None),
+            ))
+            missing_required = or_(*[
+                and_(
+                    ~exists(select(1).where(judged, measurement.item == item)),
+                    ~exists(select(1).where(
+                        waived.test_id == MechanicalTest.id,
+                        waived.item == item,
+                    )),
+                )
+                for item in REQUIRED_MEASUREMENT_ITEMS
+            ])
+            status_predicates = {
+                "NG": has_ng,
+                "INCOMPLETE": and_(~has_ng, missing_required),
+                "NO_SPEC": and_(~has_ng, ~missing_required, has_no_spec),
+                "OK": and_(~has_ng, ~missing_required, ~has_no_spec),
+            }
+            query = query.filter(status_predicates[status_filter])
+            pagination = query.options(
                 selectinload(MechanicalTest.measurements),
                 selectinload(MechanicalTest.waived_items),
-            ).all()
-            filtered = [t for t in candidates if _judgement_status(t) == status_filter]
-            total = len(filtered)
-            start = (page - 1) * page_size
-            items = filtered[start:start + page_size]
-            total_pages = max((total + page_size - 1) // page_size, 1)
+            ).paginate(page=page, per_page=page_size, error_out=False)
+            total = pagination.total
+            items = pagination.items
+            total_pages = pagination.pages
         else:
             # 以識別碼倒序（新→舊），避免 SQLite NULLS LAST 相容性問題（沿用擠壓公差慣例）
             # paginate() 內部已算過 total，不再另外 count() 一次

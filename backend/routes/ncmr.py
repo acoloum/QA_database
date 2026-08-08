@@ -79,8 +79,6 @@ def get_ncmr_list():
         return jsonify(result)
     except ValueError as e:
         return api_error(str(e), 400, code="VALIDATION_ERROR")
-    except Exception:
-        raise
 
 @ncmr_bp.route('/api/ncmr/add', methods=['POST'])
 @auth_required
@@ -126,11 +124,8 @@ def delete_ncmr(current_user):
 @auth_required
 @require_permission('ncmr.view')
 def get_source_info():
-    try:
-        info = NCMRService.get_source_info(request.args.get('type'), request.args.get('id'))
-        return jsonify(info)
-    except Exception:
-        raise
+    info = NCMRService.get_source_info(request.args.get('type'), request.args.get('id'))
+    return jsonify(info)
 
 @ncmr_bp.route('/api/ncmr/<int:ncmr_id>/open-capa', methods=['POST'])
 @auth_required
@@ -157,13 +152,10 @@ def open_capa_from_ncmr(current_user, ncmr_id):
 @auth_required
 @require_permission('ncmr.view')
 def get_ncmr_info(ncmr_id):
-    try:
-        info = NCMRService.get_ncmr_info(ncmr_id)
-        if info is None:
-            return api_error("找不到NCMR記錄", 404, code="NOT_FOUND")
-        return jsonify(info)
-    except Exception:
-        raise
+    info = NCMRService.get_ncmr_info(ncmr_id)
+    if info is None:
+        return api_error("找不到NCMR記錄", 404, code="NOT_FOUND")
+    return jsonify(info)
 
 # ==================================================
 # 【不合格品處置】Disposition API（IATF 16949 §8.7）
@@ -173,20 +165,14 @@ def get_ncmr_info(ncmr_id):
 @auth_required
 @require_permission('ncmr.view')
 def get_dispositions(ncmr_id):
-    try:
-        return jsonify(NCMRService.get_dispositions(ncmr_id))
-    except Exception:
-        raise
+    return jsonify(NCMRService.get_dispositions(ncmr_id))
 
 
 @ncmr_bp.route('/api/ncmr/<int:ncmr_id>/reworks', methods=['GET'])
 @auth_required
 @require_permission('ncmr.view')
 def get_ncmr_reworks(ncmr_id):
-    try:
-        return jsonify(NCMRService.get_ncmr_reworks(ncmr_id))
-    except Exception:
-        raise
+    return jsonify(NCMRService.get_ncmr_reworks(ncmr_id))
 
 
 @ncmr_bp.route('/api/ncmr/<int:ncmr_id>/dispositions', methods=['POST'])
@@ -236,8 +222,5 @@ def delete_disposition(current_user, disposition_id):
 @auth_required
 @require_permission('ncmr.view')
 def get_risk_releases():
-    try:
-        return jsonify(NCMRService.get_risk_releases())
-    except Exception:
-        raise
+    return jsonify(NCMRService.get_risk_releases())
 

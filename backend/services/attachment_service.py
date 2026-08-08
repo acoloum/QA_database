@@ -270,9 +270,23 @@ class AttachmentService:
 
         is_msa = att.entity_type in MSA_ATTACHMENT_ENTITY_TYPES
         if not is_msa:
-            _get_storage().delete(att.file_path)
+            snapshot = AttachmentService._model_snapshot(att)
             db.session.delete(att)
-            db.session.commit()
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                raise
+            try:
+                _get_storage().delete(snapshot['file_path'])
+            except Exception as storage_error:
+                try:
+                    db.session.add(Attachment(**snapshot))
+                    db.session.commit()
+                except Exception as compensation_error:
+                    db.session.rollback()
+                    raise RuntimeError('附件刪除失敗且資料庫連結補償失敗') from compensation_error
+                raise RuntimeError('附件實體刪除失敗，附件連結已恢復') from storage_error
             return True
 
         AttachmentService._validate_msa_target(

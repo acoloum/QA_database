@@ -243,6 +243,7 @@ def test_calibration_auth_errors_use_stable_envelope(
 
     assert response.status_code == 401
     assert response.get_json() == {
+        "success": False,
         "error": {
             "code": expected_code,
             "message": expected_message,
@@ -351,6 +352,7 @@ def test_unexpected_exception_returns_sanitized_error(calibration_api):
 
     assert response.status_code == 500
     assert response.get_json() == {
+        "success": False,
         "error": {
             "code": "CALIBRATION_INTERNAL_ERROR",
             "message": "校正服務發生未預期錯誤",
