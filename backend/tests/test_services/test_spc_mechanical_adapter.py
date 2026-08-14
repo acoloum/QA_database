@@ -2,7 +2,10 @@
 
 from datetime import date
 
-from backend.models import MechanicalTest, MechanicalMeasurement, Vendor
+from backend.models import (
+    MechanicalTest, MechanicalMeasurement, Vendor,
+    VendorToleranceDetail, VendorToleranceMain,
+)
 from backend.services.spc_adapters.common import canonical_process_stream
 from backend.services.spc_adapters.mechanical import build_mechanical_study_input
 from backend.services.spc_chart_engine import calculate_chart_set
@@ -143,3 +146,80 @@ def test_mechanical_process_stream_uses_every_supported_filter():
         altered = "9" if name == "vendor_id" else f"{base[name]}-不同"
         changed = canonical_process_stream("mechanical", {**base, name: altered})
         assert changed.key != original.key, name
+
+
+def _tolerance(db_session, vendor_id, item, characteristic_class, *, dim_min=350.0):
+    """建立一筆對應 6061-T651 / 66.7*59 的廠商公差明細。"""
+    main = VendorToleranceMain(
+        vendor_id=vendor_id, material="6061-T651", spec="66.7*59",
+    )
+    db_session.add(main)
+    db_session.flush()
+    db_session.add(VendorToleranceDetail(
+        main_id=main.id, item=item, dim_min=dim_min,
+        characteristic_class=characteristic_class,
+    ))
+    return main
+
+
+def test_specification_carries_characteristic_class_from_tolerance(app, db_session):
+    """公差檔標為「主要」時，規格快照必須帶出來供目標值查表使用。"""
+    with app.app_context():
+        vendor = Vendor(name="安泰")
+        db_session.add(vendor)
+        db_session.flush()
+        _tolerance(db_session, vendor.id, "抗拉強度", "主要")
+        _test_record(db_session, vendor.id, date(2026, 7, 1), [(1, 360.0, False)])
+        db_session.commit()
+
+        study_input = build_mechanical_study_input({
+            "vendor_id": vendor.id, "material": "6061-T651",
+            "product_size": "66.7*59", "item": "抗拉強度", "position": "爐門",
+        })
+
+        assert study_input.specification["characteristic_class"] == "主要"
+        assert study_input.specification["characteristic_class_consistent"] is True
+
+
+def test_hardness_maps_to_rockwell_tolerance_item(app, db_session):
+    """機械性質的「硬度」對應公差檔的「洛氏硬度」，重要度要跟著對上。"""
+    with app.app_context():
+        vendor = Vendor(name="安泰")
+        db_session.add(vendor)
+        db_session.flush()
+        _tolerance(db_session, vendor.id, "洛氏硬度", "主要", dim_min=60.0)
+        record = MechanicalTest(
+            product_size="66.7*59", material="6061-T651",
+            vendor_id=vendor.id, test_date=date(2026, 7, 1),
+        )
+        db_session.add(record)
+        db_session.flush()
+        db_session.add(MechanicalMeasurement(
+            test_id=record.id, item="硬度", location="爐門",
+            sample_no=1, value=62.0, lower_limit=60.0,
+        ))
+        db_session.commit()
+
+        study_input = build_mechanical_study_input({
+            "vendor_id": vendor.id, "material": "6061-T651",
+            "product_size": "66.7*59", "item": "硬度", "position": "爐門",
+        })
+
+        assert study_input.specification["characteristic_class"] == "主要"
+
+
+def test_unregistered_characteristic_class_falls_back_to_other(app, db_session):
+    """查無公差來源時退回「其他」，並標記為未確認，不擅自沿用其他項目的重要度。"""
+    with app.app_context():
+        vendor = Vendor(name="安泰")
+        db_session.add(vendor)
+        db_session.flush()
+        _test_record(db_session, vendor.id, date(2026, 7, 1), [(1, 360.0, False)])
+        db_session.commit()
+
+        study_input = build_mechanical_study_input({
+            "vendor_id": vendor.id, "material": "6061-T651",
+            "product_size": "66.7*59", "item": "抗拉強度", "position": "爐門",
+        })
+
+        assert study_input.specification["characteristic_class"] == "其他"

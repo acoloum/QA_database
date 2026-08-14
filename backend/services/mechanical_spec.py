@@ -43,21 +43,20 @@ ITEM_LIMIT_SIDE: Dict[str, str] = {
 Limits = Tuple[Optional[float], Optional[float]]
 
 
-def lookup_limits(
-    material: str, product_size: str, vendor_id: Optional[int] = None
-) -> Dict[str, Limits]:
-    """回傳 {機械性質項目: (下限, 上限)}，查無則不含該項；EC 不查。
-
-    只填該項目受管制的那一邊（見 ITEM_LIMIT_SIDE），另一邊一律 None——
-    公差檔常對硬度同時登錄上下限，若照單全收會把只判下限的既有項目
-    悄悄變成雙邊判定，反而改動歷史紀錄的判定基準。
+def _resolve_main(
+    material: str, product_size: str, vendor_id: Optional[int]
+) -> Optional[VendorToleranceMain]:
+    """依（廠商 + 材質 + 產品尺寸）挑出唯一一筆適用的廠商公差主檔。
 
     候選優先序依序為：材質完全相同、規格正規化後完全相同、
     規格僅前兩段相同（_match_spec 的相近匹配）；相同層級再依 id
     由小到大取第一筆，避免依賴資料庫回傳順序。
+
+    界限查詢與特性重要度查詢共用這裡，兩者才保證讀到同一筆公差——
+    否則 SPC 目標值可能來自 A 主檔、NG 判定界限卻來自 B 主檔。
     """
     if not material or not product_size or vendor_id is None:
-        return {}
+        return None
 
     match_material = ExtrusionToleranceService._match_material
     match_spec = ExtrusionToleranceService._match_spec
@@ -88,7 +87,19 @@ def lookup_limits(
         ))
 
     candidate_entry = min(candidates, default=None, key=lambda entry: entry[:3])
-    candidate = candidate_entry[3] if candidate_entry else None
+    return candidate_entry[3] if candidate_entry else None
+
+
+def lookup_limits(
+    material: str, product_size: str, vendor_id: Optional[int] = None
+) -> Dict[str, Limits]:
+    """回傳 {機械性質項目: (下限, 上限)}，查無則不含該項；EC 不查。
+
+    只填該項目受管制的那一邊（見 ITEM_LIMIT_SIDE），另一邊一律 None——
+    公差檔常對硬度同時登錄上下限，若照單全收會把只判下限的既有項目
+    悄悄變成雙邊判定，反而改動歷史紀錄的判定基準。
+    """
+    candidate = _resolve_main(material, product_size, vendor_id)
     if candidate is None:
         return {}
 
@@ -111,6 +122,28 @@ def lookup_limits(
             if lower is not None:
                 result[mech_item] = (lower, None)
     return result
+
+
+def lookup_characteristic_classes(
+    material: str, product_size: str, vendor_id: Optional[int] = None
+) -> Dict[str, str]:
+    """回傳 {機械性質項目: 特性重要度}，供 SPC 能力／績效指數查目標值。
+
+    量測明細只保存界限、沒有保存特性重要度，SPC 若不回查公差檔就會一律
+    退回「其他」，讓公差管理設定的關鍵／主要項目拿到過鬆的目標值。
+    未登錄者視為「其他」，與公差檔的欄位預設一致。
+    """
+    candidate = _resolve_main(material, product_size, vendor_id)
+    if candidate is None:
+        return {}
+
+    tol_to_mech = {v: k for k, v in MECH_ITEM_TO_TOLERANCE.items()}
+    details = VendorToleranceDetail.query.filter_by(main_id=candidate.id).all()
+    return {
+        tol_to_mech[d.item]: (d.characteristic_class or "其他")
+        for d in details
+        if d.item in tol_to_mech
+    }
 
 
 def lookup_lower_limits(

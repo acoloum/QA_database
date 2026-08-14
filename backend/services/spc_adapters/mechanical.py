@@ -7,7 +7,7 @@
 
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from ...models import MechanicalTest, MechanicalMeasurement
 from ..spc_contracts import SpcReason, SpcStudyInput, SpcSubgroup
@@ -34,6 +34,39 @@ def _sequence_timestamp(test_date: date | None, intra_day_index: int) -> datetim
     if test_date is None:
         return None
     return datetime.combine(test_date, time.min) + timedelta(seconds=intra_day_index)
+
+
+def _resolve_characteristic_class(
+    records: Sequence[MechanicalTest], characteristic: str
+) -> dict[str, Any]:
+    """回查公差檔的特性重要度，決定能力／績效指數的目標值。
+
+    量測明細只保存界限、沒有保存特性重要度，不回查就會一律落到「其他」，
+    公差管理設定的關鍵／主要項目會拿到過鬆的目標值（見 spc_targets 表 8-3）。
+
+    研究可能橫跨多個（材質 + 產品尺寸）的爐次；只有全部爐次查到同一個重要度
+    才採用，否則標記不一致並退回「其他」，不擅自挑一個當核准證據。
+    """
+    from ..mechanical_spec import lookup_characteristic_classes
+
+    cache: dict[tuple[str, str, int | None], dict[str, str]] = {}
+    found: set[str] = set()
+    for record in records:
+        key = (record.material or "", record.product_size or "", record.vendor_id)
+        if key not in cache:
+            cache[key] = lookup_characteristic_classes(*key)
+        found.add(cache[key].get(characteristic, "其他"))
+
+    if len(found) == 1:
+        return {
+            "characteristic_class": found.pop(),
+            "characteristic_class_consistent": True,
+        }
+    # 無爐次（found 為空）時沒有可回查的來源，與多重來源一樣視為未確認。
+    return {
+        "characteristic_class": "其他",
+        "characteristic_class_consistent": not found,
+    }
 
 
 def build_mechanical_study_input(
@@ -93,6 +126,7 @@ def build_mechanical_study_input(
     distribution_values: list[float] = []
     prev_date: date | None = None
     intra_day_index = 0
+    contributing_records: list[MechanicalTest] = []
     for record in records:
         record_measurements = by_record.get(record.id, [])
         sample_values: list[float] = []
@@ -146,6 +180,7 @@ def build_mechanical_study_input(
         else:
             intra_day_index = 0
             prev_date = record.test_date
+        contributing_records.append(record)
         subgroups.append(SpcSubgroup(
             key=f"mechanical:{record.id}",
             timestamp=_sequence_timestamp(record.test_date, intra_day_index),
@@ -157,6 +192,9 @@ def build_mechanical_study_input(
         ))
 
     specification = specification_from_mechanical_limits(measurements)
+    specification.update(
+        _resolve_characteristic_class(contributing_records, characteristic)
+    )
     reasons: list[SpcReason] = []
     if not measurements:
         reasons.append(SpcReason("NO_DATA", "篩選範圍內沒有可用的機械性質量測明細"))
