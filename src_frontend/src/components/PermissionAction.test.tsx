@@ -86,6 +86,23 @@ describe('PermissionAction', () => {
     expect(screen.getByText('只能編輯本人建立的 NCMR')).toBeInTheDocument();
   });
 
+  it('reasonDisplay tooltip 以 title 與螢幕報讀文字說明原因，不佔用版面', () => {
+    authMock.mockReturnValue({ hasPermission: () => false });
+    render(
+      <PermissionAction permission="tolerance.manage" reasonDisplay="tooltip">
+        <button>刪除</button>
+      </PermissionAction>,
+    );
+
+    const button = screen.getByRole('button', { name: '刪除' });
+    expect(button).toBeDisabled();
+    const wrapper = button.parentElement as HTMLElement;
+    expect(wrapper).toHaveAttribute('title', '需要 tolerance.manage 權限');
+    const reason = screen.getByText('需要 tolerance.manage 權限');
+    expect(reason).toHaveClass('visually-hidden');
+    expect(button.getAttribute('aria-describedby')).toContain(reason.id);
+  });
+
   it('mode hide 在缺權限時不呈現動作', () => {
     authMock.mockReturnValue({ hasPermission: () => false });
     render(

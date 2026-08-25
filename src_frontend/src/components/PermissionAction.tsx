@@ -14,6 +14,7 @@ interface PermissionActionProps {
   permissions?: readonly string[];
   requireMode?: 'all' | 'any';
   mode?: 'disable' | 'hide';
+  reasonDisplay?: 'text' | 'tooltip';
   reason?: string;
   children: ReactElement<DisabledActionProps>;
 }
@@ -31,12 +32,15 @@ const DISABLED_INTRINSIC_ELEMENTS = new Set([
 /**
  * 將缺權限的單一動作停用並說明原因；不具 disabled 語意的原生元素會隱藏。
  * 自訂元件必須遵守 disabled prop 契約。
+ * reasonDisplay="tooltip" 只以 title 與螢幕報讀文字說明原因，不佔用版面，
+ * 適合表格操作欄等空間有限、且同列會出現多個缺權限動作的位置。
  */
 const PermissionAction = ({
   permission,
   permissions = [],
   requireMode = 'all',
   mode = 'disable',
+  reasonDisplay = 'text',
   reason: specifiedReason,
   children,
 }: PermissionActionProps) => {
@@ -66,16 +70,28 @@ const PermissionAction = ({
     ? `需要 ${requiredPermissions[0]} 權限`
     : `需要${requireMode === 'all' ? '全部' : '任一'}權限：${requiredPermissions.join('、')}`);
 
+  const disabledAction = cloneElement(children, {
+    disabled: true,
+    'aria-describedby': describedBy,
+    onClick: (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    },
+  });
+
+  if (reasonDisplay === 'tooltip') {
+    // 停用的表單元素不會觸發滑鼠事件，title 需掛在外層包裝上才顯示得出來。
+    return (
+      <span className="d-inline-block" title={reason}>
+        {disabledAction}
+        <span id={reasonId} className="visually-hidden">{reason}</span>
+      </span>
+    );
+  }
+
   return (
     <>
-      {cloneElement(children, {
-        disabled: true,
-        'aria-describedby': describedBy,
-        onClick: (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-        },
-      })}
+      {disabledAction}
       <small id={reasonId} className="d-block text-muted">{reason}</small>
     </>
   );
