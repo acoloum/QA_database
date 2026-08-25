@@ -18,7 +18,7 @@ calibration_bp = Blueprint("calibrations", __name__)
 @handle_calibration_errors
 def list_calibrations(current_user):
     """以受限分頁列出校正紀錄。"""
-    return jsonify({"data": CalibrationService.list(request.args, actor_id=current_user.id)})
+    return jsonify({"data": CalibrationService.get_list(request.args, actor_id=current_user.id)})
 
 
 @calibration_bp.post("/api/calibrations")

@@ -496,7 +496,7 @@ def test_list_reports_calibration_summary_from_latest_approved_record(
     )
     db_session.commit()
 
-    result = MsaEquipmentService.list(
+    result = MsaEquipmentService.get_list(
         {
             "page": "1",
             "page_size": "25",
@@ -547,7 +547,7 @@ def test_list_calibration_status_filter_preserves_total_and_date_boundaries(
     )
     db_session.commit()
 
-    result = MsaEquipmentService.list(
+    result = MsaEquipmentService.get_list(
         {
             "page": "1",
             "page_size": "25",
@@ -582,7 +582,7 @@ def test_list_calibration_summary_uses_fixed_query_count(db_session):
 
     event.listen(db.engine, "before_cursor_execute", count_selects)
     try:
-        result = MsaEquipmentService.list(
+        result = MsaEquipmentService.get_list(
             {
                 "page": "1",
                 "page_size": "25",
@@ -652,7 +652,7 @@ def test_list_rejects_unbounded_or_non_whitelisted_summary_arguments(
 ):
     """防止巨大 offset、未知狀態或模糊日期進入設備清單查詢。"""
     with pytest.raises(MsaServiceError) as error:
-        MsaEquipmentService.list(args)
+        MsaEquipmentService.get_list(args)
 
     assert error.value.code == code
 
@@ -667,7 +667,7 @@ def test_pass_calibration_without_next_due_is_missing_everywhere(
     _calibration(db_session, equipment, next_due_date=None)
     db_session.commit()
 
-    listed = MsaEquipmentService.list(
+    listed = MsaEquipmentService.get_list(
         {
             "page": "1",
             "page_size": "25",
@@ -675,7 +675,7 @@ def test_pass_calibration_without_next_due_is_missing_everywhere(
             "as_of": STUDY_DATE.isoformat(),
         }
     )
-    filtered = MsaEquipmentService.list(
+    filtered = MsaEquipmentService.get_list(
         {
             "page": "1",
             "page_size": "25",
@@ -738,7 +738,7 @@ def test_risk_sort_orders_the_full_result_before_pagination(db_session):
     db_session.commit()
 
     pages = [
-        MsaEquipmentService.list(
+        MsaEquipmentService.get_list(
             {
                 "page": str(page),
                 "page_size": "2",

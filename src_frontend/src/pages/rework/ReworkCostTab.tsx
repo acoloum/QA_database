@@ -37,8 +37,8 @@ const ReworkCostTab = ({ costs, onAddCost, onEditCost, onDeleteCost }: ReworkCos
               <td>{cost.記錄日期 || '-'}</td>
               <td>
                 <div className="btn-group btn-group-sm">
-                  <PermissionAction permission="rework.create"><button className="btn btn-outline-primary" onClick={() => onEditCost(cost)}>編輯</button></PermissionAction>
-                  <PermissionAction permission="rework.delete"><button className="btn btn-outline-danger" onClick={() => cost.識別碼 && onDeleteCost(cost.識別碼)}>刪除</button></PermissionAction>
+                  <PermissionAction permission="rework.create" reasonDisplay="tooltip"><button className="btn btn-outline-primary" onClick={() => onEditCost(cost)}>編輯</button></PermissionAction>
+                  <PermissionAction permission="rework.delete" reasonDisplay="tooltip"><button className="btn btn-outline-danger" onClick={() => cost.識別碼 && onDeleteCost(cost.識別碼)}>刪除</button></PermissionAction>
                 </div>
               </td>
             </tr>

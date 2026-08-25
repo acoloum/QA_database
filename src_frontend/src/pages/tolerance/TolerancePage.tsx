@@ -167,8 +167,8 @@ const TolerancePage = () => {
                                         <td>{item.create_date?.substring(0, 10) || '-'}</td>
                                         <td>
                                             <Button variant="outline-info" size="sm" className="me-2" style={{ fontSize: '14px' }} onClick={() => handleView(item.id)}>查看</Button>
-                                            <PermissionAction permission="tolerance.manage"><Button variant="outline-primary" size="sm" className="me-2" style={{ fontSize: '14px' }} onClick={() => handleEdit(item.id)}>編輯</Button></PermissionAction>
-                                            <PermissionAction permission="tolerance.manage"><Button variant="outline-danger" size="sm" style={{ fontSize: '14px' }} onClick={() => handleDelete(item.id)}>刪除</Button></PermissionAction>
+                                            <PermissionAction permission="tolerance.manage" reasonDisplay="tooltip"><Button variant="outline-primary" size="sm" className="me-2" style={{ fontSize: '14px' }} onClick={() => handleEdit(item.id)}>編輯</Button></PermissionAction>
+                                            <PermissionAction permission="tolerance.manage" reasonDisplay="tooltip"><Button variant="outline-danger" size="sm" style={{ fontSize: '14px' }} onClick={() => handleDelete(item.id)}>刪除</Button></PermissionAction>
                                         </td>
                                     </tr>
                                 ))

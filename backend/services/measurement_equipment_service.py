@@ -157,7 +157,7 @@ class MeasurementEquipmentService:
     """管理設備主檔、受控證據、狀態與來源連結。"""
 
     @staticmethod
-    def list(args) -> dict:
+    def get_list(args) -> dict:
         """以受限分頁與白名單排序列出設備。"""
         page = MeasurementEquipmentService._parse_bounded_int(
             args.get("page", 1),

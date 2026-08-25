@@ -413,7 +413,7 @@ class MsaCriteriaService:
             raise
 
     @staticmethod
-    def list(args) -> dict:
+    def get_list(args) -> dict:
         """以有界分頁及白名單排序列出 profile 與歷史版本。"""
         values = args or {}
         _reject_unknown_fields(values, _LIST_QUERY_FIELDS)

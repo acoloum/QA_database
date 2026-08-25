@@ -104,8 +104,8 @@ const ExtrusionTolerancePage = () => {
                                         <td>{r.備註}</td>
                                         <td>
                                             <Button size="sm" variant="outline-info" className="me-1" onClick={() => handleView(r.識別碼)}>查看</Button>
-                                            <PermissionAction permission="tolerance.manage"><Button size="sm" variant="outline-primary" className="me-1" onClick={() => handleEdit(r.識別碼)}>編輯</Button></PermissionAction>
-                                            <PermissionAction permission="tolerance.manage"><Button size="sm" variant="outline-danger" onClick={() => handleDelete(r.識別碼)}>刪除</Button></PermissionAction>
+                                            <PermissionAction permission="tolerance.manage" reasonDisplay="tooltip"><Button size="sm" variant="outline-primary" className="me-1" onClick={() => handleEdit(r.識別碼)}>編輯</Button></PermissionAction>
+                                            <PermissionAction permission="tolerance.manage" reasonDisplay="tooltip"><Button size="sm" variant="outline-danger" onClick={() => handleDelete(r.識別碼)}>刪除</Button></PermissionAction>
                                         </td>
                                     </tr>
                                 ))}

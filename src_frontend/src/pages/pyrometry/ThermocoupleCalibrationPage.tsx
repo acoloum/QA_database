@@ -113,8 +113,8 @@ const ThermocoupleCalibrationPage = () => {
                       </Badge>
                     </td>
                     <td>
-                      <PermissionAction permission="pyrometry.edit"><Button size="sm" variant="outline-primary" className="me-1" onClick={() => openEdit(t)}>編輯</Button></PermissionAction>
-                      <PermissionAction permission="pyrometry.delete"><Button size="sm" variant="outline-danger" onClick={() => handleDelete(t)}>刪除</Button></PermissionAction>
+                      <PermissionAction permission="pyrometry.edit" reasonDisplay="tooltip"><Button size="sm" variant="outline-primary" className="me-1" onClick={() => openEdit(t)}>編輯</Button></PermissionAction>
+                      <PermissionAction permission="pyrometry.delete" reasonDisplay="tooltip"><Button size="sm" variant="outline-danger" onClick={() => handleDelete(t)}>刪除</Button></PermissionAction>
                     </td>
                   </tr>
                 ))}
@@ -189,7 +189,7 @@ const ThermocoupleCalibrationPage = () => {
                       <Form.Control.Feedback type="invalid">{fieldErrors[`${i}:器差值`]}</Form.Control.Feedback>
                     </td>
                     <td className="text-center">
-                      <PermissionAction permission="pyrometry.edit"><Button size="sm" variant="outline-danger" onClick={() => delRow(i)} disabled={points.length <= 1}>✕</Button></PermissionAction>
+                      <PermissionAction permission="pyrometry.edit" reasonDisplay="tooltip"><Button size="sm" variant="outline-danger" onClick={() => delRow(i)} disabled={points.length <= 1}>✕</Button></PermissionAction>
                     </td>
                   </tr>
                 ))}

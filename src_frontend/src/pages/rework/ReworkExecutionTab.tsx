@@ -40,8 +40,8 @@ const ReworkExecutionTab = ({
               <td>{exec.執行狀況 || '-'}</td>
               <td>
                 <div className="btn-group btn-group-sm">
-                  <PermissionAction permission="rework.create"><button className="btn btn-outline-primary" onClick={() => onEditExecution(exec)}>編輯</button></PermissionAction>
-                  <PermissionAction permission="rework.delete"><button className="btn btn-outline-danger" onClick={() => exec.識別碼 && onDeleteExecution(exec.識別碼)}>刪除</button></PermissionAction>
+                  <PermissionAction permission="rework.create" reasonDisplay="tooltip"><button className="btn btn-outline-primary" onClick={() => onEditExecution(exec)}>編輯</button></PermissionAction>
+                  <PermissionAction permission="rework.delete" reasonDisplay="tooltip"><button className="btn btn-outline-danger" onClick={() => exec.識別碼 && onDeleteExecution(exec.識別碼)}>刪除</button></PermissionAction>
                 </div>
               </td>
             </tr>

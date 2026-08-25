@@ -24,11 +24,15 @@ RUN npm run build
 FROM python:3.12-slim
 
 # Install Nginx and required system packages
-# fonts-noto-cjk 是 MSA 正式 PDF 報告的必要條件：缺少中文字型時
-# 報告服務會直接失敗而不是輸出亂碼，因此映像檔必須內含字型。
+# 中文字型是 MSA 正式 PDF 報告的必要條件：缺少時報告服務會直接失敗
+# （MSA_REPORT_FONT_MISSING）而不是輸出亂碼，因此映像檔必須內含字型。
+# 必須是 TrueType 的 wqy：fonts-noto-cjk 是 CFF/PostScript 輪廓，reportlab 會以
+# "postscript outlines are not supported" 拒絕載入——只裝 Noto 等於沒有字型，
+# 映像內產生 MSA 正式 PDF 會直接失敗。Noto 保留給其他非 reportlab 的用途。
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
     libpq-dev \
+    fonts-wqy-microhei \
     fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 

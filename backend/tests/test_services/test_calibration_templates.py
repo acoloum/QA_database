@@ -1479,7 +1479,7 @@ def test_list_returns_only_current_approved_summary_without_history_loading(
     event.listen(db.engine, "before_cursor_execute", track_sql)
     event.listen(Session, "do_orm_execute", track_orm)
     try:
-        result = CalibrationTemplateService.list(
+        result = CalibrationTemplateService.get_list(
             {
                 "page": "1",
                 "page_size": "100",
@@ -1576,7 +1576,7 @@ def test_list_rejects_huge_or_out_of_range_pagination(
     code,
 ):
     with pytest.raises(CalibrationValidationError) as error:
-        CalibrationTemplateService.list({field: value})
+        CalibrationTemplateService.get_list({field: value})
 
     assert error.value.code == code
     assert error.value.details["field"] == field

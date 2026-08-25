@@ -105,7 +105,7 @@ class MsaStudyService:
         return study
 
     @staticmethod
-    def list(args) -> dict:
+    def get_list(args) -> dict:
         """以有界分頁及白名單排序列出研究。"""
         values = dict(args or {})
         unknown = sorted(set(values) - _LIST_QUERY_FIELDS)

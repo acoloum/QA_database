@@ -165,7 +165,7 @@ export const ComplaintTable = ({
                     CAPA #{c.related_capa_id}
                   </Badge>
                 ) : (
-                  <PermissionAction permission="complaint.edit" permissions={['capa.create']}>
+                  <PermissionAction permission="complaint.edit" permissions={['capa.create']} reasonDisplay="tooltip">
                     <Button variant="outline-warning" size="sm" style={{ fontSize: '0.7rem' }} onClick={() => onOpenCapa(c)} disabled={capaPending}>
                       開立CAPA
                     </Button>
@@ -176,7 +176,7 @@ export const ComplaintTable = ({
                     重工 #{c.related_rework_id}
                   </Badge>
                 ) : (
-                  <PermissionAction permission="complaint.edit" permissions={['rework.create']}>
+                  <PermissionAction permission="complaint.edit" permissions={['rework.create']} reasonDisplay="tooltip">
                     <Button variant="outline-secondary" size="sm" style={{ fontSize: '0.7rem' }} onClick={() => onOpenRework(c)} disabled={reworkPending}>
                       開立重工
                     </Button>
@@ -185,10 +185,10 @@ export const ComplaintTable = ({
               </div>
             </td>
             <td>
-              <PermissionAction permission="complaint.edit">
+              <PermissionAction permission="complaint.edit" reasonDisplay="tooltip">
                 <Button variant="outline-primary" size="sm" className="me-1" onClick={() => onEdit(c)}>編輯</Button>
               </PermissionAction>
-              <PermissionAction permission="complaint.delete">
+              <PermissionAction permission="complaint.delete" reasonDisplay="tooltip">
                 <Button variant="outline-danger" size="sm" onClick={() => onDelete(c)}>刪除</Button>
               </PermissionAction>
             </td>

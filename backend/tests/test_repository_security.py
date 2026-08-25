@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 
 @pytest.fixture
@@ -114,6 +115,37 @@ def test_scanner_detects_utf16_without_bom_after_traditional_chinese(
     assert f"{fixture_name}:2:固定 SECRET_KEY" in result.stdout
 
 
+def _postgres_ports_bound_beyond_loopback(rendered: str) -> list[object]:
+    """回傳把 5432 綁到 127.0.0.1 以外的埠設定。
+
+    Compose 舊版把 ports 渲染成 "127.0.0.1:5432:5432" 短字串，v2.2x 之後改成
+    長格式（host_ip / target / published 各自成欄）。以解析 YAML 判斷實際綁定，
+    才不會因為輸出格式改版就漏掉「對外全開」這種真正該擋的設定。
+
+    完全不發布 5432 比綁 loopback 更嚴格，因此視為通過——這支測試守的是
+    「資料庫埠不可對外」，不是「必須發布資料庫埠」。
+    """
+    config = yaml.safe_load(rendered)
+    published = [
+        port
+        for service in (config.get("services") or {}).values()
+        for port in (service.get("ports") or [])
+    ]
+    offending: list[object] = []
+    for port in published:
+        if isinstance(port, str):
+            if not (port.endswith(":5432") or port == "5432"):
+                continue
+            host_ip = port.rsplit(":", 2)[0] if port.count(":") >= 2 else ""
+        else:
+            if int(port.get("target", 0)) != 5432:
+                continue
+            host_ip = port.get("host_ip", "")
+        if host_ip != "127.0.0.1":
+            offending.append(port)
+    return offending
+
+
 def test_compose_requires_secrets(repo_root: Path) -> None:
     """Compose 缺少秘密時必須拒絕展開，注入測試秘密時可以展開。"""
     if shutil.which("docker") is None:
@@ -143,4 +175,5 @@ def test_compose_requires_secrets(repo_root: Path) -> None:
     )
 
     assert rendered.returncode == 0, rendered.stderr
-    assert "127.0.0.1:5432" in rendered.stdout
+    exposed = _postgres_ports_bound_beyond_loopback(rendered.stdout)
+    assert not exposed, f"5432 綁到 127.0.0.1 以外：{exposed}"

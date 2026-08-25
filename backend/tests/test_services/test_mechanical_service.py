@@ -134,7 +134,7 @@ def test_detail_returns_new_lists_and_unpaired_legacy_rows(app, db_session):
 def test_list_has_independent_trace_summaries(app, db_session):
     MechanicalService.create(_payload(), user_id=None)
 
-    listed = MechanicalService.list({})["data"][0]
+    listed = MechanicalService.get_list({})["data"][0]
 
     assert listed["擠製編號"] == "010761 D35"
     assert listed["T4爐號"] == "011313T42、011314T42"
@@ -258,10 +258,10 @@ def test_legacy_batches_split_trim_deduplicate_and_resequence(
 
 def test_list_filters_by_size(db_session):
     MechanicalService.create(_payload(), user_id=None)
-    res = MechanicalService.list({"product_size": "36"})
+    res = MechanicalService.get_list({"product_size": "36"})
     assert res["total"] == 1
     assert res["data"][0]["產品尺寸"] == "36x25.2"
-    res2 = MechanicalService.list({"product_size": "99"})
+    res2 = MechanicalService.get_list({"product_size": "99"})
     assert res2["total"] == 0
 
 
@@ -269,19 +269,19 @@ def test_list_filters_by_id(db_session):
     """依 ID 精確定位單筆（供稽核清單逐筆調閱）。"""
     new_id = MechanicalService.create(_payload(), user_id=None)
 
-    res = MechanicalService.list({"id": str(new_id)})
+    res = MechanicalService.get_list({"id": str(new_id)})
     assert res["total"] == 1
     assert res["data"][0]["識別碼"] == new_id
 
-    assert MechanicalService.list({"id": str(new_id + 999)})["total"] == 0
+    assert MechanicalService.get_list({"id": str(new_id + 999)})["total"] == 0
 
 
 def test_list_id_filter_ignores_blank_and_rejects_non_numeric(db_session):
     """空白視為未篩選；非數字不得拋錯，回報查無即可。"""
     MechanicalService.create(_payload(), user_id=None)
 
-    assert MechanicalService.list({"id": "  "})["total"] == 1
-    assert MechanicalService.list({"id": "abc"})["total"] == 0
+    assert MechanicalService.get_list({"id": "  "})["total"] == 1
+    assert MechanicalService.get_list({"id": "abc"})["total"] == 0
 
 
 def test_update_recomputes_ng(db_session):
@@ -454,7 +454,7 @@ def test_judgement_status_without_complete_spec(db_session, measurements, expect
     payload["measurements"] = measurements
     test_id = MechanicalService.create(payload, user_id=None)
     assert MechanicalService.get_detail(test_id)["main"]["判定狀態"] == expected
-    assert MechanicalService.list({})["data"][0]["判定狀態"] == expected
+    assert MechanicalService.get_list({})["data"][0]["判定狀態"] == expected
 
 
 def test_judgement_status_ok_requires_all_four_items(db_session):
@@ -677,7 +677,7 @@ def test_nullable_fields_are_serialized_as_null(db_session):
     test_id = MechanicalService.create(payload, user_id=None)
 
     detail = MechanicalService.get_detail(test_id)
-    listed = MechanicalService.list({})["data"][0]
+    listed = MechanicalService.get_list({})["data"][0]
     assert detail["main"]["測試日期"] is None
     assert detail["main"]["T4溫度時間"] is None
     assert detail["main"]["備註"] is None

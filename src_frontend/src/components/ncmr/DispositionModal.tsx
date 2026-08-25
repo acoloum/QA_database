@@ -158,7 +158,7 @@ const DispositionModal = ({ show, handleClose, onSuccess, item }: DispositionMod
                                 <td>{d.處置數量}</td>
                                 <td>{d.是否風險項 ? <span className="text-danger">⚠ 未授權放行</span> : ''}</td>
                                 <td>
-                                    <PermissionAction permission="ncmr.disposition"><Button variant="outline-danger" size="sm"
+                                    <PermissionAction permission="ncmr.disposition" reasonDisplay="tooltip"><Button variant="outline-danger" size="sm"
                                         onClick={() => handleDelete(d.識別碼)}>刪除</Button></PermissionAction>
                                 </td>
                             </tr>

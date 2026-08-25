@@ -84,8 +84,8 @@ const FurnaceMasterPage = () => {
                       </Badge>
                     </td>
                     <td>
-                      <PermissionAction permission="pyrometry.edit"><Button size="sm" variant="outline-primary" className="me-1" onClick={() => openEdit(f)}>編輯</Button></PermissionAction>
-                      <PermissionAction permission="pyrometry.delete"><Button size="sm" variant="outline-danger" onClick={() => handleDelete(f)}>刪除</Button></PermissionAction>
+                      <PermissionAction permission="pyrometry.edit" reasonDisplay="tooltip"><Button size="sm" variant="outline-primary" className="me-1" onClick={() => openEdit(f)}>編輯</Button></PermissionAction>
+                      <PermissionAction permission="pyrometry.delete" reasonDisplay="tooltip"><Button size="sm" variant="outline-danger" onClick={() => handleDelete(f)}>刪除</Button></PermissionAction>
                       <Button size="sm" variant="outline-info" className="ms-1"
                         onClick={() => { setTrendFurnaceId(f.識別碼); setShowTrend(true); }}>趨勢</Button>
                     </td>

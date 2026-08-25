@@ -257,7 +257,7 @@ export default function MechanicalTestListPage() {
                     </td>
                     <td>{row.免測 || '—'}</td>
                     <td>
-                      <PermissionAction permission="mechanical.edit"><Button
+                      <PermissionAction permission="mechanical.edit" reasonDisplay="tooltip"><Button
                         size="sm"
                         variant="outline-primary"
                         className="me-1"
@@ -265,7 +265,7 @@ export default function MechanicalTestListPage() {
                       >
                         編輯
                       </Button></PermissionAction>
-                      <PermissionAction permission="mechanical.delete"><Button
+                      <PermissionAction permission="mechanical.delete" reasonDisplay="tooltip"><Button
                         size="sm"
                         variant="outline-danger"
                         onClick={() => {

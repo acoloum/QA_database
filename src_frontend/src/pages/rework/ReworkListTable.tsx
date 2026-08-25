@@ -75,11 +75,11 @@ const ReworkListTable = memo(({ loading, applications, onOpenDetail, onApprove, 
                     <div className="btn-group btn-group-sm">
                       <button className="btn btn-outline-info" onClick={() => onOpenDetail(item)}>詳情</button>
                       {item.狀態 === '申請中' && (
-                        <PermissionAction permission="rework.approve">
+                        <PermissionAction permission="rework.approve" reasonDisplay="tooltip">
                           <button className="btn btn-outline-success" onClick={() => onApprove(item.識別碼)}>審核</button>
                         </PermissionAction>
                       )}
-                      <PermissionAction permission="rework.delete">
+                      <PermissionAction permission="rework.delete" reasonDisplay="tooltip">
                         <button className="btn btn-outline-danger" onClick={() => onDelete(item.識別碼)}>刪除</button>
                       </PermissionAction>
                     </div>

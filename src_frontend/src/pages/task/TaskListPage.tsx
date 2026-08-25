@@ -178,7 +178,7 @@ const TaskListPage = () => {
                                                 </Badge>
                                             </td>
                                             <td>
-                                                <PermissionAction permission="task.view"><Button
+                                                <PermissionAction permission="task.view" reasonDisplay="tooltip"><Button
                                                     variant="outline-primary"
                                                     size="sm"
                                                     onClick={() => setSelected(task)}

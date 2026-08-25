@@ -30,7 +30,7 @@ msa_bp = Blueprint("msa", __name__)
 @_handle_msa_errors
 def list_criteria(current_user):
     """列出目前身分可檢視的準則 profile 與歷史版本。"""
-    return jsonify({"data": MsaCriteriaService.list(request.args)})
+    return jsonify({"data": MsaCriteriaService.get_list(request.args)})
 
 
 @msa_bp.post("/api/msa/criteria")
@@ -96,7 +96,7 @@ def approve_criteria_version(current_user, version_id: int):
 @_handle_msa_errors
 def list_msa_studies(current_user):
     """以有界分頁列出 MSA 研究。"""
-    return jsonify({"data": MsaStudyService.list(request.args)})
+    return jsonify({"data": MsaStudyService.get_list(request.args)})
 
 
 @msa_bp.post("/api/msa/studies")
@@ -445,7 +445,7 @@ def void_msa_result(current_user, result_id: int):
 @_handle_msa_errors
 def list_msa_restudy_requests(current_user):
     """列出待處理與進行中的再研究要求。"""
-    return jsonify({"data": MsaRestudyService.list(request.args)})
+    return jsonify({"data": MsaRestudyService.get_list(request.args)})
 
 
 @msa_bp.post("/api/msa/restudy-requests")

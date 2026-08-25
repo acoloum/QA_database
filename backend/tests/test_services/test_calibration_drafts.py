@@ -1141,7 +1141,7 @@ def test_list_total_is_not_limited_by_page_size(db_session, calibration_users):
         )
     db_session.commit()
 
-    result = CalibrationService.list(
+    result = CalibrationService.get_list(
         {"page": 1, "page_size": 1},
         actor_id=calibration_users["viewer"]["user"].id,
     )
@@ -1172,11 +1172,11 @@ def test_list_risk_sort_is_applied_before_pagination(
         )
     db_session.commit()
 
-    first = CalibrationService.list(
+    first = CalibrationService.get_list(
         {"page": 1, "page_size": 1, "sort": "risk", "order": "asc"},
         actor_id=calibration_users["viewer"]["user"].id,
     )
-    second = CalibrationService.list(
+    second = CalibrationService.get_list(
         {"page": 2, "page_size": 1, "sort": "risk", "order": "asc"},
         actor_id=calibration_users["viewer"]["user"].id,
     )
@@ -1212,7 +1212,7 @@ def test_list_search_filters_equipment_number_and_name(
         )
     db_session.commit()
 
-    result = CalibrationService.list(
+    result = CalibrationService.get_list(
         {
             "page": 1,
             "page_size": 25,

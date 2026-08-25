@@ -110,11 +110,11 @@ const PyrometryTestListPage = () => {
                       </td>
                       <td>{r.測試人員姓名}</td>
                       <td>
-                        <PermissionAction permission="pyrometry.edit"><Button size="sm" variant="outline-primary" className="me-1"
+                        <PermissionAction permission="pyrometry.edit" reasonDisplay="tooltip"><Button size="sm" variant="outline-primary" className="me-1"
                           onClick={() => { setEditId(r.識別碼); setShowForm(true); }}>編輯</Button></PermissionAction>
-                        <PermissionAction permission="pyrometry.delete"><Button size="sm" variant="outline-danger"
+                        <PermissionAction permission="pyrometry.delete" reasonDisplay="tooltip"><Button size="sm" variant="outline-danger"
                           onClick={() => confirmDelete(r)}>刪除</Button></PermissionAction>
-                        <PermissionAction permission="pyrometry.view"><Button size="sm" variant="outline-secondary" className="ms-1"
+                        <PermissionAction permission="pyrometry.view" reasonDisplay="tooltip"><Button size="sm" variant="outline-secondary" className="ms-1"
                           onClick={() => exportMutation.mutate(r.識別碼)}
                           disabled={exportMutation.isPending}
                         >匯出</Button></PermissionAction>

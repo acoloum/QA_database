@@ -253,13 +253,13 @@ const ShippingPage = () => {
                                                 </td>
                                                 <td>
                                                     <div className="action-buttons">
-                                                        <PermissionAction permission="shipping.edit"><button
+                                                        <PermissionAction permission="shipping.edit" reasonDisplay="tooltip"><button
                                                             className="btn btn-sm btn-outline-primary"
                                                             onClick={() => handleEdit(itemId)}
                                                         >
                                                             編輯
                                                         </button></PermissionAction>
-                                                        <PermissionAction permission="shipping.delete"><button
+                                                        <PermissionAction permission="shipping.delete" reasonDisplay="tooltip"><button
                                                             className="btn btn-sm btn-outline-danger"
                                                             onClick={() => handleDelete(itemId)}
                                                         >

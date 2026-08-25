@@ -39,6 +39,10 @@ from backend.services.spc_transformations import evaluate_transformations
 
 
 DATASET_VERSION = "spc-advanced-golden-2026.2"
+# 基準內多數數值的容差是 abs 5e-08；分布轉換的 tail_quantiles 例外，因為它們是由
+# 擬合參數推導出來的，容差必須大於「參數在自己容差內變動」所造成的位移，否則守門
+# 自相矛盾、只能靠運氣通過。那些數字是由誤差傳遞算出來的，且由
+# tests/test_services/test_spc_advanced_tolerance_coherence.py 釘住上下界。
 EXPECTED_PATH = Path(__file__).with_name("spc_advanced_expected_2026_2.json")
 PASS_LINE = (
     "[PASS] SPC 2026.2 進階分析確效通過；"

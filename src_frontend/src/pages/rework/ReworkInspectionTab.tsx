@@ -40,8 +40,8 @@ const ReworkInspectionTab = ({
               <td>{inspection.檢驗日期 || '-'}</td>
               <td>
                 <div className="btn-group btn-group-sm">
-                  <PermissionAction permission="rework.create"><button className="btn btn-outline-primary" onClick={() => onEditInspection(inspection)}>編輯</button></PermissionAction>
-                  <PermissionAction permission="rework.delete"><button className="btn btn-outline-danger" onClick={() => inspection.識別碼 && onDeleteInspection(inspection.識別碼)}>刪除</button></PermissionAction>
+                  <PermissionAction permission="rework.create" reasonDisplay="tooltip"><button className="btn btn-outline-primary" onClick={() => onEditInspection(inspection)}>編輯</button></PermissionAction>
+                  <PermissionAction permission="rework.delete" reasonDisplay="tooltip"><button className="btn btn-outline-danger" onClick={() => inspection.識別碼 && onDeleteInspection(inspection.識別碼)}>刪除</button></PermissionAction>
                 </div>
               </td>
             </tr>

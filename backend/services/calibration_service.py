@@ -94,7 +94,7 @@ class CalibrationService:
     """校正記錄完整生命週期服務。"""
 
     @staticmethod
-    def list(params: dict, actor_id: int) -> dict:
+    def get_list(params: dict, actor_id: int) -> dict:
         """分頁列出校正紀錄。"""
         values = params or {}
         unknown = set(values.keys()) - _LIST_FIELDS

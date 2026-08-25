@@ -215,7 +215,7 @@ def test_missing_study_is_reported_as_not_found(db_session, msa_manager):
 def test_list_is_bounded_and_uses_whitelisted_sort(db_session, msa_manager):
     MsaStudyService.create(_payload(), actor_id=msa_manager.id)
 
-    page = MsaStudyService.list({"page": 1, "page_size": 25, "sort": "study_no"})
+    page = MsaStudyService.get_list({"page": 1, "page_size": 25, "sort": "study_no"})
 
     assert set(page) == {"items", "page", "page_size", "total"}
     assert page["total"] >= 1
@@ -233,7 +233,7 @@ def test_list_is_bounded_and_uses_whitelisted_sort(db_session, msa_manager):
 )
 def test_list_rejects_unsafe_query(db_session, args):
     with pytest.raises(MsaValidationError):
-        MsaStudyService.list(args)
+        MsaStudyService.get_list(args)
 
 
 def test_serialize_exposes_stable_study_contract(db_session, msa_manager):

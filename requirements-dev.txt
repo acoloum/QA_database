@@ -1,0 +1,4 @@
+# 只供開發與 CI 使用；requirements.txt 會被 Dockerfile 裝進生產映像，
+# 測試框架不該一起進去。CI 會兩份都裝。
+-r requirements.txt
+pytest==9.1.1
