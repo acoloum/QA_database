@@ -103,6 +103,11 @@ describe('PermissionAction', () => {
     const reason = screen.getByText('需要 tolerance.manage 權限');
     expect(reason).toHaveClass('visually-hidden');
     expect(button.getAttribute('aria-describedby')).toContain(reason.id);
+
+    // 停用的按鈕不進 tab 順序，因此說明必須掛在可聚焦的包裝上，
+    // 否則鍵盤與螢幕報讀使用者永遠拿不到原因（只剩滑鼠 hover 一條路）
+    expect(wrapper).toHaveAttribute('tabindex', '0');
+    expect(wrapper.getAttribute('aria-describedby')).toContain(reason.id);
   });
 
   it('mode hide 在缺權限時不呈現動作', () => {

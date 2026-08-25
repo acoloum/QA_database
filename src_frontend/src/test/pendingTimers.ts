@@ -29,11 +29,15 @@ export interface TimerTracker {
 
 export const createTimerTracker = (scope: TimerScope): TimerTracker => {
   const pending = new Set<ReturnType<typeof setTimeout>>();
-  const original = scope.setTimeout;
+  // 兩個都在安裝當下捕捉：clearPending 若改用當時的 scope.clearTimeout，
+  // 遇到測試留著假計時器沒還原時，取消的會是假的那一套，真正洩漏的 handle
+  // 反而沒被清掉——正好是這個模組要防的那個崩潰。
+  const originalSetTimeout = scope.setTimeout;
+  const originalClearTimeout = scope.clearTimeout;
 
   const install = () => {
-    const wrapped = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
-      const handle = original(
+    const wrappedSetTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+      const handle = originalSetTimeout(
         (...called: unknown[]) => {
           pending.delete(handle);
           if (typeof handler === 'function') {
@@ -47,16 +51,25 @@ export const createTimerTracker = (scope: TimerScope): TimerTracker => {
       return handle;
     }) as typeof setTimeout;
 
-    scope.setTimeout = wrapped;
+    // 一併包裝 clearTimeout，否則被取消的 handle 永遠留在集合裡：
+    // pendingCount 會虛報，集合也會隨測試檔內排定的每一個計時器成長。
+    const wrappedClearTimeout = ((handle?: ReturnType<typeof setTimeout>) => {
+      if (handle !== undefined) pending.delete(handle);
+      return originalClearTimeout(handle);
+    }) as typeof clearTimeout;
+
+    scope.setTimeout = wrappedSetTimeout;
+    scope.clearTimeout = wrappedClearTimeout;
     return () => {
-      scope.setTimeout = original;
+      scope.setTimeout = originalSetTimeout;
+      scope.clearTimeout = originalClearTimeout;
     };
   };
 
   return {
     install,
     clearPending: () => {
-      pending.forEach((handle) => scope.clearTimeout(handle));
+      pending.forEach((handle) => originalClearTimeout(handle));
       pending.clear();
     },
     pendingCount: () => pending.size,

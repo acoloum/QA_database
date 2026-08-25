@@ -49,12 +49,47 @@ describe('createTimerTracker', () => {
     vi.useRealTimers();
   });
 
-  it('還原後 setTimeout 回到原本的實作', () => {
+  it('取消的計時器會離開排隊集合，不虛報也不無限成長', () => {
+    vi.useFakeTimers();
     const scope = makeScope();
-    const before = scope.setTimeout;
-    const restore = createTimerTracker(scope).install();
-    expect(scope.setTimeout).not.toBe(before);
+    const tracker = createTimerTracker(scope);
+    const restore = tracker.install();
+
+    const handle = scope.setTimeout(() => {}, 5);
+    expect(tracker.pendingCount()).toBe(1);
+    scope.clearTimeout(handle);
+    expect(tracker.pendingCount()).toBe(0);
+
     restore();
-    expect(scope.setTimeout).toBe(before);
+    vi.useRealTimers();
+  });
+
+  it('即使測試留著假計時器沒還原，clearPending 仍以原始 clearTimeout 取消', () => {
+    const scope = makeScope();
+    const tracker = createTimerTracker(scope);
+    const restore = tracker.install();
+
+    scope.setTimeout(() => {}, 5);
+    // 模擬測試裝了假計時器卻沒還原：scope 上的 clearTimeout 被換掉
+    const fakeClear = vi.fn();
+    scope.clearTimeout = fakeClear as unknown as typeof clearTimeout;
+
+    tracker.clearPending();
+
+    expect(fakeClear).not.toHaveBeenCalled();
+    expect(tracker.pendingCount()).toBe(0);
+    restore();
+  });
+
+  it('還原後 setTimeout 與 clearTimeout 都回到原本的實作', () => {
+    const scope = makeScope();
+    const beforeSet = scope.setTimeout;
+    const beforeClear = scope.clearTimeout;
+    const restore = createTimerTracker(scope).install();
+    expect(scope.setTimeout).not.toBe(beforeSet);
+    expect(scope.clearTimeout).not.toBe(beforeClear);
+    restore();
+    expect(scope.setTimeout).toBe(beforeSet);
+    expect(scope.clearTimeout).toBe(beforeClear);
   });
 });

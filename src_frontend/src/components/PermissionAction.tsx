@@ -81,8 +81,16 @@ const PermissionAction = ({
 
   if (reasonDisplay === 'tooltip') {
     // 停用的表單元素不會觸發滑鼠事件，title 需掛在外層包裝上才顯示得出來。
+    // 包裝本身也要可聚焦並帶 aria-describedby：停用的按鈕不進 tab 順序，
+    // 說明掛在按鈕上永遠不會被讀出來，滑鼠以外的使用者就完全拿不到原因。
     return (
-      <span className="permission-action-tooltip" title={reason}>
+      <span
+        className="permission-action-tooltip"
+        title={reason}
+        tabIndex={0}
+        role="group"
+        aria-describedby={reasonId}
+      >
         {disabledAction}
         <span id={reasonId} className="visually-hidden">{reason}</span>
       </span>
