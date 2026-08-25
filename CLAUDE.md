@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A full-stack Quality Control (QC) inspection management system covering product inspections, defect tracking (NCMR), corrective actions (CAPA/8D), rework workflows, SPC studies, MSA (measurement system analysis), equipment calibration, pyrometry (CQI-9), and mechanical testing. The UI is primarily in Traditional Chinese.
 
-**Stack:** Flask 3.1 (Python) + React 19 (TypeScript) + PostgreSQL 16 + Nginx + Docker
+**Stack:** Flask 3.1 (Python) + React 19 (TypeScript) + PostgreSQL 18 + Nginx + Docker
 
 **Scale:** ~73 ORM models, ~80 service modules, ~180 API routes, ~180 React components.
 Tests: 114 backend pytest files, 142 frontend vitest files — both suites are expected to stay green.
