@@ -265,11 +265,19 @@ def test_same_time_candidate_with_internal_diagnostic_drift_fails():
 
 
 def test_optimizer_tolerances_are_portable_without_weakening_acceptance_threshold():
+    """優化器「直接輸出」的容差維持在 1e-8～1e-7。
+
+    tail_quantiles 不在此列：它們不是優化器的直接輸出，而是由這些參數推導出來、
+    且回到原始單位（量級可達 55）的值。對它們套用固定的絕對上限會與物理矛盾——
+    參數在自己被允許的 5e-08 內變動，就足以讓分位數位移 2e-05。那條界線改由
+    test_spc_advanced_tolerance_coherence.py 以誤差傳遞同時鎖住下限與上限，
+    比單一固定數字更嚴格，也不會把守門變成只能靠運氣通過。
+    """
     _, tolerances = _load_baseline()
     optimizer_paths = [
         path for path in tolerances
         if path.startswith("transformations.")
-        and any(name in path for name in ("params", "ad_statistic", "tail_quantiles"))
+        and any(name in path for name in ("params", "ad_statistic"))
     ]
     assert optimizer_paths
     assert all(1e-8 <= tolerances[path]["abs"] <= 1e-7 for path in optimizer_paths)
