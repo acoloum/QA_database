@@ -6,7 +6,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 A full-stack Quality Control (QC) inspection management system for managing product inspections, defect tracking (NCMR), corrective actions (CAR/8D), and rework workflows. The UI is primarily in Traditional Chinese.
 
-**Stack:** Flask 3.1 (Python) + React 19 (TypeScript) + PostgreSQL 16 + Nginx + Docker
+**Stack:** Flask 3.1 (Python) + React 19 (TypeScript) + PostgreSQL 18 + Nginx + Docker
 
 ---
 

@@ -5,16 +5,24 @@ services:
   # PostgreSQL Database
   # ============================================
   db:
-    image: postgres:16-alpine
+    # 對齊正式環境使用的 PostgreSQL 18。
+    # 掛載點是 /var/lib/postgresql 而非底下的 data：官方映像自 18 起把
+    # PGDATA 改成版本專屬路徑（/var/lib/postgresql/18/docker），掛在舊的
+    # /var/lib/postgresql/data 會讓資料落在 volume 之外，容器一重建就消失。
+    # 既有的 16 資料卷無法直接沿用，升級步驟見
+    # docs/migrations/postgres-16-to-18-compose-upgrade.md。
+    image: postgres:18-alpine
     container_name: qc-database-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: qa_database
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      # 這組 initdb 參數決定排序規則，換卷重建時必須完全一致，
+      # 否則索引順序與字串比較行為會與舊庫不同。
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
