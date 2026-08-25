@@ -45,7 +45,7 @@ def _json_object():
 def list_tests():
     """機械性質檢驗清單查詢"""
     try:
-        return jsonify(MechanicalService.list(request.args))
+        return jsonify(MechanicalService.get_list(request.args))
     except Exception as e:
         return _mechanical_error_response(e)
 

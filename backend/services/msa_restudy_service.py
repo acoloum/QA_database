@@ -199,7 +199,7 @@ class MsaRestudyService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def list(args) -> dict:
+    def get_list(args) -> dict:
         values = dict(args or {})
         reject_unknown_fields(values, _LIST_QUERY_FIELDS)
         page = _bounded_int(values.get("page", 1), minimum=1, maximum=10_000)

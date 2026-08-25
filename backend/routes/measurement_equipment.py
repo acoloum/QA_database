@@ -113,7 +113,7 @@ def confirm_import(current_user, batch_id: int):
 @_handle_msa_errors
 def list_equipment(current_user):
     """列出目前身分可檢視的量測設備。"""
-    return jsonify({"data": MeasurementEquipmentService.list(request.args)})
+    return jsonify({"data": MeasurementEquipmentService.get_list(request.args)})
 
 
 @measurement_equipment_bp.post("/api/measurement-equipment")

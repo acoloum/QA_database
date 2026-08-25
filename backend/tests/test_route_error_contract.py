@@ -297,7 +297,7 @@ def test_routes_never_leak_exception_strings():
         (NCMRService, 'get_ncmr_list', 'get', '/api/ncmr', None),
         (TaskService, 'list_tasks', 'get', '/api/tasks', None),
         (ToleranceService, 'get_options', 'get', '/api/tolerance/options', None),
-        (MechanicalService, 'list', 'get', '/api/mechanical/tests', None),
+        (MechanicalService, 'get_list', 'get', '/api/mechanical/tests', None),
         (VendorPerformanceService, 'list_by_period', 'get', '/api/vendor-performance', None),
     ],
 )

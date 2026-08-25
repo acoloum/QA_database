@@ -21,7 +21,7 @@ calibration_template_bp = Blueprint("calibration_templates", __name__)
 @handle_calibration_errors
 def list_calibration_templates(current_user):
     """以受限分頁列出校正模板及受控版本。"""
-    return jsonify({"data": CalibrationTemplateService.list(request.args)})
+    return jsonify({"data": CalibrationTemplateService.get_list(request.args)})
 
 
 @calibration_template_bp.post("/api/calibration-templates")

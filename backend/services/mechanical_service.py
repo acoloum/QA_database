@@ -624,7 +624,7 @@ class MechanicalService:
             raise
 
     @staticmethod
-    def list(args: Dict[str, Any]) -> Dict[str, Any]:
+    def get_list(args: Dict[str, Any]) -> Dict[str, Any]:
         query = MechanicalTest.query
         # 依 ID 精確定位單筆（供稽核清單逐筆調閱；非數字視為無此紀錄）
         if str(args.get("id") or "").strip():

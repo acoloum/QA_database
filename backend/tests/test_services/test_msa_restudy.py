@@ -349,7 +349,7 @@ def test_list_is_bounded_and_sorted_by_due_date(
         actor_id=msa_manager.id,
     )
 
-    page = MsaRestudyService.list({"page": 1, "page_size": 25})
+    page = MsaRestudyService.get_list({"page": 1, "page_size": 25})
 
     assert set(page) == {"items", "page", "page_size", "total"}
     assert page["total"] == 2
@@ -358,6 +358,6 @@ def test_list_is_bounded_and_sorted_by_due_date(
 
 def test_list_rejects_unknown_query_fields(db_session):
     with pytest.raises(MsaValidationError) as error:
-        MsaRestudyService.list({"unexpected": "1"})
+        MsaRestudyService.get_list({"unexpected": "1"})
 
     assert error.value.code == "MSA_UNKNOWN_FIELDS"

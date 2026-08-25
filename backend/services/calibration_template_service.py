@@ -135,7 +135,7 @@ class CalibrationTemplateService:
     """集中處理模板驗證、交易、鎖定與穩定序列化。"""
 
     @staticmethod
-    def list(params) -> dict:
+    def get_list(params) -> dict:
         """以白名單排序與有界分頁列出模板。"""
         values = params or {}
         unknown = set(values.keys()) - _LIST_FIELDS

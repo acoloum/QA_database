@@ -281,7 +281,7 @@ def test_measurement_equipment_service_does_not_expose_retired_calibration_or_ms
         if isinstance(member, staticmethod) and not name.startswith("_")
     }
     assert public_methods == {
-        "list", "get", "create", "update", "create_status_event",
+        "get_list", "get", "create", "update", "create_status_event",
         "create_link", "retire_link",
     }
 
@@ -416,7 +416,7 @@ def test_missing_due_date_is_never_serialized_as_valid(db_session):
     )
     db_session.commit()
 
-    summary = MsaEquipmentService.list({"as_of": ON_DATE.isoformat()})
+    summary = MsaEquipmentService.get_list({"as_of": ON_DATE.isoformat()})
 
     assert summary["items"][0]["calibration_status"] == "missing"
     assert summary["items"][0]["calibration_status"] != "valid"
