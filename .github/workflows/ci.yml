@@ -21,8 +21,10 @@ jobs:
         python-version: ['3.12', '3.14']
 
     services:
+      # 對齊實際使用的 PostgreSQL 18；不合格品併發確效（Task 7）的 fixture
+      # 也明確要求 18，版本不符會直接 fail 而非 skip。
       postgres:
-        image: postgres:16
+        image: postgres:18
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -39,10 +41,10 @@ jobs:
       # 應用程式的密鑰在下面的步驟即時產生後寫入 $GITHUB_ENV，
       # 不在版控檔案裡留下任何固定值（scan_tracked_secrets.py 會擋）。
       # 各整合測試各自使用獨立 database，彼此不互相汙染
-      TOKEN_VERSION_TEST_DATABASE_URL:   postgresql://postgres:postgres@localhost:5432/ci_token_version
-      ROUTE_PERMISSION_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ci_route_permission
-      CALIBRATION_TEST_DATABASE_URL:     postgresql://postgres:postgres@localhost:5432/ci_calibration
-      ATOMICITY_TEST_DATABASE_URL:       postgresql://postgres:postgres@localhost:5432/ci_atomicity
+      TOKEN_VERSION_TEST_DATABASE_URL:   postgresql://postgres:postgres@localhost:5432/codex_token50_ci
+      ROUTE_PERMISSION_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/codex_permissions51_ci
+      CALIBRATION_TEST_DATABASE_URL:     postgresql://postgres:postgres@localhost:5432/calibration_t49_ci
+      ATOMICITY_TEST_DATABASE_URL:       postgresql://postgres:postgres@localhost:5432/codex_atomicity7_ci
       # SPC migration / 並發整合測試（走 psql CLI）
       SPC_POSTGRES_INTEGRATION: '1'
       SPC_PG_HOST: localhost
@@ -62,8 +64,15 @@ jobs:
       - name: 產生本次執行用的隨機密鑰
         run: echo "SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')" >> "$GITHUB_ENV"
 
-      - name: 安裝 psql 用戶端
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: 安裝 psql 用戶端與繁體中文字型
+        # 8D 與 MSA 報表以 reportlab 產生 PDF，缺 CJK 字型時 msa_report 會直接
+        # 擋下（MSA_REPORT_FONT_MISSING），eightd_pdf 則退回 Helvetica 輸出亂碼。
+        # 必須是 TrueType 的 wqy：fonts-noto-cjk 是 CFF/PostScript 輪廓，
+        # reportlab 會以 "postscript outlines are not supported" 拒絕載入，
+        # 裝了也沒有用。
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client fonts-wqy-microhei
 
       - name: 安裝 Python 依賴
         run: |
@@ -71,8 +80,10 @@ jobs:
           pip install -r requirements.txt
 
       - name: 建立整合測試用的 database
+        # 資料庫名稱不可任意更動：各 fixture 會檢查前綴，確認自己連的是拋棄式
+        # 隔離庫而不是共用或正式庫，前綴不符會直接 fail 而非 skip。
         run: |
-          for db in ci_token_version ci_route_permission ci_calibration ci_atomicity; do
+          for db in codex_token50_ci codex_permissions51_ci calibration_t49_ci codex_atomicity7_ci; do
             psql "postgresql://postgres:postgres@localhost:5432/postgres" -v ON_ERROR_STOP=1 -c "CREATE DATABASE $db"
           done
 

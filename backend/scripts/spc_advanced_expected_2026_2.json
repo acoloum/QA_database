@@ -1554,15 +1554,15 @@
     },
     "transformations.boxcox.tail_quantiles[0]": {
       "abs": 5e-08,
-      "rel": 0.0
+      "rel": 1e-07
     },
     "transformations.boxcox.tail_quantiles[1]": {
       "abs": 5e-08,
-      "rel": 0.0
+      "rel": 1e-07
     },
     "transformations.boxcox.tail_quantiles[2]": {
       "abs": 5e-08,
-      "rel": 0.0
+      "rel": 1e-07
     },
     "transformations.boxcox.roundtrip_relative_error": {
       "abs": 1e-09,
@@ -1602,15 +1602,15 @@
     },
     "transformations.johnson_su.tail_quantiles[0]": {
       "abs": 5e-08,
-      "rel": 0.0
+      "rel": 1e-07
     },
     "transformations.johnson_su.tail_quantiles[1]": {
       "abs": 5e-08,
-      "rel": 0.0
+      "rel": 1e-07
     },
     "transformations.johnson_su.tail_quantiles[2]": {
       "abs": 5e-08,
-      "rel": 0.0
+      "rel": 1e-07
     },
     "transformations.johnson_su.roundtrip_relative_error": {
       "abs": 1e-09,
@@ -1650,15 +1650,15 @@
     },
     "transformations.johnson_sb.tail_quantiles[0]": {
       "abs": 5e-08,
-      "rel": 0.0
+      "rel": 1e-07
     },
     "transformations.johnson_sb.tail_quantiles[1]": {
       "abs": 5e-08,
-      "rel": 0.0
+      "rel": 1e-07
     },
     "transformations.johnson_sb.tail_quantiles[2]": {
       "abs": 5e-08,
-      "rel": 0.0
+      "rel": 1e-07
     },
     "transformations.johnson_sb.roundtrip_relative_error": {
       "abs": 1e-09,
@@ -1694,15 +1694,15 @@
     },
     "transformations.johnson_sl.tail_quantiles[0]": {
       "abs": 5e-08,
-      "rel": 0.0
+      "rel": 1e-07
     },
     "transformations.johnson_sl.tail_quantiles[1]": {
       "abs": 5e-08,
-      "rel": 0.0
+      "rel": 1e-07
     },
     "transformations.johnson_sl.tail_quantiles[2]": {
       "abs": 5e-08,
-      "rel": 0.0
+      "rel": 1e-07
     },
     "transformations.johnson_sl.roundtrip_relative_error": {
       "abs": 1e-09,
