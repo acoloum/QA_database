@@ -82,7 +82,7 @@ const PermissionAction = ({
   if (reasonDisplay === 'tooltip') {
     // 停用的表單元素不會觸發滑鼠事件，title 需掛在外層包裝上才顯示得出來。
     return (
-      <span className="d-inline-block" title={reason}>
+      <span className="permission-action-tooltip" title={reason}>
         {disabledAction}
         <span id={reasonId} className="visually-hidden">{reason}</span>
       </span>

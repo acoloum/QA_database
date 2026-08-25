@@ -224,7 +224,7 @@ const CAPAPage = () => {
                                             </Badge>
                                         </td>
                                         <td>
-                                            <PermissionAction permission="capa.view"><Button
+                                            <PermissionAction permission="capa.view" reasonDisplay="tooltip"><Button
                                                 variant="outline-primary"
                                                 size="sm"
                                                 className="me-1"
@@ -232,7 +232,7 @@ const CAPAPage = () => {
                                             >
                                                 處理
                                             </Button></PermissionAction>
-                                            <PermissionAction permission="capa.close"><Button
+                                            <PermissionAction permission="capa.close" reasonDisplay="tooltip"><Button
                                                 variant="outline-danger"
                                                 size="sm"
                                                 onClick={() => handleDelete(item)}

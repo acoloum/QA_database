@@ -98,6 +98,8 @@ describe('PermissionAction', () => {
     expect(button).toBeDisabled();
     const wrapper = button.parentElement as HTMLElement;
     expect(wrapper).toHaveAttribute('title', '需要 tolerance.manage 權限');
+    // App.css 靠這個 class 讓包裝在 .btn-group 裡仍是接合的群組成員
+    expect(wrapper).toHaveClass('permission-action-tooltip');
     const reason = screen.getByText('需要 tolerance.manage 權限');
     expect(reason).toHaveClass('visually-hidden');
     expect(button.getAttribute('aria-describedby')).toContain(reason.id);

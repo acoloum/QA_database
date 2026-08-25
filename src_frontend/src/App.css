@@ -317,6 +317,30 @@ h6 {
     justify-content: flex-start;
 }
 
+/* ── 缺權限動作的 tooltip 包裝（PermissionAction reasonDisplay="tooltip"）──
+   停用的按鈕不會觸發滑鼠事件，title 必須掛在外層 span 才顯示得出來；
+   但多包一層會讓按鈕不再是 .btn-group 的直接子元素，Bootstrap 的接合樣式
+   （負左邊界與相鄰圓角歸零）因此失效。以下把包裝本身還原成群組成員。
+   注意：使用者「有」權限時 PermissionAction 直接回傳按鈕本身，不經過這層，
+   因此以下規則只影響看得到停用按鈕的人。 */
+.permission-action-tooltip {
+    display: inline-flex;
+}
+
+.btn-group > .permission-action-tooltip:not(:first-child) {
+    margin-left: -1px;
+}
+
+.btn-group > .permission-action-tooltip:not(:first-child) > .btn {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.btn-group > .permission-action-tooltip:not(:last-child) > .btn {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
 .table-compact .btn.btn-sm {
     padding: 4px 10px !important;
     font-size: 0.85rem !important;

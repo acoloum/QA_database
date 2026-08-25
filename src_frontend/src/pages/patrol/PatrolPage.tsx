@@ -230,10 +230,10 @@ const PatrolPage = () => {
                                             )}
                                         </td>
                                         <td>
-                                            <PermissionAction permission="patrol.edit"><Button variant="outline-primary" size="sm" className="me-2" onClick={() => handleEdit(item.id)}>
+                                            <PermissionAction permission="patrol.edit" reasonDisplay="tooltip"><Button variant="outline-primary" size="sm" className="me-2" onClick={() => handleEdit(item.id)}>
                                                 <i className="bi bi-pencil"></i> 編輯
                                             </Button></PermissionAction>
-                                            <PermissionAction permission="patrol.delete"><Button variant="outline-danger" size="sm" onClick={() => handleDelete(item.id)}>
+                                            <PermissionAction permission="patrol.delete" reasonDisplay="tooltip"><Button variant="outline-danger" size="sm" onClick={() => handleDelete(item.id)}>
                                                 <i className="bi bi-trash"></i> 刪除
                                             </Button></PermissionAction>
                                         </td>
