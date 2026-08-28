@@ -10,10 +10,15 @@
 那屬於獨立的資料問題（例如公差設定於存檔後才變更），不應由本次修正一併翻動。
 若要全面重算，請改用 --all 參數（謹慎使用）。
 
+另可用 --vendor=<廠商名> 把重算範圍限縮到單一廠商。新建或修改某家廠商的公差後，
+只該廠商的紀錄需要重算；不加此參數會連帶翻動其他廠商既有的判定落差
+（那些落差另有原因，應獨立查明，不該搭便車一起改）。
+
 用法（repo 根目錄）：
     .\\venv\\Scripts\\python.exe -m backend.scripts.recompute_shipping_is_ng          # dry-run，只列差異
     .\\venv\\Scripts\\python.exe -m backend.scripts.recompute_shipping_is_ng --apply  # 實際寫入(僅四段式)
     .\\venv\\Scripts\\python.exe -m backend.scripts.recompute_shipping_is_ng --all    # dry-run，含三段式
+    .\\venv\\Scripts\\python.exe -m backend.scripts.recompute_shipping_is_ng --all --vendor=旭生 --apply
 """
 import sys
 
@@ -24,7 +29,7 @@ except Exception:
 
 from ..app import app
 from ..extensions import db
-from ..models import ShippingData
+from ..models import ShippingData, Vendor
 from ..services.tolerance_service import ToleranceService
 
 
@@ -48,9 +53,18 @@ def _numeric_segment_count(spec) -> int:
     return count
 
 
-def main(apply: bool, all_records: bool = False):
+def main(apply: bool, all_records: bool = False, vendor_name: str = None):
     with app.app_context():
-        records = ShippingData.query.order_by(ShippingData.id).all()
+        query = ShippingData.query
+        vendor_label = "全廠商"
+        if vendor_name:
+            vendor = Vendor.query.filter(Vendor.name.ilike(f'%{vendor_name}%')).first()
+            if not vendor:
+                print(f'找不到廠商「{vendor_name}」，中止。')
+                return 1
+            query = query.filter(ShippingData.vendor_id == vendor.id)
+            vendor_label = vendor.name.strip()
+        records = query.order_by(ShippingData.id).all()
         tol_cache = {}
         changed = []
         scanned = 0
@@ -82,7 +96,8 @@ def main(apply: bool, all_records: bool = False):
 
         scope = "全部" if all_records else "四段式(≥4數值段)"
         print("=" * 72)
-        print(f"  總紀錄數：{len(records)}　本次重算範圍：{scope}　掃描筆數：{scanned}")
+        print(f"  廠商範圍：{vendor_label}　總紀錄數：{len(records)}")
+        print(f"  本次重算範圍：{scope}　掃描筆數：{scanned}")
         print(f"  需更新筆數：{len(changed)}")
         print("=" * 72)
         for rid, material, spec, old, new in changed:
@@ -95,7 +110,19 @@ def main(apply: bool, all_records: bool = False):
         else:
             db.session.rollback()
             print("\n  ℹ️  DRY-RUN，未寫入。確認無誤後加 --apply 實際更新。")
+        return 0
+
+
+def _arg_value(prefix: str):
+    for a in sys.argv[1:]:
+        if a.startswith(prefix):
+            return a[len(prefix):].strip() or None
+    return None
 
 
 if __name__ == "__main__":
-    main(apply="--apply" in sys.argv, all_records="--all" in sys.argv)
+    sys.exit(main(
+        apply="--apply" in sys.argv,
+        all_records="--all" in sys.argv,
+        vendor_name=_arg_value("--vendor="),
+    ) or 0)
