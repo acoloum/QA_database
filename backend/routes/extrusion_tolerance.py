@@ -32,10 +32,10 @@ def get_detail(id):
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/add', methods=['POST'])
 @auth_required
 @require_permission('tolerance.manage')
-def add():
+def add(current_user):
     """新增擠壓公差"""
     try:
-        new_id = ExtrusionToleranceService.add(request.json)
+        new_id = ExtrusionToleranceService.add(request.json, user_id=current_user.id)
         return jsonify({"success": True, "id": new_id})
     except Exception as e:
         return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
@@ -44,10 +44,10 @@ def add():
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/update/<int:id>', methods=['POST'])
 @auth_required
 @require_permission('tolerance.manage')
-def update(id):
+def update(current_user, id):
     """更新擠壓公差"""
     try:
-        ExtrusionToleranceService.update(id, request.json)
+        ExtrusionToleranceService.update(id, request.json, user_id=current_user.id)
         return jsonify({"success": True})
     except ValueError as e:
         return api_error(str(e), 404, code="NOT_FOUND")
@@ -58,10 +58,10 @@ def update(id):
 @extrusion_tolerance_bp.route('/api/extrusion-tolerance/delete/<int:id>', methods=['POST'])
 @auth_required
 @require_permission('tolerance.manage')
-def delete(id):
+def delete(current_user, id):
     """刪除擠壓公差"""
     try:
-        ExtrusionToleranceService.delete(id)
+        ExtrusionToleranceService.delete(id, user_id=current_user.id)
         return jsonify({"success": True})
     except ValueError as e:
         return api_error(str(e), 404, code="NOT_FOUND")

@@ -6,6 +6,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from ..extensions import db
 from ..models import VendorToleranceMain, VendorToleranceDetail, Vendor
 from ..utils import bounded_int, format_value
+from .tolerance_recompute import after_vendor_tolerance_change
 
 # 匯出逐批取回的筆數；與出貨／巡檢匯出採同一節奏
 EXPORT_BATCH_SIZE = 500
@@ -98,7 +99,7 @@ class ToleranceService:
         return {"success": True, "main": main_data, "details": details}
 
     @staticmethod
-    def add_tolerance(data: Dict[str, Any]) -> int:
+    def add_tolerance(data: Dict[str, Any], user_id=None) -> int:
         try:
             main = VendorToleranceMain(
                 material=data.get('材質'),
@@ -126,6 +127,11 @@ class ToleranceService:
                 )
                 db.session.add(detail)
 
+            # 新公差立即回頭補判受影響的紀錄；同一交易內完成，公差寫入失敗會一起回滾
+            db.session.flush()
+            after_vendor_tolerance_change(
+                [(main.material, main.vendor_id)], user_id=user_id, tolerance_id=main.id)
+
             db.session.commit()
             return main.id
         except Exception as e:
@@ -133,11 +139,15 @@ class ToleranceService:
             raise
 
     @staticmethod
-    def update_tolerance(tolerance_id: int, data: Dict[str, Any]) -> bool:
+    def update_tolerance(tolerance_id: int, data: Dict[str, Any], user_id=None) -> bool:
         try:
             t = db.session.get(VendorToleranceMain, tolerance_id)
             if not t: raise ValueError("找不到公差資料")
-            
+
+            # 異動前的材質／廠商也要納入重判範圍，否則「原本吃這筆公差、
+            # 改完不再吃」的紀錄會被漏掉
+            old_scope = (t.material, t.vendor_id)
+
             t.material = data.get('材質')
             t.spec = data.get('規格')
             t.vendor_id = data.get('廠商ID')
@@ -163,6 +173,11 @@ class ToleranceService:
                 )
                 db.session.add(detail)
 
+            db.session.flush()
+            after_vendor_tolerance_change(
+                [old_scope, (t.material, t.vendor_id)],
+                user_id=user_id, tolerance_id=tolerance_id)
+
             db.session.commit()
             return True
         except Exception as e:
@@ -170,11 +185,16 @@ class ToleranceService:
             raise
 
     @staticmethod
-    def delete_tolerance(tolerance_id: int) -> bool:
+    def delete_tolerance(tolerance_id: int, user_id=None) -> bool:
         try:
             t = db.session.get(VendorToleranceMain, tolerance_id)
             if t:
+                # 先記下範圍再刪；刪掉之後這筆的材質／廠商就取不到了
+                scope = (t.material, t.vendor_id)
                 db.session.delete(t)
+                db.session.flush()
+                after_vendor_tolerance_change(
+                    [scope], user_id=user_id, tolerance_id=tolerance_id)
                 db.session.commit()
             return True
         except Exception as e:

@@ -295,14 +295,18 @@ class PatrolService:
             return None
 
     @staticmethod
-    def _compute_is_ng(details: list, material: str, spec: str, customer_id) -> bool:
+    def _compute_is_ng(details: list, material: str, spec: str, customer_id,
+                       tol_result: dict = None) -> bool:
         """
         依量測明細與擠壓公差計算是否超差。
         複用 get_history 內的判斷邏輯，於新增/更新時即時儲存結果。
+
+        tol_result 可傳入已查好的公差比對結果，供批次重判時共用同一組
+        （材質, 規格, 客戶）的查詢結果——逐筆重查會讓數百筆的重判慢上數倍。
         """
         if not material:
             return False
-        result = ExtrusionToleranceService.check({
+        result = tol_result if tol_result is not None else ExtrusionToleranceService.check({
             'material': material,
             'spec': spec or '',
             'vendor_id': customer_id

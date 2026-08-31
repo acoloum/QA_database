@@ -101,7 +101,7 @@ def get_tolerance_detail(id):
 def add_tolerance(current_user):
     """新增公差資料"""
     try:
-        new_id = ToleranceService.add_tolerance(request.json)
+        new_id = ToleranceService.add_tolerance(request.json, user_id=current_user.id)
         return jsonify({"success": True, "id": new_id})
     except Exception as e:
         return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
@@ -112,7 +112,7 @@ def add_tolerance(current_user):
 def update_tolerance(current_user, id):
     """更新公差資料"""
     try:
-        ToleranceService.update_tolerance(id, request.json)
+        ToleranceService.update_tolerance(id, request.json, user_id=current_user.id)
         return jsonify({"success": True})
     except ValueError as e:
         return api_error(str(e), 404, code="NOT_FOUND")
@@ -125,7 +125,7 @@ def update_tolerance(current_user, id):
 def delete_tolerance(current_user, id):
     """刪除公差資料"""
     try:
-        ToleranceService.delete_tolerance(id)
+        ToleranceService.delete_tolerance(id, user_id=current_user.id)
         return jsonify({"success": True})
     except Exception as e:
         return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")

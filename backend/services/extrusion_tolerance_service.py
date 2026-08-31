@@ -5,6 +5,7 @@ from ..extensions import db
 from ..models import ExtrusionToleranceMain, ExtrusionToleranceDetail, VendorToleranceMain, Vendor
 from ..utils import bounded_int, format_value
 from .tolerance_service import ToleranceService
+from .tolerance_recompute import after_extrusion_tolerance_change
 
 
 class ExtrusionToleranceService:
@@ -124,7 +125,7 @@ class ExtrusionToleranceService:
         return {"success": True, "main": main, "details": details}
 
     @staticmethod
-    def add(data: Dict[str, Any]) -> int:
+    def add(data: Dict[str, Any], user_id=None) -> int:
         """新增主檔 + 明細"""
         try:
             main = ExtrusionToleranceMain(
@@ -148,6 +149,10 @@ class ExtrusionToleranceService:
                     characteristic_class=d.get('特性重要度', '其他'),
                 ))
 
+            # 新公差立即回頭補判巡檢紀錄；擠壓公差不被出貨檢驗使用
+            db.session.flush()
+            after_extrusion_tolerance_change(user_id=user_id, tolerance_id=main.id)
+
             db.session.commit()
             return main.id
         except Exception as e:
@@ -155,7 +160,7 @@ class ExtrusionToleranceService:
             raise
 
     @staticmethod
-    def update(tolerance_id: int, data: Dict[str, Any]) -> bool:
+    def update(tolerance_id: int, data: Dict[str, Any], user_id=None) -> bool:
         """更新主檔 + 明細（刪除重建明細）"""
         try:
             t = db.session.get(ExtrusionToleranceMain, tolerance_id)
@@ -180,6 +185,9 @@ class ExtrusionToleranceService:
                     characteristic_class=d.get('特性重要度', '其他'),
                 ))
 
+            db.session.flush()
+            after_extrusion_tolerance_change(user_id=user_id, tolerance_id=tolerance_id)
+
             db.session.commit()
             return True
         except Exception as e:
@@ -187,13 +195,15 @@ class ExtrusionToleranceService:
             raise
 
     @staticmethod
-    def delete(tolerance_id: int) -> bool:
+    def delete(tolerance_id: int, user_id=None) -> bool:
         """刪除（CASCADE 自動刪明細）"""
         try:
             t = db.session.get(ExtrusionToleranceMain, tolerance_id)
             if not t:
                 raise ValueError("找不到擠壓公差資料")
             db.session.delete(t)
+            db.session.flush()
+            after_extrusion_tolerance_change(user_id=user_id, tolerance_id=tolerance_id)
             db.session.commit()
             return True
         except ValueError:
