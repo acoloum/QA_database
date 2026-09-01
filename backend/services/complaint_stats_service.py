@@ -21,7 +21,7 @@ class ComplaintStatsService:
                 func.cast(CustomerComplaint.is_repeat, db.Integer)
             ).label('repeat_count'),
         ).group_by(CustomerComplaint.customer)
-        q = _apply_date_filter(q, date_from, date_to)
+        q = _apply_filters(q, date_from, date_to)
         rows = q.order_by(func.count(CustomerComplaint.id).desc()).all()
         return [
             {
@@ -47,7 +47,7 @@ class ComplaintStatsService:
                 func.cast(CustomerComplaint.is_repeat, db.Integer)
             ).label('repeat_count'),
         ).group_by(CustomerComplaint.material, CustomerComplaint.spec)
-        q = _apply_date_filter(q, date_from, date_to)
+        q = _apply_filters(q, date_from, date_to)
         rows = q.order_by(func.count(CustomerComplaint.id).desc()).all()
         return [
             {
@@ -70,7 +70,7 @@ class ComplaintStatsService:
             CustomerComplaint.defect_category,
             func.count(CustomerComplaint.id).label('total'),
         ).group_by(CustomerComplaint.defect_category)
-        q = _apply_date_filter(q, date_from, date_to)
+        q = _apply_filters(q, date_from, date_to)
         rows = q.order_by(func.count(CustomerComplaint.id).desc()).all()
         return [
             {'defect_category': r.defect_category or '未分類', 'total': r.total}
@@ -88,7 +88,7 @@ class ComplaintStatsService:
             extract('month', CustomerComplaint.complaint_date).label('month'),
             func.count(CustomerComplaint.id).label('total'),
         ).group_by('year', 'month')
-        q = _apply_date_filter(q, date_from, date_to)
+        q = _apply_filters(q, date_from, date_to)
         rows = q.order_by('year', 'month').all()
         return [
             {
@@ -145,7 +145,9 @@ class ComplaintStatsService:
 
 
 # ── 工具函數 ─────────────────────────────────────────────────
-def _apply_date_filter(q, date_from, date_to):
+def _apply_filters(q, date_from, date_to):
+    """統計一律排除已軟刪除的客訴，再套用日期區間。"""
+    q = q.filter(CustomerComplaint.deleted_at.is_(None))
     if date_from:
         q = q.filter(CustomerComplaint.complaint_date >= date_from)
     if date_to:

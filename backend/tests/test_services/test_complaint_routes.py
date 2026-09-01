@@ -4,6 +4,7 @@ import pytest
 
 from backend.models import AuditLog, CorrectiveAction, CustomerComplaint, ReworkRequest, Role, User
 from backend.services.audit_service import AuditService
+from backend.services.complaint_stats_service import ComplaintStatsService
 from backend.utils import generate_token
 
 
@@ -178,3 +179,36 @@ def test_delete_complaint_rejects_active_link_without_writes(
     db_session.expire_all()
     assert db_session.get(CustomerComplaint, complaint.id).deleted_at is None
     assert AuditLog.query.count() == 0
+
+
+def test_complaint_stats_exclude_soft_deleted(db_session):
+    """軟刪除的客訴不得出現在任何統計維度中。"""
+    kept = CustomerComplaint(
+        complaint_no='CC-STATS-KEEP',
+        customer='保留客戶',
+        complaint_date=datetime.date(2026, 6, 1),
+        material='6061-F',
+        spec='50*2*500',
+        defect_category='尺寸不良',
+        description='內徑偏小',
+        complaint_type='quality',
+    )
+    removed = CustomerComplaint(
+        complaint_no='CC-STATS-DEL',
+        customer='1',
+        complaint_date=datetime.date(2026, 6, 2),
+        material='1',
+        spec='1',
+        defect_category='1',
+        description='1',
+        complaint_type='quality',
+        deleted_at=datetime.datetime(2026, 6, 2, tzinfo=datetime.timezone.utc),
+    )
+    db_session.add_all([kept, removed])
+    db_session.commit()
+
+    assert [r['customer'] for r in ComplaintStatsService.by_customer()] == ['保留客戶']
+    assert [r['material'] for r in ComplaintStatsService.by_product()] == ['6061-F']
+    assert [r['defect_category'] for r in ComplaintStatsService.by_category()] == ['尺寸不良']
+    assert [r['year_month'] for r in ComplaintStatsService.by_month()] == ['2026-06']
+    assert [r['total'] for r in ComplaintStatsService.by_month()] == [1]
