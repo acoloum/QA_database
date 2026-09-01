@@ -1,4 +1,4 @@
-import { Badge, Button, Form, Row, Col } from 'react-bootstrap';
+import { Badge, Button, Form, InputGroup, Row, Col } from 'react-bootstrap';
 
 import type { ComplaintType } from '../../types';
 
@@ -95,15 +95,15 @@ export const ComplaintBasicSection = ({
             <Col md={4}>
                 <Form.Group>
                     <Form.Label>擠製編號</Form.Label>
-                    <div className="d-flex gap-1">
+                    <InputGroup>
                         <Form.Control
                             value={extrusionInput}
                             onChange={e => onExtrusionInputChange(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onAddExtrusionNo(); } }}
-                            placeholder="輸入後按 Enter 或 +"
+                            placeholder="輸入後按 Enter 新增"
                         />
-                        <Button variant="outline-secondary" onClick={onAddExtrusionNo}>+</Button>
-                    </div>
+                        <Button variant="outline-secondary" onClick={onAddExtrusionNo}>新增</Button>
+                    </InputGroup>
                     {extrusionNos.length > 0 && (
                         <div className="mt-1 d-flex flex-wrap gap-1">
                             {extrusionNos.map(no => (
