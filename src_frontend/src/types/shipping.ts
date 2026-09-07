@@ -21,6 +21,7 @@ export interface ShippingCreateInput {
     檢驗規格: string;
     材質: string;
     訂單號碼?: string;
+    備註?: string | null;
     [key: string]: unknown;
 }
 
@@ -44,6 +45,7 @@ export interface ShippingInspection {
   material?: string;
   spec?: string;
   order_num?: string;
+  note?: string | null;
   group_count: number;
   inspector_id?: number;
   inspector_name?: string;
@@ -58,6 +60,7 @@ export interface ShippingInspection {
   材質?: string;
   檢驗規格?: string;
   訂單號碼?: string;
+  備註?: string | null;
   組數?: number;
   檢驗人員?: string | number;
   檢驗人員姓名?: string;

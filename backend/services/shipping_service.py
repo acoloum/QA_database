@@ -71,6 +71,21 @@ class ShippingService:
             return datetime.strptime(value, '%Y-%m-%d').date()
         return value
 
+    # 備註為自由文字，僅供人工閱讀；設上限避免單筆寫入無界長度的內容。
+    NOTE_MAX_LENGTH = 500
+
+    @staticmethod
+    def _normalize_note(value: Any) -> Optional[str]:
+        """備註正規化：非字串或空白一律存 None，並限制長度。"""
+        if value is None:
+            return None
+        text_value = str(value).strip()
+        if not text_value:
+            return None
+        if len(text_value) > ShippingService.NOTE_MAX_LENGTH:
+            raise ValueError(f"備註長度不得超過 {ShippingService.NOTE_MAX_LENGTH} 字")
+        return text_value
+
     @staticmethod
     def _map_row_to_dict(item: ShippingData) -> Dict[str, Any]:
         """Helper to map ShippingData model to the legacy dictionary format with Chinese keys"""
@@ -86,6 +101,7 @@ class ShippingService:
             "材質": format_value(item.material),
             "檢驗規格": format_value(item.spec),
             "訂單號碼": format_value(item.order_num),
+            "備註": format_value(item.note) or "",
             "檢驗人員": inspector_name.strip(),
             "廠商中文名稱": vendor_name.strip(), # legacy key
             "廠商名稱": vendor_name.strip(),      # legacy key
@@ -199,6 +215,7 @@ class ShippingService:
             shipping_data.spec = data.get('檢驗規格')
             shipping_data.material = data.get('材質')
             shipping_data.order_num = data.get('訂單號碼')
+            shipping_data.note = ShippingService._normalize_note(data.get('備註'))
             shipping_data.group_count = int(data.get('組數', 5))
 
             # 合法量測項目（前端只送巢狀 measurements；資料只寫子表）

@@ -69,6 +69,7 @@ export const validateShippingForm = ({
 
 interface BuildShippingPayloadParams extends ShippingFormValues {
   orderNo: string;
+  note: string;
 }
 
 const toNumberOrNull = (value: number | string | null | undefined) => {
@@ -84,6 +85,7 @@ export const buildShippingPayload = ({
   material,
   spec,
   orderNo,
+  note,
   items,
   groups,
 }: BuildShippingPayloadParams): ShippingCreateInput => {
@@ -112,6 +114,8 @@ export const buildShippingPayload = ({
     檢驗規格: spec,
     材質: material,
     訂單號碼: orderNo,
+    // 備註為選填，空字串一律送 null，避免在資料庫留下空白字串
+    備註: note.trim() || null,
     組數: Object.keys(groups).length,
     measurements,
   };

@@ -46,6 +46,9 @@ interface ShippingModalProps {
 
 const DEFAULT_GROUP_COUNT = 5;
 
+/** 備註字數上限，與後端 ShippingService.NOTE_MAX_LENGTH 一致 */
+const NOTE_MAX_LENGTH = 500;
+
 /** 每組量測的資料結構 */
 type GroupMeas = ShippingGroupMeasurements;
 
@@ -67,6 +70,8 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
     const [material, setMaterial] = useState('');
     const [spec, setSpec] = useState('');
     const [orderNo, setOrderNo] = useState('');
+    // 備註：量測數值以外需要文字說明的狀況
+    const [note, setNote] = useState('');
 
     // 新格式量測資料：Record<組號字串, Record<項目名稱, Partial<ShippingMeasurementItem>>>
     const [groups, setGroups] = useState<Record<string, GroupMeas>>({});
@@ -127,6 +132,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
         setMaterial('');
         setSpec('');
         setOrderNo('');
+        setNote('');
         setGroups(initEmptyShippingGroups(DEFAULT_GROUP_COUNT, BASE_SHIPPING_ITEMS));
         setSegmentedKeys(new Set());
         setTolerance(null);
@@ -153,6 +159,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                 setMaterial(String(detailData.材質 ?? detailData.material ?? ''));
                 setSpec(String(detailData.檢驗規格 ?? detailData.spec ?? ''));
                 setOrderNo(detailData.訂單號碼 ?? detailData.order_num ?? '');
+                setNote(detailData.備註 ?? detailData.note ?? '');
 
                 // 讀取組數
                 const savedGroupCount = detailData.組數 ?? detailData.group_count ?? DEFAULT_GROUP_COUNT;
@@ -348,6 +355,7 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
             material,
             spec,
             orderNo,
+            note,
             items: ACTIVE_ITEMS,
             groups,
         });
@@ -427,6 +435,18 @@ const ShippingModal = ({ show, handleClose, onSuccess, editId }: ShippingModalPr
                             <div className="col-md-2">
                                 <Form.Label>訂單</Form.Label>
                                 <Form.Control value={orderNo} onChange={e => setOrderNo(e.target.value)} />
+                            </div>
+                            <div className="col-12">
+                                <Form.Label>備註</Form.Label>
+                                <Form.Control
+                                    as="textarea"
+                                    rows={2}
+                                    maxLength={NOTE_MAX_LENGTH}
+                                    value={note}
+                                    onChange={e => setNote(e.target.value)}
+                                    placeholder="其他需要文字說明的狀況（如外觀異常、特採放行、客戶指定條件）"
+                                />
+                                <Form.Text muted>{note.length} / {NOTE_MAX_LENGTH}</Form.Text>
                             </div>
                         </div>
 

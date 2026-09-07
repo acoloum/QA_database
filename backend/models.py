@@ -154,6 +154,8 @@ class ShippingData(db.Model):
     inspector_id = db.Column('檢驗人員', db.Integer, db.ForeignKey('品管人員.識別碼'), index=True)
     vendor_id = db.Column('廠商名稱', db.Integer, db.ForeignKey('廠商資料.識別碼'), index=True)
     group_count = db.Column('組數', db.Integer, default=5)
+    # 量測數值以外、需要文字說明的狀況（例如外觀異常、特採、客戶指定條件）
+    note = db.Column('備註', db.Text, nullable=True)
 
     # 量測值已全面改存子表 ShippingMeasurement（出貨巡檢量測明細），
     # 原扁平欄位（外徑1-min … 真圓度10）已於 migration 19 移除。

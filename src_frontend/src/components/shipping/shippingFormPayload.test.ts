@@ -63,6 +63,7 @@ describe('shippingFormPayload', () => {
       material: 'A6061',
       spec: '10',
       orderNo: 'SO-1',
+      note: '  外觀有輕微刮痕，經客戶同意特採  ',
       items,
       groups: {
         '1': {
@@ -79,6 +80,7 @@ describe('shippingFormPayload', () => {
       檢驗規格: '10',
       材質: 'A6061',
       訂單號碼: 'SO-1',
+      備註: '外觀有輕微刮痕，經客戶同意特採',
       組數: 1,
     });
     expect(payload.measurements).toEqual({
@@ -111,6 +113,7 @@ describe('shippingFormPayload', () => {
       material: 'A6061',
       spec: '10',
       orderNo: '',
+      note: '',
       items,
       groups: {
         '1': {
@@ -119,6 +122,8 @@ describe('shippingFormPayload', () => {
         },
       },
     });
+
+    expect(payload.備註).toBeNull();
 
     const measurements = payload.measurements as ShippingMeasurements;
     expect(measurements['1'].外徑.value_min).toBeNull();
