@@ -253,3 +253,91 @@ describe('PatrolModal 即時模式存檔後的正式異常事件面板（Bug 1 �
     expect(screen.getByText(/查看建議/)).toBeInTheDocument();
   });
 });
+
+describe('PatrolModal 組別刪除', () => {
+  // 建立一筆可編輯的巡檢紀錄，details 依 groups 產生「前段/外徑」的 MIN/MAX
+  const mockEditRecord = (groups: number[]) => {
+    vi.mocked(usePatrolHooks.usePatrolOptions).mockReturnValue({
+      data: {
+        machines: [{ id: 1, name: 'M1' }],
+        operators: [{ id: 2, name: 'Op1' }],
+        inspectors: [{ id: 3, name: 'Insp1' }],
+        customers: [],
+      },
+    } as unknown as ReturnType<typeof usePatrolHooks.usePatrolOptions>);
+
+    vi.mocked(usePatrolHooks.usePatrolDetail).mockReturnValue({
+      data: {
+        main: {
+          識別碼: 179,
+          檢驗日期: '2026-07-20',
+          機台: 1,
+          主機手: 2,
+          檢驗人員: 3,
+          客戶名稱: '',
+          材質: 'A6061',
+          原料批號: 'B001',
+          擠壓規格: '85*2.8',
+        },
+        details: groups.map(g => ({
+          group: `第${g}組`, item: '外徑', pos: '前段', min: 84 + g, max: 85 + g,
+        })),
+      },
+      isLoading: false,
+    } as unknown as ReturnType<typeof usePatrolHooks.usePatrolDetail>);
+
+    vi.mocked(usePatrolHooks.usePatrolLiveLimits).mockReturnValue({
+      data: { found: false }, isFetching: false,
+    } as unknown as ReturnType<typeof usePatrolHooks.usePatrolLiveLimits>);
+  };
+
+  const renderEditModal = () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <PatrolModal show handleClose={vi.fn()} onSuccess={vi.fn()} editId={179} />
+      </QueryClientProvider>,
+    );
+  };
+
+  it('刪除最後一組後存檔，送出的 details 不再包含該組（否則存檔後該組會復活）', async () => {
+    mockEditRecord([1, 2]);
+    const updateMutateAsync = vi.fn().mockResolvedValue({});
+    vi.mocked(usePatrolHooks.useUpdatePatrol).mockReturnValue({
+      mutateAsync: updateMutateAsync, isPending: false,
+    } as unknown as ReturnType<typeof usePatrolHooks.useUpdatePatrol>);
+
+    renderEditModal();
+
+    await waitFor(() => {
+      expect(screen.getByText('第2組')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /刪除組別/ }));
+    expect(screen.queryByText('第2組')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^儲存$/ }));
+
+    await waitFor(() => {
+      expect(updateMutateAsync).toHaveBeenCalled();
+    });
+    const sentDetails = updateMutateAsync.mock.calls[0][0].data.details as { group: string }[];
+    expect(sentDetails.map(d => d.group)).toEqual(['第1組']);
+  });
+
+  it('載入的組別編號有缺口時，依最大組別編號決定列數，避免高編號組別被隱藏卻仍被送出', async () => {
+    mockEditRecord([1, 3]);
+    vi.mocked(usePatrolHooks.useUpdatePatrol).mockReturnValue({
+      mutateAsync: vi.fn().mockResolvedValue({}), isPending: false,
+    } as unknown as ReturnType<typeof usePatrolHooks.useUpdatePatrol>);
+
+    renderEditModal();
+
+    await waitFor(() => {
+      expect(screen.getByText('第3組')).toBeInTheDocument();
+    });
+    expect(screen.getByText('第2組')).toBeInTheDocument();
+  });
+});

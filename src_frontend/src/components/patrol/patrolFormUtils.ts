@@ -12,6 +12,12 @@ export interface PatrolDetailInput {
 
 export type PatrolTolerance = NonNullable<ExtrusionToleranceCheckResult['tolerances']>[number];
 
+// 組別以「第N組」字串保存，解析出其中的編號以便比較大小；無法解析時回傳 0
+export const parsePatrolGroupIndex = (group: string): number => {
+  const matched = group.match(/\d+/);
+  return matched ? Number(matched[0]) : 0;
+};
+
 export const getPatrolDetailValue = (
   details: PatrolDetailInput[],
   group: string,

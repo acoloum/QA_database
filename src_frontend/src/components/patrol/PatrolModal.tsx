@@ -19,6 +19,7 @@ import {
     buildLiveGroupSeries,
     evaluatePatrolLiveStability,
     getValidPatrolDetails,
+    parsePatrolGroupIndex,
     type PatrolDetailInput,
     type PatrolLiveViolation,
 } from './patrolFormUtils';
@@ -144,9 +145,10 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                     }));
                     setDetails(newDetails);
 
-                    // Determine group count
-                    const groups = new Set(newDetails.map(d => d.group));
-                    setGroupCount(groups.size || 1);
+                    // 依最大組別編號決定列數；若改用不重複組別「數量」，
+                    // 當組別編號有缺口（例如只剩第1、3組）時，編號最大的那組
+                    // 會被排除在表格之外，但仍留在 details 中被一併送出
+                    setGroupCount(Math.max(1, ...newDetails.map(d => parsePatrolGroupIndex(d.group))));
                 } else if (!editId) {
                     resetForm();
                 }
@@ -170,6 +172,15 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                 }];
             }
         });
+    };
+
+    // 刪除組別必須同時清掉該組的量測值，否則 details 仍保留該組資料，
+    // 存檔時會被一併送出，重新開啟時該組又會出現
+    const handleRemoveLastGroup = () => {
+        if (groupCount <= 1) return;
+        const removedGroup = `第${groupCount}組`;
+        setDetails(prev => prev.filter(d => d.group !== removedGroup));
+        setGroupCount(groupCount - 1);
     };
 
     const handleDetailBlur = (pos: string, item: string) => {
@@ -410,7 +421,7 @@ const PatrolModal = ({ show, handleClose, onSuccess, editId }: PatrolModalProps)
                                         <Button variant="outline-primary" onClick={() => setGroupCount(c => c + 1)}>
                                             <i className="bi bi-plus-lg"></i> 新增組別
                                         </Button>
-                                        <Button variant="outline-danger" onClick={() => setGroupCount(c => Math.max(1, c - 1))}>
+                                        <Button variant="outline-danger" onClick={handleRemoveLastGroup}>
                                             <i className="bi bi-dash-lg"></i> 刪除組別
                                         </Button>
                                         <Button variant={showInner ? "info" : "outline-info"} onClick={() => setShowInner(!showInner)}>
