@@ -1,7 +1,7 @@
 """客訴服務 — 客訴 CRUD、應答時效、重複客訴偵測"""
 from datetime import datetime, date, timedelta, timezone
 from typing import List, Optional, Dict, Any
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, text
 from ..extensions import db
 from ..models import CorrectiveAction, CustomerComplaint, Inspector, ReworkRequest
 from ..errors import APIError, NotFoundError
@@ -20,10 +20,28 @@ class ComplaintService:
     def _gen_no() -> str:
         today = date.today().strftime('%Y%m%d')
         acquire_number_lock(f'客訴紀錄.客訴單號.CC.{today}')
-        count = CustomerComplaint.active_query().filter(
-            CustomerComplaint.complaint_no.like(f'CC-{today}-%')
-        ).count()
-        return f'CC-{today}-{count + 1:03d}'
+        # 掃描全部實體列（含已軟刪）取最大序號再 +1，而不是用 active count：
+        # soft-delete 只會把刪除時間寫入，實體列仍佔住客訴單號的唯一值，
+        # 若以 active count 計算，刪除過後再新增會重複產生同一單號而撞唯一鍵（500）。
+        rows = db.session.execute(
+            text("""
+                SELECT "客訴單號"
+                FROM "客訴紀錄"
+                WHERE "客訴單號" IS NOT NULL
+                AND "客訴單號" LIKE :pattern
+            """),
+            {"pattern": f"CC-{today}-%"},
+        ).fetchall()
+        max_seq = 0
+        for row in rows:
+            if row[0]:
+                parts = row[0].split('-')
+                if len(parts) >= 3:
+                    try:
+                        max_seq = max(max_seq, int(parts[-1]))
+                    except (ValueError, IndexError):
+                        continue
+        return f'CC-{today}-{max_seq + 1:03d}'
 
     # ── 建立客訴 ─────────────────────────────────────────────
     @staticmethod

@@ -4,8 +4,29 @@ import pytest
 
 from backend.models import AuditLog, CorrectiveAction, CustomerComplaint, ReworkRequest, Role, User
 from backend.services.audit_service import AuditService
+from backend.services.complaint_service import ComplaintService
 from backend.services.complaint_stats_service import ComplaintStatsService
 from backend.utils import generate_token
+
+
+def test_gen_no_skips_soft_deleted_complaint_so_number_is_not_duplicated(db_session):
+    """客訴 soft-delete 後實體列仍佔住唯一單號：_gen_no 必須取全表最大序號再 +1，
+    才能避免與已軟刪的單號重複而觸發 UniqueViolation（500）。"""
+    today = datetime.date.today().strftime('%Y%m%d')
+    deleted = CustomerComplaint(
+        complaint_no=f'CC-{today}-001',
+        customer='測試客戶',
+        complaint_date=datetime.date.today(),
+        description='已刪除的客訴',
+        complaint_type='quality',
+        status='待處理',
+    )
+    db_session.add(deleted)
+    db_session.commit()
+    deleted.soft_delete()          # 模擬 soft delete：active_query 不再計入
+    db_session.commit()
+
+    assert ComplaintService._gen_no() == f'CC-{today}-002'
 
 
 def test_complaint_list_route_clamps_per_page(client, db_session):
