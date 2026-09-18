@@ -33,3 +33,14 @@ backups/
 
 # 稽核腳本的 --csv 輸出報表（含廠商與品質資料，本地產生、不進版控）
 /*.csv
+
+# Claude Code 外掛 skill 套件（本地安裝，各機不同，不進版控）
+.agents/skills/
+.claude/skills/
+skills-lock.json
+
+# 代理工具的本地工作狀態
+.omo/
+
+# 伺服器執行期輸出（qms_server.log、error.log 與網路監控 csv）
+logs/
