@@ -44,3 +44,7 @@ skills-lock.json
 
 # 伺服器執行期輸出（qms_server.log、error.log 與網路監控 csv）
 logs/
+
+# 本機網路維運腳本（Wi-Fi 省電修正／監控，僅此台伺服器適用，不進版控）
+fix_wifi_power.bat
+fix_wifi_power.ps1
