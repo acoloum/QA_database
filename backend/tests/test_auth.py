@@ -8,6 +8,7 @@ import os
 from threading import Event, Thread, current_thread
 from uuid import uuid4
 
+import bcrypt
 import jwt
 import pytest
 from flask import g, jsonify
@@ -656,6 +657,45 @@ def test_reset_password_requires_at_least_eight_characters(
     )
 
     assert response.status_code == 400
+
+
+# 26 個中文字 = 78 bytes UTF-8，超過 bcrypt 的 72 bytes 上限
+LONG_CJK_PASSWORD = '品質管理' * 6 + '密碼'
+
+
+def test_long_password_hashes_and_verifies():
+    """bcrypt 5 對超過 72 bytes 的密碼會丟 ValueError，不可讓長密碼變成 500。"""
+    assert len(LONG_CJK_PASSWORD.encode('utf-8')) > 72
+
+    hashed = hash_password(LONG_CJK_PASSWORD)
+
+    assert verify_password(LONG_CJK_PASSWORD, hashed)
+    assert not verify_password('wrong-password', hashed)
+
+
+def test_long_password_still_matches_hash_created_by_bcrypt_4():
+    """bcrypt 4.x 會靜默截斷到 72 bytes；升級後既有帳號必須仍能用原密碼登入。"""
+    legacy_hash = bcrypt.hashpw(
+        LONG_CJK_PASSWORD.encode('utf-8')[:72], bcrypt.gensalt()
+    ).decode('utf-8')
+
+    assert verify_password(LONG_CJK_PASSWORD, legacy_hash)
+
+
+def test_user_can_login_after_reset_to_long_password(client, admin_user, normal_user):
+    response = client.put(
+        f'/api/users/{normal_user.id}/password',
+        headers=make_admin_headers(admin_user),
+        json={'password': LONG_CJK_PASSWORD},
+    )
+    assert response.status_code == 200
+
+    response = client.post(
+        '/api/login',
+        json={'username': normal_user.username, 'password': LONG_CJK_PASSWORD},
+    )
+
+    assert response.status_code == 200
 
 
 @pytest.fixture

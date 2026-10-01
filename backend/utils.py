@@ -140,15 +140,22 @@ def validate_csrf_token(token: Optional[str]) -> bool:
 # ==================================================
 # Authentication
 # ==================================================
+def _bcrypt_input(password: str) -> bytes:
+    """bcrypt 只看前 72 bytes；bcrypt 5 起超過會丟 ValueError，故明確截斷。
+
+    與 bcrypt 4.x 的靜默截斷完全等價，升級前建立的密碼 hash 仍可驗證。
+    """
+    return password.encode('utf-8')[:72]
+
 def hash_password(password: str) -> str:
     """Hash password using bcrypt with random salt."""
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    return bcrypt.hashpw(_bcrypt_input(password), bcrypt.gensalt()).decode('utf-8')
 
 def verify_password(password: str, hashed: str) -> bool:
     """Verify password against bcrypt hash. Falls back to SHA256 for legacy migration."""
     # Try bcrypt first
     if hashed.startswith('$2b$') or hashed.startswith('$2a$'):
-        return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+        return bcrypt.checkpw(_bcrypt_input(password), hashed.encode('utf-8'))
     # Legacy SHA256 fallback for migration
     return hashlib.sha256(password.encode()).hexdigest() == hashed
 
