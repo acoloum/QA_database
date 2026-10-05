@@ -876,3 +876,33 @@ def test_postgresql_concurrent_security_changes_increment_each_commit_and_revoke
             headers={'Authorization': f"Bearer {results['intermediate_token']}"},
         )
         assert response.status_code == 401
+
+
+# ── 顯示名稱：登入與驗證 Token 回傳品管人員姓名 ──────────────────
+
+def test_login_and_verify_token_return_inspector_name_as_display_name(client, db_session, normal_user):
+    inspector = Inspector(name='管隆偉', group='品保')
+    db_session.add(inspector)
+    db_session.flush()
+    normal_user.inspector_id = inspector.id
+    db_session.commit()
+
+    login_response = client.post(
+        '/api/login',
+        json={'username': normal_user.username, 'password': 'userpass123'},
+    )
+    verify_response = client.get('/api/verify-token', headers=make_user_headers(normal_user))
+
+    assert login_response.get_json()['display_name'] == '管隆偉'
+    assert verify_response.get_json()['display_name'] == '管隆偉'
+
+
+def test_display_name_is_null_when_user_has_no_inspector(client, normal_user):
+    login_response = client.post(
+        '/api/login',
+        json={'username': normal_user.username, 'password': 'userpass123'},
+    )
+    verify_response = client.get('/api/verify-token', headers=make_user_headers(normal_user))
+
+    assert login_response.get_json()['display_name'] is None
+    assert verify_response.get_json()['display_name'] is None

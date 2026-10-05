@@ -33,6 +33,11 @@ def _permissions_for_role(role_code: str) -> dict:
     role_obj = Role.query.filter_by(code=role_code).first()
     return role_obj.permissions if role_obj else {}
 
+
+def _display_name(user: User) -> str | None:
+    """取得帳號對應的品管人員姓名；未對應人員時回傳 None。"""
+    return user.inspector.name if user.inspector else None
+
 @auth_bp.route('/api/login', methods=['POST'])
 @limiter.limit("5 per minute")
 def login():
@@ -73,7 +78,8 @@ def login():
             'username': user.username,
             'user_id': user.id,
             'role': user.role,
-            'permissions': permissions
+            'permissions': permissions,
+            'display_name': _display_name(user),
         })
     except Exception as e:
         current_app.logger.exception("Login error: %s", str(e))
@@ -90,7 +96,7 @@ def verify_token_api():
         token = token[7:]
 
     try:
-        _user, authenticated = authenticate_request_token(token)
+        user, authenticated = authenticate_request_token(token)
         return jsonify({
             'valid': True,
             'username': authenticated.username,
@@ -98,6 +104,7 @@ def verify_token_api():
             'role': authenticated.role,
             'permissions': dict(authenticated.permissions),
             'inspector_id': authenticated.inspector_id,
+            'display_name': _display_name(user),
         })
     except AuthenticationError as error:
         return jsonify({'valid': False, 'error': error.message}), 401

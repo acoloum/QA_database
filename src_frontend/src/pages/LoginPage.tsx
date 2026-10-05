@@ -18,7 +18,14 @@ const LoginPage = () => {
         try {
             const res = await api.post<LoginResponse>('/login', { username, password });
             if (res.data.token) {
-                login(res.data.token, res.data.username, res.data.user_id, res.data.role, res.data.permissions);
+                login(
+                    res.data.token,
+                    res.data.username,
+                    res.data.user_id,
+                    res.data.role,
+                    res.data.permissions,
+                    res.data.display_name
+                );
                 navigate('/', { replace: true });
             } else {
                 setError(res.data.error || '登入失敗');

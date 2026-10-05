@@ -1,6 +1,9 @@
 import { useAuth } from '../../context/useAuth';
 import { useDashboardStats } from '../../hooks/useDashboard';
 
+// 中文姓名去掉單字姓氏只留名字（管隆偉 → 隆偉）；兩字以下的姓名直接顯示全名
+const toGivenName = (fullName: string) => (fullName.length >= 3 ? fullName.slice(1) : fullName);
+
 const WelcomeMessage = () => {
     const { user } = useAuth();
     const { stats } = useDashboardStats();
@@ -28,6 +31,10 @@ const WelcomeMessage = () => {
                (stats.capa?.current || 0);
     };
 
+    const greetingName = user?.display_name
+        ? toGivenName(user.display_name)
+        : user?.username || '使用者';
+
     const pending = getTotalPending();
     const thisMonth = getTotalThisMonth();
 
@@ -36,7 +43,7 @@ const WelcomeMessage = () => {
             <div className="welcome-content">
                 <div className="welcome-text">
                     <h2 className="welcome-greeting">
-                        {getGreeting()}，{user?.username || '使用者'}！
+                        {getGreeting()}，{greetingName}！
                     </h2>
                     <p className="welcome-subtitle">
                         歡迎回到品質管理系統

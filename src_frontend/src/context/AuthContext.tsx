@@ -14,11 +14,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         username: string,
         userId: string,
         role: string = 'user',
-        permissions: Record<string, boolean> = {}
+        permissions: Record<string, boolean> = {},
+        displayName: string | null = null
     ) => {
         localStorage.setItem('authToken', token);
         localStorage.setItem('username', username);
-        setUser({ username, user_id: userId, role, permissions });
+        setUser({ username, user_id: userId, role, permissions, display_name: displayName });
         setIsAuthenticated(true);
     };
 
@@ -44,7 +45,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     username: response.data.username,
                     user_id: response.data.user_id,
                     role: response.data.role ?? 'user',
-                    permissions: response.data.permissions ?? {}
+                    permissions: response.data.permissions ?? {},
+                    display_name: response.data.display_name ?? null
                 });
                 setIsAuthenticated(true);
             } else {
