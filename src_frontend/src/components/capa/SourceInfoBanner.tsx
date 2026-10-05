@@ -8,6 +8,7 @@ export interface SourceInfoBannerProps {
 
 const SourceInfoBanner = ({ capa }: SourceInfoBannerProps) => {
     const info = capa.source_info ?? {};
+    const linked = capa.linked_complaints ?? [];
     return (
         <Alert variant="light" className="border mb-3 py-2">
             <Row className="small g-2 align-items-center">
@@ -24,6 +25,19 @@ const SourceInfoBanner = ({ capa }: SourceInfoBannerProps) => {
                     </Col>
                 ))}
             </Row>
+            {linked.length > 1 && (
+                <div className="small mt-2 pt-2 border-top">
+                    <span className="text-muted">共用此 CAPA 的客訴（{linked.length}）：</span>
+                    {linked.map(c => (
+                        <span key={c.id} className="ms-2 text-nowrap">
+                            <Badge bg="info" text="dark">{c.complaint_no}</Badge>
+                            <span className="ms-1 text-muted">
+                                {[c.material, c.spec].filter(Boolean).join('｜') || '-'}
+                            </span>
+                        </span>
+                    ))}
+                </div>
+            )}
         </Alert>
     );
 };

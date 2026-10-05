@@ -89,7 +89,7 @@ export const ComplaintBasicSection = ({
             <Col md={4}>
                 <Form.Group>
                     <Form.Label>規格</Form.Label>
-                    <Form.Control value={spec} onChange={e => onSpecChange(e.target.value)} placeholder="如：T5、T6…" />
+                    <Form.Control value={spec} onChange={e => onSpecChange(e.target.value)} placeholder="如：31.9*2.45*621（外徑*厚度*長度）" />
                 </Form.Group>
             </Col>
             <Col md={4}>

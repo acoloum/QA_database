@@ -21,12 +21,23 @@ export interface CAPAProgress {
     step_status: Record<string, boolean>;
 }
 
+export interface CAPALinkedComplaint {
+    id: number;
+    complaint_no: string;
+    customer: string;
+    material: string | null;
+    spec: string | null;
+    status: string;
+}
+
 export interface CAPADetail {
     id: number;
     no: string;
     source_type: string;
     source_id: number;
     source_info: Record<string, string | null>;
+    /** 共用此 CAPA 的所有客訴（含來源客訴）；舊資料或 NCMR 來源可能為空 */
+    linked_complaints?: CAPALinkedComplaint[];
     rigor: CAPARigor;
     status: CAPAStatus;
     progress: CAPAProgress;

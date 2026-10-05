@@ -6,9 +6,11 @@ import {
 import {
     useComplaintList,
     useDeleteComplaint,
+    useLinkCapaToComplaint,
     useOpenCapaFromComplaint,
     useOpenReworkFromComplaint,
 } from '../../hooks/useComplaint';
+import ComplaintCapaModal from '../../components/complaint/ComplaintCapaModal';
 import ComplaintModal from '../../components/complaint/ComplaintModal';
 import ConfirmActionModal, { type ConfirmActionState } from '../../components/common/ConfirmActionModal';
 import PaginationBar from '../../components/common/PaginationBar';
@@ -36,6 +38,7 @@ const ComplaintPage = () => {
     const [showModal, setShowModal] = useState(false);
     const [editData,  setEditData]  = useState<CustomerComplaint | null>(null);
     const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
+    const [capaTarget, setCapaTarget] = useState<CustomerComplaint | null>(null);
 
     const params = {
         customer:       customerFilter  || undefined,
@@ -53,6 +56,7 @@ const ComplaintPage = () => {
     const { data, isLoading, isError, refetch } = useComplaintList(params);
     const deleteMutation        = useDeleteComplaint();
     const openCapaMutation      = useOpenCapaFromComplaint();
+    const linkCapaMutation      = useLinkCapaToComplaint();
     const openReworkMutation    = useOpenReworkFromComplaint();
 
     const complaints  = data?.data ?? [];
@@ -77,13 +81,8 @@ const ComplaintPage = () => {
             navigate(`/capa?editId=${c.related_capa_id}`);
             return;
         }
-        setConfirmAction({
-            title: '開立 CAPA',
-            message: `確定從客訴「${c.complaint_no}」開立 CAPA？`,
-            confirmLabel: '開立',
-            confirmVariant: 'primary',
-            onConfirm: () => openCapaMutation.mutateAsync(c.id),
-        });
+        // 未開立：讓使用者選擇開立新 CAPA 或關聯既有 CAPA
+        setCapaTarget(c);
     };
 
     const handleOpenRework = (c: CustomerComplaint) => {
@@ -165,7 +164,7 @@ const ComplaintPage = () => {
                     <ComplaintTable
                         loading={isLoading}
                         complaints={complaints}
-                        capaPending={openCapaMutation.isPending}
+                        capaPending={openCapaMutation.isPending || linkCapaMutation.isPending}
                         reworkPending={openReworkMutation.isPending}
                         onEdit={handleEdit}
                         onDelete={handleDelete}
@@ -190,6 +189,12 @@ const ComplaintPage = () => {
                 onSuccess={() => setShowModal(false)}
             />
             <ConfirmActionModal action={confirmAction} onHide={() => setConfirmAction(null)} />
+            <ComplaintCapaModal
+                complaint={capaTarget}
+                onHide={() => setCapaTarget(null)}
+                onCreate={id => openCapaMutation.mutateAsync(id)}
+                onLink={(complaintId, capaId) => linkCapaMutation.mutateAsync({ complaintId, capaId })}
+            />
         </Container>
     );
 };

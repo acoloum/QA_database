@@ -314,6 +314,43 @@ class ComplaintService:
             raise
 
     @staticmethod
+    def link_capa(complaint_id: int, capa_id: int, *, actor_id: Optional[int]) -> Dict[str, Any]:
+        """將客訴關聯到既有、未結案的 CAPA，讓同一真因的多張客訴共用一份 8D。"""
+        try:
+            c = ComplaintService._locked_active(complaint_id)
+            if not c:
+                raise NotFoundError('客訴不存在')
+            if c.related_capa_id:
+                raise APIError(
+                    f'此客訴已開立 CAPA（ID: {c.related_capa_id}）',
+                    code='COMPLAINT_CAPA_EXISTS',
+                    status_code=409,
+                )
+            capa = CorrectiveAction.active_query().filter_by(id=capa_id).first()
+            if not capa:
+                raise NotFoundError('CAPA 不存在')
+            if capa.status == '已結案':
+                raise APIError('已結案的 CAPA 不可再關聯客訴', code='INVALID_STATE', status_code=409)
+            old_value = ComplaintService._audit_snapshot(c)
+            c.related_capa_id = capa.id
+            if c.status == '待處理':
+                c.status = '處理中'
+            AuditService.record(
+                actor_id=actor_id,
+                action='link_capa',
+                module='客訴',
+                record_id=c.id,
+                old_value=old_value,
+                new_value=ComplaintService._audit_snapshot(c),
+            )
+            result = ComplaintService._to_dict(c)
+            db.session.commit()
+            return result
+        except Exception:
+            db.session.rollback()
+            raise
+
+    @staticmethod
     def _locked_active(complaint_id: int) -> Optional[CustomerComplaint]:
         return db.session.execute(
             db.select(CustomerComplaint)

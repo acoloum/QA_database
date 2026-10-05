@@ -426,9 +426,11 @@ class CAPAService:
                     .with_for_update()
                     .execution_options(populate_existing=True)
                 ).scalar_one_or_none()
+            linked = CAPAService._lock_linked_complaints(ca, exclude=complaint)
             old_value = {
                 'capa': CAPAService._audit_snapshot(ca),
                 'source': CAPAService._source_audit_snapshot(ncmr or complaint),
+                'linked_complaints': [CAPAService._source_audit_snapshot(c) for c in linked],
             }
 
         # D6 gate
@@ -470,6 +472,9 @@ class CAPAService:
             if complaint:
                 if complaint:
                     complaint.status = '已結案'
+        # 其他關聯到此 CAPA 的客訴（共用 8D）一併結案
+            for linked_complaint in linked:
+                linked_complaint.status = '已結案'
 
             AuditService.record(
                 actor_id=actor_id,
@@ -480,6 +485,7 @@ class CAPAService:
                 new_value={
                     'capa': CAPAService._audit_snapshot(ca),
                     'source': CAPAService._source_audit_snapshot(ncmr or complaint),
+                    'linked_complaints': [CAPAService._source_audit_snapshot(c) for c in linked],
                 },
             )
             result = CAPAService._to_dict(ca)
@@ -518,13 +524,15 @@ class CAPAService:
                     .with_for_update()
                     .execution_options(populate_existing=True)
                 ).scalar_one_or_none()
+            linked = CAPAService._lock_linked_complaints(ca, exclude=complaint)
             old_value = {
                 'capa': CAPAService._audit_snapshot(ca),
                 'source': CAPAService._source_audit_snapshot(ncmr or complaint),
+                'linked_complaints': [CAPAService._source_audit_snapshot(c) for c in linked],
             }
-            if complaint:
-                complaint.status = '待處理'
-                complaint.related_capa_id = None
+            for unlinked in ([complaint] if complaint else []) + linked:
+                unlinked.status = '待處理'
+                unlinked.related_capa_id = None
             if ncmr and ncmr.related_capa_id == ca.id:
                 ncmr.related_capa_id = None
                 ncmr.related_capa_source = None
@@ -545,6 +553,7 @@ class CAPAService:
                 new_value={
                     'capa': CAPAService._audit_snapshot(ca),
                     'source': CAPAService._source_audit_snapshot(ncmr or complaint),
+                    'linked_complaints': [CAPAService._source_audit_snapshot(c) for c in linked],
                 },
             )
             db.session.commit()
@@ -552,6 +561,26 @@ class CAPAService:
         except Exception:
             db.session.rollback()
             raise
+
+    @staticmethod
+    def _lock_linked_complaints(
+        ca: CorrectiveAction,
+        exclude: Optional[CustomerComplaint] = None,
+    ) -> List[CustomerComplaint]:
+        """鎖定以「關聯既有 CAPA」掛到此 CAPA 的其他客訴（來源客訴另行處理）。"""
+        q = (
+            db.select(CustomerComplaint)
+            .where(
+                CustomerComplaint.related_capa_id == ca.id,
+                CustomerComplaint.deleted_at.is_(None),
+            )
+            .order_by(CustomerComplaint.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if exclude is not None:
+            q = q.where(CustomerComplaint.id != exclude.id)
+        return list(db.session.execute(q).scalars())
 
     @staticmethod
     def _audit_snapshot(ca: CorrectiveAction) -> Dict[str, Any]:
@@ -731,6 +760,20 @@ class CAPAService:
                 }
 
         tasks = TaskService.list_by_source('capa', ca.id)
+        # 共用此 CAPA 的所有客訴（含來源客訴與後續關聯者）
+        linked_complaints = [
+            {
+                'id':           c.id,
+                'complaint_no': c.complaint_no,
+                'customer':     c.customer,
+                'material':     c.material,
+                'spec':         c.spec,
+                'status':       c.status,
+            }
+            for c in CustomerComplaint.active_query()
+            .filter(CustomerComplaint.related_capa_id == ca.id)
+            .order_by(CustomerComplaint.id)
+        ]
 
         return {
             'id':              ca.id,
@@ -738,6 +781,7 @@ class CAPAService:
             'source_type':     ca.source_type,
             'source_id':       ca.source_id,
             'source_info':     source_info,
+            'linked_complaints': linked_complaints,
             'rigor':           ca.rigor,
             'status':          ca.status,
             'progress':        progress,

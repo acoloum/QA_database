@@ -138,6 +138,26 @@ export const useOpenCapaFromComplaint = () => {
     });
 };
 
+// ── 客訴關聯既有 CAPA（共用 8D）──────────────────────────────
+export const useLinkCapaToComplaint = () => {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ complaintId, capaId }: { complaintId: number; capaId: number }) => {
+            const res = await api.post(`/complaints/${complaintId}/link-capa`, { capa_id: capaId });
+            return res.data;
+        },
+        onSuccess: (_data, vars) => {
+            toast.success('已關聯既有 CAPA');
+            qc.invalidateQueries({ queryKey: complaintKeys.root });
+            qc.invalidateQueries({ queryKey: complaintKeys.detail(vars.complaintId) });
+            qc.invalidateQueries({ queryKey: capaKeys.detail(vars.capaId) });
+        },
+        onError: (err: Error) => {
+            toast.error(`關聯失敗：${err.message}`);
+        },
+    });
+};
+
 
 // ── 從客訴開立重工 ────────────────────────────────────────────
 export const useOpenReworkFromComplaint = () => {

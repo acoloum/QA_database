@@ -101,6 +101,22 @@ def open_capa_from_complaint(current_user, complaint_id: int):
         return api_error(str(e), 400, code="VALIDATION_ERROR")
 
 
+# ── 關聯既有 CAPA ────────────────────────────────────────────
+@complaint_bp.route('/api/complaints/<int:complaint_id>/link-capa', methods=['POST'])
+@auth_required
+@require_permissions('complaint.edit', 'capa.edit')
+def link_capa_to_complaint(current_user, complaint_id: int):
+    """POST /api/complaints/<id>/link-capa — 將客訴關聯到既有 CAPA（共用 8D）"""
+    data = request.get_json(silent=True) or {}
+    capa_id = data.get('capa_id')
+    if not isinstance(capa_id, int) or isinstance(capa_id, bool):
+        return api_error('請選擇要關聯的 CAPA', 400, code="VALIDATION_ERROR")
+    try:
+        result = ComplaintService.link_capa(complaint_id, capa_id, actor_id=current_user.id)
+        return jsonify(result), 200
+    except APIError as e:
+        return jsonify(e.to_dict()), e.status_code
+
 
 # ── 從客訴開立重工 ────────────────────────────────────────────
 @complaint_bp.route('/api/complaints/<int:complaint_id>/open-rework', methods=['POST'])

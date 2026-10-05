@@ -34,3 +34,31 @@ describe('SourceInfoBanner', () => {
     expect(screen.queryByText('第五個欄位不顯示')).not.toBeInTheDocument();
   });
 });
+
+describe('SourceInfoBanner 共用客訴', () => {
+  const linkedCapa = {
+    ...capa,
+    source_type: 'complaint',
+    source_id: 5,
+    source_info: {},
+    linked_complaints: [
+      { id: 5, complaint_no: 'CC-001', customer: '甲客戶', material: '6063', spec: 'Φ20', status: '處理中' },
+      { id: 6, complaint_no: 'CC-002', customer: '甲客戶', material: '6061', spec: 'Φ30', status: '處理中' },
+    ],
+  } as CAPADetail;
+
+  it('多張客訴共用此 CAPA 時列出每張客訴單號與規格', () => {
+    render(<SourceInfoBanner capa={linkedCapa} />);
+
+    expect(screen.getByText(/共用此 CAPA 的客訴（2）/)).toBeInTheDocument();
+    expect(screen.getByText('CC-001')).toBeInTheDocument();
+    expect(screen.getByText('CC-002')).toBeInTheDocument();
+    expect(screen.getByText(/6061｜Φ30/)).toBeInTheDocument();
+  });
+
+  it('只有來源客訴一張時不顯示共用清單', () => {
+    render(<SourceInfoBanner capa={{ ...linkedCapa, linked_complaints: linkedCapa.linked_complaints!.slice(0, 1) }} />);
+
+    expect(screen.queryByText(/共用此 CAPA 的客訴/)).not.toBeInTheDocument();
+  });
+});
