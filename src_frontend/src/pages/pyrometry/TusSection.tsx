@@ -6,6 +6,7 @@ import type { TusPoint } from '../../types';
 import ChartRangeControls from './ChartRangeControls';
 import { resolvePyrometryChartSettings } from './pyrometryChartSettings';
 import type { ChartData } from './pyrometryFormUtils';
+import { evaluateTusPoint } from './tusEvaluation';
 
 interface Props {
   tusPoints: TusPoint[];
@@ -136,79 +137,95 @@ const TusSection = ({
               <th>修正值</th>
               <th>最高溫</th>
               <th>最低溫</th>
+              <th className="text-center" style={{ minWidth: 80 }}>最大偏差</th>
+              <th className="text-center" style={{ width: 60 }}>合格</th>
               <th style={{ width: 70 }}>排除</th>
               <th style={{ minWidth: 150 }}>排除原因</th>
             </tr>
           </thead>
           <tbody>
-            {tusPoints.map((point, index) => (
-              <tr key={index}>
-                <td>
-                  <Form.Control
-                    size="sm"
-                    value={point.點位}
-                    aria-label={`點位 ${index + 1}`}
-                    onChange={event => onUpdateTus(index, '點位', event.target.value)}
-                  />
-                </td>
-                <td>
-                  <Form.Control
-                    size="sm"
-                    type="number"
-                    min={1}
-                    max={99}
-                    value={point.頻道 ?? ''}
-                    aria-label={`頻道 ${index + 1}`}
-                    onChange={event => onUpdateTus(index, '頻道', event.target.value)}
-                    style={{ minWidth: 70 }}
-                  />
-                </td>
-                <td>
-                  <Form.Control
-                    size="sm"
-                    value={String(point.修正值 ?? '')}
-                    aria-label={`修正值 ${index + 1}`}
-                    onChange={event => onUpdateTus(index, '修正值', event.target.value)}
-                  />
-                </td>
-                <td>
-                  <Form.Control
-                    size="sm"
-                    value={String(point.最高溫 ?? '')}
-                    aria-label={`最高溫 ${index + 1}`}
-                    onChange={event => onUpdateTus(index, '最高溫', event.target.value)}
-                  />
-                </td>
-                <td>
-                  <Form.Control
-                    size="sm"
-                    value={String(point.最低溫 ?? '')}
-                    aria-label={`最低溫 ${index + 1}`}
-                    onChange={event => onUpdateTus(index, '最低溫', event.target.value)}
-                  />
-                </td>
-                <td className="text-center">
-                  <Form.Check
-                    type="checkbox"
-                    aria-label={`排除 ${index + 1}`}
-                    checked={!!point.已排除}
-                    onChange={event => onToggleExclude(index, event.target.checked)}
-                  />
-                </td>
-                <td>
-                  <Form.Control
-                    size="sm"
-                    value={point.排除原因 ?? ''}
-                    aria-label={`排除原因 ${index + 1}`}
-                    disabled={!point.已排除}
-                    placeholder={point.已排除 ? '必填' : ''}
-                    isInvalid={!!point.已排除 && !String(point.排除原因 ?? '').trim()}
-                    onChange={event => onReasonChange(index, event.target.value)}
-                  />
-                  <Form.Control.Feedback type="invalid">請填寫排除原因</Form.Control.Feedback>
-                </td>
-              </tr>
-            ))}
+            {tusPoints.map((point, index) => {
+              const { maxDeviation, pass } = evaluateTusPoint(point, setpoint, tolerance);
+              return (
+                <tr key={index} style={pass === false ? { background: '#fff5f5' } : undefined}>
+                  <td>
+                    <Form.Control
+                      size="sm"
+                      value={point.點位}
+                      aria-label={`點位 ${index + 1}`}
+                      onChange={event => onUpdateTus(index, '點位', event.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <Form.Control
+                      size="sm"
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={point.頻道 ?? ''}
+                      aria-label={`頻道 ${index + 1}`}
+                      onChange={event => onUpdateTus(index, '頻道', event.target.value)}
+                      style={{ minWidth: 70 }}
+                    />
+                  </td>
+                  <td>
+                    <Form.Control
+                      size="sm"
+                      value={String(point.修正值 ?? '')}
+                      aria-label={`修正值 ${index + 1}`}
+                      onChange={event => onUpdateTus(index, '修正值', event.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <Form.Control
+                      size="sm"
+                      value={String(point.最高溫 ?? '')}
+                      aria-label={`最高溫 ${index + 1}`}
+                      onChange={event => onUpdateTus(index, '最高溫', event.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <Form.Control
+                      size="sm"
+                      value={String(point.最低溫 ?? '')}
+                      aria-label={`最低溫 ${index + 1}`}
+                      onChange={event => onUpdateTus(index, '最低溫', event.target.value)}
+                    />
+                  </td>
+                  <td
+                    className="text-center align-middle"
+                    style={{ fontWeight: maxDeviation !== null ? 600 : undefined, color: pass === null ? undefined : pass ? '#0a3622' : '#842029' }}
+                  >
+                    {maxDeviation ?? '—'}
+                  </td>
+                  <td className="text-center align-middle" aria-label={`合格 ${index + 1}`}>
+                    {pass === null ? '—' : pass
+                      ? <span style={{ color: '#198754', fontWeight: 700 }}>✓</span>
+                      : <span style={{ color: '#dc3545', fontWeight: 700 }}>✗</span>}
+                  </td>
+                  <td className="text-center">
+                    <Form.Check
+                      type="checkbox"
+                      aria-label={`排除 ${index + 1}`}
+                      checked={!!point.已排除}
+                      onChange={event => onToggleExclude(index, event.target.checked)}
+                    />
+                  </td>
+                  <td>
+                    <Form.Control
+                      size="sm"
+                      value={point.排除原因 ?? ''}
+                      aria-label={`排除原因 ${index + 1}`}
+                      disabled={!point.已排除}
+                      placeholder={point.已排除 ? '必填' : ''}
+                      isInvalid={!!point.已排除 && !String(point.排除原因 ?? '').trim()}
+                      onChange={event => onReasonChange(index, event.target.value)}
+                    />
+                    <Form.Control.Feedback type="invalid">請填寫排除原因</Form.Control.Feedback>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </Table>
       </>

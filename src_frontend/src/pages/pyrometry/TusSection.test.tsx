@@ -68,6 +68,37 @@ describe('TusSection', () => {
     expect(onToggleExclude).toHaveBeenCalledWith(0, true);
   });
 
+  it('shows per-channel max deviation and pass/fail', () => {
+    const points: TusPoint[] = [
+      { 點位: 'TUS-1', 熱電偶編號: '', 頻道: 1, 修正值: '-0.5', 最高溫: '183.5', 最低溫: '178' },
+      { 點位: 'TUS-2', 熱電偶編號: '', 頻道: 2, 修正值: '', 最高溫: '186', 最低溫: '179' },
+      { 點位: 'TUS-3', 熱電偶編號: '', 頻道: 3, 修正值: '', 最高溫: '', 最低溫: '' },
+    ];
+
+    render(
+      <TusSection
+        tusPoints={points}
+        setpoint="180" tolerance="5" chartData={null}
+        rangeStart={0} rangeEnd={0} showDetail={false} timeLabels={[]}
+        onFileUpload={() => undefined}
+        onRangeStartChange={() => undefined}
+        onRangeEndChange={() => undefined}
+        onApplyRangeTus={() => undefined}
+        onToggleDetail={() => undefined}
+        onUpdateTus={() => undefined}
+        onApplyCorrections={() => undefined}
+        onToggleExclude={() => undefined}
+        onReasonChange={() => undefined}
+      />,
+    );
+
+    expect(screen.getByLabelText('合格 1')).toHaveTextContent('✓');
+    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByLabelText('合格 2')).toHaveTextContent('✗');
+    expect(screen.getByText('6')).toBeInTheDocument();
+    expect(screen.getByLabelText('合格 3')).toHaveTextContent('—');
+  });
+
   it('shows invalid feedback when excluded reason is blank', () => {
     const excludedPoints: TusPoint[] = [
       { 點位: 'TUS-1', 熱電偶編號: '', 頻道: 1, 修正值: '0.1', 最高溫: '181', 最低溫: '179', 已排除: true, 排除原因: '' },
