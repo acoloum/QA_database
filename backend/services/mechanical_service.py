@@ -1,5 +1,5 @@
 """機械性質檢驗 CRUD 服務。"""
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Dict, Optional
 
@@ -16,7 +16,7 @@ from ..models import (
     Vendor,
     VendorToleranceMain,
 )
-from ..utils import bounded_int
+from ..utils import bounded_int, log_audit
 from .mechanical_import import build_payloads_from_workbook
 from .mechanical_spec import (
     lookup_limits,
@@ -619,6 +619,58 @@ class MechanicalService:
                 raise MechanicalNotFoundError("找不到該筆機械性質檢驗資料")
             db.session.delete(test)
             db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
+
+    @staticmethod
+    def set_measurement_exclusion(
+        measurement_id: int,
+        excluded: bool,
+        reason: Optional[str],
+        actor_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """標示/解除量測值排除統計（§6.6：不刪除、保留追溯、排除統計）"""
+        try:
+            measurement = db.session.get(MechanicalMeasurement, measurement_id)
+            if measurement is None:
+                raise MechanicalNotFoundError("找不到該筆量測明細")
+            normalized_reason = (reason or "").strip()
+            if not normalized_reason:
+                action = "排除統計" if excluded else "恢復統計"
+                raise MechanicalValidationError(f"{action}必須填寫原因（§6.6）")
+            if len(normalized_reason) > 200:
+                raise MechanicalValidationError("原因不可超過 200 字")
+
+            def snapshot() -> Dict[str, Any]:
+                return {
+                    "excluded": bool(measurement.excluded),
+                    "reason": measurement.exclusion_reason,
+                    "actor_id": measurement.exclusion_user_id,
+                    "at": measurement.excluded_at.isoformat() if measurement.excluded_at else None,
+                }
+
+            old_value = snapshot()
+            measurement.excluded = excluded
+            measurement.exclusion_reason = normalized_reason if excluded else None
+            measurement.exclusion_user_id = actor_id if excluded else None
+            measurement.excluded_at = datetime.now(timezone.utc) if excluded else None
+            log_audit(
+                actor_id,
+                "exclude" if excluded else "restore",
+                "mechanical_measurement",
+                measurement.id,
+                old_val=old_value,
+                new_val={**snapshot(), "action_reason": normalized_reason},
+            )
+            db.session.commit()
+            return {
+                "id": measurement.id,
+                "排除統計": measurement.excluded,
+                "排除原因": measurement.exclusion_reason,
+                "排除者ID": measurement.exclusion_user_id,
+                "排除時間": measurement.excluded_at.isoformat() if measurement.excluded_at else None,
+            }
         except Exception:
             db.session.rollback()
             raise

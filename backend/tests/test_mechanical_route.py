@@ -179,3 +179,80 @@ def test_create_rejects_invalid_json_request(client, db_session, body, content_t
     response = client.post("/api/mechanical/tests", data=body, headers=headers)
 
     assert response.status_code == 400
+
+
+def _seed_outlier(db_session):
+    from datetime import date
+    from backend.models import MechanicalMeasurement, MechanicalTest
+    for i in range(12):
+        test = MechanicalTest(product_size="66.7*59", material="6061-T651", test_date=date(2026, 1, 1 + i))
+        test.measurements.append(MechanicalMeasurement(item="硬度", location="爐門", sample_no=1, value=60 + i))
+        db_session.add(test)
+    bad = MechanicalTest(product_size="66.7*59", material="6061-T651", test_date=date(2026, 2, 1))
+    bad.measurements.append(MechanicalMeasurement(item="硬度", location="爐門", sample_no=1, value=669))
+    db_session.add(bad)
+    db_session.flush()
+    return bad.measurements[0].id
+
+
+def test_suspect_measurements_via_api(client, db_session):
+    headers = _auth_headers(db_session, 'qc_view', {'mechanical.view': True})
+    measurement_id = _seed_outlier(db_session)
+    db_session.commit()
+
+    r = client.get("/api/mechanical/suspect-measurements", headers=headers)
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["total"] == 1
+    assert body["data"][0]["識別碼"] == measurement_id
+    assert "66.9" in body["data"][0]["提示"]
+
+    invalid = client.get("/api/mechanical/suspect-measurements?item=EC值", headers=headers)
+    assert invalid.status_code == 400
+
+
+def test_suspect_measurements_requires_view_permission(client, db_session):
+    headers = _auth_headers(db_session, 'nobody', {})
+    db_session.commit()
+    r = client.get("/api/mechanical/suspect-measurements", headers=headers)
+    assert r.status_code == 403
+
+
+def test_measurement_exclusion_via_api(client, db_session):
+    headers = _auth_headers(db_session, 'qc_spc', {
+        'mechanical.view': True, 'mechanical.edit': True, 'spc.manage': True,
+    })
+    measurement_id = _seed_outlier(db_session)
+    db_session.commit()
+    url = f"/api/mechanical/measurements/{measurement_id}/exclusion"
+
+    missing_reason = client.patch(url, json={"排除統計": True, "排除原因": ""}, headers=headers)
+    assert missing_reason.status_code == 400
+
+    r = client.patch(url, json={"排除統計": True, "排除原因": "小數點誤植"}, headers=headers)
+    assert r.status_code == 200
+    assert r.get_json()["排除統計"] is True
+
+    suspects = client.get("/api/mechanical/suspect-measurements", headers=headers).get_json()
+    assert suspects["total"] == 0
+
+    not_found = client.patch(
+        "/api/mechanical/measurements/999999/exclusion",
+        json={"排除統計": True, "排除原因": "x"}, headers=headers,
+    )
+    assert not_found.status_code == 404
+
+
+@pytest.mark.parametrize("permissions", [
+    {'mechanical.edit': True},
+    {'spc.manage': True},
+])
+def test_measurement_exclusion_requires_edit_and_spc_manage(client, db_session, permissions):
+    headers = _auth_headers(db_session, 'partial', permissions)
+    measurement_id = _seed_outlier(db_session)
+    db_session.commit()
+    r = client.patch(
+        f"/api/mechanical/measurements/{measurement_id}/exclusion",
+        json={"排除統計": True, "排除原因": "誤植"}, headers=headers,
+    )
+    assert r.status_code == 403

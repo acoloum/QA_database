@@ -1,5 +1,7 @@
 import api from './api';
+import { compactParams } from '../utils/queryParams';
 import type {
+  MechanicalSuspectMeasurement,
   MechanicalTestDetail,
   MechanicalTestListItem,
   MechanicalTestPayload,
@@ -23,6 +25,34 @@ export interface MechanicalListResponse {
   page: number;
   page_size: number;
   total_pages: number;
+}
+
+export interface MechanicalSuspectParams {
+  item?: string;
+  material?: string;
+  date_from?: string;
+  date_to?: string;
+  include_excluded?: boolean;
+  page: number;
+  page_size: number;
+}
+
+export interface MechanicalSuspectResponse {
+  success: boolean;
+  data: MechanicalSuspectMeasurement[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  rule: { iqr_fence: number; min_group_size: number };
+}
+
+export interface MechanicalExclusionResult {
+  id: number;
+  排除統計: boolean;
+  排除原因: string | null;
+  排除者ID: number | null;
+  排除時間: string | null;
 }
 
 export interface MechanicalVendorOption {
@@ -109,6 +139,22 @@ export const mechanicalApi = {
 
   stats: (params: MechanicalStatsParams) =>
     api.get<SpcChartData>('/mechanical/stats', { params }).then((r) => r.data),
+
+  suspects: ({ include_excluded, ...params }: MechanicalSuspectParams) =>
+    api
+      .get<MechanicalSuspectResponse>('/mechanical/suspect-measurements', {
+        params: compactParams({ ...params, include_excluded: include_excluded ? 1 : undefined }),
+      })
+      .then((r) => r.data),
+
+  /** 標示或解除排除統計；兩種動作都必須填寫原因（§6.6） */
+  setExclusion: (measurementId: number, excluded: boolean, reason: string) =>
+    api
+      .patch<MechanicalExclusionResult>(`/mechanical/measurements/${measurementId}/exclusion`, {
+        排除統計: excluded,
+        排除原因: reason,
+      })
+      .then((r) => r.data),
 
   /** material 為後援預設材質（僅在公差檔查無該產品尺寸時套用），可留空 */
   importExcel: (file: File, material: string, vendorId?: number) => {

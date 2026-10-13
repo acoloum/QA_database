@@ -7,6 +7,7 @@ from ..services.mechanical_service import (
     MechanicalValidationError,
     parse_vendor_id,
 )
+from ..services.mechanical_outlier import find_suspect_measurements
 from ..extensions import db
 from ..models import Vendor
 from ..utils import auth_required, handle_db_error, validate_upload_file, api_error
@@ -93,6 +94,35 @@ def delete_test(test_id):
     try:
         MechanicalService.delete(test_id)
         return jsonify({"success": True})
+    except Exception as e:
+        return _mechanical_error_response(e)
+
+
+@mechanical_bp.route('/api/mechanical/suspect-measurements', methods=['GET'])
+@auth_required
+@require_permission('mechanical.view')
+def list_suspect_measurements():
+    """疑似異常量測值清單（同項目同材質 5 倍 IQR 以外或 0／負值）"""
+    try:
+        return jsonify(find_suspect_measurements(request.args))
+    except Exception as e:
+        return _mechanical_error_response(e)
+
+
+@mechanical_bp.route('/api/mechanical/measurements/<int:measurement_id>/exclusion', methods=['PATCH'])
+@auth_required
+@require_permission('mechanical.edit')
+@require_permission('spc.manage')
+def set_measurement_exclusion(measurement_id):
+    """標示/解除量測值排除統計（AIAG-VDA SPC 2026 §6.6）"""
+    try:
+        data = _json_object()
+        return jsonify(MechanicalService.set_measurement_exclusion(
+            measurement_id,
+            excluded=bool(data.get('排除統計')),
+            reason=data.get('排除原因'),
+            actor_id=_current_user_id(),
+        ))
     except Exception as e:
         return _mechanical_error_response(e)
 

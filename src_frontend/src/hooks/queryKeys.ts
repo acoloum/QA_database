@@ -134,6 +134,9 @@ export const mechanicalKeys = {
     options: (vendorId: Id) => ['mechanical-options', vendorId] as const,
     spec: (material: string, size: string, vendorId: Id) =>
         ['mechanical-spec', material, size, vendorId] as const,
+    /** 掛在 root 之下，表單存檔後的 root 失效會一併重查 */
+    suspects: (params: unknown) => ['mechanical-tests', 'suspects', params] as const,
+    statsRoot: ['mechanical-stats'] as const,
     stats: (params: unknown) => ['mechanical-stats', params] as const,
 };
 

@@ -96,3 +96,34 @@ export interface MechanicalTestPayload {
   measurements: MechanicalMeasurement[];
   waived_items: MechanicalWaivedItem[];
 }
+
+/** 疑似異常值會判定的項目（與 SPC 分析範圍一致） */
+export type MechSuspectItem = '硬度' | '抗拉強度' | '降伏強度' | '伸長率';
+
+/** 疑似異常量測值：同項目同材質 5 倍 IQR 以外或 0／負值 */
+export interface MechanicalSuspectMeasurement {
+  識別碼: number;
+  檢驗ID: number;
+  測試日期: string | null;
+  材質: string;
+  產品尺寸: string;
+  量測項目: MechSuspectItem;
+  測量位置: MechLocation;
+  取樣序: number;
+  量測值: number;
+  /** 同組資料不足（少於最低筆數）時不估計範圍，以下三欄為 null */
+  同組中位數: number | null;
+  正常下界: number | null;
+  正常上界: number | null;
+  同組筆數: number;
+  同爐次其他值: {
+    測量位置: MechLocation;
+    取樣序: number;
+    量測值: number;
+    排除統計: boolean;
+  }[];
+  提示: string;
+  排除統計: boolean;
+  排除原因: string | null;
+  排除時間: string | null;
+}

@@ -21,6 +21,14 @@ vi.mock('../../components/mechanical/MechanicalCharts', () => ({
   default: () => <div data-testid="mechanical-charts" />,
 }));
 
+vi.mock('../../components/mechanical/MechanicalSuspectPanel', () => ({
+  default: ({ onEdit }: { onEdit: (id: number) => void }) => (
+    <button type="button" data-testid="mechanical-suspect-panel" onClick={() => onEdit(1428)}>
+      疑似異常值面板
+    </button>
+  ),
+}));
+
 vi.mock('react-hot-toast', () => ({
   default: { success: vi.fn(), error: vi.fn() },
 }));
@@ -275,5 +283,16 @@ describe('MechanicalTestListPage', () => {
     renderPage();
 
     expect(await screen.findByRole('alert')).toHaveTextContent('載入機械性質檢驗資料失敗，請稍後再試');
+  });
+
+  it('切換到疑似異常值分頁並可開啟該爐次表單', async () => {
+    renderPage();
+    await screen.findByText('62.5 x 2.3');
+    expect(screen.queryByTestId('mechanical-suspect-panel')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: '疑似異常值' }));
+    fireEvent.click(await screen.findByTestId('mechanical-suspect-panel'));
+
+    expect(await screen.findByTestId('mechanical-test-form')).toBeInTheDocument();
   });
 });
