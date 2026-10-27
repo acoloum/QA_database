@@ -290,6 +290,58 @@ h6 {
     box-shadow: none;
 }
 
+/* ── 公差明細輸入表格 ─────────────────────────────────────────────
+   全域 .table tbody td（20px 16px）與 .form-control（12px 16px）的內距疊在一起，
+   視窗縮到一半時每格輸入框只剩 34px 寬、扣掉內距後文字區是 0，打的字完全看不到。
+   這裡把兩層內距收小，各欄最小寬度由 th 的 minWidth 決定，寬度不足交給外層容器
+   橫向捲動；拖曳把手與「測量項目」釘在左側，捲到右邊輸入時仍看得到是哪一列。 */
+.tolerance-detail-table.table thead th,
+.tolerance-detail-table.table tbody td {
+    padding: 6px !important;
+}
+
+.tolerance-detail-table thead th {
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.tolerance-detail-table .form-control,
+.tolerance-detail-table .form-select {
+    padding: 6px 8px !important;
+}
+
+.tolerance-detail-table .btn.btn-sm {
+    padding: 4px 10px !important;
+    box-shadow: none;
+}
+
+.tolerance-detail-table.table :is(th, td):nth-child(-n + 2) {
+    position: sticky;
+    z-index: 1;
+}
+
+/* 權重需高過全域斑馬紋（半透明底），否則捲動時後方欄位會透出來 */
+.tolerance-detail-table.table tbody td:nth-child(-n + 2) {
+    background-color: #ffffff;
+}
+
+.tolerance-detail-table :is(th, td):nth-child(1) {
+    left: 0;
+    width: 36px;
+    min-width: 36px;
+}
+
+.tolerance-detail-table :is(th, td):nth-child(2) {
+    left: 36px;
+    box-shadow: inset -1px 0 0 var(--bs-border-color, #dee2e6);
+}
+
+/* 左上角的表頭同時黏住上方與左側，必須疊在其他表頭（全域 .table thead th 為 10）之上 */
+.tolerance-detail-table.table thead th:nth-child(-n + 2) {
+    z-index: 11;
+    background-color: var(--bs-light);
+}
+
 /* 判定結果是表格內的文字連結，但全域 .btn 的 padding: 14px 28px !important
    會把它撐成一顆大按鈕（「報廢」被擠成兩行），這裡還原成純文字連結。 */
 .btn.ncmr-result-link {

@@ -156,16 +156,36 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
         }
     };
 
+    // 視窗寬度不足 992px（例如與採購單並排各占半個螢幕）時改為全螢幕，把寬度都留給明細表
     return (
-        <Modal show={show} onHide={handleClose} size="xl" backdrop="static" dialogClassName="modal-90w">
+        <Modal show={show} onHide={handleClose} size="xl" backdrop="static" dialogClassName="modal-90w tolerance-modal-dialog" fullscreen="lg-down">
             <Modal.Header closeButton>
                 <Modal.Title>{editId ? '編輯公差資料' : '新增公差資料'}</Modal.Title>
             </Modal.Header>
-            <Modal.Body style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+            <Modal.Body className="tolerance-modal-body">
                 <style type="text/css">
                     {`
-                        .modal-90w {
-                            max-width: 90% !important;
+                        @media (min-width: 992px) {
+                            .modal-90w {
+                                max-width: 90% !important;
+                            }
+                            .tolerance-modal-body {
+                                max-height: 80vh;
+                                overflow-y: auto;
+                            }
+                        }
+                        /* App.css 的 .modal.show .modal-dialog.modal-90w 與 .modal-content 圓角
+                           會蓋掉 Bootstrap 的全螢幕樣式，這裡以更高權重還原 */
+                        @media (max-width: 991.98px) {
+                            .modal.show .modal-dialog.modal-90w.tolerance-modal-dialog {
+                                width: 100vw;
+                                max-width: none;
+                                height: 100%;
+                                margin: 0;
+                            }
+                            .tolerance-modal-dialog .modal-content {
+                                border-radius: 0 !important;
+                            }
                         }
                         .sticky-header th {
                             position: sticky;
@@ -180,10 +200,10 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
                     <>
                         <div className="bg-light p-3 rounded mb-3">
                             <Row className="g-3">
-                                <Col md={3}><Form.Label>日期</Form.Label><Form.Control type="date" value={date} onChange={e => setDate(e.target.value)} /></Col>
-                                <Col md={3}><Form.Label>材質 <span className="text-danger">*</span></Form.Label><Form.Control value={material} onChange={e => setMaterial(e.target.value)} required /></Col>
-                                <Col md={3}><Form.Label>規格</Form.Label><Form.Control value={spec} onChange={e => setSpec(e.target.value)} /></Col>
-                                <Col md={3}>
+                                <Col sm={6} md={3}><Form.Label>日期</Form.Label><Form.Control type="date" value={date} onChange={e => setDate(e.target.value)} /></Col>
+                                <Col sm={6} md={3}><Form.Label>材質 <span className="text-danger">*</span></Form.Label><Form.Control value={material} onChange={e => setMaterial(e.target.value)} required /></Col>
+                                <Col sm={6} md={3}><Form.Label>規格</Form.Label><Form.Control value={spec} onChange={e => setSpec(e.target.value)} /></Col>
+                                <Col sm={6} md={3}>
                                     <Form.Label>廠商</Form.Label>
                                     <Form.Select value={vendorId} onChange={e => setVendorId(e.target.value)}>
                                         <option value="">-- 請選擇 --</option>

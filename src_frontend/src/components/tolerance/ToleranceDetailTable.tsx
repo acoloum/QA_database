@@ -47,7 +47,7 @@ const SortableRow = ({ id, detail, index, onChange, onRemove, canDelete, fieldEr
 
     return (
         <tr ref={setNodeRef} style={style}>
-            <td className="text-center" style={{ cursor: 'grab', width: '40px' }} {...attributes} {...listeners}>
+            <td className="text-center" style={{ cursor: 'grab' }} {...attributes} {...listeners}>
                 <i className="bi bi-grip-vertical text-muted"></i>
             </td>
             <td><Form.Control size="sm" value={detail.item} onChange={e => onChange(index, 'item', e.target.value)} placeholder="項目" /></td>
@@ -117,21 +117,22 @@ const ToleranceDetailTable = ({
             >
                 {/* overflowX + overflowY 合一，讓 sticky header 相對此容器定位 */}
                 <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(80vh - 230px)' }}>
-                    <Table bordered hover size="sm" style={{ minWidth: '760px' }}>
+                    {/* 欄寬下限確保輸入框能顯示數值；總寬超過視窗時改為橫向捲動 */}
+                    <Table bordered hover size="sm" className="tolerance-detail-table">
                         <thead className="table-light text-center sticky-header">
                             <tr>
-                                <th style={{ width: '40px' }}></th>
-                                <th style={{ width: '15%' }}>測量項目</th>
-                                <th style={{ width: '8%' }}>位置</th>
-                                <th>尺寸下限</th>
-                                <th>尺寸上限</th>
-                                <th>公差下限</th>
-                                <th>公差上限</th>
-                                <th>標準值</th>
-                                <th style={{ width: '9%' }}>特性重要度</th>
-                                <th style={{ width: '8%' }}>單位</th>
-                                <th>備註</th>
-                                <th style={{ width: '5%' }}></th>
+                                <th></th>
+                                <th style={{ minWidth: '150px' }}>測量項目</th>
+                                <th style={{ minWidth: '80px' }}>位置</th>
+                                <th style={{ minWidth: '92px' }}>尺寸下限</th>
+                                <th style={{ minWidth: '92px' }}>尺寸上限</th>
+                                <th style={{ minWidth: '92px' }}>公差下限</th>
+                                <th style={{ minWidth: '92px' }}>公差上限</th>
+                                <th style={{ minWidth: '92px' }}>標準值</th>
+                                <th style={{ minWidth: '96px' }}>特性重要度</th>
+                                <th style={{ minWidth: '72px' }}>單位</th>
+                                <th style={{ minWidth: '160px' }}>備註</th>
+                                <th style={{ minWidth: '52px' }}></th>
                             </tr>
                         </thead>
                         <tbody>
