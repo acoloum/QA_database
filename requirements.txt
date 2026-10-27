@@ -37,6 +37,8 @@ Werkzeug==3.1.9
 scipy==1.17.0
 bcrypt==5.0.0
 reportlab==5.0.1
-pypdf==6.19.0
+# reportlab 的間接相依；明確釘版，避免建置時拿到未修補漏洞的版本
+pillow==13.0.0
+pypdf==6.21.2
 Flask-Limiter==4.1.1
 marshmallow==3.26.2
