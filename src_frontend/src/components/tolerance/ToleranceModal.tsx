@@ -158,7 +158,7 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
 
     // 視窗寬度不足 992px（例如與採購單並排各占半個螢幕）時改為全螢幕，把寬度都留給明細表
     return (
-        <Modal show={show} onHide={handleClose} size="xl" backdrop="static" dialogClassName="modal-90w tolerance-modal-dialog" fullscreen="lg-down">
+        <Modal show={show} onHide={handleClose} size="xl" backdrop="static" dialogClassName="modal-90w" fullscreen="lg-down">
             <Modal.Header closeButton>
                 <Modal.Title>{editId ? '編輯公差資料' : '新增公差資料'}</Modal.Title>
             </Modal.Header>
@@ -172,19 +172,6 @@ const ToleranceModal = ({ show, handleClose, onSuccess, editId, vendors }: Toler
                             .tolerance-modal-body {
                                 max-height: 80vh;
                                 overflow-y: auto;
-                            }
-                        }
-                        /* App.css 的 .modal.show .modal-dialog.modal-90w 與 .modal-content 圓角
-                           會蓋掉 Bootstrap 的全螢幕樣式，這裡以更高權重還原 */
-                        @media (max-width: 991.98px) {
-                            .modal.show .modal-dialog.modal-90w.tolerance-modal-dialog {
-                                width: 100vw;
-                                max-width: none;
-                                height: 100%;
-                                margin: 0;
-                            }
-                            .tolerance-modal-dialog .modal-content {
-                                border-radius: 0 !important;
                             }
                         }
                         .sticky-header th {

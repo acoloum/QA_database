@@ -118,7 +118,7 @@ const ToleranceDetailTable = ({
                 {/* overflowX + overflowY 合一，讓 sticky header 相對此容器定位 */}
                 <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(80vh - 230px)' }}>
                     {/* 欄寬下限確保輸入框能顯示數值；總寬超過視窗時改為橫向捲動 */}
-                    <Table bordered hover size="sm" className="tolerance-detail-table">
+                    <Table bordered hover size="sm" className="tolerance-entry-table tolerance-detail-table">
                         <thead className="table-light text-center sticky-header">
                             <tr>
                                 <th></th>

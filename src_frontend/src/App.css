@@ -290,31 +290,32 @@ h6 {
     box-shadow: none;
 }
 
-/* ── 公差明細輸入表格 ─────────────────────────────────────────────
+/* ── 公差／擠壓公差明細輸入表格 ───────────────────────────────────
    全域 .table tbody td（20px 16px）與 .form-control（12px 16px）的內距疊在一起，
    視窗縮到一半時每格輸入框只剩 34px 寬、扣掉內距後文字區是 0，打的字完全看不到。
    這裡把兩層內距收小，各欄最小寬度由 th 的 minWidth 決定，寬度不足交給外層容器
-   橫向捲動；拖曳把手與「測量項目」釘在左側，捲到右邊輸入時仍看得到是哪一列。 */
-.tolerance-detail-table.table thead th,
-.tolerance-detail-table.table tbody td {
+   橫向捲動。 */
+.tolerance-entry-table.table thead th,
+.tolerance-entry-table.table tbody td {
     padding: 6px !important;
 }
 
-.tolerance-detail-table thead th {
+.tolerance-entry-table thead th {
     white-space: nowrap;
     vertical-align: middle;
 }
 
-.tolerance-detail-table .form-control,
-.tolerance-detail-table .form-select {
+.tolerance-entry-table .form-control,
+.tolerance-entry-table .form-select {
     padding: 6px 8px !important;
 }
 
-.tolerance-detail-table .btn.btn-sm {
+.tolerance-entry-table .btn.btn-sm {
     padding: 4px 10px !important;
     box-shadow: none;
 }
 
+/* 公差明細欄位多：拖曳把手與「測量項目」釘在左側，捲到右邊輸入時仍看得到是哪一列 */
 .tolerance-detail-table.table :is(th, td):nth-child(-n + 2) {
     position: sticky;
     z-index: 1;
@@ -970,6 +971,22 @@ body .modal-patrol-wide~.modal-body {
     min-width: 95% !important;
     max-width: 95% !important;
     margin: 1.75rem auto;
+}
+
+/* <Modal fullscreen="lg-down">：上方 .modal.show .modal-dialog（含 .modal-90w）的寬度、外距
+   與 .modal-content 的圓角會蓋掉 Bootstrap 的全螢幕樣式，這裡以同等以上權重還原。
+   視窗與其他程式並排、寬度不足 992px 時，把整個寬度留給輸入表格。 */
+@media (max-width: 991.98px) {
+    .modal.show .modal-dialog.modal-fullscreen-lg-down {
+        width: 100vw;
+        max-width: none;
+        height: 100%;
+        margin: 0;
+    }
+
+    .modal-fullscreen-lg-down .modal-content {
+        border-radius: 0 !important;
+    }
 }
 
 .modal-header {

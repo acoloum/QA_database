@@ -94,8 +94,9 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
         }
     };
 
+    // 視窗寬度不足 992px（例如與採購單並排各占半個螢幕）時改為全螢幕，把寬度都留給明細表
     return (
-        <Modal show={show} onHide={onClose} size="lg">
+        <Modal show={show} onHide={onClose} size="lg" fullscreen="lg-down">
             <Modal.Header closeButton>
                 <Modal.Title>{editId ? '編輯' : '新增'}擠壓公差</Modal.Title>
             </Modal.Header>
@@ -105,13 +106,13 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                 ) : (
                     <>
                         <Row className="mb-3 g-2">
-                            <Col md={3}>
+                            <Col sm={6} md={3}>
                                 <Form.Group>
                                     <Form.Label>建立日期</Form.Label>
                                     <Form.Control type="date" value={createdAt} onChange={(e) => setCreatedAt(e.target.value)} />
                                 </Form.Group>
                             </Col>
-                            <Col md={2}>
+                            <Col sm={6} md={2}>
                                 <Form.Group>
                                     <Form.Label>廠商</Form.Label>
                                     <Form.Select value={vendor} onChange={(e) => setVendor(e.target.value)}>
@@ -122,19 +123,19 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                                     </Form.Select>
                                 </Form.Group>
                             </Col>
-                            <Col md={2}>
+                            <Col sm={6} md={2}>
                                 <Form.Group>
                                     <Form.Label>材質 <span className="text-danger">*</span></Form.Label>
                                     <Form.Control value={material} onChange={(e) => setMaterial(e.target.value)} placeholder="如 6063" />
                                 </Form.Group>
                             </Col>
-                            <Col md={3}>
+                            <Col sm={6} md={3}>
                                 <Form.Group>
                                     <Form.Label>規格</Form.Label>
                                     <Form.Control value={spec} onChange={(e) => setSpec(e.target.value)} placeholder="如 62.5*2.3（留空=通用）" />
                                 </Form.Group>
                             </Col>
-                            <Col md={2}>
+                            <Col sm={12} md={2}>
                                 <Form.Group>
                                     <Form.Label>備註</Form.Label>
                                     <Form.Control value={note} onChange={(e) => setNote(e.target.value)} />
@@ -142,16 +143,17 @@ const ExtrusionToleranceModal = ({ show, editId, onClose, onSuccess }: Props) =>
                             </Col>
                         </Row>
 
-                        <Table bordered size="sm" className="mt-3">
+                        {/* 欄寬下限確保輸入框能顯示數值；總寬超過視窗時改為橫向捲動 */}
+                        <Table bordered size="sm" responsive className="mt-3 tolerance-entry-table">
                             <thead className="table-secondary">
                                 <tr>
                                     <th style={{ minWidth: '110px' }}>測量項目</th>
-                                    <th>公差下限</th>
-                                    <th>公差上限</th>
-                                    <th>標準值</th>
-                                    <th style={{ minWidth: '90px' }}>特性重要度</th>
+                                    <th style={{ minWidth: '92px' }}>公差下限</th>
+                                    <th style={{ minWidth: '92px' }}>公差上限</th>
+                                    <th style={{ minWidth: '92px' }}>標準值</th>
+                                    <th style={{ minWidth: '96px' }}>特性重要度</th>
                                     <th style={{ minWidth: '60px' }}>單位</th>
-                                    <th></th>
+                                    <th style={{ minWidth: '52px' }}></th>
                                 </tr>
                             </thead>
                             <tbody>
