@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -12,9 +12,13 @@ const mutations = vi.hoisted(() => ({
   createCapa: vi.fn(),
 }));
 
+const dispositionRows = vi.hoisted(() => ({
+  data: [{ 識別碼: 8, 處置類型: '報廢', 處置數量: 1 }] as Record<string, unknown>[],
+}));
+
 vi.mock('../../context/useAuth', () => ({ useAuth: () => authMock() }));
 vi.mock('../../hooks/useNCMR', () => ({
-  useDispositions: () => ({ data: [{ 識別碼: 8, 處置類型: '報廢', 處置數量: 1 }] }),
+  useDispositions: () => ({ data: dispositionRows.data }),
   useNcmrReworks: () => ({ data: [] }),
   useCreateDisposition: () => ({ mutateAsync: mutations.create, isPending: false }),
   useDeleteDisposition: () => ({ mutateAsync: mutations.remove }),
@@ -25,6 +29,7 @@ vi.mock('../../hooks/useNCMR', () => ({
 describe('DispositionModal 唯讀權限', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    dispositionRows.data = [{ 識別碼: 8, 處置類型: '報廢', 處置數量: 1 }];
     authMock.mockReturnValue({
       hasPermission: (permission: string) => permission === 'ncmr.view',
     });
@@ -56,5 +61,26 @@ describe('DispositionModal 唯讀權限', () => {
     expect(mutations.remove).not.toHaveBeenCalled();
     expect(mutations.create).not.toHaveBeenCalled();
     expect(screen.queryByText('確定刪除此處置？')).not.toBeInTheDocument();
+  });
+
+  it('風險欄無風險時顯示「無」，未授權放行時顯示警示', () => {
+    dispositionRows.data = [
+      { 識別碼: 8, 處置類型: '報廢', 處置數量: 1, 是否風險項: false },
+      { 識別碼: 9, 處置類型: '讓步放行', 處置數量: 1, 是否風險項: true },
+    ];
+    render(
+      <MemoryRouter>
+        <DispositionModal
+          show
+          handleClose={vi.fn()}
+          onSuccess={vi.fn()}
+          item={{ id: 5, no: 'NCMR-5', defect_qty: 2 } as never}
+        />
+      </MemoryRouter>,
+    );
+
+    const [, scrapRow, concessionRow] = screen.getAllByRole('row');
+    expect(within(scrapRow).getAllByRole('cell')[2]).toHaveTextContent(/^無$/);
+    expect(within(concessionRow).getAllByRole('cell')[2]).toHaveTextContent('⚠ 未授權放行');
   });
 });
