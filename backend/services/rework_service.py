@@ -892,7 +892,7 @@ class ReworkService:
                     .execution_options(populate_existing=True)
                 ).scalar_one_or_none()
                 old_source = ReworkService._ncmr_snapshot(ncmr)
-                if ncmr and ncmr.status == '矯正中':
+                if ncmr and ncmr.status in ('矯正中', '轉重工'):
                     # 只有在 NCMR 沒有任何 CAPA（或全部已結案）時才自動結案
                     open_capas = [
                         ca for ca in ncmr.corrective_actions

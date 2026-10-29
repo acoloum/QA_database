@@ -488,6 +488,68 @@ def test_close_rework_uses_ncmr_canonical_terminal_without_second_step(
     assert db_session.get(NCMR, ncmr.id).status == '已結案'
 
 
+def test_close_rework_advances_converted_ncmr_and_allows_ncmr_close(client, db_session):
+    """轉重工開單後 NCMR 為「轉重工」，重工結案須同步為矯正完成，NCMR 隨後可結案。"""
+    user = User(username='rework_converted_close', password='pw', role='admin', is_active=True)
+    inspector = Inspector(name='轉重工結案品檢員')
+    ncmr = NCMR(
+        ncmr_number='NCMR-RW-CONVERTED',
+        status='轉重工',
+        defect_quantity=5,
+        quantity=5,
+    )
+    req = ReworkRequest(ncmr=ncmr, rework_number='RW-NCMR-CONVERTED', status='執行中')
+    db_session.add_all([user, inspector, ncmr, req])
+    db_session.flush()
+    db_session.add_all([
+        ReworkInspection(
+            rework_id=req.id,
+            inspector_id=inspector.id,
+            item='最終品檢',
+            result='合格',
+            defect_qty=0,
+        ),
+        NcmrDisposition(
+            ncmr_id=ncmr.id,
+            disposition_type='矯正重工',
+            quantity=5,
+            rework_id=req.id,
+        ),
+    ])
+    db_session.commit()
+    token = generate_token(user.id, user.username, user.role, user.token_version)
+
+    response = client.post(
+        '/api/rework/close',
+        json={'rework_id': req.id},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    assert db_session.get(NCMR, ncmr.id).status == '矯正完成'
+    assert NCMRService.update_ncmr(
+        {'識別碼': ncmr.id, '狀態': '已結案'}, actor_id=user.id
+    ) is True
+    assert db_session.get(NCMR, ncmr.id).status == '已結案'
+
+
+def test_ncmr_stuck_in_converted_status_can_be_closed(app, db_session):
+    """修正前已結案的重工會讓 NCMR 停在「轉重工」，須能直接結案。"""
+    with app.app_context():
+        ncmr = NCMR(ncmr_number='NCMR-RW-STUCK', status='轉重工', defect_quantity=3, quantity=3)
+        req = ReworkRequest(ncmr=ncmr, rework_number='RW-NCMR-STUCK', status='已結案')
+        db_session.add_all([ncmr, req])
+        db_session.flush()
+        db_session.add(NcmrDisposition(
+            ncmr_id=ncmr.id, disposition_type='矯正重工', quantity=3, rework_id=req.id,
+        ))
+        db_session.commit()
+
+        assert NCMRService.update_ncmr({'識別碼': ncmr.id, '狀態': '已結案'}, actor_id=None) is True
+        assert db_session.get(NCMR, ncmr.id).status == '已結案'
+
+
 def test_rework_apply_audit_contains_ncmr_source_transition_without_secret(app, db_session):
     """轉重工時，同一筆稽核須保留 NCMR 舊新狀態且排除自由文字。"""
     with app.app_context():
