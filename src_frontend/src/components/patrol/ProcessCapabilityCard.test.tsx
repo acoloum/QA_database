@@ -50,4 +50,22 @@ describe('ProcessCapabilityCard (AIAG-VDA 2026)', () => {
     }} />);
     expect(screen.getByText(/無能力但穩定/)).toBeInTheDocument();
   });
+  it('無規格時提示到公差管理設定', () => {
+    render(<ProcessCapabilityCard statsItem="厚度" processCapability={{ available: false, reason: 'no_tolerance' }} />);
+    expect(screen.getByText(/公差管理/)).toBeInTheDocument();
+  });
+
+  it('分布未確認時不誤導使用者去設定公差', () => {
+    render(<ProcessCapabilityCard statsItem="厚度" processCapability={{
+      available: false, reason: 'distribution_unconfirmed', capability_reason: 'NO_ACCEPTED_DISTRIBUTION',
+    }} />);
+    expect(screen.getByText(/分布模型尚未確認/)).toBeInTheDocument();
+    expect(screen.queryByText(/公差管理/)).not.toBeInTheDocument();
+  });
+
+  it('規格界限不一致時提示縮小篩選', () => {
+    render(<ProcessCapabilityCard statsItem="厚度" processCapability={{ available: false, reason: 'specification_inconsistent' }} />);
+    expect(screen.getByText(/不同的/)).toBeInTheDocument();
+    expect(screen.queryByText(/公差管理/)).not.toBeInTheDocument();
+  });
 });

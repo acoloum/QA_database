@@ -31,7 +31,13 @@ def calculate_process_capability(
     """
     process_capability: Dict[str, Any] = {"available": False}
     if include_reason:
-        process_capability["reason"] = "no_tolerance"
+        # 有查到規格但篩選範圍內界限不一致時，不可誤報為「未設定公差」
+        spec_conflict = (
+            tolerance_limits.get("found") and tolerance_limits.get("consistent") is False
+        )
+        process_capability["reason"] = (
+            "specification_inconsistent" if spec_conflict else "no_tolerance"
+        )
 
     usl = tolerance_limits.get("USL")
     lsl = tolerance_limits.get("LSL")

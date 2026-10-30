@@ -2,7 +2,11 @@
 
 from datetime import date
 
-from backend.models import ShippingData, ShippingMeasurement, Vendor
+import pytest
+
+from backend.models import (
+    ShippingData, ShippingMeasurement, Vendor, VendorToleranceDetail, VendorToleranceMain,
+)
 from backend.services.spc_adapters.common import canonical_process_stream
 from backend.services.spc_adapters.shipping import build_shipping_study_input
 
@@ -115,3 +119,149 @@ def test_shipping_process_stream_uses_every_supported_filter():
     for name in base:
         changed = canonical_process_stream("shipping", {**base, name: f"{base[name]}-不同"})
         assert changed.key != original.key, name
+
+
+def _shipping_record(db_session, vendor, *, material, spec, day):
+    record = ShippingData(
+        date=date(2026, 8, day), material=material, spec=spec,
+        vendor_id=vendor.id, group_count=1,
+    )
+    db_session.add(record)
+    db_session.flush()
+    return record
+
+
+def _thickness(record, value, **overrides):
+    values = {
+        "shipping_id": record.id, "group_num": 1, "item": "厚度", "position": "",
+        "value_min": value, "value_max": value,
+    }
+    values.update(overrides)
+    return ShippingMeasurement(**values)
+
+
+def _vendor_tolerance(db_session, vendor, *, material, spec, item="厚度", **detail):
+    main = VendorToleranceMain(material=material, spec=spec, vendor_id=vendor.id)
+    db_session.add(main)
+    db_session.flush()
+    db_session.add(VendorToleranceDetail(main_id=main.id, item=item, **detail))
+    db_session.flush()
+    return main
+
+
+def test_shipping_specification_falls_back_to_vendor_tolerance_without_snapshot(
+    app, db_session
+):
+    """量測明細沒有存上下限快照時，改以公差主檔解析規格（原本會一律判為無公差）。"""
+    with app.app_context():
+        vendor = Vendor(name="丙供應商")
+        db_session.add(vendor)
+        db_session.flush()
+        main = _vendor_tolerance(
+            db_session, vendor, material="6061-H", spec="28.7*5.1*920",
+            std_val=5.1, tolerance_min=-0.1, tolerance_max=0.1,
+            characteristic_class="主要",
+        )
+        first = _shipping_record(db_session, vendor, material="6061-H", spec="28.7*5.1*920", day=1)
+        second = _shipping_record(db_session, vendor, material="6061-H", spec="28.7*5.1*920", day=2)
+        db_session.add_all([_thickness(first, 5.12), _thickness(second, 5.08)])
+        db_session.commit()
+
+        spec = build_shipping_study_input({
+            "field": "厚度", "vendor": "丙供應商", "material": "6061-H",
+            "spec": "28.7*5.1*920",
+        }).specification
+
+        assert spec["found"] is True
+        assert spec["consistent"] is True
+        assert spec["LSL"] == pytest.approx(5.0)
+        assert spec["USL"] == pytest.approx(5.2)
+        assert spec["source"] == "vendor_tolerance"
+        assert spec["characteristic_class"] == "主要"
+        assert spec["tolerance_ids"] == [main.id]
+
+
+def test_shipping_specification_prefers_measurement_snapshot_per_record(
+    app, db_session
+):
+    with app.app_context():
+        vendor = Vendor(name="丁供應商")
+        db_session.add(vendor)
+        db_session.flush()
+        _vendor_tolerance(
+            db_session, vendor, material="6063", spec="30*2",
+            std_val=2.0, tolerance_min=-0.1, tolerance_max=0.1,
+        )
+        snap = _shipping_record(db_session, vendor, material="6063", spec="30*2", day=3)
+        plain = _shipping_record(db_session, vendor, material="6063", spec="30*2", day=4)
+        db_session.add_all([
+            _thickness(snap, 2.0, lower_limit=1.9, upper_limit=2.1),
+            _thickness(plain, 2.0),
+        ])
+        db_session.commit()
+
+        spec = build_shipping_study_input({
+            "field": "厚度", "vendor": "丁供應商", "material": "6063",
+        }).specification
+
+        assert spec["consistent"] is True
+        assert spec["LSL"] == pytest.approx(1.9)
+        assert spec["USL"] == pytest.approx(2.1)
+        assert spec["source"] == "mixed"
+
+
+def test_shipping_specification_marks_conflicting_limits_inconsistent(
+    app, db_session
+):
+    """篩選範圍跨到不同規格（界限不同）時不得任選一組，須揭露不一致。"""
+    with app.app_context():
+        vendor = Vendor(name="戊供應商")
+        db_session.add(vendor)
+        db_session.flush()
+        _vendor_tolerance(
+            db_session, vendor, material="6061-F", spec="35*2.8",
+            std_val=2.8, tolerance_min=-0.15, tolerance_max=0.15,
+        )
+        _vendor_tolerance(
+            db_session, vendor, material="6061-F", spec="36*3.0",
+            std_val=3.0, tolerance_min=-0.15, tolerance_max=0.15,
+        )
+        a = _shipping_record(db_session, vendor, material="6061-F", spec="35*2.8", day=5)
+        b = _shipping_record(db_session, vendor, material="6061-F", spec="36*3.0", day=6)
+        c = _shipping_record(db_session, vendor, material="6061-F", spec="99*9.9", day=7)
+        db_session.add_all([_thickness(a, 2.8), _thickness(b, 3.0), _thickness(c, 9.9)])
+        db_session.commit()
+
+        spec = build_shipping_study_input({
+            "field": "厚度", "vendor": "戊供應商", "material": "6061-F",
+        }).specification
+
+        assert spec["found"] is True
+        assert spec["consistent"] is False
+        assert spec["LSL"] is None and spec["USL"] is None
+        assert spec["lower_values"] == pytest.approx([2.65, 2.85])
+        assert spec["unresolved_record_ids"] == [c.id]
+
+
+def test_shipping_specification_infers_one_sided_upper_limit(app, db_session):
+    with app.app_context():
+        vendor = Vendor(name="己供應商")
+        db_session.add(vendor)
+        db_session.flush()
+        _vendor_tolerance(
+            db_session, vendor, material="6005", spec="40*3",
+            item="同心度", dim_max=0.2,
+        )
+        record = _shipping_record(db_session, vendor, material="6005", spec="40*3", day=8)
+        db_session.add(_thickness(
+            record, None, item="同心度", value_single=0.1,
+        ))
+        db_session.commit()
+
+        spec = build_shipping_study_input({
+            "field": "同心度", "vendor": "己供應商", "material": "6005",
+        }).specification
+
+        assert spec["USL"] == pytest.approx(0.2)
+        assert spec["LSL"] is None
+        assert spec["one_sided"] == "upper"

@@ -188,6 +188,26 @@ def test_unconfirmed_distribution_blocks_performance_indices():
     assert result["cpk"] is None
 
 
+def test_inconsistent_specification_reports_specific_reason():
+    """篩選範圍跨到不同規格界限時，原因須與「未設定公差」區分。"""
+    values = [10.0, 10.1, 9.9, 10.2, 9.8]
+    result = calculate_process_capability(
+        avgs=values, all_values=values, r_cl=0.4, d2=2.326,
+        tolerance_limits={
+            "found": True, "consistent": False, "LSL": None, "USL": None,
+            "lower_values": [9.0, 9.5], "upper_values": [11.0],
+        },
+    )
+    assert result["available"] is False
+    assert result["reason"] == "specification_inconsistent"
+
+    missing = calculate_process_capability(
+        avgs=values, all_values=values, r_cl=0.4, d2=2.326,
+        tolerance_limits={"found": False, "LSL": None, "USL": None},
+    )
+    assert missing["reason"] == "no_tolerance"
+
+
 def test_distribution_stats_labels_non_normal_data():
     result = calculate_distribution_stats([1, 1, 1, 1, 10, 20])
 

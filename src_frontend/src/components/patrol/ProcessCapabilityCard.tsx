@@ -18,6 +18,21 @@ const quadrantBadge = (pc: ProcessCapability) => {
     return { text: '穩定性無法驗證', bg: '#e9ecef', color: '#6c757d' };
 };
 
+/** 依後端回傳的 reason 說明無法計算的實際原因，避免一律誤導使用者去設定公差 */
+const UnavailableReason = ({ pc, statsItem }: { pc?: ProcessCapability | null; statsItem: string }) => {
+    switch (pc?.reason) {
+        case 'specification_inconsistent':
+            return <>無法計算指數 — 篩選範圍內的紀錄對應到不同的「<strong>{statsItem}</strong>」規格界限（或部分紀錄查無公差），請縮小篩選條件至單一規格。</>;
+        case 'distribution_unconfirmed':
+            return <>無法計算指數 — 「<strong>{statsItem}</strong>」的資料未通過常態或其他候選分布的適合度檢定，分布模型尚未確認；依 AIAG-VDA 不以未確認的分布計算指數。</>;
+        case 'no_tolerance':
+        case undefined:
+            return <>無法計算指數 — 需要在<strong>公差管理</strong>中設定「<strong>{statsItem}</strong>」的規格界限。</>;
+        default:
+            return <>無法計算指數（{pc?.capability_reason ?? pc?.reason}）。</>;
+    }
+};
+
 const ProcessCapabilityCard = ({ processCapability, statsItem }: ProcessCapabilityCardProps) => {
     const pc = processCapability;
     if (!pc?.available) {
@@ -34,7 +49,7 @@ const ProcessCapabilityCard = ({ processCapability, statsItem }: ProcessCapabili
                     ) : (
                         <Alert variant="info" className="mb-0">
                             <i className="bi bi-info-circle me-2"></i>
-                            無法計算指數 — 需要在<strong>公差管理</strong>中設定「<strong>{statsItem}</strong>」的規格界限。
+                            <UnavailableReason pc={pc} statsItem={statsItem} />
                         </Alert>
                     )}
                 </Card.Body>

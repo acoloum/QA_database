@@ -11,6 +11,7 @@ from .common import (
     assert_source_size,
     calculate_study_data_hash,
     canonical_process_stream,
+    resolve_tolerance_specification,
     specification_from_measurement_limits,
 )
 
@@ -30,6 +31,85 @@ def _measurement_value(row: ShippingMeasurement, characteristic: str) -> float |
     if row.value_single is None:
         return None
     return float(row.value_single)
+
+
+def _resolve_shipping_specification(
+    records: list[ShippingData],
+    by_record: Mapping[int, list[ShippingMeasurement]],
+    characteristic: str,
+) -> dict[str, Any]:
+    """逐筆出貨紀錄解析規格界限，再合併成研究用的規格快照。
+
+    每筆紀錄優先採用量測明細存檔時保存的上下限；沒有快照時改以公差主檔
+    （依該筆的材質／規格／廠商）解析。出貨表單從未送出上下限，若只讀快照，
+    所有出貨資料都會被誤判為「未設定公差」而算不出能力指數。
+
+    篩選條件是模糊比對，可能跨到不同規格；界限不一致或部分紀錄查無公差時
+    不得任選一組，標記 consistent=False 並揭露各值。
+    """
+
+    lower_values: set[float] = set()
+    upper_values: set[float] = set()
+    classes: set[str] = set()
+    tolerance_ids: set[int] = set()
+    sources: set[str] = set()
+    unresolved_record_ids: list[int] = []
+    cache: dict[tuple, dict[str, Any]] = {}
+
+    for record in records:
+        rows = by_record.get(record.id, [])
+        if not rows:
+            continue
+        snapshot = specification_from_measurement_limits(rows)
+        if snapshot["found"]:
+            lower_values.update(snapshot["lower_values"])
+            upper_values.update(snapshot["upper_values"])
+            sources.add("measurement_snapshot")
+            continue
+
+        key = (record.material or "", record.spec or "", record.vendor_id)
+        if key not in cache:
+            cache[key] = resolve_tolerance_specification(
+                material=key[0], spec=key[1],
+                characteristic=characteristic, vendor_id=key[2],
+            ) if key[0] else {"found": False}
+        resolved = cache[key]
+        if not resolved.get("found"):
+            unresolved_record_ids.append(record.id)
+            continue
+        if resolved.get("LSL") is not None:
+            lower_values.add(float(resolved["LSL"]))
+        if resolved.get("USL") is not None:
+            upper_values.add(float(resolved["USL"]))
+        classes.add(str(resolved.get("characteristic_class") or "其他"))
+        if resolved.get("tolerance_id") is not None:
+            tolerance_ids.add(int(resolved["tolerance_id"]))
+        sources.add("vendor_tolerance")
+
+    found = bool(lower_values or upper_values)
+    consistent = (
+        len(lower_values) <= 1 and len(upper_values) <= 1
+        and not (found and unresolved_record_ids)
+    )
+    lsl = next(iter(lower_values)) if consistent and lower_values else None
+    usl = next(iter(upper_values)) if consistent and upper_values else None
+    specification: dict[str, Any] = {
+        "found": found,
+        "LSL": lsl,
+        "USL": usl,
+        "lower_values": sorted(lower_values),
+        "upper_values": sorted(upper_values),
+        "consistent": consistent,
+        "source": sources.pop() if len(sources) == 1 else ("mixed" if sources else None),
+        "tolerance_ids": sorted(tolerance_ids),
+        "unresolved_record_ids": unresolved_record_ids,
+    }
+    # 只有單側界限（如同心度、真直度僅訂上限）時走單側能力計算（§6.8.2.2）
+    if found and consistent and (lsl is None) != (usl is None):
+        specification["one_sided"] = "upper" if lsl is None else "lower"
+    if len(classes) == 1:
+        specification["characteristic_class"] = classes.pop()
+    return specification
 
 
 def build_shipping_study_input(
@@ -148,7 +228,7 @@ def build_shipping_study_input(
                 distribution_values=subgroup_distribution_values,
             ))
 
-    specification = specification_from_measurement_limits(measurements)
+    specification = _resolve_shipping_specification(records, by_record, characteristic)
     reasons: list[SpcReason] = []
     if not measurements:
         reasons.append(SpcReason("NO_DATA", "篩選範圍內沒有可用的出貨量測明細"))
