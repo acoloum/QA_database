@@ -290,7 +290,7 @@ h6 {
     box-shadow: none;
 }
 
-/* ── 公差／擠壓公差明細輸入表格 ───────────────────────────────────
+/* ── 公差／擠壓公差明細、機械性質量測結果等輸入表格 ─────────────────
    全域 .table tbody td（20px 16px）與 .form-control（12px 16px）的內距疊在一起，
    視窗縮到一半時每格輸入框只剩 34px 寬、扣掉內距後文字區是 0，打的字完全看不到。
    這裡把兩層內距收小，各欄最小寬度由 th 的 minWidth 決定，寬度不足交給外層容器
@@ -308,6 +308,28 @@ h6 {
 .tolerance-entry-table .form-control,
 .tolerance-entry-table .form-select {
     padding: 6px 8px !important;
+}
+
+/* 機械性質量測結果：「項目」列標題釘在左側，異常加測多出欄位而橫向捲動時仍看得到是哪一列 */
+.mechanical-measurement-table.table tbody th {
+    padding: 6px 8px;
+    white-space: nowrap;
+}
+
+.mechanical-measurement-table.table :is(thead, tbody) th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    box-shadow: inset -1px 0 0 var(--bs-border-color, #dee2e6);
+}
+
+.mechanical-measurement-table.table tbody th:first-child {
+    background-color: #ffffff;
+}
+
+/* 左上角表頭需疊在其他表頭（全域 .table thead th 為 10）之上 */
+.mechanical-measurement-table.table thead th:first-child {
+    z-index: 11;
 }
 
 .tolerance-entry-table .btn.btn-sm {

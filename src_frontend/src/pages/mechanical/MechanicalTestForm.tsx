@@ -398,7 +398,8 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
   }
 
   return (
-    <Modal show onHide={onClose} size="lg" backdrop="static" scrollable aria-label="機械性質檢驗表單">
+    // 視窗寬度不足 992px（例如與報告並排各占半個螢幕）時 lg 視窗會縮成 500px，改為全螢幕把寬度留給量測表
+    <Modal show onHide={onClose} size="lg" backdrop="static" scrollable fullscreen="lg-down" aria-label="機械性質檢驗表單">
       <Modal.Header closeButton>
         <Modal.Title>{testId === null ? '新增機械性質檢驗' : '編輯機械性質檢驗'}</Modal.Title>
       </Modal.Header>
@@ -550,14 +551,17 @@ export default function MechanicalTestForm({ testId, onClose, onSaved }: Mechani
           <section className="mt-3" aria-labelledby="mechanical-measurements-heading">
             <h3 id="mechanical-measurements-heading" className="h6">量測結果</h3>
             <div className="table-responsive">
-              <Table bordered size="sm" className="align-middle mb-0" style={{ minWidth: 620 }}>
+              {/* 每個取樣欄設最小寬度確保輸入框看得到數值；異常加測多出欄位而總寬不足時改為橫向捲動 */}
+              <Table bordered size="sm" className="align-middle mb-0 tolerance-entry-table mechanical-measurement-table">
                 <thead className="table-secondary">
                   <tr>
                     <th scope="col">項目</th>
                     {LOCATIONS.flatMap((location) => samples.map((sample) => (
-                      <th key={`${location}-${sample}`} scope="col">{location} 取樣 {sample}</th>
+                      <th key={`${location}-${sample}`} scope="col" style={{ minWidth: 104 }}>
+                        {location} 取樣 {sample}
+                      </th>
                     )))}
-                    <th scope="col">規格</th>
+                    <th scope="col" style={{ minWidth: 72 }}>規格</th>
                     <th scope="col">免測</th>
                   </tr>
                 </thead>
