@@ -34,13 +34,17 @@ class MigrationArtifact:
     sha256: str
 
 
-def file_checksum(path: Path) -> str:
-    """以 LF 正規化後計算 sha256。
+def normalized_bytes(path: Path) -> bytes:
+    """讀取 migration 並把換行統一成 LF（CRLF 與單獨的 CR 都轉換）。
 
     repo 開了 core.autocrlf，同一支檔案在不同 checkout 可能是 LF 或 CRLF；
-    若直接雜湊原始位元組，git 一碰檔案就會被誤判為「checksum 不一致」。
+    checksum 與實際執行的 SQL 都必須取自這裡，確保「驗證的內容」就是「執行的內容」。
     """
-    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+    return path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
+def file_checksum(path: Path) -> str:
+    return hashlib.sha256(normalized_bytes(path)).hexdigest()
 
 
 def discover_migrations(root: Path) -> list[MigrationArtifact]:
@@ -151,8 +155,10 @@ def apply_one(connection, artifact: MigrationArtifact, applied: dict[int, dict])
             raise ValueError(f"migration {artifact.name} checksum 不一致")
         return
     ensure_ledger(connection)
-    sql = Path(artifact.path).read_text(encoding="utf-8")
-    connection.exec_driver_sql(sql)
+    path = Path(artifact.path)
+    if file_checksum(path) != artifact.sha256:
+        raise ValueError(f"migration {artifact.name} 在掃描後被修改，拒絕執行")
+    connection.exec_driver_sql(normalized_bytes(path).decode("utf-8"))
     _record(connection, artifact)
 
 

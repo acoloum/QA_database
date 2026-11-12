@@ -95,6 +95,26 @@ def test_apply_one_executes_and_records(migrations, engine):
         assert ledger.status_issues(connection, artifacts) == ["待套用 02_add_b.sql"]
 
 
+def test_apply_one_executes_the_same_normalized_bytes_it_hashed(migrations, engine):
+    """驗證與執行取自同一份正規化內容：CRLF 檔案寫入的字串值不可夾帶 \\r。"""
+    # SQLite 一次只能執行一個敘述，先建表，migration 只放 INSERT
+    (migrations / "03_seed.sql").write_bytes(b"INSERT INTO note VALUES ('a\r\nb');\r\n")
+    artifact = ledger.discover_migrations(migrations)[-1]
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE note (body TEXT)"))
+        ledger.apply_one(connection, artifact, {})
+        assert connection.execute(text("SELECT body FROM note")).scalar() == "a\nb"
+
+
+def test_apply_one_refuses_file_changed_after_discovery(migrations, engine):
+    artifact = ledger.discover_migrations(migrations)[0]
+    _write(migrations, "01_create_a.sql", "CREATE TABLE evil (id INTEGER);")
+    with engine.begin() as connection:
+        with pytest.raises(ValueError, match="掃描後被修改"):
+            ledger.apply_one(connection, artifact, {})
+        assert not inspect(connection).has_table("evil")
+
+
 def test_status_reports_versions_missing_from_disk(migrations, engine):
     artifacts = ledger.discover_migrations(migrations)
     with engine.begin() as connection:
