@@ -37,6 +37,15 @@ def test_discover_ignores_rollback_and_non_sql(migrations):
     assert artifacts[0].sha256 == expected
 
 
+def test_checksum_ignores_line_endings(migrations):
+    """autocrlf 會讓同一支檔案在 LF／CRLF 間切換，checksum 不能因此變動。"""
+    path = migrations / "01_create_a.sql"
+    path.write_bytes(b"CREATE TABLE a (\r\n  id INTEGER\r\n);\r\n")
+    crlf = ledger.discover_migrations(migrations)[0].sha256
+    path.write_bytes(b"CREATE TABLE a (\n  id INTEGER\n);\n")
+    assert ledger.discover_migrations(migrations)[0].sha256 == crlf
+
+
 def test_discover_rejects_duplicate_versions(migrations):
     _write(migrations, "02_other.sql")
     with pytest.raises(ValueError, match="版本重複"):

@@ -34,6 +34,15 @@ class MigrationArtifact:
     sha256: str
 
 
+def file_checksum(path: Path) -> str:
+    """以 LF 正規化後計算 sha256。
+
+    repo 開了 core.autocrlf，同一支檔案在不同 checkout 可能是 LF 或 CRLF；
+    若直接雜湊原始位元組，git 一碰檔案就會被誤判為「checksum 不一致」。
+    """
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
 def discover_migrations(root: Path) -> list[MigrationArtifact]:
     """找出正向 migration，排除 rollback 與非 SQL 輔助檔。"""
     artifacts: list[MigrationArtifact] = []
@@ -41,7 +50,7 @@ def discover_migrations(root: Path) -> list[MigrationArtifact]:
         match = MIGRATION_NAME.match(path.name)
         if not match or path.name.endswith(".rollback.sql"):
             continue
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        digest = file_checksum(path)
         artifacts.append(MigrationArtifact(
             version=int(match.group("version")),
             name=path.name,
