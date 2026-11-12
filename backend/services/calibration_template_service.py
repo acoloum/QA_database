@@ -17,7 +17,7 @@ from ..models import (
     CalibrationTemplateVersion,
     utc_now,
 )
-from ..utils import log_audit
+from ..utils import log_audit, ilike_contains
 from .calibration_calculation import _MAX_DECIMAL_EXPONENT, _MAX_SIGNIFICANT_DIGITS
 from .calibration_errors import (
     require_object,
@@ -206,21 +206,11 @@ class CalibrationTemplateService:
                 max_length=160,
                 required=True,
             )
-            escaped = (
-                search.replace("\\", "\\\\")
-                .replace("%", "\\%")
-                .replace("_", "\\_")
-            )
-            pattern = f"%{escaped}%"
             statement = statement.where(
                 or_(
-                    CalibrationTemplate.template_code.ilike(
-                        pattern, escape="\\"
-                    ),
-                    CalibrationTemplate.name.ilike(pattern, escape="\\"),
-                    CalibrationTemplate.equipment_type.ilike(
-                        pattern, escape="\\"
-                    ),
+                    ilike_contains(CalibrationTemplate.template_code, search),
+                    ilike_contains(CalibrationTemplate.name, search),
+                    ilike_contains(CalibrationTemplate.equipment_type, search),
                 )
             )
 

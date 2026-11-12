@@ -18,6 +18,7 @@ from .patrol_excel_utils import (
     sanitize_sheet_name,
 )
 from ..utils import (
+    ilike_contains,
     bounded_int,
     format_value,
     validate_excel_shape,
@@ -538,14 +539,7 @@ class PatrolService:
             .outerjoin(Vendor, PatrolMain.customer_id == Vendor.id)\
             .options(selectinload(PatrolMain.details))
 
-        if args.get('s_date'): query = query.filter(PatrolMain.date >= args['s_date'])
-        if args.get('e_date'): query = query.filter(PatrolMain.date <= args['e_date'])
-        if args.get('m_id'):   query = query.filter(PatrolMain.machine_id == args['m_id'])
-        if args.get('op_id'):  query = query.filter(PatrolMain.operator_id == args['op_id'])
-        if args.get('cust_id'): query = query.filter(PatrolMain.customer_id == args['cust_id'])
-        if args.get('mat'):    query = query.filter(PatrolMain.material.ilike(f"%{args['mat']}%"))
-        if args.get('spec'):   query = query.filter(PatrolMain.spec.ilike(f"%{args['spec']}%"))
-
+        query = PatrolService._apply_list_filters(query, args)
         query = query.order_by(PatrolMain.id.desc())
 
         page = bounded_int(args.get('page'), 1, 1, 1000000)
@@ -681,15 +675,15 @@ class PatrolService:
         }
 
     @staticmethod
-    def _apply_export_filters(query, args: Dict[str, Any]):
-        """匯出用篩選條件；欄位探索與資料寫入兩趟查詢共用，避免兩邊條件漂移。"""
+    def _apply_list_filters(query, args: Dict[str, Any]):
+        """列表與匯出（欄位探索、資料寫入兩趟）共用的篩選條件，避免各處條件漂移。"""
         if args.get('s_date'): query = query.filter(PatrolMain.date >= args['s_date'])
         if args.get('e_date'): query = query.filter(PatrolMain.date <= args['e_date'])
         if args.get('m_id'):   query = query.filter(PatrolMain.machine_id == args['m_id'])
         if args.get('op_id'):  query = query.filter(PatrolMain.operator_id == args['op_id'])
         if args.get('cust_id'): query = query.filter(PatrolMain.customer_id == args['cust_id'])
-        if args.get('mat'):    query = query.filter(PatrolMain.material.ilike(f"%{args['mat']}%"))
-        if args.get('spec'):   query = query.filter(PatrolMain.spec.ilike(f"%{args['spec']}%"))
+        if args.get('mat'):    query = query.filter(ilike_contains(PatrolMain.material, args['mat']))
+        if args.get('spec'):   query = query.filter(ilike_contains(PatrolMain.spec, args['spec']))
         return query
 
     @staticmethod
@@ -706,7 +700,7 @@ class PatrolService:
         因此拆成兩趟，第一趟只讀兩個整數欄位並以 yield_per 串流，記憶體維持常數級。
         組別的排列沿用原本「依 識別碼 desc 掃描時的首次出現順序」。
         """
-        query = PatrolService._apply_export_filters(
+        query = PatrolService._apply_list_filters(
             db.session.query(PatrolMain.id, PatrolDetail.group)
             .outerjoin(PatrolDetail, PatrolDetail.main_id == PatrolMain.id),
             args,
@@ -744,7 +738,7 @@ class PatrolService:
             sheet.append(columns)
 
             # === 2. 逐批取出並寫入 ===
-            query = PatrolService._apply_export_filters(
+            query = PatrolService._apply_list_filters(
                 db.session.query(
                     PatrolMain,
                     Machine.name.label('m_name'),

@@ -16,7 +16,7 @@ from ..models import (
     Vendor,
     VendorToleranceMain,
 )
-from ..utils import bounded_int, log_audit
+from ..utils import bounded_int, log_audit, ilike_contains
 from .mechanical_import import build_payloads_from_workbook
 from .mechanical_spec import (
     lookup_limits,
@@ -685,9 +685,9 @@ class MechanicalService:
             except ValueError:
                 query = query.filter(db.false())
         if args.get("product_size"):
-            query = query.filter(MechanicalTest.product_size.ilike(f"%{args['product_size']}%"))
+            query = query.filter(ilike_contains(MechanicalTest.product_size, args['product_size']))
         if args.get("material"):
-            query = query.filter(MechanicalTest.material.ilike(f"%{args['material']}%"))
+            query = query.filter(ilike_contains(MechanicalTest.material, args['material']))
         if args.get("vendor_id"):
             vendor_id = parse_vendor_id(args.get("vendor_id"))
             if vendor_id is not None:

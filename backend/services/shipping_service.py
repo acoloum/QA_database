@@ -9,6 +9,7 @@ from sqlalchemy.orm import contains_eager, joinedload, selectinload
 from ..extensions import db
 from ..models import ShippingData, ShippingMeasurement, Inspector, Vendor, SPCCache
 from ..utils import (
+    ilike_contains,
     bounded_int,
     format_value,
     validate_inspection_data,
@@ -125,6 +126,21 @@ class ShippingService:
         return res
 
     @staticmethod
+    def _apply_list_filters(query, args: Dict[str, Any]):
+        """列表與匯出共用的篩選條件；呼叫端須已 outerjoin Vendor。"""
+        if args.get('vendor'):
+            query = query.filter(ilike_contains(Vendor.name, args['vendor']))
+        if args.get('material'):
+            query = query.filter(ilike_contains(ShippingData.material, args['material']))
+        if args.get('spec'):
+            query = query.filter(ilike_contains(ShippingData.spec, args['spec']))
+        if args.get('start_date'):
+            query = query.filter(ShippingData.date >= args['start_date'])
+        if args.get('end_date'):
+            query = query.filter(ShippingData.date <= args['end_date'])
+        return query
+
+    @staticmethod
     def get_list(args: Dict[str, Any]) -> Dict[str, Any]:
         """獲取出貨檢驗數據列表"""
         query = ShippingData.query
@@ -143,11 +159,7 @@ class ShippingService:
         if args.get('id'):
             query = query.filter(ShippingData.id == args['id'])
         else:
-            if args.get('vendor'):   query = query.filter(Vendor.name.ilike(f"%{args['vendor']}%"))
-            if args.get('material'): query = query.filter(ShippingData.material.ilike(f"%{args['material']}%"))
-            if args.get('spec'):     query = query.filter(ShippingData.spec.ilike(f"%{args['spec']}%"))
-            if args.get('start_date'): query = query.filter(ShippingData.date >= args['start_date'])
-            if args.get('end_date'):   query = query.filter(ShippingData.date <= args['end_date'])
+            query = ShippingService._apply_list_filters(query, args)
 
         query = query.order_by(ShippingData.id.desc())
 
@@ -452,12 +464,7 @@ class ShippingService:
             selectinload(ShippingData.measurements),
         )
 
-        if args.get('vendor'):   query = query.filter(Vendor.name.ilike(f"%{args['vendor']}%"))
-        if args.get('material'): query = query.filter(ShippingData.material.ilike(f"%{args['material']}%"))
-        if args.get('spec'):     query = query.filter(ShippingData.spec.ilike(f"%{args['spec']}%"))
-        if args.get('start_date'): query = query.filter(ShippingData.date >= args['start_date'])
-        if args.get('end_date'):   query = query.filter(ShippingData.date <= args['end_date'])
-
+        query = ShippingService._apply_list_filters(query, args)
         query = query.order_by(ShippingData.date.asc())
 
         # 篩選條件全部是可選的，未設條件時這裡等同整張表（出貨主檔上萬筆、

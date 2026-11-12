@@ -25,7 +25,7 @@ from ..models import (
     MeasurementEquipment,
     utc_now,
 )
-from ..utils import log_audit
+from ..utils import log_audit, ilike_contains
 from .calibration_calculation import (
     CALIBRATION_NUMERIC_FAILURE,
     CALCULATION_VERSION,
@@ -205,14 +205,10 @@ class CalibrationService:
             )
         search = str(values.get("search") or "").strip()
         if search:
-            escaped_search = (
-                search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            )
-            pattern = f"%{escaped_search}%"
             statement = statement.where(
                 or_(
-                    MeasurementEquipment.equipment_no.ilike(pattern, escape="\\"),
-                    MeasurementEquipment.name.ilike(pattern, escape="\\"),
+                    ilike_contains(MeasurementEquipment.equipment_no, search),
+                    ilike_contains(MeasurementEquipment.name, search),
                 )
             )
 

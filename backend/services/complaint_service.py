@@ -5,7 +5,7 @@ from sqlalchemy import and_, func, text
 from ..extensions import db
 from ..models import CorrectiveAction, CustomerComplaint, Inspector, ReworkRequest
 from ..errors import APIError, NotFoundError
-from ..utils import acquire_number_lock
+from ..utils import acquire_number_lock, ilike_contains
 from .audit_service import AuditService
 
 VALID_TYPES     = {'quality', 'warranty', 'field_failure'}
@@ -125,11 +125,11 @@ class ComplaintService:
     ) -> Dict[str, Any]:
         q = CustomerComplaint.active_query()
         if customer:
-            q = q.filter(CustomerComplaint.customer.ilike(f'%{customer}%'))
+            q = q.filter(ilike_contains(CustomerComplaint.customer, customer))
         if material:
-            q = q.filter(CustomerComplaint.material.ilike(f'%{material}%'))
+            q = q.filter(ilike_contains(CustomerComplaint.material, material))
         if spec:
-            q = q.filter(CustomerComplaint.spec.ilike(f'%{spec}%'))
+            q = q.filter(ilike_contains(CustomerComplaint.spec, spec))
         if status:
             q = q.filter_by(status=status)
         if complaint_type:

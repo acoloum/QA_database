@@ -18,7 +18,7 @@ from ..models import (
     Recorder,
     Thermocouple,
 )
-from ..utils import log_audit
+from ..utils import log_audit, ilike_contains
 from .msa_errors import (
     MsaConflict,
     MsaNotFound,
@@ -283,12 +283,11 @@ class MeasurementEquipmentService:
             )
         keyword = (args.get("q") or "").strip()
         if keyword:
-            pattern = f"%{keyword}%"
             query = query.filter(
                 or_(
-                    MeasurementEquipment.equipment_no.ilike(pattern),
-                    MeasurementEquipment.name.ilike(pattern),
-                    MeasurementEquipment.serial_no.ilike(pattern),
+                    ilike_contains(MeasurementEquipment.equipment_no, keyword),
+                    ilike_contains(MeasurementEquipment.name, keyword),
+                    ilike_contains(MeasurementEquipment.serial_no, keyword),
                 )
             )
 

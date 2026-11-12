@@ -5,7 +5,7 @@ from openpyxl import Workbook
 from sqlalchemy.orm import joinedload, selectinload
 from ..extensions import db
 from ..models import VendorToleranceMain, VendorToleranceDetail, Vendor
-from ..utils import bounded_int, format_value
+from ..utils import bounded_int, format_value, ilike_contains
 from .tolerance_recompute import after_vendor_tolerance_change
 
 # 匯出逐批取回的筆數；與出貨／巡檢匯出採同一節奏
@@ -18,11 +18,11 @@ class ToleranceService:
         query = VendorToleranceMain.query.options(joinedload(VendorToleranceMain.vendor))
         
         if args.get('material'):
-            query = query.filter(VendorToleranceMain.material.ilike(f"%{args['material']}%"))
+            query = query.filter(ilike_contains(VendorToleranceMain.material, args['material']))
         if args.get('vendor_id'):
             query = query.filter(VendorToleranceMain.vendor_id == args['vendor_id'])
         if args.get('spec'):
-            query = query.filter(VendorToleranceMain.spec.ilike(f"%{args['spec']}%"))
+            query = query.filter(ilike_contains(VendorToleranceMain.spec, args['spec']))
         
         # Pagination
         page = bounded_int(args.get('page'), 1, 1, 1000000)
@@ -229,11 +229,11 @@ class ToleranceService:
         )
 
         if args.get('material'):
-            query = query.filter(VendorToleranceMain.material.ilike(f"%{args['material']}%"))
+            query = query.filter(ilike_contains(VendorToleranceMain.material, args['material']))
         if args.get('vendor_id'):
             query = query.filter(VendorToleranceMain.vendor_id == args['vendor_id'])
         if args.get('spec'):
-            query = query.filter(VendorToleranceMain.spec.ilike(f"%{args['spec']}%"))
+            query = query.filter(ilike_contains(VendorToleranceMain.spec, args['spec']))
 
         cols = ['識別碼', '材質', '規格', '廠商名稱', '測量項目', '測量位置',
                 '尺寸下限', '尺寸上限', '公差下限', '公差上限', '標準值', '單位', '備註']
@@ -287,7 +287,7 @@ class ToleranceService:
         try:
             # Fetch candidates (使用模糊材質匹配；selectinload 預先載入明細避免 N+1)
             candidates = VendorToleranceMain.query.filter(
-                VendorToleranceMain.material.ilike(f"%{material}%")
+                ilike_contains(VendorToleranceMain.material, material)
             ).options(
                 selectinload(VendorToleranceMain.details)
             ).all()

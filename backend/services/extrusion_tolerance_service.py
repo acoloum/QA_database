@@ -3,7 +3,7 @@ from sqlalchemy import or_, func
 from sqlalchemy.orm import selectinload, joinedload
 from ..extensions import db
 from ..models import ExtrusionToleranceMain, ExtrusionToleranceDetail, VendorToleranceMain, Vendor
-from ..utils import bounded_int, format_value
+from ..utils import bounded_int, format_value, ilike_contains
 from .tolerance_service import ToleranceService
 from .tolerance_recompute import after_extrusion_tolerance_change
 
@@ -63,11 +63,11 @@ class ExtrusionToleranceService:
         """列表查詢（分頁）"""
         query = ExtrusionToleranceMain.query
         if args.get('material'):
-            query = query.filter(ExtrusionToleranceMain.material.ilike(f"%{args['material']}%"))
+            query = query.filter(ilike_contains(ExtrusionToleranceMain.material, args['material']))
         if args.get('spec'):
-            query = query.filter(ExtrusionToleranceMain.spec.ilike(f"%{args['spec']}%"))
+            query = query.filter(ilike_contains(ExtrusionToleranceMain.spec, args['spec']))
         if args.get('vendor'):
-            query = query.filter(ExtrusionToleranceMain.vendor.ilike(f"%{args['vendor']}%"))
+            query = query.filter(ilike_contains(ExtrusionToleranceMain.vendor, args['vendor']))
 
         page = bounded_int(args.get('page'), 1, 1, 1000000)
         page_size = bounded_int(args.get('page_size'), 20, 1, 100)
@@ -267,7 +267,7 @@ class ExtrusionToleranceService:
             mat_col = func.lower(func.trim(ExtrusionToleranceMain.material))
             candidates = candidates.filter(
                 or_(
-                    mat_col.ilike(f"%{mat_key}%"),
+                    ilike_contains(mat_col, mat_key),
                     func.lower(mat_key).like(func.concat('%', mat_col, '%')),
                 )
             )

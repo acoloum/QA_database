@@ -8,6 +8,7 @@ from ..authorization import has_permission
 from ..errors import AuthorizationError, NotFoundError
 from ..models import NCMR, CorrectiveAction, Inspector, Vendor, PatrolMain, ShippingData, ReworkRequest, ReworkExecution, NcmrDisposition
 from ..utils import (
+    ilike_contains,
     format_value,
     handle_db_error,
     generate_ncmr_number,
@@ -181,11 +182,11 @@ class NCMRService:
         if source:
             query = query.filter(NCMR.source == source)
         if vendor:
-            query = query.filter(NCMR.vendor.ilike(f'%{vendor}%'))
+            query = query.filter(ilike_contains(NCMR.vendor, vendor))
         if material:
-            query = query.filter(NCMR.material.ilike(f'%{material}%'))
+            query = query.filter(ilike_contains(NCMR.material, material))
         if product_info:
-            query = query.filter(NCMR.product_info.ilike(f'%{product_info}%'))
+            query = query.filter(ilike_contains(NCMR.product_info, product_info))
 
         total = query.count()
         ncmrs = query.order_by(NCMR.id.desc())\

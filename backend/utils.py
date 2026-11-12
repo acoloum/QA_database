@@ -76,6 +76,27 @@ def parse_optional_date(value, field_name: str) -> Optional[date]:
         raise ValueError(f"{field_name} 日期格式錯誤，應為 YYYY-MM-DD")
 
 
+LIKE_ESCAPE = "\\"
+
+
+def escape_like(value: str) -> str:
+    """跳脫 LIKE 萬用字元，讓使用者輸入的 % 與 _ 依字面比對。"""
+    return (
+        str(value)
+        .replace(LIKE_ESCAPE, LIKE_ESCAPE * 2)
+        .replace("%", LIKE_ESCAPE + "%")
+        .replace("_", LIKE_ESCAPE + "_")
+    )
+
+
+def ilike_contains(column, value: str):
+    """模糊搜尋共用條件：column ILIKE '%value%'，value 中的萬用字元依字面比對。
+
+    搭配 pg_trgm GIN 索引使用（見 CLAUDE.md 的 Fuzzy search）。
+    """
+    return column.ilike(f"%{escape_like(value)}%", escape=LIKE_ESCAPE)
+
+
 def validate_excel_shape(df: Any, max_rows: int = 5000, max_columns: int = 200) -> None:
     """限制 Excel 匯入內容規模，避免小檔案但超大工作表拖垮匯入流程。"""
     rows, columns = df.shape
