@@ -97,6 +97,7 @@ export interface NcmrDisposition {
 }
 
 export interface RiskRelease {
+    處置ID: number;
     NCMR單號: string;
     產品資訊: string;
     材質: string;

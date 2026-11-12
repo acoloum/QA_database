@@ -667,18 +667,22 @@ class NCMRService:
             raise
 
     @staticmethod
-    def get_risk_releases() -> List[Dict[str, Any]]:
-        """未授權放行清單（風險項）— IATF §8.7.1.1 風險追蹤"""
-        rows = db.session.query(NcmrDisposition, NCMR)\
-            .options(joinedload(NcmrDisposition.handler))\
+    def get_risk_releases(page: int = 1, per_page: int = 50) -> Dict[str, Any]:
+        """未授權放行清單（風險項）— IATF §8.7.1.1 風險追蹤；分頁回傳。"""
+        query = db.session.query(NcmrDisposition, NCMR)\
             .join(NCMR, NcmrDisposition.ncmr_id == NCMR.id)\
             .filter(NcmrDisposition.is_risk.is_(True))\
-            .filter(NCMR.deleted_at.is_(None))\
-            .order_by(NcmrDisposition.handled_at.desc())\
+            .filter(NCMR.deleted_at.is_(None))
+        total = query.count()
+        # 以 id 作為次要排序，處置時間相同時分頁順序仍穩定
+        rows = query.options(joinedload(NcmrDisposition.handler))\
+            .order_by(NcmrDisposition.handled_at.desc(), NcmrDisposition.id.desc())\
+            .offset((page - 1) * per_page).limit(per_page)\
             .all()
         result = []
         for d, n in rows:
             result.append({
+                '處置ID': d.id,
                 'NCMR單號': n.ncmr_number,
                 '產品資訊': n.product_info,
                 '材質': n.material,
@@ -688,7 +692,7 @@ class NCMRService:
                 '處置人姓名': d.handler.name if d.handler else '',
                 '處置時間': d.handled_at.strftime('%Y-%m-%d %H:%M:%S') if d.handled_at else '',
             })
-        return result
+        return {'data': result, 'total': total, 'page': page, 'per_page': per_page}
 
     @staticmethod
     def get_ncmr_info(ncmr_id: int) -> Optional[Dict[str, Any]]:

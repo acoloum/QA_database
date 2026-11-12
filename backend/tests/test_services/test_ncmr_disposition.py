@@ -374,7 +374,25 @@ def test_risk_releases_only_returns_unauthorized(app, db_session):
         }, handler_id=None)
         # 非風險：一般報廢
         NCMRService.create_disposition(n2.id, {'處置類型': '報廢', '處置數量': 10}, handler_id=None)
-        rows = NCMRService.get_risk_releases()
+        result = NCMRService.get_risk_releases()
+        rows = result['data']
+        assert result['total'] == 1
         assert len(rows) == 1
         assert rows[0]['NCMR單號'] == 'NCMR-R1'
         assert rows[0]['未授權放行理由'] == '趕交期'
+
+
+def test_risk_releases_are_paginated(app, db_session):
+    with app.app_context():
+        for i in range(3):
+            n = _make_ncmr(db_session, ncmr_number=f'NCMR-P{i}', defect_quantity=10)
+            NCMRService.create_disposition(n.id, {
+                '處置類型': '讓步放行', '處置數量': 10,
+                '是否超出客戶規格': True, '授權狀態': '未取得', '未授權放行理由': f'理由{i}',
+            }, handler_id=None)
+        first = NCMRService.get_risk_releases(page=1, per_page=2)
+        second = NCMRService.get_risk_releases(page=2, per_page=2)
+        assert first['total'] == second['total'] == 3
+        assert len(first['data']) == 2 and len(second['data']) == 1
+        numbers = [r['NCMR單號'] for r in first['data'] + second['data']]
+        assert sorted(numbers) == ['NCMR-P0', 'NCMR-P1', 'NCMR-P2']

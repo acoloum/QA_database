@@ -50,7 +50,8 @@ export const ncmrKeys = {
     dispositionsRoot: ['ncmrDispositions'] as const,
     dispositions: (ncmrId: Id) => ['ncmrDispositions', ncmrId] as const,
     reworks: (ncmrId: Id) => ['ncmrReworks', ncmrId] as const,
-    riskReleases: ['riskReleases'] as const,
+    riskReleasesRoot: ['riskReleases'] as const,
+    riskReleases: (params: unknown) => ['riskReleases', params] as const,
 };
 
 // ---------- CAPA / 8D ----------

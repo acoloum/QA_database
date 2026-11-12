@@ -222,5 +222,8 @@ def delete_disposition(current_user, disposition_id):
 @auth_required
 @require_permission('ncmr.view')
 def get_risk_releases():
-    return jsonify(NCMRService.get_risk_releases())
+    return jsonify(NCMRService.get_risk_releases(
+        page=bounded_int(request.args.get('page'), 1, 1, 1000000),
+        per_page=bounded_int(request.args.get('per_page'), 50, 1, 200),
+    ))
 

@@ -1,10 +1,14 @@
+import { useState } from 'react';
 import { Table, Card, Spinner } from 'react-bootstrap';
-import { useRiskReleases } from '../../hooks/useNCMR';
+import { RISK_RELEASES_PER_PAGE, useRiskReleases } from '../../hooks/useNCMR';
 import QueryErrorAlert from '../../components/common/QueryErrorAlert';
+import PaginationBar from '../../components/common/PaginationBar';
 
 // 未授權放行風險清單頁面（IATF 16949 §8.7.1.1）
 const RiskReleasePage = () => {
-    const { data = [], isLoading, isError, refetch } = useRiskReleases();
+    const [page, setPage] = useState(1);
+    const { data, isLoading, isError, refetch } = useRiskReleases(page);
+    const rows = data?.data ?? [];
 
     return (
         <Card className="m-3">
@@ -15,31 +19,39 @@ const RiskReleasePage = () => {
             <Card.Body>
                 <QueryErrorAlert show={isError} onRetry={refetch} />
                 {isLoading ? <Spinner animation="border" /> : (
-                    <Table bordered hover responsive size="sm">
-                        <thead>
-                            <tr>
-                                <th>NCMR單號</th><th>產品資訊</th><th>材質</th><th>廠商</th>
-                                <th>處置數量</th><th>未授權放行理由</th><th>處置人</th><th>處置時間</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {data.map((r, i) => (
-                                <tr key={i}>
-                                    <td>{r.NCMR單號}</td>
-                                    <td>{r.產品資訊}</td>
-                                    <td>{r.材質}</td>
-                                    <td>{r.廠商}</td>
-                                    <td>{r.處置數量}</td>
-                                    <td className="text-danger">{r.未授權放行理由}</td>
-                                    <td>{r.處置人姓名}</td>
-                                    <td>{r.處置時間}</td>
+                    <>
+                        <Table bordered hover responsive size="sm">
+                            <thead>
+                                <tr>
+                                    <th>NCMR單號</th><th>產品資訊</th><th>材質</th><th>廠商</th>
+                                    <th>處置數量</th><th>未授權放行理由</th><th>處置人</th><th>處置時間</th>
                                 </tr>
-                            ))}
-                            {data.length === 0 && (
-                                <tr><td colSpan={8} className="text-center text-muted">無風險放行記錄</td></tr>
-                            )}
-                        </tbody>
-                    </Table>
+                            </thead>
+                            <tbody>
+                                {rows.map((r) => (
+                                    <tr key={r.處置ID}>
+                                        <td>{r.NCMR單號}</td>
+                                        <td>{r.產品資訊}</td>
+                                        <td>{r.材質}</td>
+                                        <td>{r.廠商}</td>
+                                        <td>{r.處置數量}</td>
+                                        <td className="text-danger">{r.未授權放行理由}</td>
+                                        <td>{r.處置人姓名}</td>
+                                        <td>{r.處置時間}</td>
+                                    </tr>
+                                ))}
+                                {rows.length === 0 && (
+                                    <tr><td colSpan={8} className="text-center text-muted">無風險放行記錄</td></tr>
+                                )}
+                            </tbody>
+                        </Table>
+                        <PaginationBar
+                            page={page}
+                            perPage={RISK_RELEASES_PER_PAGE}
+                            total={data?.total}
+                            onPageChange={setPage}
+                        />
+                    </>
                 )}
             </Card.Body>
         </Card>

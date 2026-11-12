@@ -2,7 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import type { NCMR, NCMRCreateInput, NCMRUpdateInput, NcmrDisposition, RiskRelease } from '../types';
+import type { NCMR, NCMRCreateInput, NCMRUpdateInput, NcmrDisposition, PaginatedResponse, RiskRelease } from '../types';
 import { ncmrKeys } from './queryKeys';
 
 // --- Queries ---
@@ -166,6 +166,7 @@ export const useCreateDisposition = () => {
         onSuccess: (_, variables) => {
             toast.success('已新增處置');
             queryClient.invalidateQueries({ queryKey: ncmrKeys.dispositions(variables.ncmrId), exact: false });
+            queryClient.invalidateQueries({ queryKey: ncmrKeys.riskReleasesRoot, exact: false });
         },
     });
 };
@@ -180,6 +181,7 @@ export const useUpdateDisposition = () => {
         onSuccess: () => {
             toast.success('已更新處置');
             queryClient.invalidateQueries({ queryKey: ncmrKeys.dispositionsRoot, exact: false });
+            queryClient.invalidateQueries({ queryKey: ncmrKeys.riskReleasesRoot, exact: false });
         },
     });
 };
@@ -194,6 +196,7 @@ export const useDeleteDisposition = () => {
         onSuccess: () => {
             toast.success('已刪除處置');
             queryClient.invalidateQueries({ queryKey: ncmrKeys.dispositionsRoot, exact: false });
+            queryClient.invalidateQueries({ queryKey: ncmrKeys.riskReleasesRoot, exact: false });
         },
     });
 };
@@ -211,13 +214,17 @@ export const useNcmrReworks = (ncmrId: number | null) => {
     });
 };
 
-export const useRiskReleases = () => {
+export const RISK_RELEASES_PER_PAGE = 50;
+
+export const useRiskReleases = (page = 1) => {
+    const params = { page, per_page: RISK_RELEASES_PER_PAGE };
     return useQuery({
-        queryKey: ncmrKeys.riskReleases,
+        queryKey: ncmrKeys.riskReleases(params),
         queryFn: async () => {
-            const res = await api.get<RiskRelease[]>('/ncmr/risk-releases');
+            const res = await api.get<PaginatedResponse<RiskRelease>>('/ncmr/risk-releases', { params });
             return res.data;
         },
         staleTime: 60 * 1000,
+        placeholderData: (previousData) => previousData,
     });
 };
