@@ -3,11 +3,11 @@ import { Table, Button, Badge, Spinner } from 'react-bootstrap';
 import {
     useAttachments,
     useDeleteAttachment,
-    getAttachmentDownloadUrl,
+    fetchAttachmentBlob,
 } from '../../hooks/useAttachment';
 import ConfirmActionModal, { type ConfirmActionState } from './ConfirmActionModal';
 import AttachmentPreviewModal from './AttachmentPreviewModal';
-import { fetchAndDownload } from '../../utils/downloadFile';
+import { downloadBlob } from '../../utils/downloadFile';
 import type { Attachment } from '../../types';
 
 /** 判斷該 MIME 類型是否可在頁面內預覽（圖片與 PDF） */
@@ -68,9 +68,10 @@ const AttachmentList = ({
     }
 
     const handleDownload = (att: Attachment) => {
-        const url = getAttachmentDownloadUrl(att.id);
-        const token = localStorage.getItem('authToken');
-        void fetchAndDownload(url, att.file_name, token);
+        // 失敗時共用 api 攔截器已顯示錯誤（401 會導回登入頁），這裡只需避免存下錯誤內容
+        fetchAttachmentBlob(att.id)
+            .then(blob => downloadBlob(blob, att.file_name))
+            .catch(() => undefined);
     };
 
     const handleDelete = (att: Attachment) => {

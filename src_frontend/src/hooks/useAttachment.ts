@@ -78,6 +78,13 @@ export const useDeleteAttachment = (entityType: string, entityId: number) => {
     });
 };
 
-// ── 下載 URL ─────────────────────────────────────────────────
-export const getAttachmentDownloadUrl = (attachmentId: number) =>
-    `/api/attachments/${attachmentId}/download`;
+// ── 下載檔案內容 ─────────────────────────────────────────────
+// 走共用 api 實例：自動帶 JWT，401 時與其他請求一樣導回登入頁，
+// 錯誤回應會 reject（不會把錯誤 JSON 當成檔案內容存下來）。
+export const fetchAttachmentBlob = async (attachmentId: number, signal?: AbortSignal): Promise<Blob> => {
+    const res = await api.get<Blob>(`/attachments/${attachmentId}/download`, {
+        responseType: 'blob',
+        signal,
+    });
+    return res.data;
+};

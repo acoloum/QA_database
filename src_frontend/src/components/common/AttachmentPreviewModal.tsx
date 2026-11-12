@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Modal, Spinner, Button } from 'react-bootstrap';
-import { getAttachmentDownloadUrl } from '../../hooks/useAttachment';
+import { fetchAttachmentBlob } from '../../hooks/useAttachment';
 import type { Attachment } from '../../types';
 
 interface AttachmentPreviewModalProps {
@@ -17,7 +17,7 @@ interface PreviewResult {
 
 /**
  * 附件頁面內預覽 Modal。
- * 透過既有的下載 API（需帶 JWT）將檔案抓成 blob，再以 object URL 呈現，
+ * 透過共用 api 實例呼叫既有的下載 API 將檔案抓成 blob，再以 object URL 呈現，
  * 圖片用 <img>、PDF 用 <iframe>，不需後端額外支援 inline。
  */
 const AttachmentPreviewModal = ({ attachment, onClose }: AttachmentPreviewModalProps) => {
@@ -28,15 +28,9 @@ const AttachmentPreviewModal = ({ attachment, onClose }: AttachmentPreviewModalP
 
         let active = true;
         let createdUrl: string | null = null;
-        const token = localStorage.getItem('authToken');
+        const controller = new AbortController();
 
-        fetch(getAttachmentDownloadUrl(attachment.id), {
-            headers: { Authorization: `Bearer ${token ?? ''}` },
-        })
-            .then(r => {
-                if (!r.ok) throw new Error(`載入失敗（${r.status}）`);
-                return r.blob();
-            })
+        fetchAttachmentBlob(attachment.id, controller.signal)
             .then(blob => {
                 // 以原始 MIME 類型重新包裝，確保瀏覽器正確判讀
                 const typed = blob.type ? blob : new Blob([blob], { type: attachment.mime_type });
@@ -44,13 +38,21 @@ const AttachmentPreviewModal = ({ attachment, onClose }: AttachmentPreviewModalP
                 if (active) setResult({ id: attachment.id, url: createdUrl, error: null });
                 else URL.revokeObjectURL(createdUrl);
             })
-            .catch((e: Error) => {
-                if (active) setResult({ id: attachment.id, url: null, error: e.message });
+            .catch((e: unknown) => {
+                if (!active) return;
+                const status = (e as { status?: number; response?: { status?: number } }).status
+                    ?? (e as { response?: { status?: number } }).response?.status;
+                setResult({
+                    id: attachment.id,
+                    url: null,
+                    error: status ? `載入失敗（${status}）` : '載入失敗',
+                });
             });
 
-        // 卸載或切換附件時釋放 object URL
+        // 卸載或切換附件時中止請求並釋放 object URL
         return () => {
             active = false;
+            controller.abort();
             if (createdUrl) URL.revokeObjectURL(createdUrl);
         };
     }, [attachment]);
