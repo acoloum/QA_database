@@ -96,7 +96,7 @@ const PatrolMeasurementTable = ({
                                         const liveViolation = getLiveViolation(pos, item, group);
                                         return (
                                             <Fragment key={`${pos}-${item}`}>
-                                                <td style={{ padding: '2px' }}>
+                                                <td>
                                                     <Form.Control
                                                         size="sm"
                                                         type="number"
@@ -107,7 +107,7 @@ const PatrolMeasurementTable = ({
                                                         className={`patrol-input${minNG ? ' is-invalid-breathing' : ''}${liveViolation ? ' patrol-live-warning' : ''}`}
                                                     />
                                                 </td>
-                                                <td style={{ padding: '2px' }}>
+                                                <td>
                                                     <Form.Control
                                                         size="sm"
                                                         type="number"

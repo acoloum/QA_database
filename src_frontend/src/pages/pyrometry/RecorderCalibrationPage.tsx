@@ -168,7 +168,7 @@ const RecorderCalibrationPage = () => {
                     <tr key={ch}>
                       <td className="table-secondary">CH{ch}</td>
                       {STD_TEMPS.map(t => (
-                        <td key={t} style={{ padding: 2 }}>
+                        <td key={t}>
                           <Form.Control
                             size="sm"
                             style={{ minWidth: 64, textAlign: 'center' }}

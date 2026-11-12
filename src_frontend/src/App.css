@@ -186,6 +186,20 @@ h6 {
     vertical-align: middle;
 }
 
+/* ── 表格內的輸入儲存格（全站通用）───────────────────────────────
+   上面的 20px 16px 加上 .form-control 的 12px 16px，視窗一縮小輸入框的文字區就歸零，
+   過去是逐頁補 tolerance-entry-table。這裡讓「含輸入框的儲存格」自動收小兩層內距；
+   特異度與 dense-list-table／tolerance-entry-table 相同，那些寫在後面的專用規則仍優先。
+   元件 inline 的 padding 會被 !important 蓋掉，不要用 inline style 調整儲存格內距。 */
+.table tbody td:has(.form-control, .form-select) {
+    padding: 4px !important;
+}
+
+/* 巡檢、出貨的量測輸入框已有更緊湊的專用樣式，不套用 */
+.table td :is(.form-control, .form-select):not(.patrol-input, .shipping-input) {
+    padding: 6px 8px !important;
+}
+
 .table tbody tr {
     transition: all 0.3s ease;
     position: relative;
@@ -240,11 +254,10 @@ h6 {
     width: 90px;
 }
 
-/* NCMR 清單卡片與其列停用 transform/進場動畫：
+/* NCMR 清單卡片停用 transform/進場動畫：
    fadeIn 動畫與 hover scale 的 transform 會讓卡片/列成為 containing block，
-   困住 position:fixed 的操作下拉選單，造成被遮擋或裁切。僅限本表，不影響其他卡片/表格。 */
-.ncmr-list-card,
-.ncmr-list-card .table tbody tr {
+   困住 position:fixed 的操作下拉選單，造成被遮擋或裁切。（表格列已全面不套進場動畫） */
+.ncmr-list-card {
     animation: none !important;
 }
 
@@ -1077,10 +1090,18 @@ header h1 {
     animation: pulse-red 1s infinite;
 }
 
+/* 表格列不套進場動畫：換頁、重新查詢時每一列都會重跑一次，資料多時會閃爍；
+   動畫中的 transform 也會讓列困住 position:fixed 的操作下拉選單。 */
 .card,
-.btn,
-.table tr {
+.btn {
     animation: fadeIn 0.4s ease-out backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .card,
+    .btn {
+        animation: none;
+    }
 }
 
 /* Login Page Styles - Glassmorphism & Modern */
