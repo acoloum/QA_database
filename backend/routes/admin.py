@@ -1,7 +1,5 @@
 from flask import Blueprint, jsonify, request, current_app
-from sqlalchemy import text
 from datetime import date, timedelta
-from ..extensions import db
 from ..models import Inspector, Vendor, Machine, Operator, AuditLog
 from ..services.date_range import DateWindow, parse_date_window
 from ..services.dashboard_service import DashboardService
@@ -130,30 +128,6 @@ def get_operators():
         return jsonify([{"id": o.id, "name": o.name.strip() if o.name else ""} for o in operators])
     except Exception as e:
         current_app.logger.exception("查詢操作員清單時發生錯誤: %s", str(e))
-        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
-
-
-@admin_bp.route('/api/materials')
-@auth_required
-def get_materials():
-    try:
-        result = db.session.execute(text('SELECT DISTINCT "材質" FROM "出貨檢驗數據" WHERE "材質" IS NOT NULL'))
-        materials = [row[0].strip() for row in result]
-        return jsonify(materials)
-    except Exception as e:
-        current_app.logger.exception("查詢材質清單時發生錯誤: %s", str(e))
-        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
-
-
-@admin_bp.route('/api/specs')
-@auth_required
-def get_specs():
-    try:
-        result = db.session.execute(text('SELECT DISTINCT "檢驗規格" FROM "出貨檢驗數據" WHERE "檢驗規格" IS NOT NULL'))
-        specs = [row[0].strip() for row in result]
-        return jsonify(specs)
-    except Exception as e:
-        current_app.logger.exception("查詢檢驗規格清單時發生錯誤: %s", str(e))
         return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
 
 
