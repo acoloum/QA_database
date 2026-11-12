@@ -52,8 +52,15 @@ Schema changes are delivered as **hand-written, numbered SQL scripts** in `backe
 against the target database yourself, or the app will fail at runtime against a stale schema.
 
 ```bash
-psql -U postgres -d qa_database -f backend/migration/54_add_trgm_indexes_for_ncmr_complaint_equipment.sql
+venv/Scripts/python.exe -m backend.migration.ledger --app-db --apply 55   # 套用並寫入 ledger
+venv/Scripts/python.exe -m backend.migration.ledger --app-db              # 唯讀檢查狀態
 ```
+
+Applied versions and file checksums are recorded in the `qms_schema_migrations` table; apply through
+the ledger (not bare `psql -f`) so the record stays accurate. Never edit an applied migration — add a
+new number. `serve_qms.bat` runs a read-only preflight (`backend.migration.preflight`) that compares
+`models.py` with the live tables/columns and checks the ledger, logging `schema-preflight` warnings to
+`logs\qms_server.log`. See `backend/migration/README.md`.
 
 Tests build their schema from `models.py` via `create_all()`, so **a green test suite does not prove
 the migration was applied.** Keep `models.py` and the SQL script in sync in the same change.

@@ -11,4 +11,9 @@ REM ============================================================
 cd /d C:\QC_Database
 if not exist logs mkdir logs
 echo [%date% %time%] QMS starting on http://0.0.0.0:80 >> logs\qms_server.log
+REM Read-only schema preflight: models.py vs DB + migration ledger.
+REM Warns only; the server still starts so a boot-time check never causes an outage.
+set PYTHONIOENCODING=utf-8
+"C:\QC_Database\venv\Scripts\python.exe" -m backend.migration.preflight >> logs\qms_server.log 2>&1
+if errorlevel 1 echo [%date% %time%] WARNING: schema preflight failed - see lines above, apply pending migrations >> logs\qms_server.log
 "C:\QC_Database\venv\Scripts\waitress-serve.exe" --listen=*:80 --threads=8 backend.app:app >> logs\qms_server.log 2>&1
