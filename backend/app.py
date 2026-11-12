@@ -131,12 +131,16 @@ def serve_frontend(path):
 
     註：/api/* 由各 blueprint 處理（路由較精確，會優先匹配）；
     未定義的 /api/* 在此回 404，避免回傳 HTML 混淆 API 呼叫端。
+    不存在的 /assets/* 同樣回 404：重建前端後舊分頁會請求舊雜湊檔名，
+    若回 index.html 會變成 MIME 錯誤，前端也無法判斷是版本已過期。
     """
     if path.startswith('api/'):
         abort(404)
     target = os.path.join(FRONTEND_DIST, path)
     if path and os.path.isfile(target):
         return send_from_directory(FRONTEND_DIST, path)
+    if path.startswith('assets/'):
+        abort(404)
     return send_from_directory(FRONTEND_DIST, 'index.html')
 
 

@@ -7,6 +7,10 @@ import './App.css' // custom styles
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
+import { installStaleBuildReload } from './utils/staleBuildReload'
+
+// 前端重建後，舊分頁載入已不存在的 chunk 時自動重新整理一次
+installStaleBuildReload()
 
 const queryClient = new QueryClient({
   defaultOptions: {
