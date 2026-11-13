@@ -390,22 +390,22 @@ class ComplaintService:
 
     # ── 逾期待辦查詢（Dashboard 用）────────────────────────────
     @staticmethod
-    def overdue_list() -> List[Dict[str, Any]]:
+    def overdue_list(limit: int = 100) -> List[Dict[str, Any]]:
         today = date.today()
         items = CustomerComplaint.active_query().filter(
             CustomerComplaint.status.in_(['待處理', '處理中']),
             CustomerComplaint.initial_reply_deadline < today,
-        ).order_by(CustomerComplaint.initial_reply_deadline.asc()).all()
+        ).order_by(CustomerComplaint.initial_reply_deadline.asc()).limit(limit).all()
         return [ComplaintService._to_dict(c) for c in items]
 
     # ── 重複客訴 Dashboard（過去 30 天警示）─────────────────────
     @staticmethod
-    def recent_repeats(days: int = 30) -> List[Dict[str, Any]]:
+    def recent_repeats(days: int = 30, limit: int = 100) -> List[Dict[str, Any]]:
         cutoff = date.today() - timedelta(days=days)
         items = CustomerComplaint.active_query().filter(
             CustomerComplaint.is_repeat == True,
             CustomerComplaint.complaint_date >= cutoff,
-        ).order_by(CustomerComplaint.complaint_date.desc()).all()
+        ).order_by(CustomerComplaint.complaint_date.desc()).limit(limit).all()
         return [ComplaintService._to_dict(c) for c in items]
 
     # ── 序列化 ───────────────────────────────────────────────

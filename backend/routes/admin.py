@@ -1,10 +1,10 @@
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, request
 from datetime import date, timedelta
 from sqlalchemy.orm import joinedload
 from ..models import Inspector, Vendor, Machine, Operator, AuditLog
 from ..services.date_range import DateWindow, parse_date_window
 from ..services.dashboard_service import DashboardService
-from ..utils import auth_required, api_error
+from ..utils import auth_required
 from ..authorization import require_permission
 
 admin_bp = Blueprint('admin', __name__)
@@ -55,22 +55,14 @@ def get_dashboard_stats():
 @admin_bp.route('/api/dashboard/todos')
 @auth_required
 def get_dashboard_todos():
-    try:
-        return jsonify(DashboardService.get_todos())
-    except Exception as e:
-        current_app.logger.exception("載入儀表板待辦事項時發生錯誤: %s", str(e))
-        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
+    return jsonify(DashboardService.get_todos())
 
 
 @admin_bp.route('/api/dashboard/trends')
 @auth_required
 def get_dashboard_trends():
     """P-1：從 36 次查詢降為 6 次 GROUP BY 聚合查詢"""
-    try:
-        return jsonify(DashboardService.get_trends())
-    except Exception as e:
-        current_app.logger.exception("載入儀表板趨勢時發生錯誤: %s", str(e))
-        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
+    return jsonify(DashboardService.get_trends())
 
 
 # S-6：以下六個端點加上 @auth_required
@@ -83,53 +75,37 @@ MASTER_LIST_LIMIT = 1000
 @admin_bp.route('/api/inspectors')
 @auth_required
 def get_inspectors():
-    try:
-        q = Inspector.query
-        group_filter = request.args.get('group')
-        if group_filter:
-            q = q.filter(Inspector.group == group_filter)
-        inspectors = q.order_by(Inspector.group, Inspector.name).limit(MASTER_LIST_LIMIT).all()
-        return jsonify([{
-            "id":    i.id,
-            "name":  i.name.strip() if i.name else "",
-            "group": (i.group or "").strip(),
-        } for i in inspectors])
-    except Exception as e:
-        current_app.logger.exception("查詢檢驗人員清單時發生錯誤: %s", str(e))
-        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
+    q = Inspector.query
+    group_filter = request.args.get('group')
+    if group_filter:
+        q = q.filter(Inspector.group == group_filter)
+    inspectors = q.order_by(Inspector.group, Inspector.name).limit(MASTER_LIST_LIMIT).all()
+    return jsonify([{
+        "id":    i.id,
+        "name":  i.name.strip() if i.name else "",
+        "group": (i.group or "").strip(),
+    } for i in inspectors])
 
 
 @admin_bp.route('/api/vendors')
 @auth_required
 def get_vendors():
-    try:
-        vendors = Vendor.query.order_by(Vendor.name).limit(MASTER_LIST_LIMIT).all()
-        return jsonify([{"id": v.id, "name": v.name.strip() if v.name else ""} for v in vendors])
-    except Exception as e:
-        current_app.logger.exception("查詢廠商清單時發生錯誤: %s", str(e))
-        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
+    vendors = Vendor.query.order_by(Vendor.name).limit(MASTER_LIST_LIMIT).all()
+    return jsonify([{"id": v.id, "name": v.name.strip() if v.name else ""} for v in vendors])
 
 
 @admin_bp.route('/api/machines')
 @auth_required
 def get_machines():
-    try:
-        machines = Machine.query.order_by(Machine.name).limit(MASTER_LIST_LIMIT).all()
-        return jsonify([{"id": m.id, "name": m.name.strip() if m.name else ""} for m in machines])
-    except Exception as e:
-        current_app.logger.exception("查詢機台清單時發生錯誤: %s", str(e))
-        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
+    machines = Machine.query.order_by(Machine.name).limit(MASTER_LIST_LIMIT).all()
+    return jsonify([{"id": m.id, "name": m.name.strip() if m.name else ""} for m in machines])
 
 
 @admin_bp.route('/api/operators')
 @auth_required
 def get_operators():
-    try:
-        operators = Operator.query.order_by(Operator.name).limit(MASTER_LIST_LIMIT).all()
-        return jsonify([{"id": o.id, "name": o.name.strip() if o.name else ""} for o in operators])
-    except Exception as e:
-        current_app.logger.exception("查詢操作員清單時發生錯誤: %s", str(e))
-        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
+    operators = Operator.query.order_by(Operator.name).limit(MASTER_LIST_LIMIT).all()
+    return jsonify([{"id": o.id, "name": o.name.strip() if o.name else ""} for o in operators])
 
 
 @admin_bp.route('/api/audit-logs', methods=['GET'])
@@ -142,30 +118,26 @@ def get_audit_logs(current_user):
     module = request.args.get('module')
     user_id = request.args.get('user_id', type=int)
 
-    try:
-        # 序列化會讀 log.user.username，須隨日誌一次載入，避免每列各查一次使用者
-        q = AuditLog.query.options(joinedload(AuditLog.user)).order_by(AuditLog.created_at.desc())
-        if module:
-            q = q.filter(AuditLog.module == module)
-        if user_id:
-            q = q.filter(AuditLog.user_id == user_id)
+    # 序列化會讀 log.user.username，須隨日誌一次載入，避免每列各查一次使用者
+    q = AuditLog.query.options(joinedload(AuditLog.user)).order_by(AuditLog.created_at.desc())
+    if module:
+        q = q.filter(AuditLog.module == module)
+    if user_id:
+        q = q.filter(AuditLog.user_id == user_id)
 
-        pagination = q.paginate(page=page, per_page=per_page, error_out=False)
-        items = [
-            {
-                'id': log.id,
-                'user_id': log.user_id,
-                'username': log.user.username if log.user else '(已刪除)',
-                'action': log.action,
-                'module': log.module,
-                'record_id': log.record_id,
-                'old_value': log.old_value,
-                'new_value': log.new_value,
-                'created_at': log.created_at.isoformat() if log.created_at else None,
-            }
-            for log in pagination.items
-        ]
-        return jsonify({'data': items, 'total': pagination.total, 'page': page, 'per_page': per_page})
-    except Exception as e:
-        current_app.logger.exception("查詢審計日誌時發生錯誤: %s", str(e))
-        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
+    pagination = q.paginate(page=page, per_page=per_page, error_out=False)
+    items = [
+        {
+            'id': log.id,
+            'user_id': log.user_id,
+            'username': log.user.username if log.user else '(已刪除)',
+            'action': log.action,
+            'module': log.module,
+            'record_id': log.record_id,
+            'old_value': log.old_value,
+            'new_value': log.new_value,
+            'created_at': log.created_at.isoformat() if log.created_at else None,
+        }
+        for log in pagination.items
+    ]
+    return jsonify({'data': items, 'total': pagination.total, 'page': page, 'per_page': per_page})

@@ -138,8 +138,9 @@ def open_rework_from_complaint(current_user, complaint_id: int):
 @auth_required
 @require_permission('complaint.view')
 def overdue_complaints(current_user):
-    """GET /api/complaints/overdue — 逾期客訴列表"""
-    return jsonify(ComplaintService.overdue_list()), 200
+    """GET /api/complaints/overdue — 逾期客訴列表（依初回期限排序，最多 limit 筆）"""
+    limit = bounded_int(request.args.get('limit'), 100, 1, 500)
+    return jsonify(ComplaintService.overdue_list(limit=limit)), 200
 
 
 @complaint_bp.route('/api/complaints/recent-repeats', methods=['GET'])
@@ -148,7 +149,8 @@ def overdue_complaints(current_user):
 def recent_repeat_complaints(current_user):
     """GET /api/complaints/recent-repeats — 近 30 天重複客訴"""
     days = bounded_int(request.args.get('days'), 30, 1, 365)
-    return jsonify(ComplaintService.recent_repeats(days=days)), 200
+    limit = bounded_int(request.args.get('limit'), 100, 1, 500)
+    return jsonify(ComplaintService.recent_repeats(days=days, limit=limit)), 200
 
 
 # ── 統計 ─────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 
 from flask import Blueprint, jsonify, request, send_file
 from ..services.tolerance_service import ToleranceService
-from ..utils import auth_required, handle_db_error, api_error
+from ..utils import auth_required, api_error
 from ..authorization import require_permission
 
 tolerance_bp = Blueprint('tolerance', __name__)
@@ -100,11 +100,8 @@ def get_tolerance_detail(id):
 @require_permission('tolerance.manage')
 def add_tolerance(current_user):
     """新增公差資料"""
-    try:
-        new_id = ToleranceService.add_tolerance(request.json, user_id=current_user.id)
-        return jsonify({"success": True, "id": new_id})
-    except Exception as e:
-        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
+    new_id = ToleranceService.add_tolerance(request.json, user_id=current_user.id)
+    return jsonify({"success": True, "id": new_id})
 
 @tolerance_bp.route('/api/tolerance/update/<int:id>', methods=['POST'])
 @auth_required
@@ -116,50 +113,36 @@ def update_tolerance(current_user, id):
         return jsonify({"success": True})
     except ValueError as e:
         return api_error(str(e), 404, code="NOT_FOUND")
-    except Exception as e:
-        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
 
 @tolerance_bp.route('/api/tolerance/delete/<int:id>', methods=['POST'])
 @auth_required
 @require_permission('tolerance.manage')
 def delete_tolerance(current_user, id):
     """刪除公差資料"""
-    try:
-        ToleranceService.delete_tolerance(id, user_id=current_user.id)
-        return jsonify({"success": True})
-    except Exception as e:
-        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
+    ToleranceService.delete_tolerance(id, user_id=current_user.id)
+    return jsonify({"success": True})
 
 @tolerance_bp.route('/api/tolerance/options', methods=['GET'])
 @auth_required
 @require_permission('tolerance.view')
 def get_tolerance_options():
     """獲取公差選項資料"""
-    try:
-        options = ToleranceService.get_options()
-        return jsonify(options)
-    except Exception as e:
-        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
+    options = ToleranceService.get_options()
+    return jsonify(options)
 
 @tolerance_bp.route('/api/tolerance/export', methods=['GET'])
 @auth_required
 @require_permission('tolerance.view')
 def export_tolerance_excel():
     """匯出公差資料為 Excel"""
-    try:
-        output = ToleranceService.export_excel(request.args)
-        return send_file(output, as_attachment=True, download_name='廠商公差資料.xlsx',
-                        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    except Exception as e:
-        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
+    output = ToleranceService.export_excel(request.args)
+    return send_file(output, as_attachment=True, download_name='廠商公差資料.xlsx',
+                    mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 @tolerance_bp.route('/api/tolerance/check', methods=['GET'])
 @auth_required
 @require_permission('tolerance.view')
 def check_tolerance():
     """根據廠商+材質+規格查詢公差標準，用於出貨檢驗驗證"""
-    try:
-        result = ToleranceService.check_tolerance(request.args)
-        return jsonify(result)
-    except Exception as e:
-        return api_error(handle_db_error(e), 500, code="INTERNAL_ERROR")
+    result = ToleranceService.check_tolerance(request.args)
+    return jsonify(result)

@@ -181,3 +181,44 @@ def test_quality_analytics_capa_aging_respects_overdue_limit(client, db_session)
 
     assert response.status_code == 200
     assert len(response.get_json()["data"]["overdue_items"]) == 2
+
+
+def _seed_complaints(db_session, prefix, count, **fields):
+    from backend.models import CustomerComplaint
+    db_session.add_all([
+        CustomerComplaint(
+            complaint_no=f'{prefix}-{i}',
+            customer='測試客戶',
+            complaint_date=dt.date.today() - dt.timedelta(days=5),
+            description='不良描述',
+            **fields,
+        )
+        for i in range(count)
+    ])
+    db_session.commit()
+
+
+def test_complaint_overdue_list_respects_limit(client, db_session):
+    """逾期客訴清單須有筆數上限，不可回傳整張表。"""
+    headers = _auth_headers(db_session, "complaint_overdue_bounds_user")
+    _seed_complaints(
+        db_session, 'CC-OVERDUE', 3,
+        status='待處理',
+        initial_reply_deadline=dt.date.today() - dt.timedelta(days=2),
+    )
+
+    response = client.get("/api/complaints/overdue?limit=2", headers=headers)
+
+    assert response.status_code == 200
+    assert len(response.get_json()) == 2
+
+
+def test_complaint_recent_repeats_respects_limit(client, db_session):
+    """近期重複客訴清單須有筆數上限，不可回傳整張表。"""
+    headers = _auth_headers(db_session, "complaint_repeat_bounds_user")
+    _seed_complaints(db_session, 'CC-REPEAT', 3, is_repeat=True)
+
+    response = client.get("/api/complaints/recent-repeats?limit=2", headers=headers)
+
+    assert response.status_code == 200
+    assert len(response.get_json()) == 2

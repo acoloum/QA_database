@@ -8,6 +8,8 @@ from flask import jsonify
 from backend.routes.shipping import save_data
 from backend.models import User
 from backend.services.dashboard_service import DashboardService
+from backend.services.extrusion_tolerance_service import ExtrusionToleranceService
+from backend.services.user_service import UserService
 from backend.services.capa_service import CAPAService
 from backend.services.complaint_service import ComplaintService
 from backend.services.mechanical_service import MechanicalService
@@ -88,6 +90,58 @@ def test_workflow_unexpected_error_reaches_global_handler(
         'error': {'code': 'INTERNAL_ERROR', 'message': '伺服器內部錯誤'},
     }
     assert 'WORKFLOW-SECRET' not in response.get_data(as_text=True)
+    assert any(
+        '未處理 API 例外 correlation_id=task8-global-500' in record.getMessage()
+        for record in caplog.records
+    )
+
+
+@pytest.mark.parametrize(
+    ('service', 'method_name', 'http_method', 'url', 'payload'),
+    [
+        (DashboardService, 'get_todos', 'get', '/api/dashboard/todos', None),
+        (DashboardService, 'get_trends', 'get', '/api/dashboard/trends', None),
+        (UserService, 'reset_password', 'put', '/api/users/999/password', {'password': 'pw-12345678'}),
+        (ToleranceService, 'add_tolerance', 'post', '/api/tolerance/add', {}),
+        (ToleranceService, 'update_tolerance', 'post', '/api/tolerance/update/999', {}),
+        (ToleranceService, 'delete_tolerance', 'post', '/api/tolerance/delete/999', None),
+        (ToleranceService, 'get_options', 'get', '/api/tolerance/options', None),
+        (ToleranceService, 'export_excel', 'get', '/api/tolerance/export', None),
+        (ToleranceService, 'check_tolerance', 'get', '/api/tolerance/check', None),
+        (ExtrusionToleranceService, 'search', 'get', '/api/extrusion-tolerance/search', None),
+        (ExtrusionToleranceService, 'add', 'post', '/api/extrusion-tolerance/add', {}),
+        (ExtrusionToleranceService, 'update', 'post', '/api/extrusion-tolerance/update/999', {}),
+        (ExtrusionToleranceService, 'delete', 'post', '/api/extrusion-tolerance/delete/999', None),
+        (ExtrusionToleranceService, 'get_options', 'get', '/api/extrusion-tolerance/options', None),
+        (ExtrusionToleranceService, 'check', 'get', '/api/extrusion-tolerance/check', None),
+    ],
+)
+def test_admin_auth_tolerance_unexpected_error_reaches_global_handler(
+    client,
+    monkeypatch,
+    admin_headers,
+    caplog,
+    service,
+    method_name,
+    http_method,
+    url,
+    payload,
+):
+    """儀表板／帳號／公差路由不再自行攔截 Exception，須交給全域 handler 統一記錄與遮蔽。"""
+    caplog.set_level('ERROR')
+
+    def fail_unexpected(*_args, **_kwargs):
+        raise RuntimeError('password=ROUTE-SECRET')
+
+    monkeypatch.setattr(service, method_name, fail_unexpected)
+    response = getattr(client, http_method)(url, json=payload, headers=admin_headers)
+
+    assert response.status_code == 500
+    assert response.get_json() == {
+        'success': False,
+        'error': {'code': 'INTERNAL_ERROR', 'message': '伺服器內部錯誤'},
+    }
+    assert 'ROUTE-SECRET' not in response.get_data(as_text=True)
     assert any(
         '未處理 API 例外 correlation_id=task8-global-500' in record.getMessage()
         for record in caplog.records

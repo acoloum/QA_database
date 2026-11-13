@@ -50,40 +50,36 @@ def login():
     if not username or not password:
         return api_error('使用者名稱和密碼為必填欄位', 400, code="VALIDATION_ERROR")
 
-    try:
-        user = User.query.filter_by(username=username).first()
+    user = User.query.filter_by(username=username).first()
 
-        if not user:
-            return api_error("使用者名稱或密碼錯誤", 401, code="UNAUTHORIZED")
+    if not user:
+        return api_error("使用者名稱或密碼錯誤", 401, code="UNAUTHORIZED")
 
-        if not verify_password(password, user.password):
-            return api_error("使用者名稱或密碼錯誤", 401, code="UNAUTHORIZED")
+    if not verify_password(password, user.password):
+        return api_error("使用者名稱或密碼錯誤", 401, code="UNAUTHORIZED")
 
-        if not user.is_active:
-            return api_error("帳號已被停用", 401, code="UNAUTHORIZED")
+    if not user.is_active:
+        return api_error("帳號已被停用", 401, code="UNAUTHORIZED")
 
-        # 將舊版 SHA256 雜湊在登入成功時升級為 bcrypt
-        if not user.password.startswith('$2b$') and not user.password.startswith('$2a$'):
-            user = UserService.upgrade_password_hash(user.id, password)
+    # 將舊版 SHA256 雜湊在登入成功時升級為 bcrypt
+    if not user.password.startswith('$2b$') and not user.password.startswith('$2a$'):
+        user = UserService.upgrade_password_hash(user.id, password)
 
-        token = generate_token(
-            user.id,
-            user.username,
-            user.role,
-            user.token_version,
-        )
-        permissions = _permissions_for_role(user.role)
-        return jsonify({
-            'token': token,
-            'username': user.username,
-            'user_id': user.id,
-            'role': user.role,
-            'permissions': permissions,
-            'display_name': _display_name(user),
-        })
-    except Exception as e:
-        current_app.logger.exception("Login error: %s", str(e))
-        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
+    token = generate_token(
+        user.id,
+        user.username,
+        user.role,
+        user.token_version,
+    )
+    permissions = _permissions_for_role(user.role)
+    return jsonify({
+        'token': token,
+        'username': user.username,
+        'user_id': user.id,
+        'role': user.role,
+        'permissions': permissions,
+        'display_name': _display_name(user),
+    })
 
 @auth_bp.route('/api/verify-token', methods=['GET'])
 def verify_token_api():
@@ -120,15 +116,11 @@ def get_csrf_token_api():
 @require_permission('user.manage')
 def list_roles(current_user):
     """列出所有角色（需 user.manage 權限）"""
-    try:
-        roles = Role.query.order_by(Role.code).all()
-        return jsonify([
-            {'code': r.code, 'name': r.name, 'permissions': r.permissions}
-            for r in roles
-        ])
-    except Exception as e:
-        current_app.logger.exception("List roles error: %s", str(e))
-        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
+    roles = Role.query.order_by(Role.code).all()
+    return jsonify([
+        {'code': r.code, 'name': r.name, 'permissions': r.permissions}
+        for r in roles
+    ])
 
 
 @auth_bp.route('/api/users', methods=['GET'])
@@ -136,22 +128,18 @@ def list_roles(current_user):
 @require_permission('user.manage')
 def list_users(current_user):
     """列出所有使用者（需 user.manage 權限）"""
-    try:
-        users = User.query.order_by(User.id).all()
-        return jsonify([
-            {
-                'id': u.id,
-                'username': u.username,
-                'role': u.role,
-                'inspector_id': u.inspector_id,
-                'is_active': u.is_active,
-                'created_at': u.created_at.isoformat() if u.created_at else None
-            }
-            for u in users
-        ])
-    except Exception as e:
-        current_app.logger.exception("List users error: %s", str(e))
-        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
+    users = User.query.order_by(User.id).all()
+    return jsonify([
+        {
+            'id': u.id,
+            'username': u.username,
+            'role': u.role,
+            'inspector_id': u.inspector_id,
+            'is_active': u.is_active,
+            'created_at': u.created_at.isoformat() if u.created_at else None
+        }
+        for u in users
+    ])
 
 
 @auth_bp.route('/api/roles/<string:role_code>', methods=['PATCH'])
@@ -242,14 +230,10 @@ def reset_user_password(current_user, user_id):
     if len(password) < 8:
         return api_error("密碼長度至少需要 8 個字元", 400, code="VALIDATION_ERROR")
 
-    try:
-        user = UserService.reset_password(current_user.id, user_id, password)
-        if not user:
-            return api_error("找不到使用者", 404, code="NOT_FOUND")
-        return jsonify({"success": True, "message": "密碼已重設"})
-    except Exception as e:
-        current_app.logger.exception("Reset user password error: %s", str(e))
-        return api_error("伺服器內部錯誤，請稍後再試", 500, code="INTERNAL_ERROR")
+    user = UserService.reset_password(current_user.id, user_id, password)
+    if not user:
+        return api_error("找不到使用者", 404, code="NOT_FOUND")
+    return jsonify({"success": True, "message": "密碼已重設"})
 
 
 @auth_bp.route('/api/users', methods=['POST'])
