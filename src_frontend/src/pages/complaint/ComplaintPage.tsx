@@ -18,6 +18,7 @@ import type { CustomerComplaint } from '../../types';
 import { ComplaintFilterBar, ComplaintTable, type ComplaintFilters } from './ComplaintPageParts';
 import PermissionAction from '../../components/PermissionAction';
 import QueryErrorAlert from '../../components/common/QueryErrorAlert';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 
 const PAGE_SIZE = 20;
 
@@ -40,10 +41,15 @@ const ComplaintPage = () => {
     const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
     const [capaTarget, setCapaTarget] = useState<CustomerComplaint | null>(null);
 
+    // 模糊搜尋欄位防抖：輸入框即時顯示，停止輸入後才送進查詢鍵，避免每個按鍵都打一次 API
+    const debouncedCustomer = useDebouncedValue(customerFilter);
+    const debouncedMaterial = useDebouncedValue(materialFilter);
+    const debouncedSpec     = useDebouncedValue(specFilter);
+
     const params = {
-        customer:       customerFilter  || undefined,
-        material:       materialFilter  || undefined,
-        spec:           specFilter      || undefined,
+        customer:       debouncedCustomer || undefined,
+        material:       debouncedMaterial || undefined,
+        spec:           debouncedSpec     || undefined,
         status:         statusFilter    || undefined,
         complaint_type: typeFilter      || undefined,
         date_from:      dateFromFilter  || undefined,

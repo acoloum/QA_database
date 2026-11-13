@@ -14,6 +14,7 @@ import { buildNcmrPrintHtml, buildReworkFromNcmrUrl } from './ncmrPageUtils';
 import PermissionAction from '../../components/PermissionAction';
 import { useAuth } from '../../context/useAuth';
 import QueryErrorAlert from '../../components/common/QueryErrorAlert';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 
 const EMPTY_FILTERS: NCMRListParams = {
     page: 1, per_page: 20,
@@ -27,8 +28,20 @@ const NCMRPage = () => {
     const [filters, setFilters] = useState<NCMRListParams>(EMPTY_FILTERS);
     const [page, setPage] = useState(1);
 
+    // 模糊搜尋欄位防抖：輸入框即時顯示，停止輸入後才送進查詢鍵，避免每個按鍵都打一次 API
+    const debouncedVendor = useDebouncedValue(filters.vendor ?? '');
+    const debouncedMaterial = useDebouncedValue(filters.material ?? '');
+    const debouncedProductInfo = useDebouncedValue(filters.product_info ?? '');
+
+    const queryFilters: NCMRListParams = {
+        ...filters,
+        vendor: debouncedVendor,
+        material: debouncedMaterial,
+        product_info: debouncedProductInfo,
+    };
+
     const activeParams: NCMRListParams = {
-        ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== '')),
+        ...Object.fromEntries(Object.entries(queryFilters).filter(([, v]) => v !== '')),
         page,
         per_page: 20,
     };

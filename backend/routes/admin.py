@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request, current_app
 from datetime import date, timedelta
+from sqlalchemy.orm import joinedload
 from ..models import Inspector, Vendor, Machine, Operator, AuditLog
 from ..services.date_range import DateWindow, parse_date_window
 from ..services.dashboard_service import DashboardService
@@ -142,7 +143,8 @@ def get_audit_logs(current_user):
     user_id = request.args.get('user_id', type=int)
 
     try:
-        q = AuditLog.query.order_by(AuditLog.created_at.desc())
+        # 序列化會讀 log.user.username，須隨日誌一次載入，避免每列各查一次使用者
+        q = AuditLog.query.options(joinedload(AuditLog.user)).order_by(AuditLog.created_at.desc())
         if module:
             q = q.filter(AuditLog.module == module)
         if user_id:

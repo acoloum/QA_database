@@ -11,6 +11,7 @@ import ConfirmActionModal, { type ConfirmActionState } from '../../components/co
 import PaginationBar from '../../components/common/PaginationBar';
 import PermissionAction from '../../components/PermissionAction';
 import QueryErrorAlert from '../../components/common/QueryErrorAlert';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 
 const ExtrusionTolerancePage = () => {
     const [page, setPage] = useState(1);
@@ -18,8 +19,13 @@ const ExtrusionTolerancePage = () => {
     const [spec, setSpec] = useState('');
     const [vendor, setVendor] = useState('');
 
+    // 搜尋欄位防抖：輸入框即時顯示，停止輸入後才送進查詢鍵，避免每個按鍵都打一次 API
+    const debouncedMaterial = useDebouncedValue(material);
+    const debouncedSpec = useDebouncedValue(spec);
+    const debouncedVendor = useDebouncedValue(vendor);
+
     const { data: result, isLoading, isError, refetch } = useExtrusionToleranceList({
-        page, page_size: 20, material, spec, vendor,
+        page, page_size: 20, material: debouncedMaterial, spec: debouncedSpec, vendor: debouncedVendor,
     });
     const deleteMutation = useDeleteExtrusionTolerance();
 
@@ -29,7 +35,9 @@ const ExtrusionTolerancePage = () => {
     const [viewId, setViewId] = useState<number | null>(null);
     const [confirmAction, setConfirmAction] = useState<ConfirmActionState | null>(null);
 
-    const handleSearch = () => { setPage(1); refetch(); };
+    // 篩選條件一變就回到第 1 頁，否則停在後面的頁碼可能查不到資料
+    const handleFilterChange = (setter: (value: string) => void) =>
+        (e: React.ChangeEvent<HTMLInputElement>) => { setter(e.target.value); setPage(1); };
     const handleAdd = () => { setEditId(null); setShowModal(true); };
     const handleEdit = (id: number) => { setEditId(id); setShowModal(true); };
     const handleView = (id: number) => { setViewId(id); setShowViewModal(true); };
@@ -57,20 +65,17 @@ const ExtrusionTolerancePage = () => {
             <Card className="mb-3">
                 <Card.Body>
                     <Row className="g-2 align-items-end">
-                        <Col md={3}>
+                        <Col md={4}>
                             <Form.Label>材質</Form.Label>
-                            <Form.Control size="sm" value={material} onChange={(e) => setMaterial(e.target.value)} placeholder="模糊搜尋" />
+                            <Form.Control size="sm" value={material} onChange={handleFilterChange(setMaterial)} placeholder="模糊搜尋" />
                         </Col>
-                        <Col md={3}>
+                        <Col md={4}>
                             <Form.Label>規格</Form.Label>
-                            <Form.Control size="sm" value={spec} onChange={(e) => setSpec(e.target.value)} placeholder="如 62.5*2.3" />
+                            <Form.Control size="sm" value={spec} onChange={handleFilterChange(setSpec)} placeholder="如 62.5*2.3" />
                         </Col>
-                        <Col md={3}>
+                        <Col md={4}>
                             <Form.Label>廠商</Form.Label>
-                            <Form.Control size="sm" value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="模糊搜尋" />
-                        </Col>
-                        <Col md={2}>
-                            <Button size="sm" onClick={handleSearch}>查詢</Button>
+                            <Form.Control size="sm" value={vendor} onChange={handleFilterChange(setVendor)} placeholder="模糊搜尋" />
                         </Col>
                     </Row>
                 </Card.Body>
