@@ -40,11 +40,13 @@ jobs:
     env:
       # 應用程式的密鑰在下面的步驟即時產生後寫入 $GITHUB_ENV，
       # 不在版控檔案裡留下任何固定值（scan_tracked_secrets.py 會擋）。
-      # 各整合測試各自使用獨立 database，彼此不互相汙染
-      TOKEN_VERSION_TEST_DATABASE_URL:   postgresql://postgres:postgres@localhost:5432/codex_token50_ci
-      ROUTE_PERMISSION_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/codex_permissions51_ci
-      CALIBRATION_TEST_DATABASE_URL:     postgresql://postgres:postgres@localhost:5432/calibration_t49_ci
-      ATOMICITY_TEST_DATABASE_URL:       postgresql://postgres:postgres@localhost:5432/codex_atomicity7_ci
+      # 各整合測試各自使用獨立 database，彼此不互相汙染。
+      # 必須明確寫 +psycopg2：SQLAlchemy 2.1 起裸 postgresql:// 預設改用 psycopg（v3），
+      # 但專案只裝 psycopg2-binary（與 config.py 正式連線一致），不寫會 ModuleNotFoundError。
+      TOKEN_VERSION_TEST_DATABASE_URL:   postgresql+psycopg2://postgres:postgres@localhost:5432/codex_token50_ci
+      ROUTE_PERMISSION_TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/codex_permissions51_ci
+      CALIBRATION_TEST_DATABASE_URL:     postgresql+psycopg2://postgres:postgres@localhost:5432/calibration_t49_ci
+      ATOMICITY_TEST_DATABASE_URL:       postgresql+psycopg2://postgres:postgres@localhost:5432/codex_atomicity7_ci
       # SPC migration / 並發整合測試（走 psql CLI）
       SPC_POSTGRES_INTEGRATION: '1'
       SPC_PG_HOST: localhost
